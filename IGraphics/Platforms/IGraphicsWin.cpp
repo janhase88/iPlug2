@@ -1610,7 +1610,7 @@ void IGraphicsWin::PromptForFile(WDL_String& fileName, WDL_String& path, EFileAc
   if (CStringHasContents(ext))
   {
     wchar_t extStr[256];
-    wchar_t defExtStr[16];
+    wchar_t defExtStr[256];
     int i, p, n = strlen(ext);
     bool separator = true;
         

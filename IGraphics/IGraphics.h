@@ -1341,13 +1341,12 @@ public:
   /** @return \c true if performance display is shown */
   bool ShowingFPSDisplay() { return mPerfDisplay != nullptr; }
   
- /** Attach an IControl to the graphics context and add it to the control stack. The control is owned by the graphics context and will be deleted when the context is deleted.
+ /** Attach an IControl to the graphics context and add it to the top of the control stack. The control is owned by the graphics context and will be deleted when the context is deleted.
    * @param pControl A pointer to an IControl to attach.
    * @param ctrlTag An integer tag that you can use to identify the control
    * @param group A CString that you can use to address controlled by group
-   * @param zIndex The position in the control stack to insert the control. Use a negative value to add to the top of the stack.
-   * @return The control that was attached */
-  IControl* AttachControl(IControl* pControl, int ctrlTag = kNoTag, const char* group = "", int zIndex = -1);
+   * @return The index of the control (and the number of controls in the stack) */
+  IControl* AttachControl(IControl* pControl, int ctrlTag = kNoTag, const char* group = "");
 
   /** Get the control at a certain index in the control stack
    * @param idx The index of the control to get

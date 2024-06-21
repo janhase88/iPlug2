@@ -669,7 +669,7 @@ void IGraphics::PromptUserInput(IControl& control, const IRECT& bounds, int valI
 
 void IGraphics::DrawText(const IText& text, const char* str, const IRECT& bounds, const IBlend* pBlend)
 {
-  if (!str || str[0] == '\0')
+  if (!str || str[0] == '\0' || text.mSize < 1.)
     return;
     
   DoDrawText(text, str, bounds, pBlend);

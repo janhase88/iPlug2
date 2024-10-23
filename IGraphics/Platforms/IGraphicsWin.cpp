@@ -1288,7 +1288,13 @@ void IGraphicsWin::CloseWindow()
       KillTimer(mPlugWnd, IPLUG_TIMER_ID);
 
 #ifdef IGRAPHICS_GL
-    ActivateGLContext();
+    HDC currentDC = wglGetCurrentDC();
+    HGLRC currentContext = wglGetCurrentContext();
+
+    if (currentDC == NULL && currentContext != mHGLRC)
+    {
+      ActivateGLContext();
+    } 
 #endif
 
     OnViewDestroyed();

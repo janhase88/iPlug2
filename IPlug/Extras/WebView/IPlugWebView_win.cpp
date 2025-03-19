@@ -1,17 +1,37 @@
-/*
-==============================================================================
+ /*
+ ==============================================================================
+ 
+  MIT License
 
-This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
+  iPlug2 WebView Library
+  Copyright (c) 2024 Oliver Larkin
 
-See LICENSE.txt for  more info.
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
 
-==============================================================================
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+ 
+ ==============================================================================
 */
 
 #include "IPlugWebView.h"
 #include "IPlugPaths.h"
 #include <string>
 #include <windows.h>
+#include <wininet.h>
 #include <shlobj.h>
 #include <cassert>
 
@@ -49,10 +69,10 @@ private:
   RECT GetScaledRect(float x, float y, float w, float h, float scale)
   {
     RECT r;
-    r.left = static_cast<LONG>(x * scale);
-    r.top = static_cast<LONG>(y * scale);
-    r.right = static_cast<LONG>((x + w) * scale);
-    r.bottom = static_cast<LONG>((y + h) * scale);
+    r.left = static_cast<LONG>(std::ceil(x * scale));
+    r.top = static_cast<LONG>(std::ceil(y * scale));
+    r.right = static_cast<LONG>(std::ceil((x + w) * scale)) + 1;
+    r.bottom = static_cast<LONG>(std::ceil((y + h) * scale)) + 1;
     return r;
   }
 
@@ -65,7 +85,7 @@ private:
   EventRegistrationToken mWebMessageReceivedToken;
   EventRegistrationToken mNavigationStartingToken;
   EventRegistrationToken mNavigationCompletedToken;
-  EventRegistrationToken mContextMenuRequestedToken;
+  EventRegistrationToken mNewWindowRequestedToken;
   EventRegistrationToken mDownloadStartingToken;
   EventRegistrationToken mBytesReceivedChangedToken;
   EventRegistrationToken mStateChangedToken;
@@ -138,13 +158,23 @@ void* IWebViewImpl::OpenWebView(void* pParent, float,float,float,float,float)
             Settings->put_AreDefaultContextMenusEnabled(enableDevTools);
             Settings->put_AreDevToolsEnabled(enableDevTools);
 
-            // this script adds a function IPlugSendMsg that is used to call the platform webview messaging function in JS
+            // this script adds a function IPlugSendMsg that is used to communicate from the WebView to the C++ side
             mCoreWebView->AddScriptToExecuteOnDocumentCreated(
               L"function IPlugSendMsg(m) {window.chrome.webview.postMessage(m)};",
               Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>([this](HRESULT error,
                                                                                                 PCWSTR id) -> HRESULT {
                 return S_OK;
               }).Get());
+
+            // this script receives global key down events and forwards them to the C++ side
+            mCoreWebView->AddScriptToExecuteOnDocumentCreated(
+              L"document.addEventListener('keydown', function(e) { if(document.activeElement.type != \"text\") { IPlugSendMsg({'msg': 'SKPFUI', 'keyCode': e.keyCode, 'utf8': e.key, 'S': e.shiftKey, 'C': e.ctrlKey, 'A': e.altKey, 'isUp': false}); }});",
+              Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>([this](HRESULT error, PCWSTR id) -> HRESULT { return S_OK; }).Get());
+
+            // this script receives global key up events and forwards them to the C++ side
+            mCoreWebView->AddScriptToExecuteOnDocumentCreated(
+              L"document.addEventListener('keyup', function(e) { if(document.activeElement.type != \"text\") { IPlugSendMsg({'msg': 'SKPFUI', 'keyCode': e.keyCode, 'utf8': e.key, 'S': e.shiftKey, 'C': e.ctrlKey, 'A': e.altKey, 'isUp': true}); }});",
+              Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>([this](HRESULT error, PCWSTR id) -> HRESULT { return S_OK; }).Get());
 
             mCoreWebView->add_WebMessageReceived(
               Callback<ICoreWebView2WebMessageReceivedEventHandler>([this](
@@ -193,6 +223,32 @@ void* IWebViewImpl::OpenWebView(void* pParent, float,float,float,float,float)
                 })
                 .Get(),
               &mNavigationCompletedToken);
+
+              mCoreWebView->add_NewWindowRequested(
+              Callback<ICoreWebView2NewWindowRequestedEventHandler>(
+                  [this](ICoreWebView2* sender, ICoreWebView2NewWindowRequestedEventArgs* args)
+                    -> HRESULT 
+              {
+                wil::com_ptr<ICoreWebView2NewWindowRequestedEventArgs2> args2;
+
+                if (SUCCEEDED(args->QueryInterface(IID_PPV_ARGS(&args2))))
+                {
+                  DWORD inetStatus = 0;
+                  if (InternetGetConnectedState(&inetStatus, 0))
+                  {
+                    wil::unique_cotaskmem_string uri;
+
+                    args2->get_Uri(&uri);
+
+                    if (ShellExecuteW(mParentWnd, L"open", uri.get(), 0, 0, SW_SHOWNORMAL) > HINSTANCE(32))
+                    {
+                      args->put_Handled(true);
+                    }
+                  }
+                }
+                return S_OK;
+              }).Get(),
+                &mNewWindowRequestedToken);
 
               auto webView2_4 = mCoreWebView.try_query<ICoreWebView2_4>();
               if (webView2_4)

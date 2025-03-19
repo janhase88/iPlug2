@@ -1,9 +1,28 @@
-/*
+ /*
  ==============================================================================
  
- This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
- 
- See LICENSE.txt for  more info.
+  MIT License
+
+  iPlug2 WebView Library
+  Copyright (c) 2024 Oliver Larkin
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
  
  ==============================================================================
 */
@@ -17,9 +36,15 @@
 #include <functional>
 #include <filesystem>
 
+/**
+ * @file
+ * @copydoc WebViewEditorDelegate
+ */
+
 BEGIN_IPLUG_NAMESPACE
 
-/** This Editor Delegate allows using a platform native web view as the UI for an iPlug plugin */
+/** An editor delegate base class that uses a platform native webview for the UI
+* @ingroup EditorDelegates */
 class WebViewEditorDelegate : public IEditorDelegate
                             , public IWebView
 {
@@ -57,6 +82,12 @@ public:
   void SendParameterValueFromDelegate(int paramIdx, double value, bool normalized) override
   {
     WDL_String str;
+    
+    if (!normalized)
+    {
+      value = GetParam(paramIdx)->ToNormalized(value);
+    }
+    
     str.SetFormatted(mMaxJSStringLength, "SPVFD(%i, %f)", paramIdx, value);
     EvaluateJavaScript(str.Get());
   }
@@ -81,6 +112,11 @@ public:
     EvaluateJavaScript(str.Get());
   }
   
+  bool OnKeyDown(const IKeyPress& key) override;
+  bool OnKeyUp(const IKeyPress& key) override;
+
+  // IWebView
+
   void SendJSONFromDelegate(const nlohmann::json& jsonMessage)
   {
     SendArbitraryMsgFromDelegate(-1, static_cast<int>(jsonMessage.dump().size()), jsonMessage.dump().c_str());
@@ -135,6 +171,11 @@ public:
                        json["dataByte2"].get<uint8_t>()};
       SendMidiMsgFromUI(msg);
     }
+    else if(json["msg"] == "SKPFUI")
+    {
+      IKeyPress keyPress = ConvertToIKeyPress(json["keyCode"].get<uint32_t>(), json["utf8"].get<std::string>().c_str(), json["S"].get<bool>(), json["C"].get<bool>(), json["A"].get<bool>());
+      json["isUp"].get<bool>() ? OnKeyUp(keyPress) : OnKeyDown(keyPress); // return value not used
+    }
   }
 
   void Resize(int width, int height);
@@ -175,6 +216,13 @@ public:
     mMaxJSStringLength = length;
   }
 
+  /** Load index.html (from plugin src dir in debug builds, and from bundle in release builds) on desktop
+   * Note: if your debug build is code-signed with the hardened runtime It won't be able to load the file outside it's sandbox, and this
+   * will fail.
+   * On iOS, this will load index.html from the bundle
+   * @param pathOfPluginSrc - path to the plugin src directory
+   * @param bundleid - the bundle id, used to load the correct index.html from the bundle
+   */
   void LoadIndexHtml(const char* pathOfPluginSrc, const char* bundleid)
   {
 #if !defined OS_IOS && defined _DEBUG
@@ -192,9 +240,14 @@ public:
 protected:
   int mMaxJSStringLength = kDefaultMaxJSStringLength;
   std::function<void()> mEditorInitFunc = nullptr;
-  void* mHelperView = nullptr;
+  void* mView = nullptr;
   
 private:
+  IKeyPress ConvertToIKeyPress(uint32_t keyCode, const char* utf8, bool shift, bool ctrl, bool alt)
+  {
+    return IKeyPress(utf8, DOMKeyToVirtualKey(keyCode), shift,ctrl, alt);
+  }
+
   static int GetBase64Length(int dataSize)
   {
     return static_cast<int>(4. * std::ceil((static_cast<double>(dataSize) / 3.)));

@@ -684,46 +684,84 @@ bool IGraphicsSkia::LoadAPIFont(const char* fontID, const PlatformFontPtr& font)
   return false;
 }
 
-void IGraphicsSkia::PrepareAndMeasureText(const IText& text, const char* str, IRECT& r, double& x, double & y, SkFont& font) const
+void IGraphicsSkia::PrepareAndMeasureText(const IText& text, const char* str, IRECT& r, double& x, double& y, SkFont& font) const
 {
-  SkFontMetrics metrics;
-  SkPaint paint;
-  //SkRect bounds;
-  
+  using namespace skia::textlayout;
+
+  // Get the cached font data (embedded font, etc.)
   StaticStorage<Font>::Accessor storage(sFontCache);
   Font* pFont = storage.Find(text.mFont);
-  
   assert(pFont && "No font found - did you forget to load it?");
 
+  // Set up the SkFont using the cached typeface.
   font.setTypeface(pFont->mTypeface);
   font.setHinting(SkFontHinting::kSlight);
   font.setForceAutoHinting(false);
   font.setSubpixel(true);
-  font.setSize(text.mSize * pFont->mData->GetHeightEMRatio());
-  
-  // Draw / measure
-  const double textWidth = font.measureText(str, strlen(str), SkTextEncoding::kUTF8, nullptr/* &bounds*/);
-  font.getMetrics(&metrics);
-  
-  const double textHeight = text.mSize;
-  const double ascender = metrics.fAscent;
-  const double descender = metrics.fDescent;
-  
+
+  // Extract the font family from the typeface.
+  SkString family;
+  if (font.getTypeface())
+    font.getTypeface()->getFamilyName(&family);
+
+  // Use the raw string, preserving all leading/trailing spaces
+  std::string finalStr(str);
+
+  // --- Use SkParagraph to measure text (with fallback) ---
+  ParagraphStyle paraStyle;
+  paraStyle.setMaxLines(1); // Force a single line.
+
+  // Create a text style for measurement.
+  TextStyle txtStyle;
+  txtStyle.setFontSize(text.mSize);
+  txtStyle.setFontFamilies({family});
+  txtStyle.setColor(SK_ColorBLACK); // Color is irrelevant for measurement.
+
+  // Create a FontCollection using the default font manager.
+  auto fontCollection = sk_make_sp<FontCollection>();
+  fontCollection->setDefaultFontManager(SkFontMgrRefDefault());
+
+  // Build and layout the paragraph with the full string.
+  auto builder = ParagraphBuilder::make(paraStyle, fontCollection);
+  builder->pushStyle(txtStyle);
+  builder->addText(finalStr.c_str());
+  builder->pop();
+  auto paragraph = builder->Build();
+  // Layout with an arbitrarily wide width to avoid wrapping.
+  paragraph->layout(10000.f);
+
+  // Retrieve the measured dimensions.
+  float measuredWidth = paragraph->getLongestLine();
+  float measuredHeight = paragraph->getHeight();
+
+  // --- Compute the x,y position based on IText alignment using the measured dimensions ---
   switch (text.mAlign)
   {
-    case EAlign::Near:     x = r.L;                          break;
-    case EAlign::Center:   x = r.MW() - (textWidth / 2.0);   break;
-    case EAlign::Far:      x = r.R - textWidth;              break;
+    case EAlign::Near:
+      x = r.L;
+      break;
+    case EAlign::Center:
+      x = r.MW() - (measuredWidth / 2.0);
+      break;
+    case EAlign::Far:
+      x = r.R - measuredWidth;
+      break;
   }
-  
   switch (text.mVAlign)
   {
-    case EVAlign::Top:      y = r.T - ascender;                            break;
-    case EVAlign::Middle:   y = r.MH() - descender + (textHeight / 2.0);   break;
-    case EVAlign::Bottom:   y = r.B - descender;                           break;
+    case EVAlign::Top:
+      y = r.T;
+      break;
+    case EVAlign::Middle:
+      y = r.MH() - (measuredHeight / 2.0);
+      break;
+    case EVAlign::Bottom:
+      y = r.B - measuredHeight;
+      break;
   }
-  
-  r = IRECT((float) x, (float) y + ascender, (float) (x + textWidth), (float) (y + ascender + textHeight));
+
+  // Update the measured rectangle to reflect the final text bounds.
+  r = IRECT((float)x, (float)y, (float)(x + measuredWidth), (float)(y + measuredHeight));
 }
 
 float IGraphicsSkia::DoMeasureText(const IText& text, const char* str, IRECT& bounds) const
@@ -740,19 +778,50 @@ float IGraphicsSkia::DoMeasureText(const IText& text, const char* str, IRECT& bo
 
 void IGraphicsSkia::DoDrawText(const IText& text, const char* str, const IRECT& bounds, const IBlend* pBlend)
 {
+  using namespace skia::textlayout;
+
   IRECT measured = bounds;
-  
+  double x, y;
   SkFont font;
   font.setEdging(SkFont::Edging::kSubpixelAntiAlias);
-
-  double x, y;
-
   PrepareAndMeasureText(text, str, measured, x, y, font);
+
+  // --- Create a FontCollection using the default font manager
+  auto fontCollection = sk_make_sp<FontCollection>();
+  fontCollection->setDefaultFontManager(SkFontMgrRefDefault());
+
+  // --- Get the font family from the legacy SkFont
+  SkString family;
+  if (font.getTypeface())
+    font.getTypeface()->getFamilyName(&family);
+
+  // --- Build a paragraph with a single-line style using the legacy font settings
+  ParagraphStyle paraStyle;
+  paraStyle.setMaxLines(1);
+
+  TextStyle txtStyle;
+  txtStyle.setColor(SkiaColor(text.mFGColor, pBlend));
+  txtStyle.setFontSize(text.mSize);
+  txtStyle.setFontFamilies({family});
+
+  auto builder = ParagraphBuilder::make(paraStyle, fontCollection);
+  builder->pushStyle(txtStyle);
+  builder->addText(str);
+  builder->pop();
+  auto paragraph = builder->Build();
+
+  // --- Layout the paragraph with the measured width to avoid wrapping
+  paragraph->layout(10000);
+
+  // --- Use the measured rectangle's top-left as the drawing origin.
+  x = measured.L;
+  y = measured.T;
+
   PathTransformSave();
-  DoTextRotation(text, bounds, measured);
-  SkPaint paint;
-  paint.setColor(SkiaColor(text.mFGColor, pBlend));
-  mCanvas->drawSimpleText(str, strlen(str), SkTextEncoding::kUTF8, x, y, font, paint);
+  PathTransformTranslate(x, y);
+  if (text.mAngle != 0.f)
+    DoTextRotation(text, measured, measured);
+  paragraph->paint(mCanvas, 0, 0);
   PathTransformRestore();
 }
 

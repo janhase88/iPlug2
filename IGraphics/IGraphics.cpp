@@ -306,21 +306,31 @@ void IGraphics::AttachPanelBackground(const IPattern& color)
   mControls.Insert(0, pBG);
 }
 
-IControl* IGraphics::AttachControl(IControl* pControl, int ctrlTag, const char* group)
+IControl* IGraphics::AttachControl(IControl* pControl, int ctrlTag, const char* group, int zIndex)
 {
-  if(ctrlTag > kNoTag)
+  if (ctrlTag > kNoTag)
   {
     auto result = mCtrlTags.insert(std::make_pair(ctrlTag, pControl));
     assert(result.second && "AttachControl failed: ctrl tags must be unique");
-    
+
     if (!result.second)
       return nullptr;
   }
-  
+
   pControl->SetDelegate(*GetDelegate());
   pControl->SetGroup(group);
-  mControls.Add(pControl);
-    
+
+  if (zIndex < 0)
+  {
+    mControls.Add(pControl);
+  }
+  else
+  {
+    int nControls = mControls.GetSize();
+    int zIdx = std::clamp(zIndex, 0, nControls);
+    mControls.Insert(zIdx, pControl);
+  }
+
   pControl->OnAttached();
   return pControl;
 }

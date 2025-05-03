@@ -958,7 +958,11 @@ APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, do
   }
   else
   {
-    surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info);
+    SkSurfaceProps surfaceProps(0, kUnknown_SkPixelGeometry);
+    int sampleCount = 2; //AntiAliasing
+    surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kNo, info,
+                                       sampleCount, 
+                                       kTopLeft_GrSurfaceOrigin, &surfaceProps);
   }
   #else
   surface = SkSurfaces::Raster(info);

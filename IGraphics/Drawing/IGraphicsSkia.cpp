@@ -1023,11 +1023,20 @@ APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, do
   }
   else
   {
-    SkSurfaceProps surfaceProps(0, kUnknown_SkPixelGeometry);
-    int sampleCount = 2; //AntiAliasing
-    surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kNo, info,
-                                       sampleCount, 
-                                       kTopLeft_GrSurfaceOrigin, &surfaceProps);
+    bool supported = (mGrContext->maxSurfaceSampleCountForColorType(info.colorType()) >= 4);
+
+    if (supported)
+    {
+     // SkDebugf("IGraphicsSkia: MSAA x4 reported as supported. Attempting new RenderTarget.\n");
+      SkSurfaceProps surfaceProps(0, kUnknown_SkPixelGeometry);
+      int sampleCount = 4; // AntiAliasing
+      surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kNo, info, sampleCount, kTopLeft_GrSurfaceOrigin, &surfaceProps);
+    }
+    else
+    {
+      //SkDebugf("IGraphicsSkia: MSAA x4 reported as NOT supported. Attempting original RenderTarget.\n");
+      surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info);
+    }
   }
   #else
   surface = SkSurfaces::Raster(info);

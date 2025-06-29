@@ -1016,7 +1016,9 @@ APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, do
   sk_sp<SkSurface> surface;
   SkImageInfo info = SkImageInfo::MakeN32Premul(width, height);
 
-  #ifndef IGRAPHICS_CPU
+  cacheable = false;
+
+#ifndef IGRAPHICS_CPU
   if (cacheable)
   {
     surface = SkSurfaces::Raster(info);
@@ -1027,20 +1029,35 @@ APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, do
 
     if (supported)
     {
-     // SkDebugf("IGraphicsSkia: MSAA x4 reported as supported. Attempting new RenderTarget.\n");
+      // SkDebugf("IGraphicsSkia: MSAA x4 reported as supported. Attempting new RenderTarget.\n");
       SkSurfaceProps surfaceProps(0, kUnknown_SkPixelGeometry);
       int sampleCount = 4; // AntiAliasing
       surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kNo, info, sampleCount, kTopLeft_GrSurfaceOrigin, &surfaceProps);
+
+      if (!surface) // Budgeted MSAA
+      {
+        surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info, sampleCount, kTopLeft_GrSurfaceOrigin, &surfaceProps);
+      }
+
+      if (!surface) // <-- DEFAULT ORIGINAL DRAWING, THIS DOES NOT FAIL
+      {
+        surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info);
+      }
+
+      if (!surface) // If all GPU attempts (MSAA and non-MSAA) failed
+      {
+        surface = SkSurfaces::Raster(info);
+      }
     }
     else
     {
-      //SkDebugf("IGraphicsSkia: MSAA x4 reported as NOT supported. Attempting original RenderTarget.\n");
+      // SkDebugf("IGraphicsSkia: MSAA x4 reported as NOT supported. Attempting original RenderTarget.\n");
       surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info);
     }
   }
-  #else
+#else
   surface = SkSurfaces::Raster(info);
-  #endif
+#endif
 
   surface->getCanvas()->save();
 

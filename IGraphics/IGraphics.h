@@ -31,7 +31,7 @@
  */
 
 #ifndef NO_IGRAPHICS
-#if defined(IGRAPHICS_NANOVG) + defined(IGRAPHICS_CANVAS) + defined(IGRAPHICS_SKIA) != 1
+#if defined(IGRAPHICS_NANOVG) + defined(IGRAPHICS_SKIA) != 1
 #error Either NO_IGRAPHICS or one and only one choice of graphics library must be defined!
 #endif
 #endif
@@ -1741,9 +1741,6 @@ protected:
    * @param font Valid PlatformFontPtr, loaded via LoadPlatformFont
    * @return bool \c true if the font was loaded successfully */
   virtual bool LoadAPIFont(const char* fontID, const PlatformFontPtr& font) = 0;
-
-  /** Specialized in IGraphicsCanvas drawing backend */
-  virtual bool AssetsLoaded() { return true; }
     
   /** @return int The index of the alpha component in a drawing backend's pixel (RGBA or ARGB) */
   virtual int AlphaChannel() const = 0;

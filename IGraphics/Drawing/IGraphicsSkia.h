@@ -120,7 +120,7 @@ public:
   int AlphaChannel() const override { return 3; }
   bool FlippedBitmap() const override { return false; }
 
-  APIBitmap* CreateAPIBitmap(int width, int height, float scale, double drawScale, bool cacheable = false) override;
+  APIBitmap* CreateAPIBitmap(int width, int height, float scale, double drawScale, bool cacheable = false, int MSAASampleCount = 0) override;
 
   void ApplyLayerDropShadow(ILayerPtr& layer, const IShadow& shadow) override;
   void GetLayerBitmapData(const ILayerPtr& layer, RawBitmapData& data) override;

@@ -525,7 +525,7 @@ public:
    * IControl* pOwner The control that owns the layer
    * @param r The bounds of the layer within the IGraphics context
    * @param cacheable Used to make sure the underlying bitmap can be shared between plug-in instances */
-  void StartLayer(IControl* pOwner, const IRECT& r, bool cacheable = false);
+  void StartLayer(IControl* pOwner, const IRECT& r, bool cacheable = false, int MSAASampleCount = 0);
   
   /** If a layer already exists, continue drawing to it
    * @param layer the layer to resume */

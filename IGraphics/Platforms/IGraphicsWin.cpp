@@ -8,7 +8,7 @@
  ==============================================================================
 */
 
-#define IGRAPHICS_DISABLE_VSYNC
+//#define IGRAPHICS_DISABLE_VSYNC
 
 #include <Shlobj.h>
 #include <commctrl.h>

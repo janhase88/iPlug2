@@ -1011,7 +1011,7 @@ void IGraphicsSkia::SetClipRegion(const IRECT& r)
   mCanvas->setMatrix(mFinalMatrix);
 }
 
-APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, double drawScale, bool cacheable)
+APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, double drawScale, bool cacheable, int MSAASampleCount)
 {
   sk_sp<SkSurface> surface;
   SkImageInfo info = SkImageInfo::MakeN32Premul(width, height);
@@ -1023,18 +1023,17 @@ APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, do
   }
   else
   {
-    bool supported = (mGrContext->maxSurfaceSampleCountForColorType(info.colorType()) >= 4);
+    bool supported = (MSAASampleCount != 0) && (mGrContext->maxSurfaceSampleCountForColorType(info.colorType()) >= MSAASampleCount);
 
     if (supported)
     {
       // SkDebugf("IGraphicsSkia: MSAA x4 reported as supported. Attempting new RenderTarget.\n");
       SkSurfaceProps surfaceProps(0, kUnknown_SkPixelGeometry);
-      int sampleCount = 4; // AntiAliasing
-      surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kNo, info, sampleCount, kTopLeft_GrSurfaceOrigin, &surfaceProps);
+      surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kNo, info, MSAASampleCount, kTopLeft_GrSurfaceOrigin, &surfaceProps);
 
       if (!surface) // Budgeted MSAA
       {
-        surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info, sampleCount, kTopLeft_GrSurfaceOrigin, &surfaceProps);
+        surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info, MSAASampleCount, kTopLeft_GrSurfaceOrigin, &surfaceProps);
       }
 
       if (!surface) // <-- DEFAULT ORIGINAL DRAWING, THIS DOES NOT FAIL

@@ -369,7 +369,7 @@ APIBitmap* IGraphicsNanoVG::LoadAPIBitmap(const char* name, const void* pData, i
   return pBitmap;
 }
 
-APIBitmap* IGraphicsNanoVG::CreateAPIBitmap(int width, int height, float scale, double drawScale, bool cacheable)
+APIBitmap* IGraphicsNanoVG::CreateAPIBitmap(int width, int height, float scale, double drawScale, bool cacheable, int MSAASampleCount/*placeholder: only implemented for skia*/)
 {
   if (mInDraw)
   {

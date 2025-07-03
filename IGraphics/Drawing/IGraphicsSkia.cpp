@@ -1016,8 +1016,6 @@ APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, do
   sk_sp<SkSurface> surface;
   SkImageInfo info = SkImageInfo::MakeN32Premul(width, height);
 
-  cacheable = false;
-
 #ifndef IGRAPHICS_CPU
   if (cacheable)
   {

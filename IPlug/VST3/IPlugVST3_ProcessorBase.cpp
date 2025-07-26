@@ -279,6 +279,8 @@ void IPlugVST3ProcessorBase::ProcessParameterChanges(ProcessData& data, IPlugQue
   {
     int32 numParamsChanged = paramChanges->getParameterCount();
     
+    SetBypassed(false); //fix for Bitwig
+    
     for (int32 i = 0; i < numParamsChanged; i++)
     {
       IParamValueQueue* paramQueue = paramChanges->getParameterData(i);

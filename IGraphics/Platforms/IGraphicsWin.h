@@ -16,9 +16,16 @@
 
 #include "IGraphics_select.h"
 #include "IGraphicsWinFonts.h"
+#include <vector>
+#include <string>
+
 
 BEGIN_IPLUG_NAMESPACE
 BEGIN_IGRAPHICS_NAMESPACE
+
+// Forward declare the OLE drop target helper (defined in IGraphicsWin_dnd.h)
+namespace DragAndDropHelpers { class DropTarget; }
+
 
 /** IGraphics platform class for Windows
 * @ingroup PlatformClasses */
@@ -76,6 +83,10 @@ public:
 
   bool InitiateExternalFileDragDrop(const char* path, const IRECT& iconBounds) override;
 
+  // Modern inbound drag & drop via OLE (IDropTarget)
+  void OnOLEDropFiles(const std::vector<std::wstring>& filesW, LONG xScreen, LONG yScreen);
+
+
   bool PlatformSupportsMultiTouch() const override;
 
   static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -96,6 +107,10 @@ protected:
   IRECT GetWindowRECT();
 
 private:
+
+  // OLE drag & drop
+  DragAndDropHelpers::DropTarget* mDropTarget = nullptr;
+  bool mOLEInited = false;
 
   /** Called either in response to WM_TIMER tick or user message WM_VBLANK, triggered by VSYNC thread
     * @param vBlankCount will allow redraws to get paced by the vblank message. Passing 0 is a WM_TIMER fallback. */

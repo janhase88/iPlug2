@@ -1112,6 +1112,25 @@ void* IGraphicsWin::OpenWindow(void* pParent)
 #endif
   }
 
+  
+  // Initialize OLE and register as a drop target for modern drag & drop (e.g., FL Studio)
+  if (!mOLEInited)
+  {
+    HRESULT hrInit = OleInitialize(nullptr);
+    if (SUCCEEDED(hrInit))
+      mOLEInited = true;
+  }
+  if (!mDropTarget && mPlugWnd)
+  {
+    mDropTarget = new DragAndDropHelpers::DropTarget(mPlugWnd, this);
+    HRESULT hrReg = RegisterDragDrop(mPlugWnd, mDropTarget);
+    if (FAILED(hrReg))
+    {
+      mDropTarget->Release();
+      mDropTarget = nullptr;
+    }
+  }
+
   GetDelegate()->OnUIOpen();
   
   return mPlugWnd;
@@ -1218,7 +1237,47 @@ void IGraphicsWin::CloseWindow()
       mTooltipIdx = -1;
     }
 
+
+    // Unregister OLE drop target and uninitialize OLE if needed
+
+
+    if (mDropTarget)
+
+
+    {
+
+
+      RevokeDragDrop(mPlugWnd);
+
+
+      mDropTarget->Release();
+
+
+      mDropTarget = nullptr;
+
+
+    }
+
+
+    if (mOLEInited)
+
+
+    {
+
+
+      OleUninitialize();
+
+
+      mOLEInited = false;
+
+
+    }
+
+
+
     DestroyWindow(mPlugWnd);
+
+
     mPlugWnd = 0;
 
     if (--nWndClassReg == 0)
@@ -1226,6 +1285,32 @@ void IGraphicsWin::CloseWindow()
       UnregisterClassW(wndClassName, mHInstance);
     }
   }
+}
+
+
+void IGraphicsWin::OnOLEDropFiles(const std::vector<std::wstring>& filesW, LONG xScreen, LONG yScreen)
+{
+  // Convert screen -> client coords and scale to IGraphics space
+  POINT p{ (LONG) xScreen, (LONG) yScreen };
+  ScreenToClient(mPlugWnd, &p);
+  const float scale = GetTotalScale();
+
+  // Convert wide strings to UTF-8 and build buffers/pointers like WM_DROPFILES path
+  const int count = static_cast<int>(filesW.size());
+  std::vector<std::vector<char>> pathBuffers(count, std::vector<char>(2048, 0));
+  std::vector<const char*> pathPtrs(count);
+
+  for (int i = 0; i < count; ++i)
+  {
+    UTF16AsUTF8 utf8(filesW[i].c_str());
+    strncpy(pathBuffers[i].data(), utf8.Get(), pathBuffers[i].size() - 1);
+    pathPtrs[i] = pathBuffers[i].data();
+  }
+
+  if (count == 1)
+    OnDrop(pathPtrs[0], p.x / scale, p.y / scale);
+  else
+    OnDropMultiple(pathPtrs, p.x / scale, p.y / scale);
 }
 
 bool IGraphicsWin::PlatformSupportsMultiTouch() const

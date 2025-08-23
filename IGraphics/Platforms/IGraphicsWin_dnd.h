@@ -11,9 +11,12 @@
 #pragma once
 
 #include "IPlugLogger.h"
+#include <Ole2.h>
 
 BEGIN_IPLUG_NAMESPACE
 BEGIN_IGRAPHICS_NAMESPACE
+
+class IGraphicsWin;
 
 namespace DragAndDropHelpers 
 { 
@@ -307,6 +310,107 @@ private:
   std::string mFilePath;
   const FORMATETC* const mFormatPtr;
 };
+
+// IDropTarget implementation for inbound drag & drop (files) using OLE
+class DropTarget : public IDropTarget
+{
+public:
+  DropTarget(HWND hwnd, IGraphicsWin* owner)
+  : mHwnd(hwnd), mOwner(owner) {}
+
+  // IUnknown
+  HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override
+  {
+    if (!ppv) return E_POINTER;
+    if (riid == IID_IDropTarget || riid == IID_IUnknown)
+    {
+      *ppv = static_cast<IDropTarget*>(this);
+      AddRef();
+      return S_OK;
+    }
+    *ppv = nullptr;
+    return E_NOINTERFACE;
+  }
+  ULONG STDMETHODCALLTYPE AddRef() override { return (ULONG) ++mRefCount; }
+  ULONG STDMETHODCALLTYPE Release() override
+  {
+    long c = --mRefCount;
+    if (c == 0) delete this;
+    return (ULONG) (c < 0 ? 0 : c);
+  }
+
+  // IDropTarget
+  HRESULT STDMETHODCALLTYPE DragEnter(IDataObject* pDataObj, DWORD /*grfKeyState*/, POINTL pt, DWORD* pdwEffect) override
+  {
+    mHasFiles = CanAccept(pDataObj);
+    if (pdwEffect) *pdwEffect = mHasFiles ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+    mLastPt = pt;
+    return S_OK;
+  }
+
+  HRESULT STDMETHODCALLTYPE DragOver(DWORD /*grfKeyState*/, POINTL pt, DWORD* pdwEffect) override
+  {
+    if (pdwEffect) *pdwEffect = mHasFiles ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+    mLastPt = pt;
+    return S_OK;
+  }
+
+  HRESULT STDMETHODCALLTYPE DragLeave() override
+  {
+    mHasFiles = false;
+    return S_OK;
+  }
+
+  HRESULT STDMETHODCALLTYPE Drop(IDataObject* pDataObj, DWORD /*grfKeyState*/, POINTL pt, DWORD* pdwEffect) override
+  {
+    if (pdwEffect) *pdwEffect = DROPEFFECT_NONE;
+    if (!mHasFiles || !pDataObj || !mOwner) return DRAGDROP_S_CANCEL;
+
+    FORMATETC fmt = { CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
+    STGMEDIUM stg = {};
+    if (FAILED(pDataObj->GetData(&fmt, &stg)))
+      return DRAGDROP_S_CANCEL;
+
+    std::vector<std::wstring> filesW;
+    if (stg.tymed == TYMED_HGLOBAL && stg.hGlobal)
+    {
+      HDROP hdrop = (HDROP) stg.hGlobal;
+      UINT count = DragQueryFileW(hdrop, 0xFFFFFFFF, nullptr, 0);
+      filesW.reserve(count ? count : 1);
+      wchar_t buf[2048];
+      for (UINT i = 0; i < count; ++i)
+      {
+        UINT n = DragQueryFileW(hdrop, i, buf, (UINT)(sizeof(buf)/sizeof(buf[0])));
+        if (n > 0) filesW.emplace_back(buf, buf + n);
+      }
+    }
+
+    ReleaseStgMedium(&stg);
+
+    if (!filesW.empty())
+    {
+      mOwner->OnOLEDropFiles(filesW, pt.x, pt.y);
+      if (pdwEffect) *pdwEffect = DROPEFFECT_COPY;
+      return S_OK;
+    }
+    return DRAGDROP_S_CANCEL;
+  }
+
+private:
+  bool CanAccept(IDataObject* pDataObj)
+  {
+    if (!pDataObj) return false;
+    FORMATETC fmt = { CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
+    return pDataObj->QueryGetData(&fmt) == S_OK;
+  }
+
+  std::atomic<long> mRefCount{1};
+  HWND mHwnd = nullptr;
+  IGraphicsWin* mOwner = nullptr;
+  bool mHasFiles = false;
+  POINTL mLastPt{};
+};
+
 } // end of DragAndDropHelpers namespace
 
 END_IGRAPHICS_NAMESPACE

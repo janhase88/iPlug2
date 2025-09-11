@@ -9,8 +9,8 @@
 */
 
 //#define IGRAPHICS_DISABLE_VSYNC
-
 #include <ShlObj.h>
+
 #include <commctrl.h>
 
 #include "heapbuf.h"
@@ -59,6 +59,7 @@ typedef HGLRC(WINAPI* PFNWGLCREATECONTEXTATTRIBSARBPROC) (HDC hDC, HGLRC hShareC
 
 StaticStorage<IGraphicsWin::InstalledFont> IGraphicsWin::sPlatformFontCache;
 StaticStorage<HFontHolder> IGraphicsWin::sHFontCache;
+int IGraphicsWin::sVBlankThreadPriority = THREAD_PRIORITY_ABOVE_NORMAL;
 
 #pragma mark - Mouse and tablet helpers
 
@@ -2153,6 +2154,11 @@ DWORD WINAPI VBlankRun(LPVOID lpParam)
   return pGraphics->OnVBlankRun();
 }
 
+void IGraphicsWin::SetVBlankThreadPriority(int priority)
+{
+  sVBlankThreadPriority = priority;
+}
+
 void IGraphicsWin::StartVBlankThread(HWND hWnd)
 {
   mVBlankWindow = hWnd;
@@ -2213,7 +2219,7 @@ typedef NTSTATUS(WINAPI* D3DKMTWaitForVerticalBlankEvent)(const D3DKMT_WAITFORVE
 
 DWORD IGraphicsWin::OnVBlankRun()
 {
-  SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
+  SetThreadPriority(GetCurrentThread(), sVBlankThreadPriority);
 
   // TODO: get expected vsync value.  For now we will use a fallback
   // of 60Hz

@@ -1,10 +1,10 @@
 /*
  ==============================================================================
- 
- This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers. 
- 
+
+ This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
+
  See LICENSE.txt for  more info.
- 
+
  ==============================================================================
 */
 
@@ -19,14 +19,11 @@ using namespace iplug;
 
 #if defined OS_MAC || defined OS_IOS
 
-Timer* Timer::Create(ITimerFunction func, uint32_t intervalMs)
-{
-  return new Timer_impl(func, intervalMs);
-}
+Timer* Timer::Create(ITimerFunction func, uint32_t intervalMs) { return new Timer_impl(func, intervalMs); }
 
 Timer_impl::Timer_impl(ITimerFunction func, uint32_t intervalMs)
-: mTimerFunc(func)
-, mIntervalMs(intervalMs)
+  : mTimerFunc(func)
+  , mIntervalMs(intervalMs)
 {
   CFRunLoopTimerContext context;
   context.version = 0;
@@ -40,10 +37,7 @@ Timer_impl::Timer_impl(ITimerFunction func, uint32_t intervalMs)
   CFRunLoopAddTimer(runLoop, mOSTimer, kCFRunLoopCommonModes);
 }
 
-Timer_impl::~Timer_impl()
-{
-  Stop();
-}
+Timer_impl::~Timer_impl() { Stop(); }
 
 void Timer_impl::Stop()
 {
@@ -55,92 +49,100 @@ void Timer_impl::Stop()
   }
 }
 
-void Timer_impl::TimerProc(CFRunLoopTimerRef timer, void *info)
+void Timer_impl::TimerProc(CFRunLoopTimerRef timer, void* info)
 {
-  Timer_impl* itimer = (Timer_impl*) info;
+  Timer_impl* itimer = (Timer_impl*)info;
   itimer->mTimerFunc(*itimer);
 }
 
 #elif defined OS_WIN
 
-Timer* Timer::Create(ITimerFunction func, uint32_t intervalMs)
-{
-  return new Timer_impl(func, intervalMs);
-}
+Timer* Timer::Create(ITimerFunction func, uint32_t intervalMs) { return new Timer_impl(func, intervalMs); }
 
-WDL_Mutex Timer_impl::sMutex;
-WDL_PtrList<Timer_impl> Timer_impl::sTimers;
+ATOM Timer_impl::sWindowClass = 0;
+
+static const UINT kTimerMsg = WM_APP + 0x100;
+static const wchar_t* kTimerWndClass = L"IPlugTimerWnd";
 
 Timer_impl::Timer_impl(ITimerFunction func, uint32_t intervalMs)
-: mTimerFunc(func)
-, mIntervalMs(intervalMs)
-
+  : mTimerFunc(func)
+  , mIntervalMs(intervalMs)
 {
-  ID = SetTimer(0, 0, intervalMs, TimerProc); //TODO: timer ID correct?
-  
-  if (ID)
+  if (!sWindowClass)
   {
-    WDL_MutexLock lock(&sMutex);
-    sTimers.Add(this);
+    WNDCLASSW wc = {};
+    wc.lpfnWndProc = Timer_impl::WndProc;
+    wc.lpszClassName = kTimerWndClass;
+    sWindowClass = RegisterClassW(&wc);
+    assert(sWindowClass && "Timer window class registration failed");
   }
+
+  mMsgWnd = CreateWindowExW(0, kTimerWndClass, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, GetModuleHandle(nullptr), this);
+  assert(mMsgWnd && "Timer message window creation failed");
+
+  BOOL ok = CreateTimerQueueTimer(&mTimer, nullptr, Timer_impl::TimerProc, this, mIntervalMs, mIntervalMs, WT_EXECUTEDEFAULT);
+  assert(ok && "CreateTimerQueueTimer failed");
 }
 
-Timer_impl::~Timer_impl()
-{
-  Stop();
-}
+Timer_impl::~Timer_impl() { Stop(); }
 
 void Timer_impl::Stop()
 {
-  if (ID)
+  if (mTimer)
   {
-    KillTimer(0, ID);
-    WDL_MutexLock lock(&sMutex);
-    sTimers.DeletePtr(this);
-    ID = 0;
+    DeleteTimerQueueTimer(nullptr, mTimer, INVALID_HANDLE_VALUE);
+    mTimer = nullptr;
+  }
+
+  if (mMsgWnd)
+  {
+    DestroyWindow(mMsgWnd);
+    mMsgWnd = nullptr;
   }
 }
 
-void CALLBACK Timer_impl::TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
+VOID CALLBACK Timer_impl::TimerProc(PVOID lpParam, BOOLEAN TimerOrWaitFired)
 {
-  WDL_MutexLock lock(&sMutex);
+  Timer_impl* pTimer = static_cast<Timer_impl*>(lpParam);
+  if (pTimer && pTimer->mMsgWnd)
+    PostMessage(pTimer->mMsgWnd, kTimerMsg, 0, 0);
+}
 
-  for (auto i = 0; i < sTimers.GetSize(); i++)
+LRESULT CALLBACK Timer_impl::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+  if (msg == WM_NCCREATE)
   {
-    Timer_impl* pTimer = sTimers.Get(i);
-    
-    if (pTimer->ID == idEvent)
-    {
-      pTimer->mTimerFunc(*pTimer);
-      return;
-    }
+    CREATESTRUCTW* pcs = reinterpret_cast<CREATESTRUCTW*>(lParam);
+    SetWindowLongPtrW(hWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(pcs->lpCreateParams));
+    return 1;
   }
+
+  if (msg == kTimerMsg)
+  {
+    Timer_impl* pTimer = reinterpret_cast<Timer_impl*>(GetWindowLongPtrW(hWnd, GWLP_USERDATA));
+    if (pTimer)
+      pTimer->mTimerFunc(*pTimer);
+    return 0;
+  }
+
+  return DefWindowProcW(hWnd, msg, wParam, lParam);
 }
 #elif defined OS_WEB
-Timer* Timer::Create(ITimerFunction func, uint32_t intervalMs)
-{
-  return new Timer_impl(func, intervalMs);
-}
+Timer* Timer::Create(ITimerFunction func, uint32_t intervalMs) { return new Timer_impl(func, intervalMs); }
 
 Timer_impl::Timer_impl(ITimerFunction func, uint32_t intervalMs)
-: mTimerFunc(func)
+  : mTimerFunc(func)
 {
   ID = emscripten_set_interval(TimerProc, intervalMs, this);
 }
 
-Timer_impl::~Timer_impl()
-{
-  Stop();
-}
+Timer_impl::~Timer_impl() { Stop(); }
 
-void Timer_impl::Stop()
-{
-  emscripten_clear_interval(ID);
-}
+void Timer_impl::Stop() { emscripten_clear_interval(ID); }
 
 void Timer_impl::TimerProc(void* userData)
 {
-  Timer_impl* itimer = (Timer_impl*) userData;
+  Timer_impl* itimer = (Timer_impl*)userData;
   itimer->mTimerFunc(*itimer);
 }
 #endif

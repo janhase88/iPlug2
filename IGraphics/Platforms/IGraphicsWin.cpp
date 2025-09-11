@@ -10,7 +10,7 @@
 
 //#define IGRAPHICS_DISABLE_VSYNC
 
-#include <Shlobj.h>
+#include <ShlObj.h>
 #include <commctrl.h>
 
 #include "heapbuf.h"
@@ -158,7 +158,7 @@ void IGraphicsWin::OnDisplayTimer(int vBlankCount)
   }
 
   // TODO: move this... listen to the right messages in windows for screen resolution changes, etc.
-  if (!GetCapture()) // workaround Windows issues with window sizing during mouse move
+  if (!GetCapture() && AutoScale()) // workaround Windows issues with window sizing during mouse move
   {
     float scale = GetScaleForHWND(mPlugWnd);
     if (scale != GetScreenScale())
@@ -1036,7 +1036,9 @@ EMsgBoxResult IGraphicsWin::ShowMessageBox(const char* str, const char* title, E
 void* IGraphicsWin::OpenWindow(void* pParent)
 {
   mParentWnd = (HWND) pParent;
-  int screenScale = GetScaleForHWND(mParentWnd);
+  int screenScale = 1;
+  if (AutoScale())
+    screenScale = GetScaleForHWND(mParentWnd);
   int x = 0, y = 0, w = WindowWidth() * screenScale, h = WindowHeight() * screenScale;
 
   if (mPlugWnd)
@@ -1069,7 +1071,8 @@ void* IGraphicsWin::OpenWindow(void* pParent)
 
   OnViewInitialized((void*) dc);
 
-  SetScreenScale(screenScale); // resizes draw context
+  if (AutoScale())
+    SetScreenScale(screenScale); // resizes draw context
 
   GetDelegate()->LayoutUI(this);
 

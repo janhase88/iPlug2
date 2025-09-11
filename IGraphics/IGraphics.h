@@ -1120,6 +1120,12 @@ public:
     * @return The scale factor of the display on which this graphics context is currently located */
   float GetScreenScale() const { return mScreenScale; }
 
+  /** Enable or disable automatic scaling when the window moves between monitors */
+  void EnableAutoScale(bool enable) { mAutoScale = enable; }
+
+  /** @return True if the graphics context adjusts automatically to the monitor scale */
+  bool AutoScale() const { return mAutoScale; }
+
   /** Gets the screen/display scaling factor, rounded up
   * @return The scale factor of the screen/display on which this graphics context is currently located */
   int GetRoundedScreenScale() const { return static_cast<int>(std::ceil(GetScreenScale())); }
@@ -1828,6 +1834,7 @@ private:
   int mFPS;
   float mScreenScale = 1.f; // the scaling of the display that the UI is currently on e.g. 2 for retina
   float mDrawScale = 1.f; // scale deviation from  default width and height i.e stretching the UI by dragging bottom right hand corner
+  bool mAutoScale = true; // determines if platform window scale should follow the monitor scale
 
   int mIdleTicks = 0;
   

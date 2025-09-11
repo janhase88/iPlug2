@@ -42,7 +42,7 @@ public:
   void* GetWinModuleHandle() override { return mHInstance; }
 
   void ForceEndUserEdit() override;
-  float GetPlatformWindowScale() const override { return GetScreenScale(); }
+  float GetPlatformWindowScale() const override { return AutoScale() ? GetScreenScale() : 1.f; }
 
   void PlatformResize(bool parentHasResized) override;
 

@@ -63,6 +63,9 @@ StaticStorage<IGraphicsWin::InstalledFont> IGraphicsWin::sPlatformFontCache;
 StaticStorage<HFontHolder> IGraphicsWin::sHFontCache;
 int IGraphicsWin::sVBlankThreadPriority = THREAD_PRIORITY_NORMAL; // Default priority; hosts needing higher responsiveness can raise it via SetVBlankThreadPriority
 
+namespace iplug {
+namespace igraphics {
+
 class VBlankThreadManager
 {
 public:
@@ -136,6 +139,12 @@ private:
   HANDLE mThread = INVALID_HANDLE_VALUE;
   bool mShutdown = false;
 };
+
+} // namespace igraphics
+} // namespace iplug
+
+using namespace iplug;
+using namespace igraphics;
 
 #pragma mark - Mouse and tablet helpers
 

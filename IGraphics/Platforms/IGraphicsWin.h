@@ -26,6 +26,8 @@ BEGIN_IGRAPHICS_NAMESPACE
 // Forward declare the OLE drop target helper (defined in IGraphicsWin_dnd.h)
 namespace DragAndDropHelpers { class DropTarget; }
 
+class VBlankThreadManager;
+
 
 /** IGraphics platform class for Windows
 * @ingroup PlatformClasses */
@@ -33,6 +35,8 @@ class IGraphicsWin final : public IGRAPHICS_DRAW_CLASS
 {
   using InstalledFont = InstalledWinFont;
   using Font = WinFont;
+
+  friend class VBlankThreadManager;
   
 public:
   IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float scale);
@@ -92,8 +96,6 @@ public:
   static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
   static LRESULT CALLBACK ParamEditProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
   static BOOL CALLBACK FindMainWindow(HWND hWnd, LPARAM lParam);
-
-  DWORD OnVBlankRun();
   /** Set the thread priority used by the VBlank thread (default THREAD_PRIORITY_ABOVE_NORMAL) */
   static void SetVBlankThreadPriority(int priority);
 
@@ -159,10 +161,8 @@ private:
   void StartVBlankThread(HWND hWnd);
   void StopVBlankThread();
   void VBlankNotify();
-    
+
   HWND mVBlankWindow = 0; // Window to post messages to for every vsync
-  volatile bool mVBlankShutdown = false; // Flag to indiciate that the vsync thread should shutdown
-  HANDLE mVBlankThread = INVALID_HANDLE_VALUE; //ID of thread.
   volatile DWORD mVBlankCount = 0; // running count of vblank events since the start of the window.
   int mVBlankSkipUntil = 0; // support for skipping vblank notification if the last callback took  too long.  This helps keep the message pump clear in the case of overload.
   bool mVSYNCEnabled = false;

@@ -23,6 +23,8 @@
 
 #include <wininet.h>
 #include <VersionHelpers.h>
+#include <mutex>
+#include <algorithm>
 
 #if defined __clang__
 #undef CCSIZEOF_STRUCT
@@ -60,6 +62,80 @@ typedef HGLRC(WINAPI* PFNWGLCREATECONTEXTATTRIBSARBPROC) (HDC hDC, HGLRC hShareC
 StaticStorage<IGraphicsWin::InstalledFont> IGraphicsWin::sPlatformFontCache;
 StaticStorage<HFontHolder> IGraphicsWin::sHFontCache;
 int IGraphicsWin::sVBlankThreadPriority = THREAD_PRIORITY_ABOVE_NORMAL;
+
+class VBlankThreadManager
+{
+public:
+  static VBlankThreadManager& Instance()
+  {
+    static VBlankThreadManager sInstance;
+    return sInstance;
+  }
+
+  void Register(IGraphicsWin* pGraphics)
+  {
+    std::lock_guard<std::mutex> lock(mMutex);
+    mSubscribers.push_back(pGraphics);
+    if (mSubscribers.size() == 1)
+    {
+      mShutdown = false;
+      DWORD threadId = 0;
+      mThread = ::CreateThread(nullptr, 0, ThreadProc, this, 0, &threadId);
+    }
+  }
+
+  void Unregister(IGraphicsWin* pGraphics)
+  {
+    HANDLE threadToJoin = INVALID_HANDLE_VALUE;
+    {
+      std::lock_guard<std::mutex> lock(mMutex);
+      mSubscribers.erase(std::remove(mSubscribers.begin(), mSubscribers.end(), pGraphics), mSubscribers.end());
+      if (mSubscribers.empty() && mThread != INVALID_HANDLE_VALUE)
+      {
+        mShutdown = true;
+        threadToJoin = mThread;
+        mThread = INVALID_HANDLE_VALUE;
+      }
+    }
+    if (threadToJoin != INVALID_HANDLE_VALUE)
+    {
+      ::WaitForSingleObject(threadToJoin, 10000);
+    }
+  }
+
+private:
+  static DWORD WINAPI ThreadProc(LPVOID lpParam)
+  {
+    return ((VBlankThreadManager*) lpParam)->Run();
+  }
+
+  DWORD Run();
+
+  void NotifySubscribers()
+  {
+    std::vector<IGraphicsWin*> subscribers;
+    {
+      std::lock_guard<std::mutex> lock(mMutex);
+      subscribers = mSubscribers;
+    }
+
+    for (auto* pGraphics : subscribers)
+      pGraphics->VBlankNotify();
+  }
+
+  HWND GetFirstWindow()
+  {
+    std::lock_guard<std::mutex> lock(mMutex);
+    if (mSubscribers.empty())
+      return nullptr;
+    return mSubscribers.front()->mVBlankWindow;
+  }
+
+  std::vector<IGraphicsWin*> mSubscribers;
+  std::mutex mMutex;
+  HANDLE mThread = INVALID_HANDLE_VALUE;
+  bool mShutdown = false;
+};
 
 #pragma mark - Mouse and tablet helpers
 
@@ -2148,12 +2224,6 @@ void IGraphicsWin::CachePlatformFont(const char* fontID, const PlatformFontPtr& 
     hfontStorage.Add(new HFontHolder(hfont), fontID);
 }
 
-DWORD WINAPI VBlankRun(LPVOID lpParam)
-{
-  IGraphicsWin* pGraphics = (IGraphicsWin*) lpParam;
-  return pGraphics->OnVBlankRun();
-}
-
 void IGraphicsWin::SetVBlankThreadPriority(int priority)
 {
   sVBlankThreadPriority = priority;
@@ -2162,20 +2232,13 @@ void IGraphicsWin::SetVBlankThreadPriority(int priority)
 void IGraphicsWin::StartVBlankThread(HWND hWnd)
 {
   mVBlankWindow = hWnd;
-  mVBlankShutdown = false;
-  DWORD threadId = 0;
-  mVBlankThread = ::CreateThread(NULL, 0, VBlankRun, this, 0, &threadId);
+  VBlankThreadManager::Instance().Register(this);
 }
 
 void IGraphicsWin::StopVBlankThread()
 {
-  if (mVBlankThread != INVALID_HANDLE_VALUE)
-  {
-    mVBlankShutdown = true;
-    ::WaitForSingleObject(mVBlankThread, 10000);
-    mVBlankThread = INVALID_HANDLE_VALUE;
-    mVBlankWindow = 0;
-  }
+  VBlankThreadManager::Instance().Unregister(this);
+  mVBlankWindow = 0;
 }
 
 // Nasty kernel level definitions for wait for vblank.  Including the
@@ -2217,20 +2280,12 @@ typedef NTSTATUS(WINAPI* D3DKMTOpenAdapterFromHdc)(D3DKMT_OPENADAPTERFROMHDC* Ar
 typedef NTSTATUS(WINAPI* D3DKMTCloseAdapter)(const D3DKMT_CLOSEADAPTER* Arg1);
 typedef NTSTATUS(WINAPI* D3DKMTWaitForVerticalBlankEvent)(const D3DKMT_WAITFORVERTICALBLANKEVENT* Arg1);
 
-DWORD IGraphicsWin::OnVBlankRun()
+DWORD VBlankThreadManager::Run()
 {
-  SetThreadPriority(GetCurrentThread(), sVBlankThreadPriority);
+  SetThreadPriority(GetCurrentThread(), IGraphicsWin::sVBlankThreadPriority);
 
-  // TODO: get expected vsync value.  For now we will use a fallback
-  // of 60Hz
   float rateFallback = 60.0f;
   int rateMS = (int)(1000.0f / rateFallback);
-
-  // We need to try to load the module and entry points to wait on v blank.
-  // if anything fails, we try to gracefully fallback to sleeping for some
-  // number of milliseconds.
-  //
-  // TODO: handle low power modes
 
   D3DKMTOpenAdapterFromHdc pOpen = nullptr;
   D3DKMTCloseAdapter pClose = nullptr;
@@ -2244,63 +2299,55 @@ DWORD IGraphicsWin::OnVBlankRun()
     pWait  = (D3DKMTWaitForVerticalBlankEvent) GetProcAddress((HMODULE) hInst, "D3DKMTWaitForVerticalBlankEvent");
   }
 
-  // if we don't get bindings to the methods we will fallback
-  // to a crummy sleep loop for now.  This is really just a last
-  // resort and not expected on modern hardware and Windows OS
-  // installs.
   if (!pOpen || !pClose || !pWait)
   {
-    while (mVBlankShutdown == false)
+    while (mShutdown == false)
     {
       Sleep(rateMS);
-      VBlankNotify();
+      NotifySubscribers();
     }
   }
   else
   {
-    // we have a good set of functions to call.  We need to keep
-    // track of the adapter and reask for it if the device is lost.
     bool adapterIsOpen = false;
     DWORD adapterLastFailTime = 0;
     _D3DKMT_WAITFORVERTICALBLANKEVENT we = { 0 };
 
-    while (mVBlankShutdown == false)
+    while (mShutdown == false)
     {
       if (!adapterIsOpen)
       {
-        // reacquire the adapter (at most once a second).
         if (adapterLastFailTime < ::GetTickCount() - 1000)
         {
-          // try to get adapter
-          D3DKMT_OPENADAPTERFROMHDC openAdapterData = { 0 };
-          HDC hDC = GetDC(mVBlankWindow);
-          openAdapterData.hDc = hDC;
-          NTSTATUS status = (*pOpen)(&openAdapterData);
-          if (status == S_OK)
+          HWND window = GetFirstWindow();
+          if (window)
           {
-            // success, setup wait request parameters.
-            adapterLastFailTime = 0;
-            adapterIsOpen = true;
-            we.hAdapter = openAdapterData.hAdapter;
-            we.hDevice = 0;
-            we.VidPnSourceId = openAdapterData.VidPnSourceId;
+            D3DKMT_OPENADAPTERFROMHDC openAdapterData = { 0 };
+            HDC hDC = GetDC(window);
+            openAdapterData.hDc = hDC;
+            NTSTATUS status = (*pOpen)(&openAdapterData);
+            if (status == S_OK)
+            {
+              adapterLastFailTime = 0;
+              adapterIsOpen = true;
+              we.hAdapter = openAdapterData.hAdapter;
+              we.hDevice = 0;
+              we.VidPnSourceId = openAdapterData.VidPnSourceId;
+            }
+            else
+            {
+              adapterLastFailTime = ::GetTickCount();
+            }
+            DeleteDC(hDC);
           }
-          else
-          {
-            // failed
-            adapterLastFailTime = ::GetTickCount();
-          }
-          DeleteDC(hDC);
         }
       }
 
       if (adapterIsOpen)
       {
-        // Finally we can wait on VBlank
         NTSTATUS status = (*pWait)(&we);
         if (status != S_OK)
         {
-          // failed, close now and try again on the next pass.
           _D3DKMT_CLOSEADAPTER ca;
           ca.hAdapter = we.hAdapter;
           (*pClose)(&ca);
@@ -2308,17 +2355,14 @@ DWORD IGraphicsWin::OnVBlankRun()
         }
       }
 
-      // Temporary fallback for lost adapter or failed call.
       if (!adapterIsOpen)
       {
         ::Sleep(rateMS);
       }
 
-      // notify logic
-      VBlankNotify();
+      NotifySubscribers();
     }
 
-    // cleanup adapter before leaving
     if (adapterIsOpen)
     {
       _D3DKMT_CLOSEADAPTER ca;
@@ -2328,7 +2372,6 @@ DWORD IGraphicsWin::OnVBlankRun()
     }
   }
 
-  // release module resource
   if (hInst != nullptr)
   {
     FreeLibrary((HMODULE)hInst);

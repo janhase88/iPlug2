@@ -61,7 +61,7 @@ typedef HGLRC(WINAPI* PFNWGLCREATECONTEXTATTRIBSARBPROC) (HDC hDC, HGLRC hShareC
 
 StaticStorage<IGraphicsWin::InstalledFont> IGraphicsWin::sPlatformFontCache;
 StaticStorage<HFontHolder> IGraphicsWin::sHFontCache;
-int IGraphicsWin::sVBlankThreadPriority = THREAD_PRIORITY_ABOVE_NORMAL;
+int IGraphicsWin::sVBlankThreadPriority = THREAD_PRIORITY_NORMAL; // Default priority; hosts needing higher responsiveness can raise it via SetVBlankThreadPriority
 
 class VBlankThreadManager
 {

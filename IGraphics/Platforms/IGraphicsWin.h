@@ -96,7 +96,11 @@ public:
   static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
   static LRESULT CALLBACK ParamEditProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
   static BOOL CALLBACK FindMainWindow(HWND hWnd, LPARAM lParam);
-  /** Set the thread priority used by the VBlank thread (default THREAD_PRIORITY_ABOVE_NORMAL) */
+
+  DWORD OnVBlankRun();
+  /** Set the thread priority used by the VBlank thread (default THREAD_PRIORITY_NORMAL).
+   *  Hosts needing higher responsiveness may increase it with SetVBlankThreadPriority. */
+
   static void SetVBlankThreadPriority(int priority);
 
 protected:
@@ -181,6 +185,7 @@ private:
 
   static StaticStorage<InstalledFont> sPlatformFontCache;
   static StaticStorage<HFontHolder> sHFontCache;
+  /** Current VBlank thread priority, defaults to THREAD_PRIORITY_NORMAL. */
   static int sVBlankThreadPriority;
 
   std::unordered_map<ITouchID, IMouseInfo> mDeltaCapture; // associative array of touch id pointers to IMouseInfo structs, so that we can get deltas

@@ -94,6 +94,8 @@ public:
   static BOOL CALLBACK FindMainWindow(HWND hWnd, LPARAM lParam);
 
   DWORD OnVBlankRun();
+  /** Set the thread priority used by the VBlank thread (default THREAD_PRIORITY_ABOVE_NORMAL) */
+  static void SetVBlankThreadPriority(int priority);
 
 protected:
   IPopupMenu* CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT bounds, bool& isAsync) override;
@@ -176,9 +178,10 @@ private:
   int mTooltipIdx = -1;
 
   WDL_String mMainWndClassName;
-    
+
   static StaticStorage<InstalledFont> sPlatformFontCache;
   static StaticStorage<HFontHolder> sHFontCache;
+  static int sVBlankThreadPriority;
 
   std::unordered_map<ITouchID, IMouseInfo> mDeltaCapture; // associative array of touch id pointers to IMouseInfo structs, so that we can get deltas
 };

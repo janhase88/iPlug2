@@ -76,7 +76,7 @@ Timer_impl::Timer_impl(ITimerFunction func, uint32_t intervalMs)
     assert(mWindowClass && "Timer window class registration failed");
   }
 
-  mMsgWnd = CreateWindowExW(0, MAKEINTATOM(mWindowClass), L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, GetModuleHandle(nullptr), this);
+  mMsgWnd = CreateWindowExW(0, reinterpret_cast<LPCWSTR>(MAKEINTATOM(mWindowClass)), L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, GetModuleHandle(nullptr), this);
   assert(mMsgWnd && "Timer message window creation failed");
 
   BOOL ok = CreateTimerQueueTimer(&mTimer, nullptr, Timer_impl::TimerProc, this, mIntervalMs, mIntervalMs, WT_EXECUTEDEFAULT);

@@ -23,7 +23,6 @@
 
 #include <wininet.h>
 #include <VersionHelpers.h>
-#include <mutex>
 #include <algorithm>
 
 #if defined __clang__
@@ -38,7 +37,7 @@ using namespace igraphics;
 #pragma warning(disable:4312) // Pointer size cast mismatch.
 #pragma warning(disable:4311) // Pointer size cast mismatch.
 
-static int nWndClassReg = 0;
+static std::atomic<int> nWndClassReg{0};
 static const wchar_t* wndClassName = L"IPlugWndClass";
 
 #define PARAM_EDIT_ID 99
@@ -1114,7 +1113,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     h = cR.bottom - cR.top;
   }
 
-  if (nWndClassReg++ == 0)
+  if (nWndClassReg.fetch_add(1) == 0)
   {
     WNDCLASSW wndClass = { CS_DBLCLKS | CS_OWNDC, WndProc, 0, 0, mHInstance, 0, 0, 0, 0, wndClassName };
     RegisterClassW(&wndClass);
@@ -1141,7 +1140,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     RegisterTouchWindow(mPlugWnd, 0);
   }
 
-  if (!mPlugWnd && --nWndClassReg == 0)
+  if (!mPlugWnd && nWndClassReg.fetch_sub(1) == 1)
   {
     UnregisterClassW(wndClassName, mHInstance);
   }
@@ -1347,7 +1346,7 @@ void IGraphicsWin::CloseWindow()
 
     mPlugWnd = 0;
 
-    if (--nWndClassReg == 0)
+    if (nWndClassReg.fetch_sub(1) == 1)
     {
       UnregisterClassW(wndClassName, mHInstance);
     }

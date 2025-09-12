@@ -40,7 +40,6 @@ using namespace igraphics;
 
 static int nWndClassReg = 0;
 static const wchar_t* wndClassName = L"IPlugWndClass";
-static double sFPS = 0.0;
 
 #define PARAM_EDIT_ID 99
 #define IPLUG_TIMER_ID 2
@@ -57,87 +56,59 @@ typedef HGLRC(WINAPI* PFNWGLCREATECONTEXTATTRIBSARBPROC) (HDC hDC, HGLRC hShareC
 #define WGL_CONTEXT_CORE_PROFILE_BIT_ARB  0x00000001
 #endif
 
-#pragma mark - Static storage
-
-StaticStorage<IGraphicsWin::InstalledFont> IGraphicsWin::sPlatformFontCache;
-StaticStorage<HFontHolder> IGraphicsWin::sHFontCache;
-int IGraphicsWin::sVBlankThreadPriority = THREAD_PRIORITY_NORMAL; // Default priority; hosts needing higher responsiveness can raise it via SetVBlankThreadPriority
+#include <atomic>
 
 namespace iplug {
 namespace igraphics {
 
-class VBlankThreadManager
+class VBlankThread
 {
 public:
-  static VBlankThreadManager& Instance()
+  VBlankThread(IGraphicsWin& owner)
+  : mOwner(owner)
   {
-    static VBlankThreadManager sInstance;
-    return sInstance;
+    DWORD threadId = 0;
+    mThread = ::CreateThread(nullptr, 0, ThreadProc, this, 0, &threadId);
   }
 
-  void Register(IGraphicsWin* pGraphics)
+  ~VBlankThread()
   {
-    std::lock_guard<std::mutex> lock(mMutex);
-    mSubscribers.push_back(pGraphics);
-    if (mSubscribers.size() == 1)
+    mShutdown = true;
+    if (mThread != INVALID_HANDLE_VALUE)
     {
-      mShutdown = false;
-      DWORD threadId = 0;
-      mThread = ::CreateThread(nullptr, 0, ThreadProc, this, 0, &threadId);
+      ::WaitForSingleObject(mThread, 10000);
+      CloseHandle(mThread);
     }
   }
 
-  void Unregister(IGraphicsWin* pGraphics)
+  void Register()
   {
-    HANDLE threadToJoin = INVALID_HANDLE_VALUE;
-    {
-      std::lock_guard<std::mutex> lock(mMutex);
-      mSubscribers.erase(std::remove(mSubscribers.begin(), mSubscribers.end(), pGraphics), mSubscribers.end());
-      if (mSubscribers.empty() && mThread != INVALID_HANDLE_VALUE)
-      {
-        mShutdown = true;
-        threadToJoin = mThread;
-        mThread = INVALID_HANDLE_VALUE;
-      }
-    }
-    if (threadToJoin != INVALID_HANDLE_VALUE)
-    {
-      ::WaitForSingleObject(threadToJoin, 10000);
-    }
+    mRegistered = true;
+  }
+
+  void Unregister()
+  {
+    mRegistered = false;
+  }
+
+  void SetPriority(int priority)
+  {
+    if (mThread != INVALID_HANDLE_VALUE)
+      ::SetThreadPriority(mThread, priority);
   }
 
 private:
   static DWORD WINAPI ThreadProc(LPVOID lpParam)
   {
-    return ((VBlankThreadManager*) lpParam)->Run();
+    return ((VBlankThread*) lpParam)->Run();
   }
 
   DWORD Run();
 
-  void NotifySubscribers()
-  {
-    std::vector<IGraphicsWin*> subscribers;
-    {
-      std::lock_guard<std::mutex> lock(mMutex);
-      subscribers = mSubscribers;
-    }
-
-    for (auto* pGraphics : subscribers)
-      pGraphics->VBlankNotify();
-  }
-
-  HWND GetFirstWindow()
-  {
-    std::lock_guard<std::mutex> lock(mMutex);
-    if (mSubscribers.empty())
-      return nullptr;
-    return mSubscribers.front()->mVBlankWindow;
-  }
-
-  std::vector<IGraphicsWin*> mSubscribers;
-  std::mutex mMutex;
+  IGraphicsWin& mOwner;
   HANDLE mThread = INVALID_HANDLE_VALUE;
-  bool mShutdown = false;
+  std::atomic<bool> mRegistered{false};
+  std::atomic<bool> mShutdown{false};
 };
 
 } // namespace igraphics
@@ -849,24 +820,18 @@ LRESULT CALLBACK IGraphicsWin::ParamEditProc(HWND hWnd, UINT msg, WPARAM wParam,
 IGraphicsWin::IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float scale)
   : IGRAPHICS_DRAW_CLASS(dlg, w, h, fps, scale)
 {
-  StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
-  StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
-  fontStorage.Retain();
-  hfontStorage.Retain();
-
 #ifndef IGRAPHICS_DISABLE_VSYNC
   mVSYNCEnabled = IsWindows8OrGreater();
+  if (mVSYNCEnabled)
+    mVBlankThread = std::make_unique<VBlankThread>(*this);
 #endif
 }
 
 IGraphicsWin::~IGraphicsWin()
 {
-  StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
-  StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
-  fontStorage.Release();
-  hfontStorage.Release();
   DestroyEditWindow();
   CloseWindow();
+  mVBlankThread.reset();
 }
 
 static void GetWindowSize(HWND pWnd, int* pW, int* pH)
@@ -1623,7 +1588,7 @@ void IGraphicsWin::CreatePlatformTextEntry(int paramIdx, const IText& text, cons
     return;
   }
 
-  StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
+  StaticStorage<HFontHolder>::Accessor hfontStorage(mHFontCache);
 
   LOGFONTW lFont = {0};
   HFontHolder* hfontHolder = hfontStorage.Find(text.mFont);
@@ -2151,7 +2116,7 @@ static HFONT GetHFont(const char* fontName, int weight, bool italic, bool underl
 
 PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* fileNameOrResID)
 {
-  StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
+  StaticStorage<InstalledFont>::Accessor fontStorage(mPlatformFontCache);
 
   void* pFontMem = nullptr;
   int resSize = 0;
@@ -2209,7 +2174,7 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* f
 
 PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, int dataSize)
 {
-  StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
+  StaticStorage<InstalledFont>::Accessor fontStorage(mPlatformFontCache);
 
   std::unique_ptr<InstalledFont> pFont;
   void* pFontMem = pData;
@@ -2239,7 +2204,7 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
 
 void IGraphicsWin::CachePlatformFont(const char* fontID, const PlatformFontPtr& font)
 {
-  StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
+  StaticStorage<HFontHolder>::Accessor hfontStorage(mHFontCache);
 
   HFONT hfont = font->GetDescriptor();
 
@@ -2249,18 +2214,22 @@ void IGraphicsWin::CachePlatformFont(const char* fontID, const PlatformFontPtr& 
 
 void IGraphicsWin::SetVBlankThreadPriority(int priority)
 {
-  sVBlankThreadPriority = priority;
+  mVBlankThreadPriority = priority;
+  if (mVBlankThread)
+    mVBlankThread->SetPriority(priority);
 }
 
 void IGraphicsWin::StartVBlankThread(HWND hWnd)
 {
   mVBlankWindow = hWnd;
-  VBlankThreadManager::Instance().Register(this);
+  if (mVBlankThread)
+    mVBlankThread->Register();
 }
 
 void IGraphicsWin::StopVBlankThread()
 {
-  VBlankThreadManager::Instance().Unregister(this);
+  if (mVBlankThread)
+    mVBlankThread->Unregister();
   mVBlankWindow = 0;
 }
 
@@ -2303,9 +2272,9 @@ typedef NTSTATUS(WINAPI* D3DKMTOpenAdapterFromHdc)(D3DKMT_OPENADAPTERFROMHDC* Ar
 typedef NTSTATUS(WINAPI* D3DKMTCloseAdapter)(const D3DKMT_CLOSEADAPTER* Arg1);
 typedef NTSTATUS(WINAPI* D3DKMTWaitForVerticalBlankEvent)(const D3DKMT_WAITFORVERTICALBLANKEVENT* Arg1);
 
-DWORD VBlankThreadManager::Run()
+DWORD VBlankThread::Run()
 {
-  SetThreadPriority(GetCurrentThread(), IGraphicsWin::sVBlankThreadPriority);
+  SetThreadPriority(GetCurrentThread(), mOwner.mVBlankThreadPriority);
 
   float rateFallback = 60.0f;
   int rateMS = (int)(1000.0f / rateFallback);
@@ -2326,8 +2295,9 @@ DWORD VBlankThreadManager::Run()
   {
     while (mShutdown == false)
     {
-      Sleep(rateMS);
-      NotifySubscribers();
+      if (mRegistered)
+        mOwner.VBlankNotify();
+      ::Sleep(rateMS);
     }
   }
   else
@@ -2338,15 +2308,14 @@ DWORD VBlankThreadManager::Run()
 
     while (mShutdown == false)
     {
-      if (!adapterIsOpen)
+      if (mRegistered && mOwner.mVBlankWindow)
       {
-        if (adapterLastFailTime < ::GetTickCount() - 1000)
+        if (!adapterIsOpen)
         {
-          HWND window = GetFirstWindow();
-          if (window)
+          if (adapterLastFailTime < ::GetTickCount() - 1000)
           {
             D3DKMT_OPENADAPTERFROMHDC openAdapterData = { 0 };
-            HDC hDC = GetDC(window);
+            HDC hDC = GetDC(mOwner.mVBlankWindow);
             openAdapterData.hDc = hDC;
             NTSTATUS status = (*pOpen)(&openAdapterData);
             if (status == S_OK)
@@ -2364,26 +2333,31 @@ DWORD VBlankThreadManager::Run()
             DeleteDC(hDC);
           }
         }
-      }
 
-      if (adapterIsOpen)
-      {
-        NTSTATUS status = (*pWait)(&we);
-        if (status != S_OK)
+        if (adapterIsOpen)
         {
-          _D3DKMT_CLOSEADAPTER ca;
-          ca.hAdapter = we.hAdapter;
-          (*pClose)(&ca);
-          adapterIsOpen = false;
+          NTSTATUS status = (*pWait)(&we);
+          if (status != S_OK)
+          {
+            _D3DKMT_CLOSEADAPTER ca;
+            ca.hAdapter = we.hAdapter;
+            (*pClose)(&ca);
+            adapterIsOpen = false;
+          }
         }
-      }
 
-      if (!adapterIsOpen)
+        if (!adapterIsOpen)
+        {
+          ::Sleep(rateMS);
+        }
+
+        if (mRegistered)
+          mOwner.VBlankNotify();
+      }
+      else
       {
         ::Sleep(rateMS);
       }
-
-      NotifySubscribers();
     }
 
     if (adapterIsOpen)

@@ -18,6 +18,7 @@
 #include "IGraphicsWinFonts.h"
 #include <vector>
 #include <string>
+#include <memory>
 
 
 BEGIN_IPLUG_NAMESPACE
@@ -26,7 +27,7 @@ BEGIN_IGRAPHICS_NAMESPACE
 // Forward declare the OLE drop target helper (defined in IGraphicsWin_dnd.h)
 namespace DragAndDropHelpers { class DropTarget; }
 
-class VBlankThreadManager;
+class VBlankThread;
 
 
 /** IGraphics platform class for Windows
@@ -36,7 +37,7 @@ class IGraphicsWin final : public IGRAPHICS_DRAW_CLASS
   using InstalledFont = InstalledWinFont;
   using Font = WinFont;
 
-  friend class VBlankThreadManager;
+  friend class VBlankThread;
   
 public:
   IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float scale);
@@ -101,7 +102,7 @@ public:
   /** Set the thread priority used by the VBlank thread (default THREAD_PRIORITY_NORMAL).
    *  Hosts needing higher responsiveness may increase it with SetVBlankThreadPriority. */
 
-  static void SetVBlankThreadPriority(int priority);
+  void SetVBlankThreadPriority(int priority);
 
 protected:
   IPopupMenu* CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT bounds, bool& isAsync) override;
@@ -183,10 +184,13 @@ private:
 
   WDL_String mMainWndClassName;
 
-  static StaticStorage<InstalledFont> sPlatformFontCache;
-  static StaticStorage<HFontHolder> sHFontCache;
+  StaticStorage<InstalledFont> mPlatformFontCache;
+  StaticStorage<HFontHolder> mHFontCache;
   /** Current VBlank thread priority, defaults to THREAD_PRIORITY_NORMAL. */
-  static int sVBlankThreadPriority;
+  int mVBlankThreadPriority = THREAD_PRIORITY_NORMAL;
+  double mFPS = 0.0;
+
+  std::unique_ptr<VBlankThread> mVBlankThread;
 
   std::unordered_map<ITouchID, IMouseInfo> mDeltaCapture; // associative array of touch id pointers to IMouseInfo structs, so that we can get deltas
 };

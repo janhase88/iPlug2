@@ -1079,32 +1079,36 @@ void IGraphics::OnMouseDown(const std::vector<IMouseInfo>& points)
 
 void IGraphics::OnMouseUp(const std::vector<IMouseInfo>& points)
 {
-//  Trace("IGraphics::OnMouseUp", __LINE__, "x:%0.2f, y:%0.2f, mod:LRSCA: %i%i%i%i%i", x, y, mod.L, mod.R, mod.S, mod.C, mod.A);
-  
-  if (ControlIsCaptured())
-  {
-    for (auto& point : points)
-    {
-      float x = point.x;
-      float y = point.y;
-      const IMouseMod& mod = point.ms;
-      auto itr = mCapturedMap.find(mod.touchID);
-      
-      if(itr != mCapturedMap.end())
-      {
-        IControl* pCapturedControl = itr->second;
-      
-        pCapturedControl->OnMouseUp(x, y, mod);
-      
-        int nVals = pCapturedControl->NVals();
+  //  Trace("IGraphics::OnMouseUp", __LINE__, "x:%0.2f, y:%0.2f, mod:LRSCA: %i%i%i%i%i", x, y, mod.L, mod.R, mod.S, mod.C, mod.A);
 
-        for (int v = 0; v < nVals; v++)
-        {
-          if (pCapturedControl->GetParamIdx(v) > kNoParameter)
-            GetDelegate()->EndInformHostOfParamChangeFromUI(pCapturedControl->GetParamIdx(v));
-        }
-        
-        mCapturedMap.erase(mod.touchID);
+  for (auto& point : points)
+  {
+    float x = point.x;
+    float y = point.y;
+    const IMouseMod& mod = point.ms;
+    auto itr = mCapturedMap.find(mod.touchID);
+
+    if (itr != mCapturedMap.end())
+    {
+      IControl* pCapturedControl = itr->second;
+
+      pCapturedControl->OnMouseUp(x, y, mod);
+
+      int nVals = pCapturedControl->NVals();
+
+      for (int v = 0; v < nVals; v++)
+      {
+        if (pCapturedControl->GetParamIdx(v) > kNoParameter)
+          GetDelegate()->EndInformHostOfParamChangeFromUI(pCapturedControl->GetParamIdx(v));
+      }
+
+      mCapturedMap.erase(mod.touchID);
+    }
+    else
+    {
+      if (IControl* pControl = GetMouseControl(x, y, false, false, mod.touchID))
+      {
+        pControl->OnMouseUp(x, y, mod);
       }
     }
   }

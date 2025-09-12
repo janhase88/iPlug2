@@ -1837,7 +1837,10 @@ private:
   IRECT mPerfDisplayBounds;
   
   WDL_String mSharedResourcesSubPath;
-  
+
+  StaticStorage<APIBitmap> mBitmapCache;
+  StaticStorage<SVGHolder> mSVGCache;
+
   ECursor mCursorType = ECursor::ARROW;
   int mWidth;
   int mHeight;

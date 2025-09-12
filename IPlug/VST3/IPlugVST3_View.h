@@ -15,6 +15,7 @@
 
 #include "IGraphics/IGraphics.h"
 #include "IPlugStructs.h"
+#include "IGraphics/IGraphics.h"
 
 /** IPlug VST3 View  */
 template <class T>
@@ -141,6 +142,7 @@ public:
 
   Steinberg::tresult PLUGIN_API setContentScaleFactor(ScaleFactor factor) override
   {
+
     mHasContentScale = true;
     mContentScale = factor;
 
@@ -149,6 +151,7 @@ public:
       pGraphics->EnableAutoScale(false);
       mOwner.SetScreenScale(1.f);
     }
+
 
     return Steinberg::kResultOk;
   }

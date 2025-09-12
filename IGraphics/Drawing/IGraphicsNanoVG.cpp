@@ -991,3 +991,9 @@ void IGraphicsNanoVG::DrawMultiLineText(const IText& text, const char* str, cons
   
   nvgRestore(mVG);
 }
+
+int IGraphicsNanoVG::GetFontCacheCount() const
+{
+  StaticStorage<IFontData>::Accessor storage(sFontCache);
+  return storage.Size();
+}

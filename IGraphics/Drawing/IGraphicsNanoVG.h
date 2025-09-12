@@ -114,10 +114,11 @@ public:
   void PathSetWinding(bool clockwise) override;
   void PathStroke(const IPattern& pattern, float thickness, const IStrokeOptions& options, const IBlend* pBlend) override;
   void PathFill(const IPattern& pattern, const IFillOptions& options, const IBlend* pBlend) override;
-  
+
   IColor GetPoint(int x, int y) override;
   void* GetDrawContext() override { return (void*) mVG; }
-    
+  int GetFontCacheCount() const override;
+
   IBitmap LoadBitmap(const char* name, int nStates, bool framesAreHorizontal, int targetScale) override;
   void ReleaseBitmap(const IBitmap& bitmap) override { }; // NO-OP
   void RetainBitmap(const IBitmap& bitmap, const char * cacheName) override { }; // NO-OP

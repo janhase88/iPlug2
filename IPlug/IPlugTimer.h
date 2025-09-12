@@ -37,17 +37,15 @@ BEGIN_IPLUG_NAMESPACE
 /** Base class for timer */
 struct Timer
 {
-  Timer(void* owner)
-    : mOwner(owner)
-  {
-  }
+  Timer(void* owner);
+  virtual ~Timer();
   Timer(const Timer&) = delete;
   Timer& operator=(const Timer&) = delete;
 
   using ITimerFunction = std::function<void(Timer& t)>;
 
   static Timer* Create(void* owner, ITimerFunction func, uint32_t intervalMs);
-  virtual ~Timer() {};
+  static int GetActiveTimerCount();
   virtual void Stop() = 0;
 
   void* GetOwner() const { return mOwner; }

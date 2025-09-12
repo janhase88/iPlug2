@@ -964,6 +964,9 @@ public:
    * @param font A const PlatformFontPtr reference to the relevant font */
   virtual void CachePlatformFont(const char* fontID, const PlatformFontPtr& font) = 0;
 
+  /** Retrieve the number of fonts currently cached by the drawing backend */
+  virtual int GetFontCacheCount() const { return 0; }
+
   /** Get the bundle ID on macOS and iOS, returns emtpy string on other OSs */
   virtual const char* GetBundleID() const { return ""; }
 

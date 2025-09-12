@@ -344,9 +344,13 @@ public:
    * @return The new chunk position (endPos) */
   virtual int UnserializeEditorState(const IByteChunk& chunk, int startPos)  { return startPos; }
   
-  /** Can be used by a host API to inform the editor of screen scale changes
-   * @param scale The new screen scale*/
-  virtual void SetScreenScale(float scale) {}
+   /** Can be used by a host API to inform the editor of screen scale changes
+    * @param scale The new screen scale*/
+   virtual void SetScreenScale(float scale) {}
+
+   /** Enable or disable automatic scaling driven by the operating system
+    * @param enable Set to \c true to allow IGraphics to automatically adjust the scale */
+   virtual void EnableAutoScale(bool enable) {}
 
   friend class IPlugAPP;
   friend class IPlugAAX;

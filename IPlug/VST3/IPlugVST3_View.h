@@ -136,6 +136,7 @@ public:
 
   Steinberg::tresult PLUGIN_API setContentScaleFactor(ScaleFactor factor) override
   {
+    mOwner.EnableAutoScale(false);
     mOwner.SetScreenScale(factor);
 
     return Steinberg::kResultOk;

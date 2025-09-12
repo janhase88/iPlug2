@@ -1861,7 +1861,12 @@ private:
   IKeyHandlerFunc mKeyHandlerFunc = nullptr;
   IDisplayTickFunc mDisplayTickFunc = nullptr;
   IUIAppearanceChangedFunc mAppearanceChangedFunc = nullptr;
-  
+
+#ifdef OS_WIN
+  StaticStorage<APIBitmap> mBitmapCache;
+  StaticStorage<SVGHolder> mSVGCache;
+#endif
+
 protected:
   IGEditorDelegate* mDelegate;
   bool mCursorHidden = false;

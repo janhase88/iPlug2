@@ -1,10 +1,10 @@
 /*
  ==============================================================================
- 
- This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers. 
- 
+
+ This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
+
  See LICENSE.txt for  more info.
- 
+
  ==============================================================================
 */
 
@@ -16,10 +16,10 @@
  * @ingroup IPlugStructs
  */
 
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
-#include <algorithm>
 
 #include "IPlugLogger.h"
 
@@ -31,7 +31,7 @@ struct IMidiMsg
 {
   int mOffset;
   uint8_t mStatus, mData1, mData2;
-  
+
   /** Constants for the status byte of a MIDI message */
   enum EStatusMsg
   {
@@ -44,7 +44,7 @@ struct IMidiMsg
     kChannelAftertouch = 13,
     kPitchWheel = 14
   };
-  
+
   /** Constants for MIDI CC messages */
   enum EControlChangeMsg
   {
@@ -124,19 +124,20 @@ struct IMidiMsg
     kUndefined119 = 119,
     kAllNotesOff = 123
   };
-  
+
   /** Create an IMidiMsg, an abstraction for a MIDI message
    * @param offset Sample offset in block
    * @param status Status byte
    * @param data1 Data byte 1
    * @param data2 Data byte 2 */
   IMidiMsg(int offset = 0, uint8_t status = 0, uint8_t data1 = 0, uint8_t data2 = 0)
-  : mOffset(offset)
-  , mStatus(status)
-  , mData1(data1)
-  , mData2(data2)
-  {}
-  
+    : mOffset(offset)
+    , mStatus(status)
+    , mData1(data1)
+    , mData2(data2)
+  {
+  }
+
   /** Make a Note On message
    * @param noteNumber Note number
    * @param velocity Note on velocity
@@ -145,12 +146,12 @@ struct IMidiMsg
   void MakeNoteOnMsg(int noteNumber, int velocity, int offset, int channel = 0)
   {
     Clear();
-    mStatus = channel | (kNoteOn << 4) ;
+    mStatus = channel | (kNoteOn << 4);
     mData1 = noteNumber;
     mData2 = velocity;
     mOffset = offset;
   }
-  
+
   /** Make a Note Off message
    * @param noteNumber Note number
    * @param offset Sample offset in block
@@ -171,13 +172,13 @@ struct IMidiMsg
   {
     Clear();
     mStatus = channel | (kPitchWheel << 4);
-    int i = 8192 + (int) (value * 8192.0);
+    int i = 8192 + (int)(value * 8192.0);
     i = std::min(std::max(i, 0), 16383);
-    mData2 = i>>7;
-    mData1 = i&0x7F;
+    mData2 = i >> 7;
+    mData1 = i & 0x7F;
     mOffset = offset;
   }
-  
+
   /** Create a CC message
    * @param idx Controller index
    * @param value Range [0, 1]
@@ -188,13 +189,13 @@ struct IMidiMsg
     Clear();
     mStatus = channel | (kControlChange << 4);
     mData1 = idx;
-    mData2 = (int) (value * 127.0);
+    mData2 = (int)(value * 127.0);
     mOffset = offset;
   }
 
   /** Create a Program Change message
    * @param program Program index
-   * @param channel MIDI channel [0, 15] 
+   * @param channel MIDI channel [0, 15]
    * @param offset Sample offset in block */
   void MakeProgramChange(int program, int channel = 0, int offset = 0)
   {
@@ -204,7 +205,7 @@ struct IMidiMsg
     mOffset = offset;
   }
 
-  /** Create a Channel AfterTouch message 
+  /** Create a Channel AfterTouch message
    * @param pressure Range [0, 127]
    * @param offset Sample offset in block
    * @param channel MIDI channel [0, 15] */
@@ -216,7 +217,7 @@ struct IMidiMsg
     mData2 = 0;
     mOffset = offset;
   }
-  
+
   /** Create a Poly AfterTouch message
    * @param noteNumber Note number
    * @param pressure Range [0, 127]
@@ -230,14 +231,11 @@ struct IMidiMsg
     mData2 = pressure;
     mOffset = offset;
   }
-  
+
   /** Gets the channel of a MIDI message
    * @return [0, 15] for midi channels 1 ... 16. */
-  int Channel() const
-  {
-    return mStatus & 0x0F;
-  }
-  
+  int Channel() const { return mStatus & 0x0F; }
+
   /** Gets the MIDI Status message
    * @return EStatusMsg */
   EStatusMsg StatusMsg() const
@@ -247,64 +245,64 @@ struct IMidiMsg
     {
       return kNone;
     }
-    return (EStatusMsg) e;
+    return (EStatusMsg)e;
   }
-  
+
   /** Gets the MIDI note number
    * @return [0, 127], -1 if NA. */
   int NoteNumber() const
   {
     switch (StatusMsg())
     {
-      case kNoteOn:
-      case kNoteOff:
-      case kPolyAftertouch:
-        return mData1;
-      default:
-        return -1;
+    case kNoteOn:
+    case kNoteOff:
+    case kPolyAftertouch:
+      return mData1;
+    default:
+      return -1;
     }
   }
-  
+
   /** Get the velocity value of a NoteOn/NoteOff message
    * @return returns [0, 127], -1 if NA. */
   int Velocity() const
   {
     switch (StatusMsg())
     {
-      case kNoteOn:
-      case kNoteOff:
-        return mData2;
-      default:
-        return -1;
+    case kNoteOn:
+    case kNoteOff:
+      return mData2;
+    default:
+      return -1;
     }
   }
-  
+
   /** Get the Pressure value from a PolyAfterTouch message
    * @return [0, 127], -1 if NA. */
   int PolyAfterTouch() const
   {
     switch (StatusMsg())
     {
-      case kPolyAftertouch:
-        return mData2;
-      default:
-        return -1;
+    case kPolyAftertouch:
+      return mData2;
+    default:
+      return -1;
     }
   }
-  
+
   /** Get the Pressure value from an AfterTouch message
    * @return [0, 127], -1 if NA. */
   int ChannelAfterTouch() const
   {
     switch (StatusMsg())
     {
-      case kChannelAftertouch:
-        return mData1;
-      default:
-        return -1;
+    case kChannelAftertouch:
+      return mData1;
+    default:
+      return -1;
     }
   }
-  
+
   /** Get the program index from a Program Change message
    * @return [0, 127], -1 if NA. */
   int Program() const
@@ -315,7 +313,7 @@ struct IMidiMsg
     }
     return -1;
   }
-  
+
   /** Get the value from a Pitchwheel message
    * @return [-1.0, 1.0], zero if NA.*/
   double PitchWheel() const
@@ -327,40 +325,34 @@ struct IMidiMsg
     }
     return 0.0;
   }
-  
+
   /** Gets the controller index of a CC message
    * @return EControlChangeMsg as an Enum of varying values, refert to the definition of EControlChangeMsg.*/
-  EControlChangeMsg ControlChangeIdx() const
-  {
-    return (EControlChangeMsg) mData1;
-  }
-  
+  EControlChangeMsg ControlChangeIdx() const { return (EControlChangeMsg)mData1; }
+
   /** Get the value of a CC message
    * @return [0, 1], -1 if NA.*/
   double ControlChange(EControlChangeMsg idx) const
   {
     if (StatusMsg() == kControlChange && ControlChangeIdx() == idx)
     {
-      return (double) mData2 / 127.0;
+      return (double)mData2 / 127.0;
     }
     return -1.0;
   }
-  
+
   /** Helper to get a boolean value from a CC messages
    * @param msgValue The normalized CC value [0, 1]
    * @return \c true = on */
-  static bool ControlChangeOnOff(double msgValue)
-  {
-    return (msgValue >= 0.5);
-  }
-  
+  static bool ControlChangeOnOff(double msgValue) { return (msgValue >= 0.5); }
+
   /** Clear the message */
   void Clear()
   {
     mOffset = 0;
     mStatus = mData1 = mData2 = 0;
   }
-  
+
   /** Get the Status Message as a CString
    * @param msg The Status Message
    * @return CString describing the status byte */
@@ -368,195 +360,79 @@ struct IMidiMsg
   {
     switch (msg)
     {
-      case kNone: return "none";
-      case kNoteOff: return "noteoff";
-      case kNoteOn: return "noteon";
-      case kPolyAftertouch: return "aftertouch";
-      case kControlChange: return "controlchange";
-      case kProgramChange: return "programchange";
-      case kChannelAftertouch: return "channelaftertouch";
-      case kPitchWheel: return "pitchwheel";
-      default:  return "unknown";
+    case kNone:
+      return "none";
+    case kNoteOff:
+      return "noteoff";
+    case kNoteOn:
+      return "noteon";
+    case kPolyAftertouch:
+      return "aftertouch";
+    case kControlChange:
+      return "controlchange";
+    case kProgramChange:
+      return "programchange";
+    case kChannelAftertouch:
+      return "channelaftertouch";
+    case kPitchWheel:
+      return "pitchwheel";
+    default:
+      return "unknown";
     };
   }
-  
+
   /** Get the CC name as a CString
    * @param idx Index of the MIDI CC [0-127]
    * @return CString describing the controller */
   static const char* CCNameStr(int idx)
   {
-    static const char* ccNameStrs[128] =
-    {
-      "BankSel.MSB",
-      "Modulation",
-      "BreathCtrl",
-      "Contr. 3",
-      "Foot Ctrl",
-      "Porta.Time",
-      "DataEntMSB",
-      "MainVolume",
-      "Balance",
-      "Contr. 9",
-      "Pan",
-      "Expression",
-      "FXControl1",
-      "FXControl2",
-      "Contr. 14",
-      "Contr. 15",
-      "Gen.Purp.1",
-      "Gen.Purp.2",
-      "Gen.Purp.3",
-      "Gen.Purp.4",
-      "Contr. 20",
-      "Contr. 21",
-      "Contr. 22",
-      "Contr. 23",
-      "Contr. 24",
-      "Contr. 25",
-      "Contr. 26",
-      "Contr. 27",
-      "Contr. 28",
-      "Contr. 29",
-      "Contr. 30",
-      "Contr. 31",
-      "BankSel.LSB",
-      "Modul. LSB",
-      "BrthCt LSB",
-      "Contr. 35",
-      "FootCt LSB",
-      "Port.T LSB",
-      "DataEntLSB",
-      "MainVolLSB",
-      "BalanceLSB",
-      "Contr. 41",
-      "Pan LSB",
-      "Expr. LSB",
-      "Contr. 44",
-      "Contr. 45",
-      "Contr. 46",
-      "Contr. 47",
-      "Gen.P.1LSB",
-      "Gen.P.2LSB",
-      "Gen.P.3LSB",
-      "Gen.P.4LSB",
-      "Contr. 52",
-      "Contr. 53",
-      "Contr. 54",
-      "Contr. 55",
-      "Contr. 56",
-      "Contr. 57",
-      "Contr. 58",
-      "Contr. 59",
-      "Contr. 60",
-      "Contr. 61",
-      "Contr. 62",
-      "Contr. 63",
-      "Damper Ped",
-      "Porta. Ped",
-      "Sostenuto ",
-      "Soft Pedal",
-      "Legato Sw",
-      "Hold 2",
-      "SoundCont 1",
-      "SoundCont 2",
-      "SoundCont 3",
-      "SoundCont 4",
-      "SoundCont 5",
-      "SoundCont 6",
-      "SoundCont 7",
-      "SoundCont 8",
-      "SoundCont 9",
-      "SoundCont 10",
-      "Gen.Purp.5",
-      "Gen.Purp.6",
-      "Gen.Purp.7",
-      "Gen.Purp.8",
-      "Portamento",
-      "Contr. 85",
-      "Contr. 86",
-      "Contr. 87",
-      "Contr. 88",
-      "Contr. 89",
-      "Contr. 90",
-      "FX 1 Depth",
-      "FX 2 Depth",
-      "FX 3 Depth",
-      "FX 4 Depth",
-      "FX 5 Depth",
-      "Data Incr",
-      "Data Decr",
-      "Non-RegLSB",
-      "Non-RegMSB",
-      "Reg LSB",
-      "Reg MSB",
-      "Contr. 102",
-      "Contr. 103",
-      "Contr. 104",
-      "Contr. 105",
-      "Contr. 106",
-      "Contr. 107",
-      "Contr. 108",
-      "Contr. 109",
-      "Contr. 110",
-      "Contr. 111",
-      "Contr. 112",
-      "Contr. 113",
-      "Contr. 114",
-      "Contr. 115",
-      "Contr. 116",
-      "Contr. 117",
-      "Contr. 118",
-      "Contr. 119",
-      "Contr. 120",
-      "Reset Ctrl",
-      "Local Ctrl",
-      "AllNoteOff",
-      "OmniModOff",
-      "OmniModeOn",
-      "MonoModeOn",
-      "PolyModeOn"
-    };
-    
+    static const char* ccNameStrs[128] = {
+      "BankSel.MSB", "Modulation",   "BreathCtrl", "Contr. 3",   "Foot Ctrl",  "Porta.Time",  "DataEntMSB",  "MainVolume",  "Balance",     "Contr. 9",    "Pan",         "Expression",  "FXControl1",
+      "FXControl2",  "Contr. 14",    "Contr. 15",  "Gen.Purp.1", "Gen.Purp.2", "Gen.Purp.3",  "Gen.Purp.4",  "Contr. 20",   "Contr. 21",   "Contr. 22",   "Contr. 23",   "Contr. 24",   "Contr. 25",
+      "Contr. 26",   "Contr. 27",    "Contr. 28",  "Contr. 29",  "Contr. 30",  "Contr. 31",   "BankSel.LSB", "Modul. LSB",  "BrthCt LSB",  "Contr. 35",   "FootCt LSB",  "Port.T LSB",  "DataEntLSB",
+      "MainVolLSB",  "BalanceLSB",   "Contr. 41",  "Pan LSB",    "Expr. LSB",  "Contr. 44",   "Contr. 45",   "Contr. 46",   "Contr. 47",   "Gen.P.1LSB",  "Gen.P.2LSB",  "Gen.P.3LSB",  "Gen.P.4LSB",
+      "Contr. 52",   "Contr. 53",    "Contr. 54",  "Contr. 55",  "Contr. 56",  "Contr. 57",   "Contr. 58",   "Contr. 59",   "Contr. 60",   "Contr. 61",   "Contr. 62",   "Contr. 63",   "Damper Ped",
+      "Porta. Ped",  "Sostenuto ",   "Soft Pedal", "Legato Sw",  "Hold 2",     "SoundCont 1", "SoundCont 2", "SoundCont 3", "SoundCont 4", "SoundCont 5", "SoundCont 6", "SoundCont 7", "SoundCont 8",
+      "SoundCont 9", "SoundCont 10", "Gen.Purp.5", "Gen.Purp.6", "Gen.Purp.7", "Gen.Purp.8",  "Portamento",  "Contr. 85",   "Contr. 86",   "Contr. 87",   "Contr. 88",   "Contr. 89",   "Contr. 90",
+      "FX 1 Depth",  "FX 2 Depth",   "FX 3 Depth", "FX 4 Depth", "FX 5 Depth", "Data Incr",   "Data Decr",   "Non-RegLSB",  "Non-RegMSB",  "Reg LSB",     "Reg MSB",     "Contr. 102",  "Contr. 103",
+      "Contr. 104",  "Contr. 105",   "Contr. 106", "Contr. 107", "Contr. 108", "Contr. 109",  "Contr. 110",  "Contr. 111",  "Contr. 112",  "Contr. 113",  "Contr. 114",  "Contr. 115",  "Contr. 116",
+      "Contr. 117",  "Contr. 118",   "Contr. 119", "Contr. 120", "Reset Ctrl", "Local Ctrl",  "AllNoteOff",  "OmniModOff",  "OmniModeOn",  "MonoModeOn",  "PolyModeOn"};
+
     return ccNameStrs[idx];
   }
 
   /** Log a message (TRACER BUILDS) */
-  void LogMsg()
-  {
-    Trace(TRACELOC, "midi:(%s:%d:%d:%d)", StatusMsgStr(StatusMsg()), Channel(), mData1, mData2);
-  }
-  
+  void LogMsg() { Trace(TRACELOC, "inst=%p midi:(%s:%d:%d:%d)", this, StatusMsgStr(StatusMsg()), Channel(), mData1, mData2); }
+
   /** Print a message (DEBUG BUILDS) */
-  void PrintMsg() const
-  {
-    DBGMSG("midi: offset %i, (%s:%d:%d:%d)\n", mOffset, StatusMsgStr(StatusMsg()), Channel(), mData1, mData2);
-  }
+  void PrintMsg() const { DBGMSG("midi: offset %i, (%s:%d:%d:%d)\n", mOffset, StatusMsgStr(StatusMsg()), Channel(), mData1, mData2); }
 };
 
 /** A struct for dealing with SysEx messages. Does not own the data.
-  * @ingroup IPlugStructs */
+ * @ingroup IPlugStructs */
 struct ISysEx
 {
   int mOffset, mSize;
   const uint8_t* mData;
-  
-  /** Create an ISysex 
+
+  /** Create an ISysex
    * @param offset The sample offset for the sysex message
    * @param pData Ptr to the data, which must stay valid while this object is used
    * @param size Size of the data in bytes */
   ISysEx(int offset = 0, const uint8_t* pData = nullptr, int size = 0)
-  : mOffset(offset)
-  , mSize(size)
-  , mData(pData)
-  {}
-  
+    : mOffset(offset)
+    , mSize(size)
+    , mData(pData)
+  {
+  }
+
   /** Clear the data pointer and size (does not modify the external data!)  */
   void Clear()
   {
     mOffset = mSize = 0;
     mData = NULL;
   }
-  
+
   /** Get the bytes of a sysex message as a CString
    * @param str Buffer for CString
    * @param maxLen size of the CString buffer
@@ -566,32 +442,34 @@ struct ISysEx
   char* SysExStr(char* str, int maxLen, const uint8_t* pData, int size)
   {
     assert(str != NULL && maxLen >= 3);
-    
-    if (!pData || !size) {
+
+    if (!pData || !size)
+    {
       *str = '\0';
       return str;
     }
-    
+
     char* pStr = str;
     int n = maxLen / 3;
-    if (n > size) n = size;
-    for (int i = 0; i < n; ++i, ++pData) {
+    if (n > size)
+      n = size;
+    for (int i = 0; i < n; ++i, ++pData)
+    {
       snprintf(pStr, maxLen, "%02X", (int)*pData);
       pStr += 2;
       *pStr++ = ' ';
     }
     *--pStr = '\0';
-    
+
     return str;
   }
-  
+
   /** Log a message (TRACER BUILDS) */
   void LogMsg()
   {
     char str[96];
-    Trace(TRACELOC, "sysex:(%d:%s)", mSize, SysExStr(str, sizeof(str), mData, mSize));
+    Trace(TRACELOC, "inst=%p sysex:(%d:%s)", this, mSize, SysExStr(str, sizeof(str), mData, mSize));
   }
-
 };
 
 /*
@@ -599,7 +477,7 @@ struct ISysEx
 IMidiQueueBase is a template adapted by Alex Harker from the following source
 It has been adapted to allow different types (e.g. IMidiMsg or ISysEx)
 It is then mapped to IMidiQueue as an alias
- 
+
  (c) Theo Niessink 2009-2011
 <http://www.taletn.com/>
 
@@ -676,21 +554,22 @@ void MyPlug::ProcessBlock(double** inputs, double** outputs, int nFrames)
 #endif
 
 /** A class to help with queuing timestamped MIDI messages
-  * @ingroup IPlugUtilities */
+ * @ingroup IPlugUtilities */
 template <class T>
 class IMidiQueueBase
 {
 public:
   IMidiQueueBase(int size = DEFAULT_BLOCK_SIZE)
-  : mBuf(NULL), mSize(0), mGrow(Granulize(size)), mFront(0), mBack(0)
+    : mBuf(NULL)
+    , mSize(0)
+    , mGrow(Granulize(size))
+    , mFront(0)
+    , mBack(0)
   {
     Expand();
   }
-  
-  ~IMidiQueueBase()
-  {
-    free(mBuf);
-  }
+
+  ~IMidiQueueBase() { free(mBuf); }
 
   // Adds a MIDI message at the back of the queue. If the queue is full,
   // it will automatically expand itself.
@@ -700,7 +579,8 @@ public:
     {
       if (mFront > 0)
         Compact();
-      else if (!Expand()) return;
+      else if (!Expand())
+        return;
     }
 
 #ifndef DONT_SORT_IMIDIQUEUE
@@ -708,7 +588,8 @@ public:
     if (mBack > mFront && msg.mOffset < mBuf[mBack - 1].mOffset)
     {
       int i = mBack - 2;
-      while (i >= mFront && msg.mOffset < mBuf[i].mOffset) --i;
+      while (i >= mFront && msg.mOffset < mBuf[i].mOffset)
+        --i;
       i++;
       memmove(&mBuf[i + 1], &mBuf[i], (mBack - i) * sizeof(T));
       mBuf[i] = msg;
@@ -743,10 +624,12 @@ public:
   inline void Flush(int nFrames)
   {
     // Move everything all the way to the front.
-    if (mFront > 0) Compact();
+    if (mFront > 0)
+      Compact();
 
     // Update the sample offset.
-    for (int i = 0; i < mBack; ++i) mBuf[i].mOffset -= nFrames;
+    for (int i = 0; i < mBack; ++i)
+      mBuf[i].mOffset -= nFrames;
   }
 
   // Clears the queue.
@@ -755,14 +638,18 @@ public:
   // Resizes (grows or shrinks) the queue, returns the new size.
   int Resize(int size)
   {
-    if (mFront > 0) Compact();
+    if (mFront > 0)
+      Compact();
     mGrow = size = Granulize(size);
     // Don't shrink below the number of currently queued MIDI messages.
-    if (size < mBack) size = Granulize(mBack);
-    if (size == mSize) return mSize;
+    if (size < mBack)
+      size = Granulize(mBack);
+    if (size == mSize)
+      return mSize;
 
     void* buf = realloc(mBuf, size * sizeof(T));
-    if (!buf) return mSize;
+    if (!buf)
+      return mSize;
 
     mBuf = (T*)buf;
     mSize = size;
@@ -773,11 +660,13 @@ protected:
   // Automatically expands the queue.
   bool Expand()
   {
-    if (!mGrow) return false;
+    if (!mGrow)
+      return false;
     int size = (mSize / mGrow + 1) * mGrow;
 
     void* buf = realloc(mBuf, size * sizeof(T));
-    if (!buf) return false;
+    if (!buf)
+      return false;
 
     mBuf = (T*)buf;
     mSize = size;
@@ -788,7 +677,8 @@ protected:
   inline void Compact()
   {
     mBack -= mFront;
-    if (mBack > 0) memmove(&mBuf[0], &mBuf[mFront], mBack * sizeof(T));
+    if (mBack > 0)
+      memmove(&mBuf[0], &mBuf[mFront], mBack * sizeof(T));
     mFront = 0;
   }
 
@@ -797,7 +687,8 @@ protected:
   {
     int bytes = size * sizeof(T);
     int rest = bytes % 4096;
-    if (rest) size = (bytes - rest + 4096) / sizeof(T);
+    if (rest)
+      size = (bytes - rest + 4096) / sizeof(T);
     return size;
   }
 

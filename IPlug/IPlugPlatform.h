@@ -1,10 +1,10 @@
 /*
  ==============================================================================
- 
- This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers. 
- 
+
+ This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
+
  See LICENSE.txt for  more info.
- 
+
  ==============================================================================
 */
 
@@ -39,18 +39,26 @@
 #endif
 
 #if __cplusplus == 201402L
-#define IPLUG_CPP14
+  #define IPLUG_CPP14
 #endif
 
-//these two components of the c standard library are used thoughtout IPlug/WDL 
-#include <cstring>
+// these two components of the c standard library are used thoughtout IPlug/WDL
 #include <cstdlib>
+#include <cstring>
 
 #ifdef PARAMS_MUTEX
-  #define ENTER_PARAMS_MUTEX mParams_mutex.Enter(); Trace(TRACELOC, "%s", "ENTER_PARAMS_MUTEX");
-  #define LEAVE_PARAMS_MUTEX mParams_mutex.Leave(); Trace(TRACELOC, "%s", "LEAVE_PARAMS_MUTEX");
-  #define ENTER_PARAMS_MUTEX_STATIC _this->mParams_mutex.Enter(); Trace(TRACELOC, "%s", "ENTER_PARAMS_MUTEX");
-  #define LEAVE_PARAMS_MUTEX_STATIC _this->mParams_mutex.Leave(); Trace(TRACELOC, "%s", "LEAVE_PARAMS_MUTEX");
+  #define ENTER_PARAMS_MUTEX                                                                                                                                                                           \
+    mParams_mutex.Enter();                                                                                                                                                                             \
+    Trace(TRACELOC, "inst=%p %s", this, "ENTER_PARAMS_MUTEX");
+  #define LEAVE_PARAMS_MUTEX                                                                                                                                                                           \
+    mParams_mutex.Leave();                                                                                                                                                                             \
+    Trace(TRACELOC, "inst=%p %s", this, "LEAVE_PARAMS_MUTEX");
+  #define ENTER_PARAMS_MUTEX_STATIC                                                                                                                                                                    \
+    _this->mParams_mutex.Enter();                                                                                                                                                                      \
+    Trace(TRACELOC, "inst=%p %s", _this, "ENTER_PARAMS_MUTEX");
+  #define LEAVE_PARAMS_MUTEX_STATIC                                                                                                                                                                    \
+    _this->mParams_mutex.Leave();                                                                                                                                                                      \
+    Trace(TRACELOC, "inst=%p %s", _this, "LEAVE_PARAMS_MUTEX");
 #else
   #define ENTER_PARAMS_MUTEX
   #define LEAVE_PARAMS_MUTEX
@@ -58,13 +66,22 @@
   #define LEAVE_PARAMS_MUTEX_STATIC
 #endif
 
-#define BEGIN_IPLUG_NAMESPACE namespace iplug {
+#define BEGIN_IPLUG_NAMESPACE                                                                                                                                                                          \
+  namespace iplug                                                                                                                                                                                      \
+  {
 #define END_IPLUG_NAMESPACE }
 
-#define BEGIN_IGRAPHICS_NAMESPACE namespace igraphics {
+#define BEGIN_IGRAPHICS_NAMESPACE                                                                                                                                                                      \
+  namespace igraphics                                                                                                                                                                                  \
+  {
 #define END_IGRAPHICS_NAMESPACE }
 
-namespace iplug {namespace igraphics {}};
+namespace iplug
+{
+namespace igraphics
+{
+}
+}; // namespace iplug
 
 #if defined IGRAPHICS_GLES2 || IGRAPHICS_GLES3 || IGRAPHICS_GL2 || defined IGRAPHICS_GL3
   #define IGRAPHICS_GL

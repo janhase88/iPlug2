@@ -1,20 +1,20 @@
 /*
  ==============================================================================
- 
- This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers. 
- 
+
+ This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
+
  See LICENSE.txt for  more info.
- 
+
  ==============================================================================
 */
 
 #include <cstdio>
 
-#include "pluginterfaces/base/ustring.h"
 #include "pluginterfaces/base/ibstream.h"
-#include "pluginterfaces/vst/ivstparameterchanges.h"
+#include "pluginterfaces/base/ustring.h"
 #include "pluginterfaces/vst/ivstevents.h"
 #include "pluginterfaces/vst/ivstmidicontrollers.h"
+#include "pluginterfaces/vst/ivstparameterchanges.h"
 
 #include "IPlugVST3.h"
 
@@ -27,10 +27,10 @@ using namespace Vst;
 #pragma mark - IPlugVST3 Constructor/Destructor
 
 IPlugVST3::IPlugVST3(const InstanceInfo& info, const Config& config)
-: IPlugAPIBase(config, kAPIVST3)
-, IPlugVST3ProcessorBase(config, *this)
-, IPlugVST3ControllerBase(parameters)
-, mView(nullptr)
+  : IPlugAPIBase(config, kAPIVST3)
+  , IPlugVST3ProcessorBase(config, *this)
+  , IPlugVST3ControllerBase(parameters)
+  , mView(nullptr)
 {
   CreateTimer();
 }
@@ -39,10 +39,7 @@ IPlugVST3::~IPlugVST3() {}
 
 #pragma mark AudioEffect overrides
 
-Steinberg::uint32 PLUGIN_API IPlugVST3::getTailSamples()
-{
-  return GetTailIsInfinite() ? kInfiniteTail : GetTailSize();
-}
+Steinberg::uint32 PLUGIN_API IPlugVST3::getTailSamples() { return GetTailIsInfinite() ? kInfiniteTail : GetTailSize(); }
 
 tresult PLUGIN_API IPlugVST3::initialize(FUnknown* context)
 {
@@ -56,7 +53,7 @@ tresult PLUGIN_API IPlugVST3::initialize(FUnknown* context)
     IPlugVST3GetHost(this, context);
     OnHostIdentified();
     OnParamReset(kReset);
-    
+
     return kResultOk;
   }
 
@@ -73,7 +70,7 @@ tresult PLUGIN_API IPlugVST3::terminate()
 tresult PLUGIN_API IPlugVST3::setBusArrangements(SpeakerArrangement* pInputBusArrangements, int32 numInBuses, SpeakerArrangement* pOutputBusArrangements, int32 numOutBuses)
 {
   TRACE
- 
+
   return IPlugVST3ProcessorBase::SetBusArrangements(this, pInputBusArrangements, numInBuses, pOutputBusArrangements, numOutBuses) ? kResultTrue : kResultFalse;
 }
 
@@ -81,7 +78,7 @@ tresult PLUGIN_API IPlugVST3::setActive(TBool state)
 {
   TRACE
 
-  OnActivate((bool) state);
+  OnActivate((bool)state);
   return SingleComponentEffect::setActive(state);
 }
 
@@ -94,9 +91,9 @@ tresult PLUGIN_API IPlugVST3::setupProcessing(ProcessSetup& newSetup)
 
 tresult PLUGIN_API IPlugVST3::setProcessing(TBool state)
 {
-  Trace(TRACELOC, " state: %i", state);
+  Trace(TRACELOC, "inst=%p state: %i", this, state);
 
-  return SetProcessing((bool) state) ? kResultOk : kResultFalse;
+  return SetProcessing((bool)state) ? kResultOk : kResultFalse;
 }
 
 tresult PLUGIN_API IPlugVST3::process(ProcessData& data)
@@ -107,30 +104,24 @@ tresult PLUGIN_API IPlugVST3::process(ProcessData& data)
   return kResultOk;
 }
 
-tresult PLUGIN_API IPlugVST3::canProcessSampleSize(int32 symbolicSampleSize)
-{
-  return CanProcessSampleSize(symbolicSampleSize) ? kResultTrue : kResultFalse;
-}
+tresult PLUGIN_API IPlugVST3::canProcessSampleSize(int32 symbolicSampleSize) { return CanProcessSampleSize(symbolicSampleSize) ? kResultTrue : kResultFalse; }
 
 tresult PLUGIN_API IPlugVST3::setState(IBStream* pState)
 {
   TRACE
-  
-  return IPlugVST3State::SetState(this, pState) ? kResultOk :kResultFalse;
+
+  return IPlugVST3State::SetState(this, pState) ? kResultOk : kResultFalse;
 }
 
 tresult PLUGIN_API IPlugVST3::getState(IBStream* pState)
 {
   TRACE
-  
-  return IPlugVST3State::GetState(this, pState) ? kResultOk :kResultFalse;
+
+  return IPlugVST3State::GetState(this, pState) ? kResultOk : kResultFalse;
 }
 
 #pragma mark IEditController overrides
-ParamValue PLUGIN_API IPlugVST3::getParamNormalized(ParamID tag)
-{
-  return IPlugVST3ControllerBase::GetParamNormalized(tag);
-}
+ParamValue PLUGIN_API IPlugVST3::getParamNormalized(ParamID tag) { return IPlugVST3ControllerBase::GetParamNormalized(tag); }
 
 tresult PLUGIN_API IPlugVST3::setParamNormalized(ParamID tag, ParamValue value)
 {
@@ -147,7 +138,7 @@ IPlugView* PLUGIN_API IPlugVST3::createView(const char* name)
     mView = new ViewType(*this);
     return mView;
   }
-  
+
   return nullptr;
 }
 
@@ -184,28 +175,25 @@ tresult PLUGIN_API IPlugVST3::getMidiControllerAssignment(int32 busIndex, int16 
 
 #pragma mark IInfoListener overrides
 
-Steinberg::tresult PLUGIN_API IPlugVST3::setChannelContextInfos(Steinberg::Vst::IAttributeList* pList)
-{
-  return IPlugVST3ControllerBase::SetChannelContextInfos(pList) ? kResultTrue : kResultFalse;
-}
+Steinberg::tresult PLUGIN_API IPlugVST3::setChannelContextInfos(Steinberg::Vst::IAttributeList* pList) { return IPlugVST3ControllerBase::SetChannelContextInfos(pList) ? kResultTrue : kResultFalse; }
 
 #pragma mark IPlugAPIBase overrides
 
 void IPlugVST3::BeginInformHostOfParamChange(int idx)
 {
-  Trace(TRACELOC, "%d", idx);
+  Trace(TRACELOC, "inst=%p %d", mInstanceID, idx);
   beginEdit(idx);
 }
 
 void IPlugVST3::InformHostOfParamChange(int idx, double normalizedValue)
 {
-  Trace(TRACELOC, "%d:%f", idx, normalizedValue);
+  Trace(TRACELOC, "inst=%p %d:%f", mInstanceID, idx, normalizedValue);
   performEdit(idx, normalizedValue);
 }
 
 void IPlugVST3::EndInformHostOfParamChange(int idx)
 {
-  Trace(TRACELOC, "%d", idx);
+  Trace(TRACELOC, "inst=%p %d", mInstanceID, idx);
   endEdit(idx);
 }
 
@@ -224,7 +212,7 @@ bool IPlugVST3::EditorResize(int viewWidth, int viewHeight)
 
     SetEditorSize(viewWidth, viewHeight);
   }
-  
+
   return true;
 }
 
@@ -234,7 +222,7 @@ void IPlugVST3::DirtyParametersFromUI()
 {
   for (int i = 0; i < NParams(); i++)
     IPlugVST3ControllerBase::SetVST3ParamNormalized(i, GetParam(i)->GetNormalized());
-  
+
   startGroupEdit();
   IPlugAPIBase::DirtyParametersFromUI();
   finishGroupEdit();
@@ -249,7 +237,7 @@ void IPlugVST3::SendParameterValueFromUI(int paramIdx, double normalisedValue)
 void IPlugVST3::SetLatency(int latency)
 {
   // N.B. set the latency even if the handler is not yet set
-  
+
   IPlugProcessor::SetLatency(latency);
 
   if (componentHandler)

@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include <mutex>
+
 /**
  * @file IPlug_include_in_plug_src.h
  * @brief IPlug source include
@@ -74,7 +76,8 @@
     {
       using namespace iplug;
 
-      IPlugVST2* pPlug = iplug::MakePlug(iplug::InstanceInfo{hostCallback});
+      static std::mutex sMakePlugMutex;
+      IPlugVST2* pPlug = iplug::MakePlug(iplug::InstanceInfo{hostCallback}, sMakePlugMutex);
 
       if (pPlug)
       {
@@ -131,7 +134,8 @@
   #if defined VST3_API
   static Steinberg::FUnknown* createInstance(void*)
   {
-    return (Steinberg::Vst::IAudioProcessor*) iplug::MakePlug(iplug::InstanceInfo());
+    static std::mutex sMakePlugMutex;
+    return (Steinberg::Vst::IAudioProcessor*) iplug::MakePlug(iplug::InstanceInfo(), sMakePlugMutex);
   }
 
   BEGIN_FACTORY_DEF(PLUG_MFR, PLUG_URL_STR, PLUG_EMAIL_STR)
@@ -151,12 +155,14 @@
   #elif defined VST3P_API
   static Steinberg::FUnknown* createProcessorInstance(void*)
   {
-      return MakeProcessor();
+    static std::mutex sMakeProcessorMutex;
+    return MakeProcessor(sMakeProcessorMutex);
   }
 
   static Steinberg::FUnknown* createControllerInstance(void*)
   {
-    return MakeController();
+    static std::mutex sMakeControllerMutex;
+    return MakeController(sMakeControllerMutex);
   }
 
   BEGIN_FACTORY_DEF(PLUG_MFR, PLUG_URL_STR, PLUG_EMAIL_STR)
@@ -207,7 +213,8 @@
   {
     EMSCRIPTEN_KEEPALIVE void* createModule()
     {
-      Processor* pWAM = dynamic_cast<Processor*>(iplug::MakePlug(iplug::InstanceInfo()));
+      static std::mutex sMakePlugMutex;
+      Processor* pWAM = dynamic_cast<Processor*>(iplug::MakePlug(iplug::InstanceInfo(), sMakePlugMutex));
       return (void*) pWAM;
     }
   }
@@ -236,7 +243,8 @@
     
     EMSCRIPTEN_KEEPALIVE void iplug_fsready()
     {
-      gPlug = std::unique_ptr<iplug::IPlugWeb>(iplug::MakePlug(iplug::InstanceInfo()));
+      static std::mutex sMakePlugMutex;
+      gPlug = std::unique_ptr<iplug::IPlugWeb>(iplug::MakePlug(iplug::InstanceInfo(), sMakePlugMutex));
       gPlug->SetHost("www", 0);
       gPlug->OpenWindow(nullptr);
       iplug_syncfs(); // plug in may initialise settings in constructor, write to persistent data after init
@@ -345,7 +353,8 @@ static const clap_plugin* clap_create_plugin(const clap_plugin_factory_t *factor
 {
   if (!strcmp(gPluginDesc->id, plugin_id))
   {
-    IPlugCLAP* pPlug = MakePlug(InstanceInfo{gPluginDesc.get(), host});
+    static std::mutex sMakePlugMutex;
+    IPlugCLAP* pPlug = MakePlug(InstanceInfo{gPluginDesc.get(), host}, sMakePlugMutex);
     return pPlug->clapPlugin();
   }
   
@@ -388,12 +397,9 @@ BEGIN_IPLUG_NAMESPACE
 
 #if defined VST2_API || defined VST3_API || defined AAX_API || defined AUv3_API || defined APP_API  || defined WAM_API || defined WEB_API || defined CLAP_API
 
-Plugin* MakePlug(const iplug::InstanceInfo& info)
+Plugin* MakePlug(const iplug::InstanceInfo& info, std::mutex& mutex)
 {
-  // From VST3 - is this necessary?
-  static WDL_Mutex sMutex;
-  WDL_MutexLock lock(&sMutex);
-  
+  std::lock_guard<std::mutex> lock(mutex);
   return new PLUG_CLASS_NAME(info);
 }
 
@@ -414,13 +420,12 @@ Plugin* MakePlug(void* pMemory)
 #pragma mark - VST3 Controller
 #elif defined VST3C_API
 
-Steinberg::FUnknown* MakeController()
+Steinberg::FUnknown* MakeController(std::mutex& mutex)
 {
-  static WDL_Mutex sMutex;
-  WDL_MutexLock lock(&sMutex);
+  std::lock_guard<std::mutex> lock(mutex);
   iplug::IPlugVST3Controller::InstanceInfo info;
   info.mOtherGUID = Steinberg::FUID(VST3_PROCESSOR_UID);
-  // If you are trying to build a distributed VST3 plug-in and you hit an error here like "no matching constructor..." or 
+  // If you are trying to build a distributed VST3 plug-in and you hit an error here like "no matching constructor..." or
   // "error: unknown type name 'VST3Controller'", you need to replace all instances of the name of your plug-in class (e.g. IPlugEffect)
   // with the macro PLUG_CLASS_NAME, as defined in your plug-ins config.h, so IPlugEffect::IPlugEffect() {} becomes PLUG_CLASS_NAME::PLUG_CLASS_NAME().
   return static_cast<Steinberg::Vst::IEditController*>(new PLUG_CLASS_NAME(info));
@@ -429,10 +434,9 @@ Steinberg::FUnknown* MakeController()
 #pragma mark - VST3 Processor
 #elif defined VST3P_API
 
-Steinberg::FUnknown* MakeProcessor()
+Steinberg::FUnknown* MakeProcessor(std::mutex& mutex)
 {
-  static WDL_Mutex sMutex;
-  WDL_MutexLock lock(&sMutex);
+  std::lock_guard<std::mutex> lock(mutex);
   iplug::IPlugVST3Processor::InstanceInfo info;
   info.mOtherGUID = Steinberg::FUID(VST3_CONTROLLER_UID);
   return static_cast<Steinberg::Vst::IAudioProcessor*>(new PLUG_CLASS_NAME(info));

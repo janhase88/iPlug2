@@ -13,6 +13,7 @@
 
 #include "IPlugAPIBase.h"
 #include <emscripten/val.h>
+#include <mutex>
 
 BEGIN_IPLUG_NAMESPACE
 
@@ -48,7 +49,7 @@ private:
   IByteChunk mSAMFUIBuf;
 };
 
-IPlugWeb* MakePlug(const InstanceInfo& info);
+IPlugWeb* MakePlug(const InstanceInfo& info, std::mutex& mutex);
 
 END_IPLUG_NAMESPACE
 

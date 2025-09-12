@@ -21,6 +21,7 @@
 
 #include "IPlugVST3_ProcessorBase.h"
 #include "IPlugVST3_Common.h"
+#include <mutex>
 
 /**
  * @file
@@ -85,8 +86,8 @@ private:
   IMidiQueue mMidiOutputQueue;
 };
 
-Steinberg::FUnknown* MakeProcessor();
-extern Steinberg::FUnknown* MakeController();
+Steinberg::FUnknown* MakeProcessor(std::mutex& mutex);
+extern Steinberg::FUnknown* MakeController(std::mutex& mutex);
 
 END_IPLUG_NAMESPACE
 

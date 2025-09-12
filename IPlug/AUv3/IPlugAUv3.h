@@ -19,6 +19,7 @@
 
 #include <cstring>
 #include <unordered_map>
+#include <mutex>
 
 #include <CoreAudio/CoreAudioTypes.h>
 
@@ -89,7 +90,7 @@ private:
   AudioTimeStamp mLastTimeStamp;
 };
 
-IPlugAUv3* MakePlug(const InstanceInfo& info);
+IPlugAUv3* MakePlug(const InstanceInfo& info, std::mutex& mutex);
 
 END_IPLUG_NAMESPACE
 

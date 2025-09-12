@@ -15,6 +15,7 @@
 #endif
 
 #include "IPlugLogger.h"
+#include <mutex>
 
 using namespace iplug;
 
@@ -25,10 +26,11 @@ using namespace iplug;
 #define STRBUFSZ 100
 
 std::unique_ptr<IPlugAPPHost> IPlugAPPHost::sInstance;
+static std::mutex sMakePlugMutex;
 UINT gSCROLLMSG;
 
 IPlugAPPHost::IPlugAPPHost()
-: mIPlug(MakePlug(InstanceInfo{this}))
+: mIPlug(MakePlug(InstanceInfo{this}, sMakePlugMutex))
 {
 }
 

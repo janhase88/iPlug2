@@ -34,6 +34,7 @@
 #include "IPlugVST3_Common.h"
 #include "IPlugVST3_ProcessorBase.h"
 #include "IPlugVST3_View.h"
+#include <mutex>
 
 BEGIN_IPLUG_NAMESPACE
 
@@ -170,7 +171,7 @@ private:
   ViewType* mView;
 };
 
-IPlugVST3* MakePlug(const InstanceInfo& info);
+IPlugVST3* MakePlug(const InstanceInfo& info, std::mutex& mutex);
 
 END_IPLUG_NAMESPACE
 

@@ -447,9 +447,16 @@ void IGraphicsNanoVG::ApplyShadowMask(ILayerPtr& layer, RawBitmapData& mask, con
 }
 
 void IGraphicsNanoVG::OnViewInitialized(void* pContext)
-{  
+{
+#if defined IGRAPHICS_GL || defined IGRAPHICS_METAL
+  // Ensure this instance's graphics context is current while we create
+  // the NanoVG context. Without doing so, multiple plug-ins may end up
+  // sharing whichever context happens to be current, leading to
+  // cross-talk between windows.
+  ScopedGLContext scopedGLCtx{this};
+#endif
 #if defined IGRAPHICS_METAL
-  mVG = nvgCreateContext(pContext, NVG_ANTIALIAS | NVG_TRIPLE_BUFFER); //TODO: NVG_STENCIL_STROKES currently has issues
+  mVG = nvgCreateContext(pContext, NVG_ANTIALIAS | NVG_TRIPLE_BUFFER); // TODO: NVG_STENCIL_STROKES currently has issues
 #else
   mVG = nvgCreateContext(NVG_ANTIALIAS /*| NVG_STENCIL_STROKES*/);
 #endif
@@ -460,20 +467,26 @@ void IGraphicsNanoVG::OnViewInitialized(void* pContext)
 
 void IGraphicsNanoVG::OnViewDestroyed()
 {
+  // Activate this view's graphics context so NanoVG can tear down GPU
+  // resources owned by this instance without affecting others.
+#if defined IGRAPHICS_GL || defined IGRAPHICS_METAL
+  ScopedGLContext scopedGLCtx{this};
+#endif
+
   // need to remove all the controls to free framebuffers, before deleting context
   RemoveAllControls();
 
   StaticStorage<APIBitmap>::Accessor storage(mBitmapCache);
   storage.Clear();
-  
-  if(mMainFrameBuffer != nullptr)
+
+  if (mMainFrameBuffer != nullptr)
     nvgDeleteFramebuffer(mMainFrameBuffer);
-  
+
   mMainFrameBuffer = nullptr;
-  
-  if(mVG)
+
+  if (mVG)
     nvgDeleteContext(mVG);
-  
+
   mVG = nullptr;
 }
 

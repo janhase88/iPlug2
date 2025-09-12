@@ -60,8 +60,6 @@ void Timer_impl::TimerProc(CFRunLoopTimerRef timer, void* info)
 
 Timer* Timer::Create(ITimerFunction func, uint32_t intervalMs) { return new Timer_impl(func, intervalMs); }
 
-ATOM Timer_impl::sWindowClass = 0;
-
 static const UINT kTimerMsg = WM_APP + 0x100;
 static const wchar_t* kTimerWndClass = L"IPlugTimerWnd";
 
@@ -69,23 +67,32 @@ Timer_impl::Timer_impl(ITimerFunction func, uint32_t intervalMs)
   : mTimerFunc(func)
   , mIntervalMs(intervalMs)
 {
-  if (!sWindowClass)
+  if (!mWindowClass)
   {
     WNDCLASSW wc = {};
     wc.lpfnWndProc = Timer_impl::WndProc;
     wc.lpszClassName = kTimerWndClass;
-    sWindowClass = RegisterClassW(&wc);
-    assert(sWindowClass && "Timer window class registration failed");
+    mWindowClass = RegisterClassW(&wc);
+    assert(mWindowClass && "Timer window class registration failed");
   }
 
-  mMsgWnd = CreateWindowExW(0, kTimerWndClass, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, GetModuleHandle(nullptr), this);
+  mMsgWnd = CreateWindowExW(0, MAKEINTATOM(mWindowClass), L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, GetModuleHandle(nullptr), this);
   assert(mMsgWnd && "Timer message window creation failed");
 
   BOOL ok = CreateTimerQueueTimer(&mTimer, nullptr, Timer_impl::TimerProc, this, mIntervalMs, mIntervalMs, WT_EXECUTEDEFAULT);
   assert(ok && "CreateTimerQueueTimer failed");
 }
 
-Timer_impl::~Timer_impl() { Stop(); }
+Timer_impl::~Timer_impl()
+{
+  Stop();
+
+  if (mWindowClass)
+  {
+    UnregisterClassW(reinterpret_cast<LPCWSTR>(MAKEINTATOM(mWindowClass)), GetModuleHandle(nullptr));
+    mWindowClass = 0;
+  }
+}
 
 void Timer_impl::Stop()
 {

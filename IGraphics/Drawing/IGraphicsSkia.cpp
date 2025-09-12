@@ -1,5 +1,6 @@
 #include <cmath>
 #include <map>
+#include <mutex>
 
 #include "IGraphicsSkia.h"
 
@@ -301,15 +302,21 @@ END_IPLUG_NAMESPACE
 
 #pragma mark -
 
-static sk_sp<SkFontMgr> SFontMgrFactory()
+static sk_sp<SkFontMgr> sFontMgr;
+static std::once_flag sFontMgrOnce;
+
+static sk_sp<SkFontMgr> GetSharedFontMgr()
 {
+  std::call_once(sFontMgrOnce, [] {
 #if defined OS_MAC || defined OS_IOS
-  return SkFontMgr_New_CoreText(nullptr);
+    sFontMgr = SkFontMgr_New_CoreText(nullptr);
 #elif defined OS_WIN
-  return SkFontMgr_New_DirectWrite();
+    sFontMgr = SkFontMgr_New_DirectWrite();
 #else
   #error "Not supported"
 #endif
+  });
+  return sFontMgr;
 }
 
 IGraphicsSkia::IGraphicsSkia(IGEditorDelegate& dlg, int w, int h, int fps, float scale)
@@ -325,7 +332,7 @@ IGraphicsSkia::IGraphicsSkia(IGEditorDelegate& dlg, int w, int h, int fps, float
   DBGMSG("IGraphics Skia GL @ %i FPS\n", fps);
 #endif
 
-  mFontMgr = SFontMgrFactory();
+  mFontMgr = GetSharedFontMgr();
 
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
   mTypefaceProvider = sk_make_sp<skia::textlayout::TypefaceFontProvider>();
@@ -356,7 +363,6 @@ IGraphicsSkia::~IGraphicsSkia()
 
   StaticStorage<Font>::Accessor storage(mFontCache);
   storage.Clear();
-  mFontMgr.reset();
 }
 
 bool IGraphicsSkia::BitmapExtSupported(const char* ext)

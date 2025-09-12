@@ -29,6 +29,8 @@ void* IGEditorDelegate::OpenWindow(void* pParent)
   if(!mGraphics)
   {
     mGraphics = std::unique_ptr<IGraphics>(CreateGraphics());
+    mGraphics->EnableAutoScale(false);
+    mGraphics->SetScreenScale(1.f);
     if (mLastWidth && mLastHeight && mLastScale)
       GetUI()->Resize(mLastWidth, mLastHeight, mLastScale);
   }

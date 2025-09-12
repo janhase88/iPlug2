@@ -14,6 +14,7 @@
  */
 
 #include "IPlugTimer.h"
+#include <cassert>
 
 using namespace iplug;
 

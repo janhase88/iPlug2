@@ -18,6 +18,7 @@
 
 #include "IPlugTimer.h"
 #include "IPlugDelegate_select.h"
+#include "IPlugPlatform.h"
 
 struct reaper_plugin_info_t;
 
@@ -51,6 +52,11 @@ public:
   
   void ToggleDocking();
 
+  void SetWinModuleHandle(void* pInstance) { mHInstance = (HINSTANCE) pInstance; }
+  void* GetWinModuleHandle() const { return mHInstance; }
+  void SetMainWnd(HWND wnd) { mHWND = wnd; }
+  HWND GetMainWnd() const { return mHWND; }
+
 public:
   // Reaper calls back to this when it wants to execute an action registered by the extension plugin
   static bool HookCommandProc(int command, int flag);
@@ -66,6 +72,8 @@ private:
   reaper_plugin_info_t* mRec = nullptr;
   std::unique_ptr<Timer> mTimer;
   bool mDocked = false;
+  HINSTANCE mHInstance = nullptr;
+  HWND mHWND = nullptr;
 };
 
 END_IPLUG_NAMESPACE

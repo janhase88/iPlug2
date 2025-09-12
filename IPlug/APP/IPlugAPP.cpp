@@ -19,13 +19,13 @@ extern float GetScaleForHWND(HWND hWnd);
 
 using namespace iplug;
 
-extern HWND gHWND;
 
 IPlugAPP::IPlugAPP(const InstanceInfo& info, const Config& config)
 : IPlugAPIBase(config, kAPIAPP)
 , IPlugProcessor(config, kAPIAPP)
 {
   mAppHost = (IPlugAPPHost*) info.pAppHost;
+  SetWinModuleHandle(info.pAppInstance);
   
   Trace(TRACELOC, "%s%s", config.pluginName, config.channelIOStr);
 
@@ -47,8 +47,9 @@ bool IPlugAPP::EditorResize(int viewWidth, int viewHeight)
     RECT rcClient, rcWindow;
     POINT ptDiff;
     
-    GetClientRect(gHWND, &rcClient);
-    GetWindowRect(gHWND, &rcWindow);
+    HWND hwnd = (HWND) mAppHost->GetMainWnd();
+    GetClientRect(hwnd, &rcClient);
+    GetWindowRect(hwnd, &rcWindow);
     
     ptDiff.x = (rcWindow.right - rcWindow.left) - rcClient.right;
     ptDiff.y = (rcWindow.bottom - rcWindow.top) - rcClient.bottom;
@@ -57,12 +58,12 @@ bool IPlugAPP::EditorResize(int viewWidth, int viewHeight)
     
     #ifdef OS_WIN
     flags = SWP_NOMOVE;
-    float ss = GetScaleForHWND(gHWND);
+    float ss = GetScaleForHWND(hwnd);
     #else
     float ss = 1.f;
     #endif
     
-    SetWindowPos(gHWND, 0,
+    SetWindowPos(hwnd, 0,
                  static_cast<LONG>(rcWindow.left * ss),
                  static_cast<LONG>((rcWindow.bottom - viewHeight - ptDiff.y) * ss),
                  static_cast<LONG>((viewWidth + ptDiff.x) * ss),

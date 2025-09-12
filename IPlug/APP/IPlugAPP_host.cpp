@@ -27,8 +27,9 @@ using namespace iplug;
 std::unique_ptr<IPlugAPPHost> IPlugAPPHost::sInstance;
 UINT gSCROLLMSG;
 
-IPlugAPPHost::IPlugAPPHost()
-: mIPlug(MakePlug(InstanceInfo{this}))
+IPlugAPPHost::IPlugAPPHost(HINSTANCE hInstance)
+: mHInstance(hInstance)
+, mIPlug(MakePlug(InstanceInfo{this, hInstance}))
 {
 }
 
@@ -46,9 +47,9 @@ IPlugAPPHost::~IPlugAPPHost()
 }
 
 //static
-IPlugAPPHost* IPlugAPPHost::Create()
+IPlugAPPHost* IPlugAPPHost::Create(HINSTANCE hInstance)
 {
-  sInstance = std::make_unique<IPlugAPPHost>();
+  sInstance = std::make_unique<IPlugAPPHost>(hInstance);
   return sInstance.get();
 }
 
@@ -448,7 +449,7 @@ bool IPlugAPPHost::TryToChangeAudio()
   }
 
   if (failedToFindDevice)
-    MessageBox(gHWND, "Please check your soundcard settings in Preferences", "Error", MB_OK);
+    MessageBox(mMainWnd, "Please check your soundcard settings in Preferences", "Error", MB_OK);
 
   if (inputID != -1 && outputID != -1)
   {

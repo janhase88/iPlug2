@@ -26,6 +26,7 @@ BEGIN_IPLUG_NAMESPACE
 struct InstanceInfo
 {
   void* pAppHost;
+  void* pAppInstance;
 };
 
 class IPlugAPPHost;

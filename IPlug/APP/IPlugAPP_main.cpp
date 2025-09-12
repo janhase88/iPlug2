@@ -27,8 +27,6 @@ using namespace iplug;
 
 extern WDL_DLGRET MainDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
-HWND gHWND;
-extern HINSTANCE gHINSTANCE;
 UINT gScrollMessage;
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdParam, int nShowCmd)
@@ -47,16 +45,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdPa
       return 0;
     }
 #endif
-    gHINSTANCE = hInstance;
-    
     InitCommonControls();
     gScrollMessage = RegisterWindowMessage("MSWHEEL_ROLLMSG");
 
-    IPlugAPPHost* pAppHost = IPlugAPPHost::Create();
+    IPlugAPPHost* pAppHost = IPlugAPPHost::Create(hInstance);
     pAppHost->Init();
     pAppHost->TryToChangeAudio();
 
-    HACCEL hAccel = LoadAccelerators(gHINSTANCE, MAKEINTRESOURCE(IDR_ACCELERATOR1));
+    HACCEL hAccel = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDR_ACCELERATOR1));
 
     static UINT(WINAPI *__SetProcessDpiAwarenessContext)(DPI_AWARENESS_CONTEXT);
 
@@ -72,12 +68,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdPa
       __SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     }
 
-    CreateDialog(gHINSTANCE, MAKEINTRESOURCE(IDD_DIALOG_MAIN), GetDesktopWindow(), IPlugAPPHost::MainDlgProc);
+    CreateDialog(hInstance, MAKEINTRESOURCE(IDD_DIALOG_MAIN), GetDesktopWindow(), IPlugAPPHost::MainDlgProc);
 
 #if !defined _DEBUG || defined NO_IGRAPHICS
-    HMENU menu = GetMenu(gHWND);
+    HMENU menu = GetMenu(pAppHost->GetMainWnd());
     RemoveMenu(menu, 1, MF_BYPOSITION);
-    DrawMenuBar(gHWND);
+    DrawMenuBar(pAppHost->GetMainWnd());
 #endif
 
     for(;;)
@@ -100,7 +96,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdPa
         continue;
       }
       
-      if (gHWND && (TranslateAccelerator(gHWND, hAccel, &msg) || IsDialogMessage(gHWND, &msg)))
+      HWND mainHwnd = pAppHost->GetMainWnd();
+      if (mainHwnd && (TranslateAccelerator(mainHwnd, hAccel, &msg) || IsDialogMessage(mainHwnd, &msg)))
         continue;
       
       // default processing for other dialogs
@@ -125,9 +122,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdPa
       DispatchMessage(&msg);
     }
     
-    // in case gHWND didnt get destroyed -- this corresponds to SWELLAPP_DESTROY roughly
-    if (gHWND)
-      DestroyWindow(gHWND);
+    // in case the window didn't get destroyed -- this corresponds to SWELLAPP_DESTROY roughly
+    if (pAppHost->GetMainWnd())
+      DestroyWindow(pAppHost->GetMainWnd());
     
 #ifndef APP_ALLOW_MULTIPLE_INSTANCES
     ReleaseMutex(hMutex);
@@ -146,7 +143,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdPa
 #include "IPlugSWELL.h"
 #include "IPlugPaths.h"
 
-HWND gHWND;
 extern HMENU SWELL_app_stocksysmenu;
 
 int main(int argc, char *argv[])
@@ -248,7 +244,7 @@ INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
       SetMenuItemModifier(menu, ID_SHOW_FPS, MF_BYCOMMAND, 'F', FCONTROL);
 #endif
 
-      HWND hwnd = CreateDialog(gHINST, MAKEINTRESOURCE(IDD_DIALOG_MAIN), NULL, IPlugAPPHost::MainDlgProc);
+    HWND hwnd = CreateDialog(pAppHost->GetInstance(), MAKEINTRESOURCE(IDD_DIALOG_MAIN), NULL, IPlugAPPHost::MainDlgProc);
 
       if (menu)
       {
@@ -260,12 +256,12 @@ INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
     }
     case SWELLAPP_ONCOMMAND:
       // this is to catch commands coming from the system menu etc
-      if (gHWND && (parm1&0xffff))
-        SendMessage(gHWND, WM_COMMAND, parm1 & 0xffff, 0);
+      if (IPlugAPPHost::sInstance && IPlugAPPHost::sInstance->GetMainWnd() && (parm1&0xffff))
+        SendMessage((HWND) IPlugAPPHost::sInstance->GetMainWnd(), WM_COMMAND, parm1 & 0xffff, 0);
       break;
     case SWELLAPP_DESTROY:
-      if (gHWND)
-        DestroyWindow(gHWND);
+      if (IPlugAPPHost::sInstance && IPlugAPPHost::sInstance->GetMainWnd())
+        DestroyWindow((HWND) IPlugAPPHost::sInstance->GetMainWnd());
       break;
     case SWELLAPP_PROCESSMESSAGE:
       MSG* pMSG = (MSG*) parm1;
@@ -306,31 +302,8 @@ INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
 //#include <IPlugSWELL.h>
 //#include "swell-internal.h" // fixes problem with HWND forward decl
 //
-//HWND gHWND;
 //UINT gScrollMessage;
 //extern HMENU SWELL_app_stocksysmenu;
-//
-//int main(int argc, char **argv)
-//{
-//  SWELL_initargs(&argc, &argv);
-//  SWELL_Internal_PostMessage_Init();
-//  SWELL_ExtendedAPI("APPNAME", (void*) "IGraphics Test");
-//
-//  HMENU menu = LoadMenu(NULL, MAKEINTRESOURCE(IDR_MENU1));
-//  CreateDialog(gHINSTANCE, MAKEINTRESOURCE(IDD_DIALOG_MAIN), NULL, MainDlgProc);
-//  SetMenu(gHWND, menu);
-//
-//  while (!gHWND->m_hashaddestroy)
-//  {
-//    SWELL_RunMessageLoop();
-//    Sleep(10);
-//  };
-//
-//  if (gHWND)
-//    DestroyWindow(gHWND);
-//
-//  return 0;
-//}
 //
 //INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
 //{
@@ -383,24 +356,12 @@ INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
 //      // if we want to set any default modifiers for items in the menus, we can use:
 //      // SetMenuItemModifier(menu,commandID,MF_BYCOMMAND,'A',FCONTROL) etc.
 //
-//      HWND hwnd = CreateDialog(gHINST,MAKEINTRESOURCE(IDD_DIALOG_MAIN), NULL, MainDlgProc);
 //
-//      if (menu)
-//      {
-//        SetMenu(hwnd, menu); // set the menu for the dialog to our menu (on Windows that menu is set from the .rc, but on SWELL
-//        SWELL_SetDefaultModalWindowMenu(menu); // other windows will get the stock (bundle) menus
-//      }
 //
 //      break;
 //    }
 //    case SWELLAPP_ONCOMMAND:
 //      // this is to catch commands coming from the system menu etc
-//      if (gHWND && (parm1&0xffff))
-//        SendMessage(gHWND, WM_COMMAND, parm1 & 0xffff, 0);
-//      break;
-//    case SWELLAPP_DESTROY:
-//      if (gHWND)
-//        DestroyWindow(gHWND);
 //      break;
 //    case SWELLAPP_PROCESSMESSAGE: // can hook keyboard input here
 //      // parm1 = (MSG*), should we want it -- look in swell.h to see what the return values refer to

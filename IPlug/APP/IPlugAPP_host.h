@@ -64,8 +64,6 @@
 
 #define OFF_TEXT "off"
 
-extern HWND gHWND;
-extern HINSTANCE gHINSTANCE;
 
 BEGIN_IPLUG_NAMESPACE
 
@@ -157,7 +155,7 @@ public:
     bool operator!=(const AppState& rhs) const { return !operator==(rhs); }
   };
   
-  static IPlugAPPHost* Create();
+  static IPlugAPPHost* Create(HINSTANCE hInstance = nullptr);
   static std::unique_ptr<IPlugAPPHost> sInstance;
   
   void PopulateSampleRateList(HWND hwndDlg, RtAudio::DeviceInfo* pInputDevInfo, RtAudio::DeviceInfo* pOutputDevInfo);
@@ -168,11 +166,15 @@ public:
   bool PopulateMidiDialogs(HWND hwndDlg);
   void PopulatePreferencesDialog(HWND hwndDlg);
   
-  IPlugAPPHost();
+  IPlugAPPHost(HINSTANCE hInstance = nullptr);
   ~IPlugAPPHost();
   
   bool OpenWindow(HWND pParent);
   void CloseWindow();
+
+  HINSTANCE GetInstance() const { return mHInstance; }
+  HWND GetMainWnd() const { return mMainWnd; }
+  void SetMainWnd(HWND wnd) { mMainWnd = wnd; }
 
   bool Init();
   bool InitState();
@@ -216,6 +218,8 @@ public:
 
   IPlugAPP* GetPlug() { return mIPlug.get(); }
 private:
+  HINSTANCE mHInstance = nullptr;
+  HWND mMainWnd = nullptr;
   std::unique_ptr<IPlugAPP> mIPlug = nullptr;
   std::unique_ptr<RtAudio> mDAC = nullptr;
   std::unique_ptr<RtMidiIn> mMidiIn = nullptr;

@@ -13,9 +13,7 @@ void (*AttachWindowTopmostButton)(HWND hwnd);
 #include <vector>
 #include <map>
 
-REAPER_PLUGIN_HINSTANCE gHINSTANCE;
 HWND gParent;
-HWND gHWND = NULL;
 std::unique_ptr<PLUG_CLASS_NAME> gPlug;
 RECT gPrevBounds;
 int gErrorCount = 0;
@@ -42,14 +40,13 @@ extern "C"
 {
   REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(REAPER_PLUGIN_HINSTANCE hInstance, reaper_plugin_info_t* pRec)
   {
-    gHINSTANCE = hInstance;
-    
     if (pRec)
     {
       if (pRec->caller_version != REAPER_PLUGIN_VERSION || !pRec->GetFunc)
         return 0;
-      
+
       gPlug = std::make_unique<PLUG_CLASS_NAME>(pRec);
+      gPlug->SetWinModuleHandle(hInstance);
 
       // initialize API function pointers from Reaper
       IMPAPI(Main_OnCommand);

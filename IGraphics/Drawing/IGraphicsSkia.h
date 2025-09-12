@@ -178,7 +178,7 @@ private:
   void* mMTLLayer;
 #endif
 
-  StaticStorage<Font> mFontCache;
+  mutable StaticStorage<Font> mFontCache;
 };
 
 END_IGRAPHICS_NAMESPACE

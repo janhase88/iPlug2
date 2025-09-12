@@ -185,8 +185,8 @@ private:
   COLORREF mCustomColorStorage[16] = {};
 
   WDL_String mMainWndClassName;
-  static StaticStorage<InstalledFont> mPlatformFontCache;
-  static StaticStorage<HFontHolder> mHFontCache;
+  StaticStorage<InstalledFont> mPlatformFontCache; // per-instance font cache
+  StaticStorage<HFontHolder> mHFontCache;          // per-instance HFONT cache
   /** Current VBlank thread priority, defaults to THREAD_PRIORITY_NORMAL. */
   int mVBlankThreadPriority = THREAD_PRIORITY_NORMAL;
   double mFPS = 0.0;

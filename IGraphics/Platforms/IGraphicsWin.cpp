@@ -1168,8 +1168,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
 
   OnViewInitialized((void*) dc);
 
-  if (AutoScale())
-    SetScreenScale(screenScale); // resizes draw context
+  SetScreenScale(screenScale); // resize draw context regardless of auto-scaling so mScreenScale resets to 1.f when needed
 
   GetDelegate()->LayoutUI(this);
 

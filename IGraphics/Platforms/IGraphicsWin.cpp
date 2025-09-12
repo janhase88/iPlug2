@@ -386,10 +386,12 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
       pGraphics->OnMouseDown(list);
       return 0;
     }
-    case WM_SETCURSOR:
-    {
+    case WM_SETCURSOR: {
       pGraphics->OnSetCursor();
       return 0;
+    }
+    case WM_MOUSEACTIVATE: {
+      return MA_ACTIVATE;
     }
     case WM_MOUSEMOVE:
     {
@@ -733,8 +735,10 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
     {
       return 0;
     }
-    case WM_KILLFOCUS:
-    {
+    case WM_CANCELMODE:
+    case WM_KILLFOCUS: {
+      ReleaseCapture();
+      pGraphics->ReleaseMouseCapture();
       return 0;
     }
   }

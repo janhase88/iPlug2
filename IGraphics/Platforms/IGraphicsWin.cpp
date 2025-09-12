@@ -36,8 +36,6 @@ using namespace igraphics;
 #pragma warning(disable:4312) // Pointer size cast mismatch.
 #pragma warning(disable:4311) // Pointer size cast mismatch.
 
-static int nWndClassReg = 0;
-static const wchar_t* wndClassName = L"IPlugWndClass";
 static double sFPS = 0.0;
 
 #define PARAM_EDIT_ID 99
@@ -54,11 +52,6 @@ typedef HGLRC(WINAPI* PFNWGLCREATECONTEXTATTRIBSARBPROC) (HDC hDC, HGLRC hShareC
 #define WGL_CONTEXT_PROFILE_MASK_ARB      0x9126
 #define WGL_CONTEXT_CORE_PROFILE_BIT_ARB  0x00000001
 #endif
-
-#pragma mark - Static storage
-
-StaticStorage<IGraphicsWin::InstalledFont> IGraphicsWin::sPlatformFontCache;
-StaticStorage<HFontHolder> IGraphicsWin::sHFontCache;
 
 #pragma mark - Mouse and tablet helpers
 
@@ -752,10 +745,9 @@ LRESULT CALLBACK IGraphicsWin::ParamEditProc(HWND hWnd, UINT msg, WPARAM wParam,
 IGraphicsWin::IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float scale)
   : IGRAPHICS_DRAW_CLASS(dlg, w, h, fps, scale)
 {
-  StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
-  StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
-  fontStorage.Retain();
-  hfontStorage.Retain();
+  const COLORREF wcol = RGB(255, 255, 255);
+  for (int i = 0; i < 16; ++i)
+    mCustomColorStorage[i] = wcol;
 
 #ifndef IGRAPHICS_DISABLE_VSYNC
   mVSYNCEnabled = IsWindows8OrGreater();
@@ -764,10 +756,10 @@ IGraphicsWin::IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float s
 
 IGraphicsWin::~IGraphicsWin()
 {
-  StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
-  StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
-  fontStorage.Release();
-  hfontStorage.Release();
+  StaticStorage<InstalledFont>::Accessor fontStorage(mPlatformFontCache);
+  StaticStorage<HFontHolder>::Accessor hfontStorage(mHFontCache);
+  fontStorage.Clear();
+  hfontStorage.Clear();
   DestroyEditWindow();
   CloseWindow();
 }
@@ -1051,13 +1043,13 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     h = cR.bottom - cR.top;
   }
 
-  if (nWndClassReg++ == 0)
+  if (mWndClassReg++ == 0)
   {
-    WNDCLASSW wndClass = { CS_DBLCLKS | CS_OWNDC, WndProc, 0, 0, mHInstance, 0, 0, 0, 0, wndClassName };
+    WNDCLASSW wndClass = { CS_DBLCLKS | CS_OWNDC, WndProc, 0, 0, mHInstance, 0, 0, 0, 0, mWndClassName };
     RegisterClassW(&wndClass);
   }
 
-  mPlugWnd = CreateWindowW(wndClassName, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
+  mPlugWnd = CreateWindowW(mWndClassName, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
 
   HDC dc = GetDC(mPlugWnd);
   SetPlatformContext(dc);
@@ -1078,9 +1070,9 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     RegisterTouchWindow(mPlugWnd, 0);
   }
 
-  if (!mPlugWnd && --nWndClassReg == 0)
+  if (!mPlugWnd && --mWndClassReg == 0)
   {
-    UnregisterClassW(wndClassName, mHInstance);
+    UnregisterClassW(mWndClassName, mHInstance);
   }
   else
   {
@@ -1280,9 +1272,9 @@ void IGraphicsWin::CloseWindow()
 
     mPlugWnd = 0;
 
-    if (--nWndClassReg == 0)
+    if (--mWndClassReg == 0)
     {
-      UnregisterClassW(wndClassName, mHInstance);
+      UnregisterClassW(mWndClassName, mHInstance);
     }
   }
 }
@@ -1520,7 +1512,7 @@ void IGraphicsWin::CreatePlatformTextEntry(int paramIdx, const IText& text, cons
     return;
   }
 
-  StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
+  StaticStorage<HFontHolder>::Accessor hfontStorage(mHFontCache);
 
   LOGFONTW lFont = {0};
   HFontHolder* hfontHolder = hfontStorage.Find(text.mFont);
@@ -1773,15 +1765,12 @@ bool IGraphicsWin::PromptForColor(IColor& color, const char* prompt, IColorPicke
 
   UTF8AsUTF16 promptWide(prompt);
 
-  const COLORREF w = RGB(255, 255, 255);
-  static COLORREF customColorStorage[16] = { w, w, w, w, w, w, w, w, w, w, w, w, w, w, w, w };
-  
   CHOOSECOLORW cc;
   memset(&cc, 0, sizeof(CHOOSECOLORW));
   cc.lStructSize = sizeof(CHOOSECOLORW);
   cc.hwndOwner = mPlugWnd;
   cc.rgbResult = RGB(color.R, color.G, color.B);
-  cc.lpCustColors = customColorStorage;
+  cc.lpCustColors = mCustomColorStorage;
   cc.lCustData = (LPARAM) promptWide.Get();
   cc.lpfnHook = CCHookProc;
   cc.Flags = CC_RGBINIT | CC_ANYCOLOR | CC_FULLOPEN | CC_SOLIDCOLOR | CC_ENABLEHOOK;
@@ -2048,7 +2037,7 @@ static HFONT GetHFont(const char* fontName, int weight, bool italic, bool underl
 
 PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* fileNameOrResID)
 {
-  StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
+  StaticStorage<InstalledFont>::Accessor fontStorage(mPlatformFontCache);
 
   void* pFontMem = nullptr;
   int resSize = 0;
@@ -2106,7 +2095,7 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* f
 
 PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, int dataSize)
 {
-  StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
+  StaticStorage<InstalledFont>::Accessor fontStorage(mPlatformFontCache);
 
   std::unique_ptr<InstalledFont> pFont;
   void* pFontMem = pData;
@@ -2136,7 +2125,7 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
 
 void IGraphicsWin::CachePlatformFont(const char* fontID, const PlatformFontPtr& font)
 {
-  StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
+  StaticStorage<HFontHolder>::Accessor hfontStorage(mHFontCache);
 
   HFONT hfont = font->GetDescriptor();
 

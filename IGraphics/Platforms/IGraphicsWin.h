@@ -176,9 +176,12 @@ private:
   int mTooltipIdx = -1;
 
   WDL_String mMainWndClassName;
-    
-  static StaticStorage<InstalledFont> sPlatformFontCache;
-  static StaticStorage<HFontHolder> sHFontCache;
+
+  StaticStorage<InstalledFont> mPlatformFontCache;
+  StaticStorage<HFontHolder> mHFontCache;
+  int mWndClassReg = 0;
+  const wchar_t* mWndClassName = L"IPlugWndClass";
+  COLORREF mCustomColorStorage[16];
 
   std::unordered_map<ITouchID, IMouseInfo> mDeltaCapture; // associative array of touch id pointers to IMouseInfo structs, so that we can get deltas
 };

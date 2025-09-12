@@ -14,7 +14,6 @@
 #include "pluginterfaces/base/keycodes.h"
 
 #include "IPlugStructs.h"
-#include "IGraphics.h"
 
 /** IPlug VST3 View  */
 template <class T>
@@ -137,9 +136,6 @@ public:
 
   Steinberg::tresult PLUGIN_API setContentScaleFactor(ScaleFactor factor) override
   {
-    if (auto* pGraphics = mOwner.GetUI())
-      pGraphics->EnableAutoScale(false);
-
     mOwner.SetScreenScale(factor);
 
     return Steinberg::kResultOk;

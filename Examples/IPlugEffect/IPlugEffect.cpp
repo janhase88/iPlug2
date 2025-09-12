@@ -13,11 +13,6 @@ IPlugEffect::IPlugEffect(const InstanceInfo& info)
   };
 
   mLayoutFunc = [&](IGraphics* pGraphics) {
-    if(GetHost() == kHostAbletonLive) {
-      pGraphics->EnableAutoScale(false);
-      pGraphics->SetScreenScale(1.f);
-    }
-
     pGraphics->AttachCornerResizer(EUIResizerMode::Scale, false);
     pGraphics->AttachPanelBackground(COLOR_GRAY);
     pGraphics->LoadFont("Roboto-Regular", ROBOTO_FN);

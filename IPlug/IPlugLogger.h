@@ -27,6 +27,10 @@
 #include <cstring>
 #include <ctime>
 
+#include <cassert>
+#include <chrono>
+
+
 #include "mutex.h"
 #include "wdlstring.h"
 
@@ -172,31 +176,64 @@ static const char* AppendTimestamp(const char* Mmm_dd_yyyy, const char* hh_mm_ss
   return str.Get();
 }
 
-#if defined TRACER_BUILD
+  class ScopedTimer
+  {
+  public:
+    ScopedTimer(const char* funcName, int line, const char* label)
+      : mFuncName(funcName), mLine(line), mLabel(label)
+#ifdef TRACER_BUILD
+      , mStart(std::chrono::high_resolution_clock::now())
+#endif
+    {}
 
-const int TXTLEN = 1024;
-
-// _vsnsprintf
-
-  #define VARARGS_TO_STR(str)                                                                                                                                                                          \
-    {                                                                                                                                                                                                  \
-      try                                                                                                                                                                                              \
-      {                                                                                                                                                                                                \
-        va_list argList;                                                                                                                                                                               \
-        va_start(argList, format);                                                                                                                                                                     \
-        int i = vsnprintf(str, TXTLEN - 2, format, argList);                                                                                                                                           \
-        if (i < 0 || i > TXTLEN - 2)                                                                                                                                                                   \
-        {                                                                                                                                                                                              \
-          str[TXTLEN - 1] = '\0';                                                                                                                                                                      \
-        }                                                                                                                                                                                              \
-        va_end(argList);                                                                                                                                                                               \
-      }                                                                                                                                                                                                \
-      catch (...)                                                                                                                                                                                      \
-      {                                                                                                                                                                                                \
-        strcpy(str, "parse error");                                                                                                                                                                    \
-      }                                                                                                                                                                                                \
-      strcat(str, "\r\n");                                                                                                                                                                             \
+    ~ScopedTimer()
+    {
+#ifdef TRACER_BUILD
+      auto end = std::chrono::high_resolution_clock::now();
+      auto us = std::chrono::duration_cast<std::chrono::microseconds>(end - mStart).count();
+      Trace(mFuncName, mLine, "%s %lldus", mLabel, (long long) us);
+#endif
     }
+
+  private:
+    const char* mFuncName;
+    int mLine;
+    const char* mLabel;
+#ifdef TRACER_BUILD
+    std::chrono::high_resolution_clock::time_point mStart;
+#endif
+  };
+
+#ifdef TRACER_BUILD
+  #define IPLUG_TRACE_CONCAT_INNER(a, b) a##b
+  #define IPLUG_TRACE_CONCAT(a, b) IPLUG_TRACE_CONCAT_INNER(a, b)
+  #define TRACE_SCOPE(label) ScopedTimer IPLUG_TRACE_CONCAT(_iplugScopedTimer_, __LINE__)(TRACELOC, label)
+#else
+  #define TRACE_SCOPE(label)
+#endif
+
+  #if defined TRACER_BUILD
+
+  const int TXTLEN = 1024;
+
+  // _vsnsprintf
+
+  #define VARARGS_TO_STR(str) { \
+  try { \
+  va_list argList;  \
+  va_start(argList, format);  \
+  int i = vsnprintf(str, TXTLEN-2, format, argList); \
+  if (i < 0 || i > TXTLEN-2) {  \
+  str[TXTLEN-1] = '\0';  \
+  } \
+  va_end(argList);  \
+  } \
+  catch(...) {  \
+  strcpy(str, "parse error"); \
+  } \
+  strcat(str, "\r\n"); \
+  }
+
 
 static intptr_t GetOrdinalThreadID(intptr_t sysThreadID)
 {

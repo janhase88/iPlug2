@@ -164,7 +164,6 @@ struct IGraphicsSkia::Font
 };
 
 // Fonts
-StaticStorage<IGraphicsSkia::Font> IGraphicsSkia::sFontCache;
 
 #pragma mark - Utility conversions
 
@@ -313,42 +312,6 @@ static sk_sp<SkFontMgr> SFontMgrFactory()
 #endif
 }
 
-bool gFontMgrFactoryCreated = false;
-
-sk_sp<SkFontMgr> SkFontMgrRefDefault()
-{
-  static std::once_flag flag;
-  static sk_sp<SkFontMgr> mgr;
-  std::call_once(flag, [] {
-    mgr = SFontMgrFactory();
-    gFontMgrFactoryCreated = true;
-  });
-  return mgr;
-}
-
-#if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
-
-bool gSkUnicodeCreated = false;
-
-sk_sp<SkUnicode> GetUnicode()
-{
-  static std::once_flag flag;
-  static sk_sp<SkUnicode> unicode;
-  std::call_once(flag, [] {
-    unicode = SkUnicodes::ICU::Make();
-    gSkUnicodeCreated = true;
-  });
-
-  if (!unicode)
-  {
-    DBGMSG("Could not load unicode data\n");
-    return nullptr;
-  }
-
-  return unicode;
-}
-#endif
-
 IGraphicsSkia::IGraphicsSkia(IGEditorDelegate& dlg, int w, int h, int fps, float scale)
   : IGraphics(dlg, w, h, fps, scale)
 {
@@ -361,20 +324,17 @@ IGraphicsSkia::IGraphicsSkia(IGEditorDelegate& dlg, int w, int h, int fps, float
 #elif defined IGRAPHICS_GL
   DBGMSG("IGraphics Skia GL @ %i FPS\n", fps);
 #endif
-  StaticStorage<Font>::Accessor storage(sFontCache);
-  storage.Retain();
-
+  mFontMgr = SFontMgrFactory();
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
-  if (!mFontCollection)
-  {
-    mFontMgr = SParagraphFontMgr();
-    mTypefaceProvider = sk_make_sp<skia::textlayout::TypefaceFontProvider>();
-    mTypefaceProvider->ref(); // <-- CHANGED THIS LINE
-    mFontCollection = sk_make_sp<skia::textlayout::FontCollection>();
-    mFontCollection->setAssetFontManager(mTypefaceProvider);
-    mFontCollection->setDefaultFontManager(mFontMgr);
-    mFontCollection->enableFontFallback();
-  }
+  mTypefaceProvider = sk_make_sp<skia::textlayout::TypefaceFontProvider>();
+  mTypefaceProvider->ref();
+  mFontCollection = sk_make_sp<skia::textlayout::FontCollection>();
+  mFontCollection->setAssetFontManager(mTypefaceProvider);
+  mFontCollection->setDefaultFontManager(mFontMgr);
+  mFontCollection->enableFontFallback();
+  mUnicode = SkUnicodes::ICU::Make();
+  if (!mUnicode)
+    DBGMSG("Could not load unicode data\n");
 #endif
 }
 
@@ -383,19 +343,14 @@ IGraphicsSkia::~IGraphicsSkia()
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
   if (mFontCollection)
     mFontCollection->clearCaches();
-
-  {
-    StaticStorage<Font>::Accessor storage(sFontCache);
-    storage.Release();
-  }
-
   if (mTypefaceProvider)
     mTypefaceProvider->unref(); // pair with the manual ref
 
   mFontCollection.reset();
   mTypefaceProvider.reset();
-  mFontMgr.reset();
+  mUnicode.reset();
 #endif
+  mFontMgr.reset();
 }
 
 bool IGraphicsSkia::BitmapExtSupported(const char* ext)
@@ -695,19 +650,9 @@ IColor IGraphicsSkia::GetPoint(int x, int y)
   return IColor(SkColorGetA(color), SkColorGetR(color), SkColorGetG(color), SkColorGetB(color));
 }
 
-sk_sp<SkFontMgr> IGraphicsSkia::SParagraphFontMgr()
-{
-  static std::once_flag flag;
-  static sk_sp<SkFontMgr> mgr;
-  std::call_once(flag, [] {
-    mgr = SFontMgrFactory(); // SFontMgrFactory is already defined in your code
-  });
-  return mgr;
-}
-
 bool IGraphicsSkia::LoadAPIFont(const char* fontID, const PlatformFontPtr& font)
 {
-  StaticStorage<Font>::Accessor storage(sFontCache);
+  StaticStorage<Font>::Accessor storage(mFontCache);
   Font* cached = storage.Find(fontID);
 
   if (cached)
@@ -719,24 +664,8 @@ bool IGraphicsSkia::LoadAPIFont(const char* fontID, const PlatformFontPtr& font)
   {
     auto wrappedData = SkData::MakeWithCopy(data->Get(), data->GetSize());
 
-#if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
-
-    // if (!mFontCollection)
-    //{
-    //   mFontMgr = SParagraphFontMgr();
-    //   mTypefaceProvider = sk_make_sp<skia::textlayout::TypefaceFontProvider>();
-    //   mTypefaceProvider->ref();// <-- CHANGED THIS LINE
-    //   mFontCollection = sk_make_sp<skia::textlayout::FontCollection>();
-    //   mFontCollection->setAssetFontManager(mTypefaceProvider);
-    //   mFontCollection->setDefaultFontManager(mFontMgr);
-    //   mFontCollection->enableFontFallback();
-    // }
-
     // Create the typeface using our private font manager instance.
     auto typeFace = mFontMgr->makeFromData(wrappedData);
-#else
-    auto typeFace = SkFontMgrRefDefault()->makeFromData(wrappedData);
-#endif
 
     if (typeFace)
     {
@@ -755,7 +684,7 @@ void IGraphicsSkia::PrepareAndMeasureText(const IText& text, const char* str, IR
 {
   using namespace skia::textlayout;
 
-  StaticStorage<Font>::Accessor storage(sFontCache);
+  StaticStorage<Font>::Accessor storage(mFontCache);
   Font* pFont = storage.Find(text.mFont);
   assert(pFont && "No font found - did you forget to load it?");
 
@@ -830,7 +759,7 @@ void IGraphicsSkia::DoDrawText(const IText& text, const char* str, const IRECT& 
   SkFont font; // Dummy, not used by new implementation but required by signature.
   PrepareAndMeasureText(text, str, measured, x, y, font);
 
-  StaticStorage<Font>::Accessor storage(sFontCache);
+  StaticStorage<Font>::Accessor storage(mFontCache);
   Font* pFont = storage.Find(text.mFont);
   assert(pFont && "No font found - did you forget to load it?");
 
@@ -1258,7 +1187,7 @@ void IGraphicsSkia::DrawMultiLineText(const IText& text, const char* str, const 
   ParagraphStyle paragraphStyle;
   paragraphStyle.setTextAlign(ConvertTextAlign(text.mAlign));
 
-  auto builder = ParagraphBuilder::make(paragraphStyle, mFontCollection, GetUnicode());
+  auto builder = ParagraphBuilder::make(paragraphStyle, mFontCollection, mUnicode);
 
   assert(builder && "Paragraph Builder couldn't be created");
 

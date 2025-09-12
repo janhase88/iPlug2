@@ -132,7 +132,6 @@ public:
   void DrawMultiLineText(const IText& text, const char* str, const IRECT& bounds, const IBlend* pBlend) override;
 
 protected:
-  void CleanUpSkiaStatics();
   float DoMeasureText(const IText& text, const char* str, IRECT& bounds) const override;
   void DoDrawText(const IText& text, const char* str, const IRECT& bounds, const IBlend* pBlend) override;
 
@@ -168,9 +167,9 @@ private:
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
   sk_sp<skia::textlayout::FontCollection> mFontCollection;
   sk_sp<skia::textlayout::TypefaceFontProvider> mTypefaceProvider;
-  sk_sp<SkFontMgr> mFontMgr;
-  static sk_sp<SkFontMgr> SParagraphFontMgr();
+  sk_sp<SkUnicode> mUnicode;
 #endif
+  sk_sp<SkFontMgr> mFontMgr;
 
 #ifdef IGRAPHICS_METAL
   void* mMTLDevice;
@@ -179,7 +178,7 @@ private:
   void* mMTLLayer;
 #endif
 
-  static StaticStorage<Font> sFontCache;
+  StaticStorage<Font> mFontCache;
 };
 
 END_IGRAPHICS_NAMESPACE

@@ -29,12 +29,12 @@ namespace DragAndDropHelpers
 class DropTarget;
 }
 
+using InstalledFont = InstalledWinFont;
 
 /** IGraphics platform class for Windows
  * @ingroup PlatformClasses */
 class IGraphicsWin final : public IGRAPHICS_DRAW_CLASS
 {
-  using InstalledFont = InstalledWinFont;
   using Font = WinFont;
 
 public:

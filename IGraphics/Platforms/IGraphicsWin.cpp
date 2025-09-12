@@ -465,6 +465,13 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
       pGraphics->OnMouseUp(list);
       return 0;
     }
+    case WM_CAPTURECHANGED:
+    {
+      // Ensure any outstanding mouse capture is released if the host takes it
+      ReleaseCapture();
+      pGraphics->ReleaseMouseCapture();
+      return 0;
+    }
     case WM_LBUTTONDBLCLK:
     case WM_RBUTTONDBLCLK:
     {
@@ -1291,6 +1298,10 @@ void IGraphicsWin::CloseWindow()
 {
   if (mPlugWnd)
   {
+    // Ensure the window releases any mouse capture before destruction
+    ReleaseCapture();
+    ReleaseMouseCapture();
+
     if (mVSYNCEnabled)
       StopVBlankThread();
     else

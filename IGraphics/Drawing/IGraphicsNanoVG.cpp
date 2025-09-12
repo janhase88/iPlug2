@@ -140,7 +140,6 @@ IGraphicsNanoVG::Bitmap::~Bitmap()
 }
 
 // Fonts
-static StaticStorage<IFontData> sFontCache;
 
 extern std::map<std::string, MTLTexturePtr> gTextureMap;
 
@@ -228,18 +227,17 @@ END_IPLUG_NAMESPACE
 #pragma mark -
 
 IGraphicsNanoVG::IGraphicsNanoVG(IGEditorDelegate& dlg, int w, int h, int fps, float scale)
-: IGraphics(dlg, w, h, fps, scale)
+  : IGraphics(dlg, w, h, fps, scale)
 {
   DBGMSG("IGraphics NanoVG @ %i FPS\n", fps);
-  StaticStorage<IFontData>::Accessor storage(sFontCache);
+  StaticStorage<IFontData>::Accessor storage(mFontCache);
   storage.Retain();
 }
 
-IGraphicsNanoVG::~IGraphicsNanoVG() 
+IGraphicsNanoVG::~IGraphicsNanoVG()
 {
-  StaticStorage<IFontData>::Accessor storage(sFontCache);
+  StaticStorage<IFontData>::Accessor storage(mFontCache);
   storage.Release();
-  ClearFBOStack();
 }
 
 const char* IGraphicsNanoVG::GetDrawingAPIStr()
@@ -248,7 +246,7 @@ const char* IGraphicsNanoVG::GetDrawingAPIStr()
   return "NanoVG | Metal";
 #else
   #if defined OS_WEB
-    return "NanoVG | WebGL";
+  return "NanoVG | WebGL";
   #else
     #if defined IGRAPHICS_GL2
       return "NanoVG | GL2";
@@ -331,19 +329,24 @@ APIBitmap* IGraphicsNanoVG::LoadAPIBitmap(const char* fileNameOrResID, int scale
 
     if (pResData)
     {
-      ScopedGLContext scopedGLCtx {this};
-      idx = nvgCreateImageMem(mVG, nvgImageFlags, (unsigned char*) pResData, size);
+      ScopedGLContext scopedGLCtx{this};
+      idx = nvgCreateImageMem(mVG, nvgImageFlags, (unsigned char*)pResData, size);
     }
   }
   else
 #endif
-  if (location == EResourceLocation::kAbsolutePath)
+    if (location == EResourceLocation::kAbsolutePath)
   {
-    ScopedGLContext scopedGLCtx {this};
+    ScopedGLContext scopedGLCtx{this};
     idx = nvgCreateImage(mVG, fileNameOrResID, nvgImageFlags);
   }
 
-  return new Bitmap(mVG, fileNameOrResID, scale, idx, location == EResourceLocation::kPreloadedTexture);
+  APIBitmap* pBitmap = nullptr;
+  {
+    ScopedGLContext scopedGLCtx{this};
+    pBitmap = new Bitmap(mVG, fileNameOrResID, scale, idx, location == EResourceLocation::kPreloadedTexture);
+  }
+  return pBitmap;
 }
 
 APIBitmap* IGraphicsNanoVG::LoadAPIBitmap(const char* name, const void* pData, int dataSize, int scale)
@@ -357,11 +360,10 @@ APIBitmap* IGraphicsNanoVG::LoadAPIBitmap(const char* name, const void* pData, i
     int nvgImageFlags = 0;
 
     {
-      ScopedGLContext scopedGLCtx {this};
+      ScopedGLContext scopedGLCtx{this};
       idx = nvgCreateImageMem(mVG, nvgImageFlags, (unsigned char*)pData, dataSize);
+      pBitmap = new Bitmap(mVG, name, scale, idx, false);
     }
-    
-    pBitmap = new Bitmap(mVG, name, scale, idx, false);
 
     storage.Add(pBitmap, name, scale);
   }
@@ -369,21 +371,26 @@ APIBitmap* IGraphicsNanoVG::LoadAPIBitmap(const char* name, const void* pData, i
   return pBitmap;
 }
 
-APIBitmap* IGraphicsNanoVG::CreateAPIBitmap(int width, int height, float scale, double drawScale, bool cacheable, int MSAASampleCount/*placeholder: only implemented for skia*/)
+APIBitmap* IGraphicsNanoVG::CreateAPIBitmap(int width, int height, float scale, double drawScale, bool cacheable, int MSAASampleCount /*placeholder: only implemented for skia*/)
 {
   if (mInDraw)
   {
     nvgEndFrame(mVG);
   }
-  
-  APIBitmap* pAPIBitmap = new Bitmap(this, mVG, width, height, scale, drawScale);
+
+  APIBitmap* pAPIBitmap = nullptr;
+
+  {
+    ScopedGLContext scopedGLCtx{this};
+    pAPIBitmap = new Bitmap(this, mVG, width, height, scale, drawScale);
+  }
 
   if (mInDraw)
   {
     nvgBindFramebuffer(mMainFrameBuffer); // begin main frame buffer update
     nvgBeginFrame(mVG, WindowWidth(), WindowHeight(), GetScreenScale());
   }
-  
+
   return pAPIBitmap;
 }
 
@@ -447,9 +454,16 @@ void IGraphicsNanoVG::ApplyShadowMask(ILayerPtr& layer, RawBitmapData& mask, con
 }
 
 void IGraphicsNanoVG::OnViewInitialized(void* pContext)
-{  
+{
+#if defined IGRAPHICS_GL || defined IGRAPHICS_METAL
+  // Ensure this instance's graphics context is current while we create
+  // the NanoVG context. Without doing so, multiple plug-ins may end up
+  // sharing whichever context happens to be current, leading to
+  // cross-talk between windows.
+  ScopedGLContext scopedGLCtx{this};
+#endif
 #if defined IGRAPHICS_METAL
-  mVG = nvgCreateContext(pContext, NVG_ANTIALIAS | NVG_TRIPLE_BUFFER); //TODO: NVG_STENCIL_STROKES currently has issues
+  mVG = nvgCreateContext(pContext, NVG_ANTIALIAS | NVG_TRIPLE_BUFFER); // TODO: NVG_STENCIL_STROKES currently has issues
 #else
   mVG = nvgCreateContext(NVG_ANTIALIAS /*| NVG_STENCIL_STROKES*/);
 #endif
@@ -460,20 +474,28 @@ void IGraphicsNanoVG::OnViewInitialized(void* pContext)
 
 void IGraphicsNanoVG::OnViewDestroyed()
 {
+  // Activate this view's graphics context so NanoVG can tear down GPU
+  // resources owned by this instance without affecting others.
+#if defined IGRAPHICS_GL || defined IGRAPHICS_METAL
+  ScopedGLContext scopedGLCtx{this};
+#endif
+
   // need to remove all the controls to free framebuffers, before deleting context
   RemoveAllControls();
 
   StaticStorage<APIBitmap>::Accessor storage(mBitmapCache);
   storage.Clear();
-  
-  if(mMainFrameBuffer != nullptr)
+
+  ClearFBOStack();
+
+  if (mMainFrameBuffer != nullptr)
     nvgDeleteFramebuffer(mMainFrameBuffer);
-  
+
   mMainFrameBuffer = nullptr;
-  
-  if(mVG)
+
+  if (mVG)
     nvgDeleteContext(mVG);
-  
+
   mVG = nullptr;
 }
 
@@ -740,15 +762,18 @@ void IGraphicsNanoVG::PathFill(const IPattern& pattern, const IFillOptions& opti
 
 bool IGraphicsNanoVG::LoadAPIFont(const char* fontID, const PlatformFontPtr& font)
 {
-  StaticStorage<IFontData>::Accessor storage(sFontCache);
+#if defined IGRAPHICS_GL || defined IGRAPHICS_METAL
+  ScopedGLContext scopedGLCtx{this};
+#endif
+  StaticStorage<IFontData>::Accessor storage(mFontCache);
   IFontData* cached = storage.Find(fontID);
-    
+
   if (cached)
   {
     nvgCreateFontFaceMem(mVG, fontID, cached->Get(), cached->GetSize(), cached->GetFaceIdx(), 0);
     return true;
   }
-    
+
   IFontDataPtr data = font->GetFontData();
 
   if (data->IsValid() && nvgCreateFontFaceMem(mVG, fontID, data->Get(), data->GetSize(), data->GetFaceIdx(), 0) != -1)
@@ -884,6 +909,8 @@ void IGraphicsNanoVG::DrawDottedRect(const IColor& color, const IRECT& bounds, c
 
 void IGraphicsNanoVG::DeleteFBO(NVGframebuffer* pBuffer)
 {
+  ScopedGLContext scopedGLCtx{this};
+
   if (!mInDraw)
     nvgDeleteFramebuffer(pBuffer);
   else
@@ -895,6 +922,7 @@ void IGraphicsNanoVG::DeleteFBO(NVGframebuffer* pBuffer)
 
 void IGraphicsNanoVG::ClearFBOStack()
 {
+  ScopedGLContext scopedGLCtx{this};
   WDL_MutexLock lock(&mFBOMutex);
   while (!mFBOStack.empty())
   {

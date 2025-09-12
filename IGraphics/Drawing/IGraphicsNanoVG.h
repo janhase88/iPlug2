@@ -10,11 +10,12 @@
 
 #pragma once
 
-#include "IPlugPlatform.h"
 #include "IGraphics.h"
+#include "IGraphicsPrivate.h"
+#include "IPlugPlatform.h"
 
-#include "nanovg.h"
 #include "mutex.h"
+#include "nanovg.h"
 #include <stack>
 
 // Thanks to Olli Wang/MOUI for much of this macro magic  https://github.com/ollix/moui
@@ -155,11 +156,12 @@ private:
   void SetClipRegion(const IRECT& r) override;
   void UpdateLayer() override;
   void ClearFBOStack();
-  
+
   bool mInDraw = false;
   WDL_Mutex mFBOMutex;
   std::stack<NVGframebuffer*> mFBOStack; // A stack of FBOs that requires freeing at the end of the frame
-  StaticStorage<APIBitmap> mBitmapCache; //not actually static (doesn't require retaining or releasing)
+  StaticStorage<APIBitmap> mBitmapCache; // not actually static (doesn't require retaining or releasing)
+  StaticStorage<IFontData> mFontCache;
   NVGcontext* mVG = nullptr;
   NVGframebuffer* mMainFrameBuffer = nullptr;
   int mInitialFBO = 0;

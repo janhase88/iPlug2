@@ -1,7 +1,9 @@
 #pragma once
 
 #include "IGraphics.h"
+#include "IGraphicsPrivate.h"
 #include "IPlugPlatform.h"
+#include <utility>
 
 // N.B. - this must be defined according to the skia build, not the iPlug build
 #if (defined OS_MAC || defined OS_IOS) && !defined IGRAPHICS_SKIA_NO_METAL
@@ -18,12 +20,14 @@
 #include "include/core/SkImage.h"
 #include "include/core/SkPath.h"
 #include "include/core/SkSurface.h"
+#include "include/core/SkTypeface.h"
 #include "include/gpu/GrDirectContext.h"
 #pragma warning(pop)
 
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
   #include "modules/skparagraph/include/FontCollection.h"
-  #include "modules/skparagraph/include/TypefaceFontProvider.h" // <-- ADD THIS LINE
+  #include "modules/skparagraph/include/TypefaceFontProvider.h"
+  #include "modules/skunicode/include/SkUnicode.h"
 #endif
 
 namespace skia::textlayout
@@ -55,7 +59,17 @@ class IGraphicsSkia : public IGraphics
 {
 private:
   class Bitmap;
-  struct Font;
+  struct Font
+  {
+    Font(IFontDataPtr&& data, sk_sp<SkTypeface> typeFace)
+      : mData(std::move(data))
+      , mTypeface(typeFace)
+    {
+    }
+
+    IFontDataPtr mData;
+    sk_sp<SkTypeface> mTypeface;
+  };
 
 public:
   IGraphicsSkia(IGEditorDelegate& dlg, int w, int h, int fps, float scale);
@@ -169,7 +183,7 @@ private:
   sk_sp<skia::textlayout::FontCollection> mFontCollection;
   sk_sp<skia::textlayout::TypefaceFontProvider> mTypefaceProvider;
   sk_sp<SkFontMgr> mFontMgr;
-  static sk_sp<SkFontMgr> SParagraphFontMgr();
+  sk_sp<SkUnicode> mUnicode;
 #endif
 
 #ifdef IGRAPHICS_METAL
@@ -179,7 +193,7 @@ private:
   void* mMTLLayer;
 #endif
 
-  static StaticStorage<Font> sFontCache;
+  StaticStorage<Font> mFontCache;
 };
 
 END_IGRAPHICS_NAMESPACE

@@ -14,6 +14,7 @@
 #include "IPlugAPIBase.h"
 #include "IPlugProcessor.h"
 #include "processor.h"
+#include <mutex>
 
 using namespace WAM;
 
@@ -61,7 +62,7 @@ private:
   void OnEditorIdleTick();
 };
 
-IPlugWAM* MakePlug(const InstanceInfo& info);
+IPlugWAM* MakePlug(const InstanceInfo& info, std::mutex& mutex);
 
 END_IPLUG_NAMESPACE
 

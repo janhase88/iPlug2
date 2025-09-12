@@ -20,6 +20,7 @@
 #include "IPlugAPIBase.h"
 #include "IPlugProcessor.h"
 #include "plugin.hh"
+#include <mutex>
 
 #include "config.h"   // This is your plugin's config.h.
 
@@ -209,7 +210,7 @@ private:
   bool mGUIOpen = false;
 };
 
-IPlugCLAP* MakePlug(const InstanceInfo& info);
+IPlugCLAP* MakePlug(const InstanceInfo& info, std::mutex& mutex);
 
 END_IPLUG_NAMESPACE
 

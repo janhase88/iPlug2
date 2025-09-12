@@ -20,6 +20,7 @@
 #include "IPlugPlatform.h"
 #include "IPlugAPIBase.h"
 #include "IPlugProcessor.h"
+#include <mutex>
 
 BEGIN_IPLUG_NAMESPACE
 
@@ -63,7 +64,7 @@ private:
   friend class IPlugAPPHost;
 };
 
-IPlugAPP* MakePlug(const InstanceInfo& info);
+IPlugAPP* MakePlug(const InstanceInfo& info, std::mutex& mutex);
 
 END_IPLUG_NAMESPACE
 

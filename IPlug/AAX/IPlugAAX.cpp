@@ -19,12 +19,15 @@
 #include "IPlugAAX_TaperDelegate.h"
 #include "AAX_CNumberDisplayDelegate.h"
 #include "AAX_CUnitDisplayDelegateDecorator.h"
+#include <mutex>
 
 using namespace iplug;
 
+static std::mutex sMakePlugMutex;
+
 AAX_CEffectParameters *AAX_CALLBACK IPlugAAX::Create()
 {
-  return MakePlug(InstanceInfo());
+  return MakePlug(InstanceInfo(), sMakePlugMutex);
 }
 
 void AAX_CEffectGUI_IPLUG::CreateViewContents() 

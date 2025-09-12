@@ -23,6 +23,7 @@
 #include "IPlugMidi.h"
 
 #include "IPlugAAX_Parameters.h"
+#include <mutex>
 
 #include "AAX_CEffectGUI.h"
 
@@ -127,7 +128,7 @@ private:
   WDL_String mTrackName;
 };
 
-IPlugAAX* MakePlug(const InstanceInfo& info);
+IPlugAAX* MakePlug(const InstanceInfo& info, std::mutex& mutex);
 
 #include "AAX_PopStructAlignment.h"
 

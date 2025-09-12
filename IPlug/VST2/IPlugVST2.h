@@ -20,6 +20,7 @@
 #include "aeffectx.h"
 #include "IPlugAPIBase.h"
 #include "IPlugProcessor.h"
+#include <mutex>
 
 BEGIN_IPLUG_NAMESPACE
 
@@ -94,7 +95,7 @@ protected:
   audioMasterCallback mHostCallback;
 };
 
-IPlugVST2* MakePlug(const InstanceInfo& info);
+IPlugVST2* MakePlug(const InstanceInfo& info, std::mutex& mutex);
 
 END_IPLUG_NAMESPACE
 

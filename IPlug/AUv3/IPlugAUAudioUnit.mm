@@ -15,12 +15,15 @@
 #import "IPlugAUAudioUnit.h"
 #include "IPlugAUv3.h"
 #include "AUv2/IPlugAU_ioconfig.h"
+#include <mutex>
 
 #if !__has_feature(objc_arc)
 #error This file must be compiled with Arc. Use -fobjc-arc flag
 #endif
 
 using namespace iplug;
+
+static std::mutex sMakePlugMutex;
 
 @interface IPLUG_AUAUDIOUNIT ()
 
@@ -119,7 +122,7 @@ static AUAudioUnitPreset* NewAUPreset(NSInteger number, NSString* pName)
   if (self == nil) { return nil; }
   
   // Create a DSP kernel to handle the signal processing.
-  mPlug = MakePlug(InstanceInfo());
+  mPlug = MakePlug(InstanceInfo(), sMakePlugMutex);
   
   assert(mPlug);
   

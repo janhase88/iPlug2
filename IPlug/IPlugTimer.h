@@ -82,7 +82,7 @@ private:
   HWND mMsgWnd = nullptr;
   ITimerFunction mTimerFunc;
   uint32_t mIntervalMs;
-  static ATOM sWindowClass;
+  ATOM mWindowClass = 0;
 };
 #elif defined OS_WEB
 class Timer_impl : public Timer

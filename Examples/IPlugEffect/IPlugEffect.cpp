@@ -11,8 +11,13 @@ IPlugEffect::IPlugEffect(const InstanceInfo& info)
   mMakeGraphicsFunc = [&]() {
     return MakeGraphics(*this, PLUG_WIDTH, PLUG_HEIGHT, PLUG_FPS, GetScaleForScreen(PLUG_WIDTH, PLUG_HEIGHT));
   };
-  
+
   mLayoutFunc = [&](IGraphics* pGraphics) {
+    if(GetHost() == kHostAbletonLive) {
+      pGraphics->EnableAutoScale(false);
+      pGraphics->SetScreenScale(1.f);
+    }
+
     pGraphics->AttachCornerResizer(EUIResizerMode::Scale, false);
     pGraphics->AttachPanelBackground(COLOR_GRAY);
     pGraphics->LoadFont("Roboto-Regular", ROBOTO_FN);

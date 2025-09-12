@@ -1,10 +1,10 @@
 /*
  ==============================================================================
- 
- This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers. 
- 
+
+ This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
+
  See LICENSE.txt for  more info.
- 
+
  ==============================================================================
 */
 
@@ -19,14 +19,12 @@ using namespace iplug;
 
 #if defined OS_MAC || defined OS_IOS
 
-Timer* Timer::Create(ITimerFunction func, uint32_t intervalMs)
-{
-  return new Timer_impl(func, intervalMs);
-}
+Timer* Timer::Create(void* owner, ITimerFunction func, uint32_t intervalMs) { return new Timer_impl(owner, func, intervalMs); }
 
-Timer_impl::Timer_impl(ITimerFunction func, uint32_t intervalMs)
-: mTimerFunc(func)
-, mIntervalMs(intervalMs)
+Timer_impl::Timer_impl(void* owner, ITimerFunction func, uint32_t intervalMs)
+  : Timer(owner)
+  , mTimerFunc(func)
+  , mIntervalMs(intervalMs)
 {
   CFRunLoopTimerContext context;
   context.version = 0;
@@ -40,10 +38,7 @@ Timer_impl::Timer_impl(ITimerFunction func, uint32_t intervalMs)
   CFRunLoopAddTimer(runLoop, mOSTimer, kCFRunLoopCommonModes);
 }
 
-Timer_impl::~Timer_impl()
-{
-  Stop();
-}
+Timer_impl::~Timer_impl() { Stop(); }
 
 void Timer_impl::Stop()
 {
@@ -55,29 +50,27 @@ void Timer_impl::Stop()
   }
 }
 
-void Timer_impl::TimerProc(CFRunLoopTimerRef timer, void *info)
+void Timer_impl::TimerProc(CFRunLoopTimerRef timer, void* info)
 {
-  Timer_impl* itimer = (Timer_impl*) info;
+  Timer_impl* itimer = (Timer_impl*)info;
   itimer->mTimerFunc(*itimer);
 }
 
 #elif defined OS_WIN
 
-Timer* Timer::Create(ITimerFunction func, uint32_t intervalMs)
-{
-  return new Timer_impl(func, intervalMs);
-}
+Timer* Timer::Create(void* owner, ITimerFunction func, uint32_t intervalMs) { return new Timer_impl(owner, func, intervalMs); }
 
 WDL_Mutex Timer_impl::sMutex;
 WDL_PtrList<Timer_impl> Timer_impl::sTimers;
 
-Timer_impl::Timer_impl(ITimerFunction func, uint32_t intervalMs)
-: mTimerFunc(func)
-, mIntervalMs(intervalMs)
+Timer_impl::Timer_impl(void* owner, ITimerFunction func, uint32_t intervalMs)
+  : Timer(owner)
+  , mTimerFunc(func)
+  , mIntervalMs(intervalMs)
 
 {
-  ID = SetTimer(0, 0, intervalMs, TimerProc); //TODO: timer ID correct?
-  
+  ID = SetTimer(0, 0, intervalMs, TimerProc); // TODO: timer ID correct?
+
   if (ID)
   {
     WDL_MutexLock lock(&sMutex);
@@ -85,10 +78,7 @@ Timer_impl::Timer_impl(ITimerFunction func, uint32_t intervalMs)
   }
 }
 
-Timer_impl::~Timer_impl()
-{
-  Stop();
-}
+Timer_impl::~Timer_impl() { Stop(); }
 
 void Timer_impl::Stop()
 {
@@ -108,7 +98,7 @@ void CALLBACK Timer_impl::TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWOR
   for (auto i = 0; i < sTimers.GetSize(); i++)
   {
     Timer_impl* pTimer = sTimers.Get(i);
-    
+
     if (pTimer->ID == idEvent)
     {
       pTimer->mTimerFunc(*pTimer);
@@ -117,30 +107,22 @@ void CALLBACK Timer_impl::TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWOR
   }
 }
 #elif defined OS_WEB
-Timer* Timer::Create(ITimerFunction func, uint32_t intervalMs)
-{
-  return new Timer_impl(func, intervalMs);
-}
+Timer* Timer::Create(void* owner, ITimerFunction func, uint32_t intervalMs) { return new Timer_impl(owner, func, intervalMs); }
 
-Timer_impl::Timer_impl(ITimerFunction func, uint32_t intervalMs)
-: mTimerFunc(func)
+Timer_impl::Timer_impl(void* owner, ITimerFunction func, uint32_t intervalMs)
+  : Timer(owner)
+  , mTimerFunc(func)
 {
   ID = emscripten_set_interval(TimerProc, intervalMs, this);
 }
 
-Timer_impl::~Timer_impl()
-{
-  Stop();
-}
+Timer_impl::~Timer_impl() { Stop(); }
 
-void Timer_impl::Stop()
-{
-  emscripten_clear_interval(ID);
-}
+void Timer_impl::Stop() { emscripten_clear_interval(ID); }
 
 void Timer_impl::TimerProc(void* userData)
 {
-  Timer_impl* itimer = (Timer_impl*) userData;
+  Timer_impl* itimer = (Timer_impl*)userData;
   itimer->mTimerFunc(*itimer);
 }
 #endif

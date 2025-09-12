@@ -182,6 +182,8 @@ private:
   float mHiddenCursorY = 0.f;
   int mTooltipIdx = -1;
 
+  COLORREF mCustomColorStorage[16] = {};
+
   WDL_String mMainWndClassName;
 
   StaticStorage<InstalledFont> mPlatformFontCache;

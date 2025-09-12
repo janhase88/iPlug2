@@ -92,11 +92,15 @@ void IGraphics::Resize(int w, int h, float scale, bool needsPlatformResize)
   GetDelegate()->ConstrainEditorResize(w, h);
   
   scale = Clip(scale, mMinScale, mMaxScale);
-  
+
   if (w == Width() && h == Height() && scale == GetDrawScale()) return;
-  
+
   //DBGMSG("resize %i, resize %i, scale %f\n", w, h, scale);
-  ReleaseMouseCapture();
+  // Drag-resizing requires continuous mouse capture to receive further
+  // events. Avoid releasing capture mid-drag so the corner resizer keeps
+  // receiving mouse updates.
+  if (!mResizingInProcess)
+    ReleaseMouseCapture();
 
   mDrawScale = scale;
   mWidth = w;

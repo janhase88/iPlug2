@@ -488,6 +488,7 @@ void IGraphicsNanoVG::OnViewDestroyed()
   storage.Clear();
 
 
+
   ClearFBOStack();
 
 
@@ -765,15 +766,18 @@ void IGraphicsNanoVG::PathFill(const IPattern& pattern, const IFillOptions& opti
 
 bool IGraphicsNanoVG::LoadAPIFont(const char* fontID, const PlatformFontPtr& font)
 {
+#if defined IGRAPHICS_GL || defined IGRAPHICS_METAL
+  ScopedGLContext scopedGLCtx{this};
+#endif
   StaticStorage<IFontData>::Accessor storage(sFontCache);
   IFontData* cached = storage.Find(fontID);
-    
+
   if (cached)
   {
     nvgCreateFontFaceMem(mVG, fontID, cached->Get(), cached->GetSize(), cached->GetFaceIdx(), 0);
     return true;
   }
-    
+
   IFontDataPtr data = font->GetFontData();
 
   if (data->IsValid() && nvgCreateFontFaceMem(mVG, fontID, data->Get(), data->GetSize(), data->GetFaceIdx(), 0) != -1)

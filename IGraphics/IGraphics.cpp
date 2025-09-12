@@ -40,9 +40,6 @@ using VST3_API_BASE = iplug::IPlugVST3Controller;
 using namespace iplug;
 using namespace igraphics;
 
-static StaticStorage<APIBitmap> sBitmapCache;
-static StaticStorage<SVGHolder> sSVGCache;
-
 IGraphics::IGraphics(IGEditorDelegate& dlg, int w, int h, int fps, float scale)
 : mWidth(w)
 , mHeight(h)
@@ -52,10 +49,6 @@ IGraphics::IGraphics(IGEditorDelegate& dlg, int w, int h, int fps, float scale)
 , mMaxScale(DEFAULT_MAX_DRAW_SCALE)
 , mDelegate(&dlg)
 {
-  StaticStorage<APIBitmap>::Accessor bitmapStorage(sBitmapCache);
-  bitmapStorage.Retain();
-  StaticStorage<SVGHolder>::Accessor svgStorage(sSVGCache);
-  svgStorage.Retain();
 }
 
 IGraphics::~IGraphics()
@@ -66,10 +59,6 @@ IGraphics::~IGraphics()
   mCursorHidden = false;
   RemoveAllControls();
     
-  StaticStorage<APIBitmap>::Accessor bitmapStorage(sBitmapCache);
-  bitmapStorage.Release();
-  StaticStorage<SVGHolder>::Accessor svgStorage(sSVGCache);
-  svgStorage.Release();
 }
 
 void IGraphics::SetScreenScale(float scale)
@@ -1604,7 +1593,7 @@ void IGraphics::EnableLiveEdit(bool enable)
 #ifdef SVG_USE_SKIA
 ISVG IGraphics::LoadSVG(const char* fileName, const char* units, float dpi)
 {
-  StaticStorage<SVGHolder>::Accessor storage(sSVGCache);
+  StaticStorage<SVGHolder>::Accessor storage(mSVGCache);
   SVGHolder* pHolder = storage.Find(fileName);
   
   if(!pHolder)
@@ -1625,7 +1614,7 @@ ISVG IGraphics::LoadSVG(const char* fileName, const char* units, float dpi)
 
 ISVG IGraphics::LoadSVG(const char* name, const void* pData, int dataSize, const char* units, float dpi)
 {
-  StaticStorage<SVGHolder>::Accessor storage(sSVGCache);
+  StaticStorage<SVGHolder>::Accessor storage(mSVGCache);
   SVGHolder* pHolder = storage.Find(name);
 
   if (!pHolder)
@@ -1666,7 +1655,7 @@ ISVG IGraphics::LoadSVG(const char* name, const void* pData, int dataSize, const
 #else
 ISVG IGraphics::LoadSVG(const char* fileName, const char* units, float dpi)
 {
-  StaticStorage<SVGHolder>::Accessor storage(sSVGCache);
+  StaticStorage<SVGHolder>::Accessor storage(mSVGCache);
   SVGHolder* pHolder = storage.Find(fileName);
 
   if(!pHolder)
@@ -1687,7 +1676,7 @@ ISVG IGraphics::LoadSVG(const char* fileName, const char* units, float dpi)
 
 ISVG IGraphics::LoadSVG(const char* name, const void* pData, int dataSize, const char* units, float dpi)
 {
-  StaticStorage<SVGHolder>::Accessor storage(sSVGCache);
+  StaticStorage<SVGHolder>::Accessor storage(mSVGCache);
   SVGHolder* pHolder = storage.Find(name);
 
   if (!pHolder)
@@ -1770,7 +1759,7 @@ IBitmap IGraphics::LoadBitmap(const char* name, int nStates, bool framesAreHoriz
   if (targetScale == 0)
     targetScale = GetRoundedScreenScale();
 
-  StaticStorage<APIBitmap>::Accessor storage(sBitmapCache);
+  StaticStorage<APIBitmap>::Accessor storage(mBitmapCache);
   APIBitmap* pAPIBitmap = storage.Find(name, targetScale);
 
   // If the bitmap is not already cached at the targetScale
@@ -1832,7 +1821,7 @@ IBitmap IGraphics::LoadBitmap(const char *name, const void *pData, int dataSize,
   if (targetScale == 0)
     targetScale = GetRoundedScreenScale();
 
-  StaticStorage<APIBitmap>::Accessor storage(sBitmapCache);
+  StaticStorage<APIBitmap>::Accessor storage(mBitmapCache);
   APIBitmap* pAPIBitmap = storage.Find(name, targetScale);
 
   // If the bitmap is not already cached at the targetScale
@@ -1880,13 +1869,13 @@ IBitmap IGraphics::LoadBitmap(const char *name, const void *pData, int dataSize,
 
 void IGraphics::ReleaseBitmap(const IBitmap &bitmap)
 {
-  StaticStorage<APIBitmap>::Accessor storage(sBitmapCache);
+  StaticStorage<APIBitmap>::Accessor storage(mBitmapCache);
   storage.Remove(bitmap.GetAPIBitmap());
 }
 
 void IGraphics::RetainBitmap(const IBitmap& bitmap, const char* cacheName)
 {
-  StaticStorage<APIBitmap>::Accessor storage(sBitmapCache);
+  StaticStorage<APIBitmap>::Accessor storage(mBitmapCache);
   storage.Add(bitmap.GetAPIBitmap(), cacheName, bitmap.GetScale());
 }
 
@@ -1944,7 +1933,7 @@ EResourceLocation IGraphics::SearchImageResource(const char* name, const char* t
 
 APIBitmap* IGraphics::SearchBitmapInCache(const char* name, int targetScale, int& sourceScale)
 {
-  StaticStorage<APIBitmap>::Accessor storage(sBitmapCache);
+  StaticStorage<APIBitmap>::Accessor storage(mBitmapCache);
     
   for (sourceScale = targetScale; sourceScale > 0; SearchNextScale(sourceScale, targetScale))
   {

@@ -2340,7 +2340,7 @@ HWND eel_lice_state::create_wnd(HWND par, int isChild)
 {
   if (hwnd_standalone) return hwnd_standalone;
 #ifdef _WIN32
-  return CreateWindowEx(WS_EX_ACCEPTFILES,eel_lice_standalone_classname,"",
+  return CreateWindowExA(WS_EX_ACCEPTFILES,eel_lice_standalone_classname,"",
                         isChild ? (WS_CHILD|WS_TABSTOP) : (WS_POPUP|WS_CAPTION|WS_THICKFRAME|WS_SYSMENU),CW_USEDEFAULT,CW_USEDEFAULT,100,100,par,NULL,eel_lice_hinstance,this);
 #else
   HWND h = SWELL_CreateDialog(NULL,isChild ? NULL : ((const char *)(INT_PTR)0x400001),par,(DLGPROC)eel_lice_wndproc,(LPARAM)this);

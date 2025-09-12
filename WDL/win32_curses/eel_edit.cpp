@@ -2076,13 +2076,13 @@ run_suggest:
                 if (inst != last_inst)
                 {
                   last_inst = inst;
-                  WNDCLASS wc={CS_DBLCLKS,suggestionProc,};
+                  WNDCLASSA wc={CS_DBLCLKS,suggestionProc,};
                   wc.lpszClassName=classname;
                   wc.hInstance=inst;
                   wc.hCursor=LoadCursor(NULL,IDC_ARROW);
-                  RegisterClass(&wc);
+                  RegisterClassA(&wc);
                 }
-                m_suggestion_hwnd = CreateWindowEx(0,classname,"", WS_CHILD, 0,0,0,0, ctx->m_hwnd, NULL, inst, NULL);
+                m_suggestion_hwnd = CreateWindowExA(0,classname,"", WS_CHILD, 0,0,0,0, ctx->m_hwnd, NULL, inst, NULL);
 #else
                 m_suggestion_hwnd = CreateDialogParam(NULL,NULL,ctx->m_hwnd, suggestionProc, 0);
 #endif

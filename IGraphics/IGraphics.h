@@ -1269,7 +1269,17 @@ private:
   void DoCreatePopupMenu(IControl& control, IPopupMenu& menu, const IRECT& bounds, int valIdx, bool isContext);
   
   /** Called by ICornerResizer when drag resize commences */
-  void StartDragResize() { mResizingInProcess = true; }
+  void StartDragResize()
+  {
+    mResizingInProcess = true;
+
+    // OnMouseDown() has already stored the mouse position in mMouseDownX/Y.
+    // Convert these into offsets from the window's bottom-right corner so that
+    // subsequent drag events can resize relative to the actual graphics bounds
+    // rather than the position within the resizer control.
+    mMouseDownX = GetBounds().R - mMouseDownX;
+    mMouseDownY = GetBounds().B - mMouseDownY;
+  }
   
   /** Called when drag resize ends */
   void EndDragResize();

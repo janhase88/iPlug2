@@ -26,6 +26,7 @@
 #include <cstring>
 #include <ctime>
 #include <cassert>
+#include <chrono>
 
 #include "wdlstring.h"
 #include "mutex.h"
@@ -168,6 +169,42 @@ BEGIN_IPLUG_NAMESPACE
     str.Append(tStr.Get());
     return str.Get();
   }
+
+  class ScopedTimer
+  {
+  public:
+    ScopedTimer(const char* funcName, int line, const char* label)
+      : mFuncName(funcName), mLine(line), mLabel(label)
+#ifdef TRACER_BUILD
+      , mStart(std::chrono::high_resolution_clock::now())
+#endif
+    {}
+
+    ~ScopedTimer()
+    {
+#ifdef TRACER_BUILD
+      auto end = std::chrono::high_resolution_clock::now();
+      auto us = std::chrono::duration_cast<std::chrono::microseconds>(end - mStart).count();
+      Trace(mFuncName, mLine, "%s %lldus", mLabel, (long long) us);
+#endif
+    }
+
+  private:
+    const char* mFuncName;
+    int mLine;
+    const char* mLabel;
+#ifdef TRACER_BUILD
+    std::chrono::high_resolution_clock::time_point mStart;
+#endif
+  };
+
+#ifdef TRACER_BUILD
+  #define IPLUG_TRACE_CONCAT_INNER(a, b) a##b
+  #define IPLUG_TRACE_CONCAT(a, b) IPLUG_TRACE_CONCAT_INNER(a, b)
+  #define TRACE_SCOPE(label) ScopedTimer IPLUG_TRACE_CONCAT(_iplugScopedTimer_, __LINE__)(TRACELOC, label)
+#else
+  #define TRACE_SCOPE(label)
+#endif
 
   #if defined TRACER_BUILD
 

@@ -865,12 +865,11 @@ void IGraphicsWin::ForceEndUserEdit()
   mParamEditMsg = kCancel;
 }
 
-static UINT SETPOS_FLAGS = SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE;
-
 void IGraphicsWin::PlatformResize(bool parentHasResized)
 {
   if (WindowIsOpen())
   {
+    const UINT setPosFlags = SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE;
     HWND pParent = 0, pGrandparent = 0;
     int dlgW = 0, dlgH = 0, parentW = 0, parentH = 0, grandparentW = 0, grandparentH = 0;
     GetWindowSize(mPlugWnd, &dlgW, &dlgH);
@@ -891,16 +890,16 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
     if (!dw && !dh)
       return;
 
-    SetWindowPos(mPlugWnd, 0, 0, 0, dlgW + dw, dlgH + dh, SETPOS_FLAGS);
+    SetWindowPos(mPlugWnd, 0, 0, 0, dlgW + dw, dlgH + dh, setPosFlags);
 
     if (pParent && !parentHasResized)
     {
-      SetWindowPos(pParent, 0, 0, 0, parentW + dw, parentH + dh, SETPOS_FLAGS);
+      SetWindowPos(pParent, 0, 0, 0, parentW + dw, parentH + dh, setPosFlags);
     }
 
     if (pGrandparent && !parentHasResized)
     {
-      SetWindowPos(pGrandparent, 0, 0, 0, grandparentW + dw, grandparentH + dh, SETPOS_FLAGS);
+      SetWindowPos(pGrandparent, 0, 0, 0, grandparentW + dw, grandparentH + dh, setPosFlags);
     }
   }
 }

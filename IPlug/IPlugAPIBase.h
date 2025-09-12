@@ -45,9 +45,14 @@ class IPlugAPIBase : public IPluginBase
 public:
   IPlugAPIBase(Config config, EAPI plugAPI);
   virtual ~IPlugAPIBase();
-  
+
   IPlugAPIBase(const IPlugAPIBase&) = delete;
   IPlugAPIBase& operator=(const IPlugAPIBase&) = delete;
+
+  void SetWinModuleHandle(void* pInstance) { mHInstance = pInstance; }
+  void* GetWinModuleHandle() const { return mHInstance; }
+  void SetWinWindowHandle(void* pWnd) { mHWND = pWnd; }
+  void* GetWinWindowHandle() const { return mHWND; }
   
 #pragma mark - Methods you can implement/override in your plug-in class - you do not call these methods
 
@@ -224,6 +229,8 @@ private:
   friend class IPlugWEB;
 
 private:
+  void* mHInstance = nullptr;
+  void* mHWND = nullptr;
   WDL_String mParamDisplayStr;
   std::unique_ptr<Timer> mTimer;
   

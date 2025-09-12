@@ -41,8 +41,8 @@ bool ReaperExtBase::EditorResizeFromUI(int viewWidth, int viewHeight, bool needs
 #ifdef OS_MAC
 #define TITLEBAR_BODGE 22 //TODO: sort this out
     RECT r;
-    GetWindowRect(gHWND, &r);
-    SetWindowPos(gHWND, 0, r.left, r.bottom - viewHeight - TITLEBAR_BODGE, viewWidth, viewHeight + TITLEBAR_BODGE, 0);
+    GetWindowRect(mHWND, &r);
+    SetWindowPos(mHWND, 0, r.left, r.bottom - viewHeight - TITLEBAR_BODGE, viewWidth, viewHeight + TITLEBAR_BODGE, 0);
 #endif
 
     return true;
@@ -53,12 +53,12 @@ bool ReaperExtBase::EditorResizeFromUI(int viewWidth, int viewHeight, bool needs
 
 void ReaperExtBase::ShowHideMainWindow()
 {
-  if(gHWND == NULL)
+  if(mHWND == NULL)
   {
-    gHWND = CreateDialog(gHINSTANCE, MAKEINTRESOURCE(IDD_DIALOG_MAIN), gParent, ReaperExtBase::MainDlgProc);
+    mHWND = CreateDialog(mHInstance, MAKEINTRESOURCE(IDD_DIALOG_MAIN), gParent, ReaperExtBase::MainDlgProc);
   }
   else
-    DestroyWindow(gHWND);
+    DestroyWindow(mHWND);
 }
 
 void ReaperExtBase::ToggleDocking()
@@ -66,13 +66,13 @@ void ReaperExtBase::ToggleDocking()
   if (!mDocked)
   {
     mDocked = true;
-    ShowWindow(gHWND, SW_HIDE);
-    DockWindowAdd(gHWND, (char*) "TEST", 0, false);
-    DockWindowActivate(gHWND);
+    ShowWindow(mHWND, SW_HIDE);
+    DockWindowAdd(mHWND, (char*) "TEST", 0, false);
+    DockWindowActivate(mHWND);
   }
   else
   {
-    DestroyWindow(gHWND);
+    DestroyWindow(mHWND);
     mDocked = false;
 //    Show(false, true);
   }
@@ -146,6 +146,7 @@ WDL_DLGRET ReaperExtBase::MainDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
     case WM_INITDIALOG:
     {
       AttachWindowTopmostButton(hwnd);
+      gPlug->SetMainWnd(hwnd);
       gPlug->OpenWindow(hwnd);
       auto scale = GetScaleForHWND(hwnd);
       ClientResize(hwnd, PLUG_WIDTH * scale, PLUG_HEIGHT * scale);
@@ -155,7 +156,7 @@ WDL_DLGRET ReaperExtBase::MainDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
       return 0;
     }
     case WM_DESTROY:
-      gHWND = NULL;
+      gPlug->SetMainWnd(NULL);
       return 0;
     case WM_CLOSE:
       gPlug->CloseWindow();

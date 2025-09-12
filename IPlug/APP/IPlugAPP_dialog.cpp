@@ -15,7 +15,7 @@
 #ifdef OS_WIN
 #include "asio.h"
 extern float GetScaleForHWND(HWND hWnd);
-#define GET_MENU() GetMenu(gHWND)
+#define GET_MENU() GetMenu(pAppHost->GetMainWnd())
 #elif defined OS_MAC
 #define GET_MENU() SWELL_GetCurrentMenu()
 #endif
@@ -545,10 +545,10 @@ WDL_DLGRET IPlugAPPHost::MainDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPA
   {
     case WM_INITDIALOG:
     {
-      gHWND = hwndDlg;
+      pAppHost->SetMainWnd(hwndDlg);
       IPlugAPP* pPlug = pAppHost->GetPlug();
 
-      if (!pAppHost->OpenWindow(gHWND))
+      if (!pAppHost->OpenWindow(hwndDlg))
       {
         DBGMSG("couldn't attach gui\n");
       }
@@ -560,7 +560,7 @@ WDL_DLGRET IPlugAPPHost::MainDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPA
     }
     case WM_DESTROY:
       pAppHost->CloseWindow();
-      gHWND = NULL;
+      pAppHost->SetMainWnd(NULL);
       IPlugAPPHost::sInstance = nullptr;
       
       #ifdef OS_WIN
@@ -610,7 +610,7 @@ WDL_DLGRET IPlugAPPHost::MainDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPA
         }
         case ID_PREFERENCES:
         {
-          INT_PTR ret = DialogBox(gHINSTANCE, MAKEINTRESOURCE(IDD_DIALOG_PREF), hwndDlg, IPlugAPPHost::PreferencesDlgProc);
+          INT_PTR ret = DialogBox(pAppHost->GetInstance(), MAKEINTRESOURCE(IDD_DIALOG_PREF), hwndDlg, IPlugAPPHost::PreferencesDlgProc);
 
           if(ret == IDOK)
             pAppHost->UpdateINI();

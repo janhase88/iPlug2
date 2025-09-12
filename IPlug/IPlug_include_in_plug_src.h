@@ -23,14 +23,14 @@
 // clang-format off
 
 #if defined OS_WIN && !defined VST3C_API
-  HINSTANCE gHINSTANCE = 0;
+  static HINSTANCE sHINSTANCE = 0;
   #if defined(VST2_API) || defined(AAX_API) || defined(CLAP_API)
   #ifdef __MINGW32__
   extern "C"
   #endif
   BOOL WINAPI DllMain(HINSTANCE hDllInst, DWORD fdwReason, LPVOID res)
   {
-    gHINSTANCE = hDllInst;
+    sHINSTANCE = hDllInst;
     return true;
   }
   #endif
@@ -75,6 +75,10 @@
       using namespace iplug;
 
       IPlugVST2* pPlug = iplug::MakePlug(iplug::InstanceInfo{hostCallback});
+#ifdef OS_WIN
+      if (pPlug)
+        pPlug->SetWinModuleHandle((void*) sHINSTANCE);
+#endif
 
       if (pPlug)
       {
@@ -116,7 +120,7 @@
   {
     #ifdef OS_WIN
     extern void* moduleHandle;
-    gHINSTANCE = (HINSTANCE) moduleHandle;
+    sHINSTANCE = (HINSTANCE) moduleHandle;
     #endif
     return true;
   }
@@ -131,7 +135,12 @@
   #if defined VST3_API
   static Steinberg::FUnknown* createInstance(void*)
   {
-    return (Steinberg::Vst::IAudioProcessor*) iplug::MakePlug(iplug::InstanceInfo());
+    auto* pPlug = iplug::MakePlug(iplug::InstanceInfo());
+#ifdef OS_WIN
+    if (pPlug)
+      pPlug->SetWinModuleHandle((void*) sHINSTANCE);
+#endif
+    return (Steinberg::Vst::IAudioProcessor*) pPlug;
   }
 
   BEGIN_FACTORY_DEF(PLUG_MFR, PLUG_URL_STR, PLUG_EMAIL_STR)
@@ -346,6 +355,10 @@ static const clap_plugin* clap_create_plugin(const clap_plugin_factory_t *factor
   if (!strcmp(gPluginDesc->id, plugin_id))
   {
     IPlugCLAP* pPlug = MakePlug(InstanceInfo{gPluginDesc.get(), host});
+#ifdef OS_WIN
+    if (pPlug)
+      pPlug->SetWinModuleHandle((void*) sHINSTANCE);
+#endif
     return pPlug->clapPlugin();
   }
   

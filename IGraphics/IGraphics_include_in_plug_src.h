@@ -34,7 +34,7 @@
   }
 
   #elif defined OS_WIN
-  extern HINSTANCE gHINSTANCE;
+  #include "IPlugAPIBase.h"
   #endif
 
   BEGIN_IPLUG_NAMESPACE
@@ -44,7 +44,8 @@
   IGraphics* MakeGraphics(IGEditorDelegate& dlg, int w, int h, int fps = 0, float scale = 1.)
   {
     IGraphicsWin* pGraphics = new IGraphicsWin(dlg, w, h, fps, scale);
-    pGraphics->SetWinModuleHandle(gHINSTANCE);
+    auto* pAPI = static_cast<IPlugAPIBase*>(&dlg);
+    pGraphics->SetWinModuleHandle(pAPI->GetWinModuleHandle());
     return pGraphics;
   }
   #elif defined OS_MAC

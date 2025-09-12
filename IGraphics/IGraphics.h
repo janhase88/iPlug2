@@ -1827,6 +1827,7 @@ private:
   // Order (front-to-back) ToolTip / PopUp / TextEntry / LiveEdit / Corner / PerfDisplay
   std::unique_ptr<ICornerResizerControl> mCornerResizer;
   WDL_PtrList<IBubbleControl> mBubbleControls;
+  int mNextBubbleControl = 0;
   std::unique_ptr<IPopupMenuControl> mPopupControl;
   std::unique_ptr<IFPSDisplayControl> mPerfDisplay;
   std::unique_ptr<ITextEntryControl> mTextEntryControl;
@@ -1881,7 +1882,9 @@ private:
   IKeyHandlerFunc mKeyHandlerFunc = nullptr;
   IDisplayTickFunc mDisplayTickFunc = nullptr;
   IUIAppearanceChangedFunc mAppearanceChangedFunc = nullptr;
-  
+  int mQwertyKeyBase = 48;
+  bool mKeysDown[128] = {};
+
 protected:
   IGEditorDelegate* mDelegate;
   bool mCursorHidden = false;

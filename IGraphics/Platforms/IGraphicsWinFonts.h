@@ -22,8 +22,13 @@ BEGIN_IGRAPHICS_NAMESPACE
 class InstalledWinFont
 {
 public:
-  InstalledWinFont(void* data, int resSize)
-  : mFontHandle(nullptr)
+  InstalledWinFont(void* data, int resSize, const char* family, int weight, bool italic, bool underline)
+    : mFontHandle(nullptr)
+    , mFamily(family)
+    , mWeight(weight)
+    , mItalic(italic)
+    , mUnderline(underline)
+    , mRefCount(1)
   {
     if (data)
     {
@@ -31,31 +36,45 @@ public:
       mFontHandle = AddFontMemResourceEx(data, resSize, NULL, &numFonts);
     }
   }
-  
+
   ~InstalledWinFont()
   {
     if (IsValid())
       RemoveFontMemResourceEx(mFontHandle);
   }
-  
+
   InstalledWinFont(const InstalledWinFont&) = delete;
   InstalledWinFont& operator=(const InstalledWinFont&) = delete;
-    
+
   bool IsValid() const { return mFontHandle; }
-  
+
+  void Retain() { ++mRefCount; }
+  int Release() { return --mRefCount; }
+
+  const char* GetFamily() const { return mFamily.Get(); }
+  int GetWeight() const { return mWeight; }
+  bool GetItalic() const { return mItalic; }
+  bool GetUnderline() const { return mUnderline; }
+
 private:
   HANDLE mFontHandle;
+  WDL_String mFamily;
+  int mWeight = 0;
+  bool mItalic = false;
+  bool mUnderline = false;
+  int mRefCount = 0;
 };
 
 struct HFontHolder
 {
-  HFontHolder(HFONT hfont) : mHFont(nullptr)
+  HFontHolder(HFONT hfont)
+    : mHFont(nullptr)
   {
-    LOGFONTW lFont = { 0 };
+    LOGFONTW lFont = {0};
     GetObjectW(hfont, sizeof(LOGFONTW), &lFont);
     mHFont = CreateFontIndirectW(&lFont);
   }
-  
+
   HFONT mHFont;
 };
 
@@ -63,19 +82,20 @@ class WinFont : public PlatformFont
 {
 public:
   WinFont(HFONT font, const char* styleName, bool system)
-  : PlatformFont(system), mFont(font), mStyleName(styleName) {}
-  ~WinFont()
+    : PlatformFont(system)
+    , mFont(font)
+    , mStyleName(styleName)
   {
-    DeleteObject(mFont);
   }
-  
+  ~WinFont() { DeleteObject(mFont); }
+
   FontDescriptor GetDescriptor() override { return mFont; }
-  
+
   IFontDataPtr GetFontData() override
   {
     HDC hdc = CreateCompatibleDC(NULL);
     IFontDataPtr fontData(new IFontData());
-      
+
     if (hdc != NULL)
     {
       SelectObject(hdc, mFont);
@@ -94,13 +114,13 @@ public:
             fontData->SetFaceIdx(GetFaceIdx(fontData->Get(), fontData->GetSize(), mStyleName.Get()));
         }
       }
-        
+
       DeleteDC(hdc);
     }
 
     return fontData;
   }
-    
+
 private:
   HFONT mFont;
   WDL_String mStyleName;

@@ -16,10 +16,11 @@
  */
 
 #include <codecvt>
-#include <fmt/format.h>
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <sstream>
+#include <iomanip>
 
 #include "heapbuf.h"
 #include "mutex.h"
@@ -538,7 +539,12 @@ private:
    * @param str \todo
    * @param scale \todo
    * @return std::string \todo */
-  std::string Hash(const char* str, double scale) { return fmt::format("{}-{:.1f}x", str, scale); }
+  std::string Hash(const char* str, double scale)
+  {
+    std::ostringstream ss;
+    ss << str << "-" << std::fixed << std::setprecision(1) << scale << "x";
+    return ss.str();
+  }
 
   /** \todo
    * @param str \todo

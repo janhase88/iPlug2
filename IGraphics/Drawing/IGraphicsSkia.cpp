@@ -372,6 +372,12 @@ bool IGraphicsSkia::BitmapExtSupported(const char* ext)
   return (strstr(extLower, "png") != nullptr) || (strstr(extLower, "jpg") != nullptr) || (strstr(extLower, "jpeg") != nullptr);
 }
 
+int IGraphicsSkia::GetFontCacheCount() const
+{
+  StaticStorage<Font>::Accessor storage(mFontCache);
+  return storage.Size();
+}
+
 APIBitmap* IGraphicsSkia::LoadAPIBitmap(const char* fileNameOrResID, int scale, EResourceLocation location, const char* ext)
 {
 // #ifdef OS_IOS

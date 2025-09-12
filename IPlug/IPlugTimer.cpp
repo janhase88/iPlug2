@@ -14,8 +14,27 @@
  */
 
 #include "IPlugTimer.h"
+#include <atomic>
 
 using namespace iplug;
+
+static std::atomic<int> sTimerCount{0};
+
+Timer::Timer(void* owner)
+  : mOwner(owner)
+{
+  ++sTimerCount;
+}
+
+Timer::~Timer()
+{
+  --sTimerCount;
+}
+
+int Timer::GetActiveTimerCount()
+{
+  return sTimerCount.load();
+}
 
 #if defined OS_MAC || defined OS_IOS
 

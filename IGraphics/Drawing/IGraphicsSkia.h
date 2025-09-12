@@ -117,6 +117,7 @@ public:
 
   IColor GetPoint(int x, int y) override;
   void* GetDrawContext() override { return (void*)mCanvas; }
+  int GetFontCacheCount() const override;
 
   bool BitmapExtSupported(const char* ext) override;
   int AlphaChannel() const override { return 3; }

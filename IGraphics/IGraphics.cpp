@@ -36,6 +36,7 @@ using VST3_API_BASE = iplug::IPlugVST3Controller;
 #include "IPopupMenuControl.h"
 #include "ITextEntryControl.h"
 #include "IBubbleControl.h"
+#include "IPlugTimer.h"
 
 using namespace iplug;
 using namespace igraphics;
@@ -1536,6 +1537,35 @@ void IGraphics::OnGUIIdle()
 {
   TRACE
   ForAllControls(&IControl::OnGUIIdle);
+#ifdef TRACER_BUILD
+  static int idleCount = 0;
+  if (++idleCount >= 60)
+  {
+    idleCount = 0;
+    int bitmapCount = 0;
+    int svgCount = 0;
+#ifdef OS_WIN
+    {
+      StaticStorage<APIBitmap>::Accessor storage(mBitmapCache);
+      bitmapCount = storage.Size();
+    }
+    {
+      StaticStorage<SVGHolder>::Accessor storage(mSVGCache);
+      svgCount = storage.Size();
+    }
+#else
+    {
+      StaticStorage<APIBitmap>::Accessor storage(sBitmapCache);
+      bitmapCount = storage.Size();
+    }
+    {
+      StaticStorage<SVGHolder>::Accessor storage(sSVGCache);
+      svgCount = storage.Size();
+    }
+#endif
+    Trace(TRACELOC, "bitmaps:%d svg:%d fonts:%d timers:%d", bitmapCount, svgCount, GetFontCacheCount(), Timer::GetActiveTimerCount());
+  }
+#endif
 }
 
 void IGraphics::OnDragResize(float x, float y)

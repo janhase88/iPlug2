@@ -522,6 +522,7 @@ public:
     void Clear() { return mStorage.Clear(); }
     void Retain() { return mStorage.Retain(); }
     void Release() { return mStorage.Release(); }
+    int Size() const { return mStorage.Size(); }
 
   private:
     StaticStorage& mStorage;
@@ -592,6 +593,8 @@ private:
     if (--mCount == 0)
       Clear();
   }
+
+  int Size() const { return static_cast<int>(mDatas.size()); }
 
   int mCount = 0;
   WDL_Mutex mMutex;

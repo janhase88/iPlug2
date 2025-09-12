@@ -891,7 +891,7 @@ void curses_unregisterChildClass(HINSTANCE hInstance)
 {
 #ifdef _WIN32
   if (!--m_regcnt)
-    UnregisterClass(WIN32CURSES_CLASS_NAME,hInstance);
+    UnregisterClassA(WIN32CURSES_CLASS_NAME,hInstance);
 #endif
 }
 
@@ -900,13 +900,13 @@ void curses_registerChildClass(HINSTANCE hInstance)
 #ifdef _WIN32
   if (!m_regcnt++)
   {
-    WNDCLASSW wc={CS_DBLCLKS,};
+    WNDCLASSA wc={CS_DBLCLKS,};
     wc.lpfnWndProc = cursesWindowProc;
     wc.hInstance = hInstance;
     wc.hCursor = LoadCursor(NULL,IDC_ARROW);
-    wc.lpszClassName = LWIN32CURSES_CLASS_NAME;
+    wc.lpszClassName = WIN32CURSES_CLASS_NAME;
 
-    RegisterClassW(&wc);
+    RegisterClassA(&wc);
   }
 #endif
 }
@@ -938,7 +938,7 @@ HWND curses_CreateWindow(HINSTANCE hInstance, win32CursesCtx *ctx, const char *t
 {
   if (!ctx) return NULL;
 #ifdef _WIN32
- ctx->m_hwnd = CreateWindowEx(0,WIN32CURSES_CLASS_NAME, title,WS_CAPTION|WS_MAXIMIZEBOX|WS_MINIMIZEBOX|WS_SIZEBOX|WS_SYSMENU,
+ ctx->m_hwnd = CreateWindowExA(0,WIN32CURSES_CLASS_NAME, title,WS_CAPTION|WS_MAXIMIZEBOX|WS_MINIMIZEBOX|WS_SIZEBOX|WS_SYSMENU,
           CW_USEDEFAULT,CW_USEDEFAULT,640,480,
           NULL, NULL,hInstance,NULL);
 #else

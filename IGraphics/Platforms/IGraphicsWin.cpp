@@ -118,7 +118,7 @@ using namespace igraphics;
 
 #pragma mark - Shared font caches
 
-StaticStorage<InstalledFont> IGraphicsWin::mPlatformFontCache;
+StaticStorage<IGraphicsWin::InstalledFont> IGraphicsWin::mPlatformFontCache;
 StaticStorage<HFontHolder> IGraphicsWin::mHFontCache;
 
 #pragma mark - Mouse and tablet helpers
@@ -833,9 +833,9 @@ IGraphicsWin::IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float s
   if (mVSYNCEnabled)
     mVBlankThread = std::make_unique<VBlankThread>(*this);
 #endif
-  const COLORREF w = RGB(255, 255, 255);
+  const COLORREF white = RGB(255, 255, 255);
   for (int i = 0; i < 16; ++i)
-    mCustomColorStorage[i] = w;
+    mCustomColorStorage[i] = white;
 }
 
 IGraphicsWin::~IGraphicsWin()

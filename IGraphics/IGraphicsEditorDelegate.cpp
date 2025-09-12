@@ -74,6 +74,12 @@ void IGEditorDelegate::SetScreenScale(float scale)
     mGraphics->SetScreenScale(scale);
 }
 
+void IGEditorDelegate::EnableAutoScale(bool enable)
+{
+  if (GetUI())
+    mGraphics->EnableAutoScale(enable);
+}
+
 void IGEditorDelegate::SendControlValueFromDelegate(int ctrlTag, double normalizedValue)
 {
   if(!mGraphics)

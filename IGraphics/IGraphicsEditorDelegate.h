@@ -39,10 +39,11 @@ public:
   IGEditorDelegate& operator=(const IGEditorDelegate&) = delete;
     
   //IEditorDelegate
-  void* OpenWindow(void* pHandle) final;
-  void CloseWindow() final;
-  void SetScreenScale(float scale) final;
-  void OnParentWindowResize(int width, int height) override;
+    void* OpenWindow(void* pHandle) final;
+    void CloseWindow() final;
+    void SetScreenScale(float scale) final;
+    void EnableAutoScale(bool enable) final;
+    void OnParentWindowResize(int width, int height) override;
 
   bool OnKeyDown(const IKeyPress& key) override;
   bool OnKeyUp(const IKeyPress& key) override;

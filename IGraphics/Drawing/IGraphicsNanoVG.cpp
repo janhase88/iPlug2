@@ -487,7 +487,9 @@ void IGraphicsNanoVG::OnViewDestroyed()
   StaticStorage<APIBitmap>::Accessor storage(mBitmapCache);
   storage.Clear();
 
+
   ClearFBOStack();
+
 
   if (mMainFrameBuffer != nullptr)
     nvgDeleteFramebuffer(mMainFrameBuffer);

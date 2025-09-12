@@ -49,16 +49,25 @@ IGraphics::IGraphics(IGEditorDelegate& dlg, int w, int h, int fps, float scale)
 , mMaxScale(DEFAULT_MAX_DRAW_SCALE)
 , mDelegate(&dlg)
 {
+  mNextBubbleControl = 0;
+  mQwertyKeyBase = 48;
+  for (int i = 0; i < 128; i++)
+    mKeysDown[i] = false;
 }
 
 IGraphics::~IGraphics()
 {
   // N.B. - the OS levels have destructed, so we can't show/hide the cursor
   // Thus, this prevents a call to a pure virtual in ReleaseMouseCapture
-    
+
   mCursorHidden = false;
   RemoveAllControls();
-    
+
+  mNextBubbleControl = 0;
+  mQwertyKeyBase = 48;
+  for (int i = 0; i < 128; i++)
+    mKeysDown[i] = false;
+
 }
 
 void IGraphics::SetScreenScale(float scale)
@@ -423,9 +432,8 @@ void IGraphics::ShowBubbleControl(IControl* pCaller, float x, float y, const cha
       if(availableBubbleControls.size())
       {
         // this works but why?
-        static int whichBubbleControl = 0;
-        availableBubbleControls[whichBubbleControl++]->ShowBubble(pCaller, x, y, str, dir, minimumContentBounds, touchID);
-        whichBubbleControl %= nBubbleControls;
+        availableBubbleControls[mNextBubbleControl++]->ShowBubble(pCaller, x, y, str, dir, minimumContentBounds, touchID);
+        mNextBubbleControl %= nBubbleControls;
       }
     }
 //    else
@@ -2314,14 +2322,14 @@ void IGraphics::SetQwertyMidiKeyHandlerFunc(std::function<void(const IMidiMsg& m
 {
   SetKeyHandlerFunc([&, func](const IKeyPress& key, bool isUp) {
     IMidiMsg msg;
-    
+
     int note = 0;
-    static int base = 48;
-    static bool keysDown[128] = {};
+    auto& base = mQwertyKeyBase;
+    auto& keysDown = mKeysDown;
     
     auto onOctSwitch = [&]() {
       base = Clip(base, 24, 96);
-      
+
       for(auto i=0;i<128;i++) {
         if(keysDown[i]) {
           msg.MakeNoteOffMsg(i, 0);
@@ -2373,7 +2381,7 @@ void IGraphics::SetQwertyMidiKeyHandlerFunc(std::function<void(const IMidiMsg& m
           func(msg);
       }
     }
-    
+
     return true;
   });
 }

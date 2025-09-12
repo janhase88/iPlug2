@@ -1303,6 +1303,23 @@ void IGraphics::OnDropMultiple(const std::vector<const char*>& paths, float x, f
 
 void IGraphics::ReleaseMouseCapture()
 {
+  if (ControlIsCaptured())
+  {
+    std::vector<IMouseInfo> points;
+    points.reserve(mCapturedMap.size());
+
+    for (auto& entry : mCapturedMap)
+    {
+      IMouseInfo info;
+      info.x = mCursorX;
+      info.y = mCursorY;
+      info.ms = IMouseMod(false, false, false, false, false, entry.first);
+      points.push_back(info);
+    }
+
+    OnMouseUp(points);
+  }
+
   mCapturedMap.clear();
   if (mCursorHidden)
     HideMouseCursor(false);

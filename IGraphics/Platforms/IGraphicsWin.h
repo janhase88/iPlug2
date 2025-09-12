@@ -183,9 +183,8 @@ private:
   int mTooltipIdx = -1;
 
   WDL_String mMainWndClassName;
-
-  StaticStorage<InstalledFont> mPlatformFontCache;
-  StaticStorage<HFontHolder> mHFontCache;
+  static StaticStorage<InstalledFont> mPlatformFontCache;
+  static StaticStorage<HFontHolder> mHFontCache;
   /** Current VBlank thread priority, defaults to THREAD_PRIORITY_NORMAL. */
   int mVBlankThreadPriority = THREAD_PRIORITY_NORMAL;
   double mFPS = 0.0;

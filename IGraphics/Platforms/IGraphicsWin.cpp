@@ -117,6 +117,11 @@ private:
 using namespace iplug;
 using namespace igraphics;
 
+#pragma mark - Shared font caches
+
+StaticStorage<InstalledFont> IGraphicsWin::mPlatformFontCache;
+StaticStorage<HFontHolder> IGraphicsWin::mHFontCache;
+
 #pragma mark - Mouse and tablet helpers
 
 extern float GetScaleForHWND(HWND hWnd);
@@ -820,6 +825,10 @@ LRESULT CALLBACK IGraphicsWin::ParamEditProc(HWND hWnd, UINT msg, WPARAM wParam,
 IGraphicsWin::IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float scale)
   : IGRAPHICS_DRAW_CLASS(dlg, w, h, fps, scale)
 {
+  StaticStorage<InstalledFont>::Accessor fontStorage(mPlatformFontCache);
+  fontStorage.Retain();
+  StaticStorage<HFontHolder>::Accessor hfontStorage(mHFontCache);
+  hfontStorage.Retain();
 #ifndef IGRAPHICS_DISABLE_VSYNC
   mVSYNCEnabled = IsWindows8OrGreater();
   if (mVSYNCEnabled)
@@ -829,6 +838,10 @@ IGraphicsWin::IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float s
 
 IGraphicsWin::~IGraphicsWin()
 {
+  StaticStorage<InstalledFont>::Accessor fontStorage(mPlatformFontCache);
+  fontStorage.Release();
+  StaticStorage<HFontHolder>::Accessor hfontStorage(mHFontCache);
+  hfontStorage.Release();
   DestroyEditWindow();
   CloseWindow();
   mVBlankThread.reset();

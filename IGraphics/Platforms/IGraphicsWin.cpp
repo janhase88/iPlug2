@@ -39,6 +39,9 @@ using namespace igraphics;
 
 static double sFPS = 0.0;
 
+StaticStorage<InstalledFont> IGraphicsWin::sPlatformFontCache;
+StaticStorage<HFontHolder> IGraphicsWin::sHFontCache;
+
 #define PARAM_EDIT_ID 99
 #define IPLUG_TIMER_ID 2
 
@@ -749,6 +752,11 @@ IGraphicsWin::IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float s
   static std::atomic<int> sClassID{0};
   mWndClassName = L"IPlugWndClass_" + std::to_wstring(sClassID++);
 
+  StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
+  fontStorage.Retain();
+  StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
+  hfontStorage.Retain();
+
   const COLORREF wcol = RGB(255, 255, 255);
   for (int i = 0; i < 16; ++i)
     mCustomColorStorage[i] = wcol;
@@ -760,10 +768,10 @@ IGraphicsWin::IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float s
 
 IGraphicsWin::~IGraphicsWin()
 {
-  StaticStorage<InstalledFont>::Accessor fontStorage(mPlatformFontCache);
-  StaticStorage<HFontHolder>::Accessor hfontStorage(mHFontCache);
-  fontStorage.Clear();
-  hfontStorage.Clear();
+  StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
+  StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
+  fontStorage.Release();
+  hfontStorage.Release();
   DestroyEditWindow();
   CloseWindow();
 }
@@ -1519,7 +1527,7 @@ void IGraphicsWin::CreatePlatformTextEntry(int paramIdx, const IText& text, cons
     return;
   }
 
-  StaticStorage<HFontHolder>::Accessor hfontStorage(mHFontCache);
+  StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
 
   LOGFONTW lFont = {0};
   HFontHolder* hfontHolder = hfontStorage.Find(text.mFont);
@@ -2044,12 +2052,12 @@ static HFONT GetHFont(const char* fontName, int weight, bool italic, bool underl
 
 PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* fileNameOrResID)
 {
-  StaticStorage<InstalledFont>::Accessor fontStorage(mPlatformFontCache);
+  StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
 
   void* pFontMem = nullptr;
   int resSize = 0;
   WDL_String fullPath;
- 
+
   const EResourceLocation fontLocation = LocateResource(fileNameOrResID, "ttf", fullPath, GetBundleID(), GetWinModuleHandle(), nullptr);
 
   if (fontLocation == kNotFound)
@@ -2102,7 +2110,7 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* f
 
 PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, int dataSize)
 {
-  StaticStorage<InstalledFont>::Accessor fontStorage(mPlatformFontCache);
+  StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
 
   std::unique_ptr<InstalledFont> pFont;
   void* pFontMem = pData;
@@ -2132,7 +2140,7 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
 
 void IGraphicsWin::CachePlatformFont(const char* fontID, const PlatformFontPtr& font)
 {
-  StaticStorage<HFontHolder>::Accessor hfontStorage(mHFontCache);
+  StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
 
   HFONT hfont = font->GetDescriptor();
 

@@ -354,7 +354,8 @@ IGraphicsSkia::~IGraphicsSkia()
   mUnicode.reset();
 #endif
 
-  mFontCache.Clear();
+  StaticStorage<Font>::Accessor storage(mFontCache);
+  storage.Clear();
   mFontMgr.reset();
 }
 

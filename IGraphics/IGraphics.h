@@ -1269,7 +1269,17 @@ private:
   void DoCreatePopupMenu(IControl& control, IPopupMenu& menu, const IRECT& bounds, int valIdx, bool isContext);
   
   /** Called by ICornerResizer when drag resize commences */
-  void StartDragResize() { mResizingInProcess = true; }
+  void StartDragResize()
+  {
+    mResizingInProcess = true;
+
+    // Record the current graphics bounds so that drag resizing computes deltas
+    // from the window's bottom-right corner rather than the mouse pointer
+    // location. This ensures responsive resizing even when the resizer control
+    // is smaller than the full bounds or the drawing is scaled.
+    mMouseDownX = GetBounds().R() * GetDrawScale();
+    mMouseDownY = GetBounds().B() * GetDrawScale();
+  }
   
   /** Called when drag resize ends */
   void EndDragResize();

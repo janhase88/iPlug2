@@ -180,8 +180,8 @@ private:
   WDL_String mMainWndClassName;
 
   static StaticStorage<InstalledFont> sPlatformFontCache;
+  static StaticStorage<HFontHolder> sHFontCache;
   std::vector<InstalledFont*> mInstalledFonts;
-  StaticStorage<HFontHolder> mHFontCache;
   std::wstring mWndClassName;
   bool mWndClassRegistered = false;
   COLORREF mCustomColorStorage[16];

@@ -1273,12 +1273,12 @@ private:
   {
     mResizingInProcess = true;
 
-    // Record the current graphics bounds so that drag resizing computes deltas
-    // from the window's bottom-right corner rather than the mouse pointer
-    // location. This ensures responsive resizing even when the resizer control
-    // is smaller than the full bounds or the drawing is scaled.
-    mMouseDownX = GetBounds().R() * GetDrawScale();
-    mMouseDownY = GetBounds().B() * GetDrawScale();
+    // OnMouseDown() has already stored the mouse position in mMouseDownX/Y.
+    // Convert these into offsets from the window's bottom-right corner so that
+    // subsequent drag events can resize relative to the actual graphics bounds
+    // rather than the position within the resizer control.
+    mMouseDownX = GetBounds().R - mMouseDownX;
+    mMouseDownY = GetBounds().B - mMouseDownY;
   }
   
   /** Called when drag resize ends */

@@ -1543,14 +1543,14 @@ void IGraphics::OnDragResize(float x, float y)
 {
   if(mGUISizeMode == EUIResizerMode::Scale)
   {
-    float scaleX = (x * GetDrawScale()) / mMouseDownX;
-    float scaleY = (y * GetDrawScale()) / mMouseDownY;
+    float scaleX = ((x + mMouseDownX) * GetDrawScale()) / GetBounds().R;
+    float scaleY = ((y + mMouseDownY) * GetDrawScale()) / GetBounds().B;
 
     Resize(Width(), Height(), std::min(scaleX, scaleY));
   }
   else
   {
-    Resize(static_cast<int>(x), static_cast<int>(y), GetDrawScale());
+    Resize(static_cast<int>(x + mMouseDownX), static_cast<int>(y + mMouseDownY), GetDrawScale());
   }
 }
 

@@ -12,6 +12,7 @@
 
 #include <Shlobj.h>
 #include <commctrl.h>
+#include <atomic>
 
 #include "heapbuf.h"
 
@@ -745,6 +746,9 @@ LRESULT CALLBACK IGraphicsWin::ParamEditProc(HWND hWnd, UINT msg, WPARAM wParam,
 IGraphicsWin::IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float scale)
   : IGRAPHICS_DRAW_CLASS(dlg, w, h, fps, scale)
 {
+  static std::atomic<int> sClassID{0};
+  mWndClassName = L"IPlugWndClass_" + std::to_wstring(sClassID++);
+
   const COLORREF wcol = RGB(255, 255, 255);
   for (int i = 0; i < 16; ++i)
     mCustomColorStorage[i] = wcol;
@@ -1043,13 +1047,14 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     h = cR.bottom - cR.top;
   }
 
-  if (mWndClassReg++ == 0)
+  if (!mWndClassRegistered)
   {
-    WNDCLASSW wndClass = { CS_DBLCLKS | CS_OWNDC, WndProc, 0, 0, mHInstance, 0, 0, 0, 0, mWndClassName };
-    RegisterClassW(&wndClass);
+    WNDCLASSW wndClass = { CS_DBLCLKS | CS_OWNDC, WndProc, 0, 0, mHInstance, 0, 0, 0, 0, mWndClassName.c_str() };
+    if (RegisterClassW(&wndClass))
+      mWndClassRegistered = true;
   }
 
-  mPlugWnd = CreateWindowW(mWndClassName, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
+  mPlugWnd = CreateWindowW(mWndClassName.c_str(), L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
 
   HDC dc = GetDC(mPlugWnd);
   SetPlatformContext(dc);
@@ -1070,9 +1075,10 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     RegisterTouchWindow(mPlugWnd, 0);
   }
 
-  if (!mPlugWnd && --mWndClassReg == 0)
+  if (!mPlugWnd && mWndClassRegistered)
   {
-    UnregisterClassW(mWndClassName, mHInstance);
+    UnregisterClassW(mWndClassName.c_str(), mHInstance);
+    mWndClassRegistered = false;
   }
   else
   {
@@ -1272,9 +1278,10 @@ void IGraphicsWin::CloseWindow()
 
     mPlugWnd = 0;
 
-    if (--mWndClassReg == 0)
+    if (mWndClassRegistered)
     {
-      UnregisterClassW(mWndClassName, mHInstance);
+      UnregisterClassW(mWndClassName.c_str(), mHInstance);
+      mWndClassRegistered = false;
     }
   }
 }

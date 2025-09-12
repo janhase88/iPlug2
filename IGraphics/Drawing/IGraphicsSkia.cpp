@@ -365,17 +365,17 @@ IGraphicsSkia::IGraphicsSkia(IGEditorDelegate& dlg, int w, int h, int fps, float
   storage.Retain();
 
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
-   if (!mFontCollection)
+  if (!mFontCollection)
   {
-     mFontMgr = SParagraphFontMgr();
-     mTypefaceProvider = sk_make_sp<skia::textlayout::TypefaceFontProvider>();
-     mTypefaceProvider->ref();// <-- CHANGED THIS LINE
-     mFontCollection = sk_make_sp<skia::textlayout::FontCollection>();
-     mFontCollection->setAssetFontManager(mTypefaceProvider);
-     mFontCollection->setDefaultFontManager(mFontMgr);
-     mFontCollection->enableFontFallback();
-   }
-  #endif
+    mFontMgr = SParagraphFontMgr();
+    mTypefaceProvider = sk_make_sp<skia::textlayout::TypefaceFontProvider>();
+    mTypefaceProvider->ref(); // <-- CHANGED THIS LINE
+    mFontCollection = sk_make_sp<skia::textlayout::FontCollection>();
+    mFontCollection->setAssetFontManager(mTypefaceProvider);
+    mFontCollection->setDefaultFontManager(mFontMgr);
+    mFontCollection->enableFontFallback();
+  }
+#endif
 }
 
 IGraphicsSkia::~IGraphicsSkia()
@@ -440,6 +440,13 @@ APIBitmap* IGraphicsSkia::LoadAPIBitmap(const char* name, const void* pData, int
 
 void IGraphicsSkia::OnViewInitialized(void* pContext)
 {
+#ifndef IGRAPHICS_CPU
+  // Ensure this instance's graphics context is current while we create
+  // the Skia rendering context. Without doing so, multiple plug-ins may
+  // end up sharing whichever context happens to be current, leading to
+  // cross-talk between windows.
+  ScopedGLContext scopedGLContext{this};
+#endif
 #if defined IGRAPHICS_GL
   #if defined OS_MAC
   auto glInterface = GrGLInterfaces::MakeMac();
@@ -465,6 +472,12 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
 
 void IGraphicsSkia::OnViewDestroyed()
 {
+  // Activate this view's graphics context so that Skia can tear down
+  // GPU resources owned by this instance without affecting others.
+#ifndef IGRAPHICS_CPU
+  ScopedGLContext scopedGLContext{this};
+#endif
+
   RemoveAllControls();
 
 #if defined IGRAPHICS_GL
@@ -708,16 +721,16 @@ bool IGraphicsSkia::LoadAPIFont(const char* fontID, const PlatformFontPtr& font)
 
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
 
-    //if (!mFontCollection)
+    // if (!mFontCollection)
     //{
-    //  mFontMgr = SParagraphFontMgr(); 
-    //  mTypefaceProvider = sk_make_sp<skia::textlayout::TypefaceFontProvider>();
-    //  mTypefaceProvider->ref();// <-- CHANGED THIS LINE
-    //  mFontCollection = sk_make_sp<skia::textlayout::FontCollection>();
-    //  mFontCollection->setAssetFontManager(mTypefaceProvider);
-    //  mFontCollection->setDefaultFontManager(mFontMgr);
-    //  mFontCollection->enableFontFallback();
-    //}
+    //   mFontMgr = SParagraphFontMgr();
+    //   mTypefaceProvider = sk_make_sp<skia::textlayout::TypefaceFontProvider>();
+    //   mTypefaceProvider->ref();// <-- CHANGED THIS LINE
+    //   mFontCollection = sk_make_sp<skia::textlayout::FontCollection>();
+    //   mFontCollection->setAssetFontManager(mTypefaceProvider);
+    //   mFontCollection->setDefaultFontManager(mFontMgr);
+    //   mFontCollection->enableFontFallback();
+    // }
 
     // Create the typeface using our private font manager instance.
     auto typeFace = mFontMgr->makeFromData(wrappedData);

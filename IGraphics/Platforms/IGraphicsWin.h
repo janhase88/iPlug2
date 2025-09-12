@@ -14,31 +14,34 @@
 #include <windowsx.h>
 #include <winuser.h>
 
-#include "IGraphics_select.h"
 #include "IGraphicsWinFonts.h"
-#include <vector>
+#include "IGraphics_select.h"
 #include <string>
+#include <vector>
 
 
 BEGIN_IPLUG_NAMESPACE
 BEGIN_IGRAPHICS_NAMESPACE
 
 // Forward declare the OLE drop target helper (defined in IGraphicsWin_dnd.h)
-namespace DragAndDropHelpers { class DropTarget; }
+namespace DragAndDropHelpers
+{
+class DropTarget;
+}
 
 
 /** IGraphics platform class for Windows
-* @ingroup PlatformClasses */
+ * @ingroup PlatformClasses */
 class IGraphicsWin final : public IGRAPHICS_DRAW_CLASS
 {
   using InstalledFont = InstalledWinFont;
   using Font = WinFont;
-  
+
 public:
   IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float scale);
   ~IGraphicsWin();
 
-  void SetWinModuleHandle(void* pInstance) override { mHInstance = (HINSTANCE) pInstance; }
+  void SetWinModuleHandle(void* pInstance) override { mHInstance = (HINSTANCE)pInstance; }
   void* GetWinModuleHandle() override { return mHInstance; }
 
   void ForceEndUserEdit() override;
@@ -48,12 +51,12 @@ public:
 
   void CheckTabletInput(UINT msg);
   void DestroyEditWindow();
-    
+
   void HideMouseCursor(bool hide, bool lock) override;
   void MoveMouseCursor(float x, float y) override;
   ECursor SetMouseCursor(ECursor cursorType) override;
-  
-  void GetMouseLocation(float& x, float&y) const override;
+
+  void GetMouseLocation(float& x, float& y) const override;
 
   EMsgBoxResult ShowMessageBox(const char* str, const char* title, EMsgBoxType type, IMsgBoxCompletionHandlerFunc completionHandler) override;
 
@@ -102,18 +105,17 @@ protected:
   void SetTooltip(const char* tooltip);
   void ShowTooltip();
   void HideTooltip();
-    
+
   HWND GetMainWnd();
   IRECT GetWindowRECT();
 
 private:
-
   // OLE drag & drop
   DragAndDropHelpers::DropTarget* mDropTarget = nullptr;
   bool mOLEInited = false;
 
   /** Called either in response to WM_TIMER tick or user message WM_VBLANK, triggered by VSYNC thread
-    * @param vBlankCount will allow redraws to get paced by the vblank message. Passing 0 is a WM_TIMER fallback. */
+   * @param vBlankCount will allow redraws to get paced by the vblank message. Passing 0 is a WM_TIMER fallback. */
   void OnDisplayTimer(int vBlankCount = 0);
 
   enum EParamEditMsg
@@ -135,7 +137,7 @@ private:
 
   void ActivateGLContext() override;
   void DeactivateGLContext() override;
-  
+
 #ifdef IGRAPHICS_GL
   void CreateGLContext(); // OpenGL context management - TODO: RAII instead ?
   void DestroyGLContext();
@@ -157,14 +159,14 @@ private:
   void StartVBlankThread(HWND hWnd);
   void StopVBlankThread();
   void VBlankNotify();
-    
-  HWND mVBlankWindow = 0; // Window to post messages to for every vsync
-  volatile bool mVBlankShutdown = false; // Flag to indiciate that the vsync thread should shutdown
-  HANDLE mVBlankThread = INVALID_HANDLE_VALUE; //ID of thread.
-  volatile DWORD mVBlankCount = 0; // running count of vblank events since the start of the window.
-  int mVBlankSkipUntil = 0; // support for skipping vblank notification if the last callback took  too long.  This helps keep the message pump clear in the case of overload.
+
+  HWND mVBlankWindow = 0;                      // Window to post messages to for every vsync
+  volatile bool mVBlankShutdown = false;       // Flag to indiciate that the vsync thread should shutdown
+  HANDLE mVBlankThread = INVALID_HANDLE_VALUE; // ID of thread.
+  volatile DWORD mVBlankCount = 0;             // running count of vblank events since the start of the window.
+  int mVBlankSkipUntil = 0;                    // support for skipping vblank notification if the last callback took  too long.  This helps keep the message pump clear in the case of overload.
   bool mVSYNCEnabled = false;
-  
+
   const IParam* mEditParam = nullptr;
   IText mEditText;
   IRECT mEditRECT;
@@ -177,7 +179,8 @@ private:
 
   WDL_String mMainWndClassName;
 
-  StaticStorage<InstalledFont> mPlatformFontCache;
+  static StaticStorage<InstalledFont> sPlatformFontCache;
+  std::vector<InstalledFont*> mInstalledFonts;
   StaticStorage<HFontHolder> mHFontCache;
   std::wstring mWndClassName;
   bool mWndClassRegistered = false;
@@ -188,5 +191,3 @@ private:
 
 END_IGRAPHICS_NAMESPACE
 END_IPLUG_NAMESPACE
-
-

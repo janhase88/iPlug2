@@ -116,11 +116,6 @@ private:
 using namespace iplug;
 using namespace igraphics;
 
-#pragma mark - Shared font caches
-
-StaticStorage<IGraphicsWin::InstalledFont> IGraphicsWin::mPlatformFontCache;
-StaticStorage<HFontHolder> IGraphicsWin::mHFontCache;
-
 #pragma mark - Mouse and tablet helpers
 
 extern float GetScaleForHWND(HWND hWnd);

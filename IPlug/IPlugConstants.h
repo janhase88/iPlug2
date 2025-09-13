@@ -38,7 +38,10 @@ using PLUG_SAMPLE_SRC = double;
 using sample = PLUG_SAMPLE_DST;
 
 #define LOGFILE "IPlugLog.txt"
-#define MAX_PROCESS_TRACE_COUNT 100
+// Allow overriding the process trace count limit at compile time for easy tuning
+#ifndef MAX_PROCESS_TRACE_COUNT
+#define MAX_PROCESS_TRACE_COUNT 100000
+#endif
 #define MAX_IDLE_TRACE_COUNT 15
 
 enum EIPlugPluginType

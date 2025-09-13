@@ -3,6 +3,8 @@
 #include <mutex>
 
 #include "IGraphicsSkia.h"
+#include "IPlugLogger.h"
+#include "IPlugPluginBase.h"
 
 #pragma warning(push)
 #pragma warning(disable : 4244)
@@ -1056,7 +1058,28 @@ APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, do
   return new Bitmap(std::move(surface), width, height, scale, drawScale);
 }
 
-void IGraphicsSkia::UpdateLayer() { mCanvas = mLayers.empty() ? mSurface->getCanvas() : mLayers.top()->GetAPIBitmap()->GetBitmap()->mSurface->getCanvas(); }
+void IGraphicsSkia::UpdateLayer()
+{
+  int id = -1;
+  int w = WindowWidth();
+  int h = WindowHeight();
+
+  if (!mLayers.empty())
+  {
+    id = mLayers.top()->GetID();
+    w = mLayers.top()->GetAPIBitmap()->GetWidth();
+    h = mLayers.top()->GetAPIBitmap()->GetHeight();
+  }
+
+  auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+  {
+    TRACE_SCOPE_F(plug->GetLogFile(), "UpdateLayer");
+    Trace(plug->GetLogFile(), TRACELOC, "id=%d w=%d h=%d", id, w, h);
+  }
+
+  mCanvas = mLayers.empty() ? mSurface->getCanvas() : mLayers.top()->GetAPIBitmap()->GetBitmap()->mSurface->getCanvas();
+}
 
 static size_t CalcRowBytes(int width)
 {
@@ -1066,6 +1089,16 @@ static size_t CalcRowBytes(int width)
 
 void IGraphicsSkia::ApplyLayerDropShadow(ILayerPtr& layer, const IShadow& shadow)
 {
+  auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+  {
+    TRACE_SCOPE_F(plug->GetLogFile(), "ApplyLayerDropShadow");
+    if (layer)
+    {
+      const APIBitmap* pBitmap = layer->GetAPIBitmap();
+      Trace(plug->GetLogFile(), TRACELOC, "id=%d w=%d h=%d", layer->GetID(), pBitmap->GetWidth(), pBitmap->GetHeight());
+    }
+  }
 #ifdef IGRAPHICS_CPU
   bool useFilter = false;
 #else
@@ -1113,6 +1146,17 @@ void IGraphicsSkia::ApplyLayerDropShadow(ILayerPtr& layer, const IShadow& shadow
 
 void IGraphicsSkia::GetLayerBitmapData(const ILayerPtr& layer, RawBitmapData& data)
 {
+  auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+  {
+    TRACE_SCOPE_F(plug->GetLogFile(), "GetLayerBitmapData");
+    if (layer)
+    {
+      const APIBitmap* pBitmap = layer->GetAPIBitmap();
+      Trace(plug->GetLogFile(), TRACELOC, "id=%d w=%d h=%d", layer->GetID(), pBitmap->GetWidth(), pBitmap->GetHeight());
+    }
+  }
+
   SkiaDrawable* pDrawable = layer->GetAPIBitmap()->GetBitmap();
   size_t rowBytes = CalcRowBytes(pDrawable->mSurface->width());
   int size = pDrawable->mSurface->height() * static_cast<int>(rowBytes);
@@ -1128,6 +1172,17 @@ void IGraphicsSkia::GetLayerBitmapData(const ILayerPtr& layer, RawBitmapData& da
 
 void IGraphicsSkia::ApplyShadowMask(ILayerPtr& layer, RawBitmapData& mask, const IShadow& shadow)
 {
+  auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+  {
+    TRACE_SCOPE_F(plug->GetLogFile(), "ApplyShadowMask");
+    if (layer)
+    {
+      const APIBitmap* pBitmap = layer->GetAPIBitmap();
+      Trace(plug->GetLogFile(), TRACELOC, "id=%d w=%d h=%d", layer->GetID(), pBitmap->GetWidth(), pBitmap->GetHeight());
+    }
+  }
+
   SkiaDrawable* pDrawable = layer->GetAPIBitmap()->GetBitmap();
   int width = pDrawable->mSurface->width();
   int height = pDrawable->mSurface->height();

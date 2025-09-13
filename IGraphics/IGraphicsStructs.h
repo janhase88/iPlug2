@@ -16,17 +16,17 @@
  * @{
  */
 
-#include <functional>
 #include <chrono>
+#include <functional>
 #include <numeric>
 
-#include "IPlugUtilities.h"
 #include "IPlugLogger.h"
 #include "IPlugStructs.h"
+#include "IPlugUtilities.h"
 
+#include "IGraphicsConstants.h"
 #include "IGraphicsPrivate.h"
 #include "IGraphicsUtilities.h"
-#include "IGraphicsConstants.h"
 
 BEGIN_IPLUG_NAMESPACE
 BEGIN_IGRAPHICS_NAMESPACE
@@ -93,24 +93,24 @@ public:
    @param framesAreHorizontal framesAreHorizontal \c true if the frames are positioned horizontally
    @param name Resource name for the bitmap */
   IBitmap(APIBitmap* pAPIBitmap, int n, bool framesAreHorizontal, const char* name = "")
-  : mAPIBitmap(pAPIBitmap)
-  , mW(static_cast<int>(pAPIBitmap->GetWidth() / pAPIBitmap->GetScale()))
-  , mH(static_cast<int>(pAPIBitmap->GetHeight() / pAPIBitmap->GetScale()))
-  , mN(n)
-  , mFramesAreHorizontal(framesAreHorizontal)
-  , mResourceName(name, static_cast<int>(strlen(name)))
+    : mAPIBitmap(pAPIBitmap)
+    , mW(static_cast<int>(pAPIBitmap->GetWidth() / pAPIBitmap->GetScale()))
+    , mH(static_cast<int>(pAPIBitmap->GetHeight() / pAPIBitmap->GetScale()))
+    , mN(n)
+    , mFramesAreHorizontal(framesAreHorizontal)
+    , mResourceName(name, static_cast<int>(strlen(name)))
   {
   }
 
   IBitmap()
-  : mAPIBitmap(nullptr)
-  , mW(0)
-  , mH(0)
-  , mN(0)
-  , mFramesAreHorizontal(false)
+    : mAPIBitmap(nullptr)
+    , mW(0)
+    , mH(0)
+    , mN(0)
+    , mFramesAreHorizontal(false)
   {
   }
-  
+
   /** @return overall bitmap width in pixels */
   int W() const { return mW; }
 
@@ -119,28 +119,28 @@ public:
 
   /** @return Width of a single frame in pixels */
   int FW() const { return (mFramesAreHorizontal ? mW / mN : mW); }
-  
+
   /** @return Height of a single frame in pixels */
   int FH() const { return (mFramesAreHorizontal ? mH : mH / mN); }
-  
+
   /** @return number of frames */
   int N() const { return mN; }
-  
+
   /** @return the scale of the bitmap */
   float GetScale() const { return mAPIBitmap->GetScale(); }
 
   /** @return the draw scale of the bitmap */
   float GetDrawScale() const { return mAPIBitmap->GetDrawScale(); }
-    
+
   /** @return a pointer to the referenced APIBitmap */
   APIBitmap* GetAPIBitmap() const { return mAPIBitmap; }
 
   /** @return whether or not frames are stored horizontally */
   bool GetFramesAreHorizontal() const { return mFramesAreHorizontal; }
-  
+
   /** @return the resource name */
   const WDL_String& GetResourceName() const { return mResourceName; }
-  
+
   /** @return \true if the bitmap has valid data */
   inline bool IsValid() const { return mAPIBitmap != nullptr; }
 
@@ -166,37 +166,34 @@ private:
 struct ISVG
 {
   ISVG(sk_sp<SkSVGDOM> svgDom)
-  : mSVGDom(svgDom)
+    : mSVGDom(svgDom)
   {
   }
-  
+
   /** The width of the SVG */
   float W() const
   {
     assert(mSVGDom);
     return mSVGDom->containerSize().width();
   }
-  
+
   /** The height of the SVG */
   float H() const
   {
     assert(mSVGDom);
     return mSVGDom->containerSize().height();
   }
-  
+
   /** @return \true if the SVG has valid data */
   inline bool IsValid() const { return mSVGDom != nullptr; }
-  
+
   sk_sp<SkSVGDOM> mSVGDom;
 };
 #else
 struct ISVG
-{  
-  ISVG(NSVGimage* pImage)
-  {
-    mImage = pImage;
-  }
-  
+{
+  ISVG(NSVGimage* pImage) { mImage = pImage; }
+
   /** @return The width of the SVG */
   float W() const
   {
@@ -210,10 +207,10 @@ struct ISVG
     assert(mImage);
     return mImage->height;
   }
-  
+
   /** @return \true if the SVG has valid data */
   inline bool IsValid() const { return mImage != nullptr; }
-  
+
   NSVGimage* mImage = nullptr;
 };
 #endif
@@ -222,44 +219,65 @@ struct ISVG
 struct IColor
 {
   int A, R, G, B;
-  
+
   /** Create an IColor from ARGB values
    * @param a Alpha value (valid range 0-255)
    * @param r Red value (valid range 0-255)
    * @param g Green value (valid range 0-255)
    * @param b Blue value (valid range 0-255) */
-  IColor(int a = 255, int r = 0, int g = 0, int b = 0) : A(a), R(r), G(g), B(b) {}
+  IColor(int a = 255, int r = 0, int g = 0, int b = 0)
+    : A(a)
+    , R(r)
+    , G(g)
+    , B(b)
+  {
+  }
 
   bool operator==(const IColor& rhs) { return (rhs.A == A && rhs.R == R && rhs.G == G && rhs.B == B); }
   bool operator!=(const IColor& rhs) { return !operator==(rhs); }
-  
-  /** Set the color parts 
+
+  /** Set the color parts
    * @param a Alpha value (valid range 0-255)
    * @param r Red value (valid range 0-255)
    * @param g Green value (valid range 0-255)
    * @param b Blue value (valid range 0-255) */
-  void Set(int a = 255, int r = 0, int g = 0, int b = 0) { A = a; R = r; G = g; B = b; }
-  
-  /** @return \c true if all color parts are zero */
-  bool Empty() const { return A == 0 && R == 0 && G == 0 && B == 0; }
-  
-  /** Keep the member int variables within the range 0-255 */
-  void Clamp() { A = Clip(A, 0, 255); R = Clip(R, 0, 255); G = Clip(G, 0, 255); B = Clip(B, 0, 255); }
-  
-  /** Randomise the color parts, with optional alpha 
-   * @param alpha Set the alpha of the new random color */
-  void Randomise(int alpha = 255) { A = alpha; R = std::rand() % 255; G = std::rand() % 255; B = std::rand() % 255; }
-
-  /** Set the color's opacity/alpha component with a float
-  * @param alpha float in the range 0. to 1. */
-  void SetOpacity(float alpha)
+  void Set(int a = 255, int r = 0, int g = 0, int b = 0)
   {
-    A = static_cast<int>(Clip(alpha, 0.f, 1.f) * 255.f);
+    A = a;
+    R = r;
+    G = g;
+    B = b;
   }
 
+  /** @return \c true if all color parts are zero */
+  bool Empty() const { return A == 0 && R == 0 && G == 0 && B == 0; }
+
+  /** Keep the member int variables within the range 0-255 */
+  void Clamp()
+  {
+    A = Clip(A, 0, 255);
+    R = Clip(R, 0, 255);
+    G = Clip(G, 0, 255);
+    B = Clip(B, 0, 255);
+  }
+
+  /** Randomise the color parts, with optional alpha
+   * @param alpha Set the alpha of the new random color */
+  void Randomise(int alpha = 255)
+  {
+    A = alpha;
+    R = std::rand() % 255;
+    G = std::rand() % 255;
+    B = std::rand() % 255;
+  }
+
+  /** Set the color's opacity/alpha component with a float
+   * @param alpha float in the range 0. to 1. */
+  void SetOpacity(float alpha) { A = static_cast<int>(Clip(alpha, 0.f, 1.f) * 255.f); }
+
   /** Returns a new IColor with a different opacity
-  * @param alpha float in the range 0. to 1.
-  * @return IColor new Color */
+   * @param alpha float in the range 0. to 1.
+   * @return IColor new Color */
   IColor WithOpacity(float alpha) const
   {
     IColor n = *this;
@@ -286,7 +304,7 @@ struct IColor
     n.Contrast(c);
     return n;
   }
-  
+
   /** Get the color as a 3 float array
    * @param rgbf ptr to array of 3 floats */
   void GetRGBf(float* rgbf) const
@@ -307,10 +325,10 @@ struct IColor
   }
 
   /** Get the Hue, Saturation and Luminance of the color
-  * @param h hue value to set, output in the range 0. to 1. 
-  * @param s saturation value to set, output in the range 0. to 1. 
-  * @param l luminance value to set, output in the range 0. to 1. 
-  * @param a alpha value to set, output in the range 0. to 1. */
+   * @param h hue value to set, output in the range 0. to 1.
+   * @param s saturation value to set, output in the range 0. to 1.
+   * @param l luminance value to set, output in the range 0. to 1.
+   * @param a alpha value to set, output in the range 0. to 1. */
   void GetHSLA(float& h, float& s, float& l, float& a) const
   {
     const float fR = R / 255.f;
@@ -325,15 +343,39 @@ struct IColor
 
     l = 50.f * fSum;
 
-    if (fMin == fMax) { s = 0.f; h = 0.f; l /= 100.f; return; }
-    else if (l < 50.f) { s = 100.f * fDiff / fSum; }
-    else { s = 100.f * fDiff / (2.f - fDiff); }
+    if (fMin == fMax)
+    {
+      s = 0.f;
+      h = 0.f;
+      l /= 100.f;
+      return;
+    }
+    else if (l < 50.f)
+    {
+      s = 100.f * fDiff / fSum;
+    }
+    else
+    {
+      s = 100.f * fDiff / (2.f - fDiff);
+    }
 
-    if (fMax == fR) { h = 60.f * (fG - fB) / fDiff; }
-    if (fMax == fG) { h = 60.f * (fB - fR) / fDiff + 120.f; }
-    if (fMax == fB) { h = 60.f * (fR - fG) / fDiff + 240.f; }
+    if (fMax == fR)
+    {
+      h = 60.f * (fG - fB) / fDiff;
+    }
+    if (fMax == fG)
+    {
+      h = 60.f * (fB - fR) / fDiff + 120.f;
+    }
+    if (fMax == fB)
+    {
+      h = 60.f * (fR - fG) / fDiff + 240.f;
+    }
 
-    if (h < 0.f) { h = h + 360.f; }
+    if (h < 0.f)
+    {
+      h = h + 360.f;
+    }
 
     h /= 360.f;
     s /= 100.f;
@@ -348,7 +390,7 @@ struct IColor
     int max = R > G ? (R > B ? R : B) : (G > B ? G : B);
     return (min + max) / 2;
   };
-  
+
   /** Get a random IColor
    * @param randomAlpha Set true if you want a random alpha value too
    * @return IColor A new IColor with a random combination of ARGB values */
@@ -371,10 +413,10 @@ struct IColor
     int R = static_cast<int>(rgbf[0] * 255.f);
     int G = static_cast<int>(rgbf[1] * 255.f);
     int B = static_cast<int>(rgbf[2] * 255.f);
-    
+
     return IColor(A, R, G, B);
   }
-  
+
   /** Create an IColor from a 4 float RGBA array
    * @param rgbaf ptr to array of 3 floats
    * @return IColor A new IColor based on the input array */
@@ -393,7 +435,7 @@ struct IColor
    *   IColor color = IColor::FromColorCode(0x55a6ff);
    *   IColor colorWithAlpha = IColor::FromColorCode(0x55a6ff, 0x88); // alpha is 0x88
    * @endcode
-   * 
+   *
    * @param colorCode Integer representation of the color. Use with hexadecimal numbers, e.g. 0xff38a2
    * @param A Integer representation of the alpha channel
    * @return IColor A new IColor based on the color code provided */
@@ -405,14 +447,14 @@ struct IColor
 
     return IColor(A, R, G, B);
   }
-  
+
   /** Create an IColor from a color code in a CString. Can be used to convert a hex code into an IColor object.
    * @param hexStr CString representation of the color code (no alpha). Use with hex numbers, e.g. "#ff38a2". WARNING: This does very little error checking
    * @return IColor A new IColor based on the color code provided */
   static IColor FromColorCodeStr(const char* hexStr)
   {
     WDL_String str(hexStr);
-    
+
     if ((str.GetLength() == 7 || str.GetLength() == 9) && str.Get()[0] == '#')
     {
       str.DeleteSub(0, 1);
@@ -425,13 +467,10 @@ struct IColor
       return IColor();
     }
   }
-  
+
   /** Convert the IColor to a single int (no alpha) */
-  int ToColorCode() const
-  {
-    return (R << 16) | (G << 8) | B;
-  }
-  
+  int ToColorCode() const { return (R << 16) | (G << 8) | B; }
+
   /** Convert the IColor to a hex string e.g. "#ffffffff" */
   void ToColorCodeStr(WDL_String& str, bool withAlpha = true) const
   {
@@ -440,18 +479,20 @@ struct IColor
     else
       str.SetFormatted(32, "#%02x%02x%02x", R, G, B);
   }
-  
+
   /** Create an IColor from Hue Saturation and Luminance values
-  * @param h hue value in the range 0.f-1.f
-  * @param s saturation value in the range 0.f-1.f
-  * @param l luminance value in the range 0.f-1.f
-  * @param a alpha value in the range 0.f-1.f
-  * @return The new IColor */
+   * @param h hue value in the range 0.f-1.f
+   * @param s saturation value in the range 0.f-1.f
+   * @param l luminance value in the range 0.f-1.f
+   * @param a alpha value in the range 0.f-1.f
+   * @return The new IColor */
   static IColor FromHSLA(float h, float s, float l, float a = 1.f)
   {
     auto hue = [](float h, float m1, float m2) {
-      if (h < 0) h += 1;
-      if (h > 1) h -= 1;
+      if (h < 0)
+        h += 1;
+      if (h > 1)
+        h -= 1;
       if (h < 1.0f / 6.0f)
         return m1 + (m2 - m1) * h * 6.0f;
       else if (h < 3.0f / 6.0f)
@@ -463,7 +504,8 @@ struct IColor
 
     IColor col;
     h = std::fmodf(h, 1.0f);
-    if (h < 0.0f) h += 1.0f;
+    if (h < 0.0f)
+      h += 1.0f;
     s = Clip(s, 0.0f, 1.0f);
     l = Clip(l, 0.0f, 1.0f);
     float m2 = l <= 0.5f ? (l * (1 + s)) : (l + s - l * s);
@@ -482,10 +524,10 @@ struct IColor
   static IColor LinearInterpolateBetween(const IColor& start, const IColor& dest, float progress)
   {
     IColor result;
-    result.A = start.A + static_cast<int>(progress * static_cast<float>(dest.A -  start.A));
-    result.R = start.R + static_cast<int>(progress * static_cast<float>(dest.R -  start.R));
-    result.G = start.G + static_cast<int>(progress * static_cast<float>(dest.G -  start.G));
-    result.B = start.B + static_cast<int>(progress * static_cast<float>(dest.B -  start.B));
+    result.A = start.A + static_cast<int>(progress * static_cast<float>(dest.A - start.A));
+    result.R = start.R + static_cast<int>(progress * static_cast<float>(dest.R - start.R));
+    result.G = start.G + static_cast<int>(progress * static_cast<float>(dest.G - start.G));
+    result.B = start.B + static_cast<int>(progress * static_cast<float>(dest.B - start.B));
     return result;
   }
 };
@@ -509,17 +551,25 @@ const IColor COLOR_VIOLET(255, 148, 0, 211);
 
 static IColor GetRainbow(int colorIdx)
 {
-  switch (colorIdx) {
-    case 0: return COLOR_RED;
-    case 1: return COLOR_ORANGE;
-    case 2: return COLOR_YELLOW;
-    case 3: return COLOR_GREEN;
-    case 4: return COLOR_BLUE;
-    case 5: return COLOR_INDIGO;
-    case 6: return COLOR_VIOLET;
-    default:
-      assert(0);
-      return COLOR_WHITE;
+  switch (colorIdx)
+  {
+  case 0:
+    return COLOR_RED;
+  case 1:
+    return COLOR_ORANGE;
+  case 2:
+    return COLOR_YELLOW;
+  case 3:
+    return COLOR_GREEN;
+  case 4:
+    return COLOR_BLUE;
+  case 5:
+    return COLOR_INDIGO;
+  case 6:
+    return COLOR_VIOLET;
+  default:
+    assert(0);
+    return COLOR_WHITE;
   }
 }
 
@@ -549,18 +599,16 @@ struct IBlend
    * @param type Blend type (defaults to none)
    * @param weight normalised alpha blending amount */
   IBlend(EBlend type = EBlend::Default, float weight = 1.0f)
-  : mMethod(type)
-  , mWeight(Clip(weight, 0.f, 1.f))
-  {}
+    : mMethod(type)
+    , mWeight(Clip(weight, 0.f, 1.f))
+  {
+  }
 };
 
 /** Helper function to extract the blend weight value from an IBlend ptr if it is valid
  * @param pBlend ptr to an IBlend or nullptr
  * @return float The blend weight value  */
-inline float BlendWeight(const IBlend* pBlend)
-{
-  return (pBlend ? pBlend->mWeight : 1.0f);
-}
+inline float BlendWeight(const IBlend* pBlend) { return (pBlend ? pBlend->mWeight : 1.0f); }
 
 const IBlend BLEND_75 = IBlend(EBlend::Default, 0.75f);
 const IBlend BLEND_50 = IBlend(EBlend::Default, 0.5f);
@@ -574,15 +622,14 @@ const IBlend BLEND_DST_OVER = IBlend(EBlend::DstOver, 1.f);
 /** Used to manage fill behaviour */
 struct IFillOptions
 {
-  EFillRule mFillRule { EFillRule::Winding };
-  bool mPreserve { false };
+  EFillRule mFillRule{EFillRule::Winding};
+  bool mPreserve{false};
 
   IFillOptions(bool preserve = false, EFillRule fillRule = EFillRule::Winding)
-  : mFillRule(fillRule)
-  , mPreserve(preserve)
+    : mFillRule(fillRule)
+    , mPreserve(preserve)
   {
   }
-   
 };
 
 /** Used to manage stroke behaviour for path based drawing back ends */
@@ -594,18 +641,16 @@ struct IStrokeOptions
   public:
     /** Create a new empty DashOptions */
     DashOptions()
-    : mOffset(0)
-    , mCount(0)
-    {}
+      : mOffset(0)
+      , mCount(0)
+    {
+    }
 
     /** Create a new DashOptions
-     * @param array Ptr to the float values/value for the length of the dashes (maximum of 8 floats) 
+     * @param array Ptr to the float values/value for the length of the dashes (maximum of 8 floats)
      * @param offset The offset into the stroke where the dash should start
      * @param count The length of the array passed in the first argument */
-    DashOptions(float* array, float offset, int count)
-    {
-      SetDash(array, offset, count);
-    }
+    DashOptions(float* array, float offset, int count) { SetDash(array, offset, count); }
 
     /** @return int The length of the dash array */
     int GetCount() const { return mCount; }
@@ -616,8 +661,8 @@ struct IStrokeOptions
     /** @return float* Ptr to the dash array */
     const float* GetArray() const { return mArray; }
 
-    /** Set the dash array 
-     * @param array Ptr to the float values/value for the length of the dashes (maximum of 8 floats) 
+    /** Set the dash array
+     * @param array Ptr to the float values/value for the length of the dashes (maximum of 8 floats)
      * @param offset The offset into the stroke where the dash should start
      * @param count The length of the array passed in the first argument */
     void SetDash(float* pArray, float offset, int count)
@@ -649,11 +694,13 @@ static const char* TextStyleString(ETextStyle style)
 {
   switch (style)
   {
-    case ETextStyle::Bold: return "Bold";
-    case ETextStyle::Italic: return "Italic";
-    case ETextStyle::Normal:
-    default:
-      return "Regular";
+  case ETextStyle::Bold:
+    return "Bold";
+  case ETextStyle::Italic:
+    return "Italic";
+  case ETextStyle::Normal:
+  default:
+    return "Regular";
   }
 }
 
@@ -663,7 +710,7 @@ struct IText
   /** Create a new IText with size, color, fontID ...
    * @param size The size of the text
    * @param color The color of the text
-   * @param font CString for the font name or nullptr for DEFAULT_FONT 
+   * @param font CString for the font name or nullptr for DEFAULT_FONT
    * @param align Horizontal alignment
    * @param valign Vertical alignment
    * @param angle Angle of the text in in degrees clockwise where 0 is normal, horizontal
@@ -693,43 +740,80 @@ struct IText
    * @param valign Vertical alignment
    * @param color The color of the text */
   IText(float size, EVAlign valign, const IColor& color = DEFAULT_TEXT_FGCOLOR)
-  : IText()
+    : IText()
   {
     mSize = size;
     mVAlign = valign;
     mFGColor = color;
   }
-  
+
   /** Create a new IText with size, horizontal align, color
    * @param size The size of the text
    * @param align Horizontal alignment
    * @param color The color of the text */
   IText(float size, EAlign align, const IColor& color = DEFAULT_TEXT_FGCOLOR)
-  : IText()
+    : IText()
   {
     mSize = size;
     mAlign = align;
     mFGColor = color;
   }
-  
+
   /** Create a new IText with size and fontID
    * @param size The size of the text
    * @param fontID CString used to identify the font */
   IText(float size, const char* fontID)
-  : IText()
+    : IText()
   {
     mSize = size;
     strcpy(mFont, (fontID ? fontID : DEFAULT_FONT));
   }
-  
-  IText WithFGColor(const IColor& fgColor) const { IText newText = *this; newText.mFGColor = fgColor; return newText; }
-  IText WithTEColors(const IColor& teBgColor, const IColor& teFgColor) const { IText newText = *this; newText.mTextEntryBGColor = teBgColor; newText.mTextEntryFGColor = teFgColor; return newText; }
-  IText WithAlign(EAlign align) const { IText newText = *this; newText.mAlign = align; return newText; }
-  IText WithVAlign(EVAlign valign) const { IText newText = *this; newText.mVAlign = valign; return newText; }
-  IText WithSize(float size) const { IText newText = *this; newText.mSize = size; return newText; }
-  IText WithAngle(float v) const { IText newText = *this; newText.mAngle = v; return newText; }
-  IText WithFont(const char* fontID) const { IText newText = *this; strcpy(newText.mFont, (fontID ? fontID : DEFAULT_FONT));; return newText; }
-  
+
+  IText WithFGColor(const IColor& fgColor) const
+  {
+    IText newText = *this;
+    newText.mFGColor = fgColor;
+    return newText;
+  }
+  IText WithTEColors(const IColor& teBgColor, const IColor& teFgColor) const
+  {
+    IText newText = *this;
+    newText.mTextEntryBGColor = teBgColor;
+    newText.mTextEntryFGColor = teFgColor;
+    return newText;
+  }
+  IText WithAlign(EAlign align) const
+  {
+    IText newText = *this;
+    newText.mAlign = align;
+    return newText;
+  }
+  IText WithVAlign(EVAlign valign) const
+  {
+    IText newText = *this;
+    newText.mVAlign = valign;
+    return newText;
+  }
+  IText WithSize(float size) const
+  {
+    IText newText = *this;
+    newText.mSize = size;
+    return newText;
+  }
+  IText WithAngle(float v) const
+  {
+    IText newText = *this;
+    newText.mAngle = v;
+    return newText;
+  }
+  IText WithFont(const char* fontID) const
+  {
+    IText newText = *this;
+    strcpy(newText.mFont, (fontID ? fontID : DEFAULT_FONT));
+    ;
+    return newText;
+  }
+
   char mFont[FONT_LEN];
   float mSize;
   IColor mFGColor;
@@ -750,20 +834,21 @@ struct IRECT
   float L, T, R, B;
 
   /** Construct an empty IRECT  */
-  IRECT()
-  {
-    L = T = R = B = 0.f;
-  }
-  
+  IRECT() { L = T = R = B = 0.f; }
+
   /** Construct a new IRECT with dimensions
    * @param l Left
    * @param t Top
    * @param r Right
    * @param b Bottom */
   IRECT(float l, float t, float r, float b)
-  : L(l), T(t), R(r), B(b)
-  {}
-  
+    : L(l)
+    , T(t)
+    , R(r)
+    , B(b)
+  {
+  }
+
   /** Construct a new IRECT at the given position and with the same size as the bitmap
    * @param x Top
    * @param y Left
@@ -772,8 +857,8 @@ struct IRECT
   {
     L = x;
     T = y;
-    R = L + (float) bitmap.FW();
-    B = T + (float) bitmap.FH();
+    R = L + (float)bitmap.FW();
+    B = T + (float)bitmap.FH();
   }
 
   /** Create a new IRECT with the given position and size
@@ -782,43 +867,25 @@ struct IRECT
    * @param w Width of new IRECT
    * @param h Height of new IRECT
    * @return the new IRECT */
-  static IRECT MakeXYWH(float l, float t, float w, float h)
-  {
-    return IRECT(l, t, l+w, t+h);
-  }
-  
+  static IRECT MakeXYWH(float l, float t, float w, float h) { return IRECT(l, t, l + w, t + h); }
+
   /** Create a new IRECT of size (y,h) centred at the given position (x,y)
    * @param x Mid horizontal point of new IRECT
    * @param y Mid vertical point of new IRECT
    * @param w Width of new IRECT
    * @param h Height of new IRECT
    * @return the new IRECT */
-  static IRECT MakeMidXYWH(float x, float y, float w, float h)
-  {
-    return IRECT(x-(w/2.0f), y-(h/2.0f), x+(w/2.0f), y+(h/2.0f));
-  }
-  
+  static IRECT MakeMidXYWH(float x, float y, float w, float h) { return IRECT(x - (w / 2.0f), y - (h / 2.0f), x + (w / 2.0f), y + (h / 2.0f)); }
+
   /** @return bool true if all the fields of this IRECT are 0 */
-  bool Empty() const
-  {
-    return (L == 0.f && T == 0.f && R == 0.f && B == 0.f);
-  }
+  bool Empty() const { return (L == 0.f && T == 0.f && R == 0.f && B == 0.f); }
 
   /** Set all fields of this IRECT to 0 */
-  void Clear()
-  {
-    L = T = R = B = 0.f;
-  }
-  
-  bool operator==(const IRECT& rhs) const
-  {
-    return (L == rhs.L && T == rhs.T && R == rhs.R && B == rhs.B);
-  }
+  void Clear() { L = T = R = B = 0.f; }
 
-  bool operator!=(const IRECT& rhs) const
-  {
-    return !(*this == rhs);
-  }
+  bool operator==(const IRECT& rhs) const { return (L == rhs.L && T == rhs.T && R == rhs.R && B == rhs.B); }
+
+  bool operator!=(const IRECT& rhs) const { return !(*this == rhs); }
 
   /** @return float the width of this IRECT  */
   inline float W() const { return R - L; }
@@ -834,15 +901,21 @@ struct IRECT
 
   /** @return float the area of this IRECT  */
   inline float Area() const { return W() * H(); }
-  
+
   /** Create a new IRECT that is a union of this IRECT and `rhs`.
    * The resulting IRECT will have the minimim L and T values and maximum R and B values of the inputs.
    * @param rhs another IRECT
    * @return IRECT the new IRECT */
   inline IRECT Union(const IRECT& rhs) const
   {
-    if (Empty()) { return rhs; }
-    if (rhs.Empty()) { return *this; }
+    if (Empty())
+    {
+      return rhs;
+    }
+    if (rhs.Empty())
+    {
+      return *this;
+    }
     return IRECT(std::min(L, rhs.L), std::min(T, rhs.T), std::max(R, rhs.R), std::max(B, rhs.B));
   }
 
@@ -862,60 +935,49 @@ struct IRECT
    * @param rhs another IRECT
    * @return true this IRECT shares any common space with `rhs`
    * @return false this IRECT and `rhs` are completely separate  */
-  inline bool Intersects(const IRECT& rhs) const
-  {
-    return (!Empty() && !rhs.Empty() && R >= rhs.L && L < rhs.R && B >= rhs.T && T < rhs.B);
-  }
+  inline bool Intersects(const IRECT& rhs) const { return (!Empty() && !rhs.Empty() && R >= rhs.L && L < rhs.R && B >= rhs.T && T < rhs.B); }
 
   /** Returns true if this IRECT completely contains `rhs`.
    * @param rhs another IRECT
    * @return true if this IRECT completely contains `rhs`
    * @return false if any part of `rhs` is outside this IRECT */
-  inline bool Contains(const IRECT& rhs) const
-  {
-    return (!Empty() && !rhs.Empty() && rhs.L >= L && rhs.R <= R && rhs.T >= T && rhs.B <= B);
-  }
+  inline bool Contains(const IRECT& rhs) const { return (!Empty() && !rhs.Empty() && rhs.L >= L && rhs.R <= R && rhs.T >= T && rhs.B <= B); }
 
   /** Returns true if this IRECT completely contains the point (x,y).
    * @param x point X
    * @param y point Y
    * @return true the point (x,y) is inside this IRECT
    * @return false the point (x,y) is outside this IRECT */
-  inline bool Contains(float x, float y) const
-  {
-    return (!Empty() && x >= L && x < R && y >= T && y < B);
-  }
-  
+  inline bool Contains(float x, float y) const { return (!Empty() && x >= L && x < R && y >= T && y < B); }
+
   /** Returns true if the point (x,y) is either contained in this IRECT or on an edge.
    * Unlike Contains(x,y) this method includes right-most and bottom-most pixels.
    * @param x point X
    * @param y point Y
    * @return true the point (x,y) is inside this IRECT
    * @return false the point (x,y) is outside this IRECT */
-  inline bool ContainsEdge(float x, float y) const
-  {
-    return (!Empty() && x >= L && x <= R && y >= T && y <= B);
-  }
+  inline bool ContainsEdge(float x, float y) const { return (!Empty() && x >= L && x <= R && y >= T && y <= B); }
 
   /** Ensure the point (x,y) is inside this IRECT.
    * @param x point X, will be modified if it's outside this IRECT
    * @param y point Y, will be modified if it's outside this IRECT */
   inline void Constrain(float& x, float& y) const
   {
-    if (x < L) x = L;
-    else if (x > R) x = R;
+    if (x < L)
+      x = L;
+    else if (x > R)
+      x = R;
 
-    if (y < T) y = T;
-    else if (y > B) y = B;
+    if (y < T)
+      y = T;
+    else if (y > B)
+      y = B;
   }
-  
+
   /** Offsets the input IRECT based on the parent
    * @param rhs IRECT to offset */
-  IRECT Inset(const IRECT& rhs) const
-  {
-    return IRECT(L + rhs.L, T + rhs.T, L + rhs.R, T + rhs.B);
-  }
-  
+  IRECT Inset(const IRECT& rhs) const { return IRECT(L + rhs.L, T + rhs.T, L + rhs.R, T + rhs.B); }
+
   /** Return if this IRECT and `rhs` may be merged.
    * The two rects cover exactly the area returned by Union()
    * @param rhs another IRECT
@@ -929,7 +991,7 @@ struct IRECT
       return true;
     return T == rhs.T && B == rhs.B && ((L >= rhs.L && L <= rhs.R) || (rhs.L >= L && rhs.L <= R));
   }
-  
+
   /** Get a new rectangle which is a fraction of this rectangle
    * @param layoutDir EDirection::Vertical or EDirection::Horizontal
    * @param frac Fractional multiplier
@@ -938,12 +1000,12 @@ struct IRECT
    * @return IRECT the new rectangle */
   inline IRECT FracRect(EDirection layoutDir, float frac, bool fromTopOrRight = false) const
   {
-    if(layoutDir == EDirection::Vertical)
+    if (layoutDir == EDirection::Vertical)
       return FracRectVertical(frac, fromTopOrRight);
     else
       return FracRectHorizontal(frac, fromTopOrRight);
   }
-  
+
   /** Returns a new IRECT with a width that is multiplied by `frac`.
    * @param frac width multiplier
    * @param rhs if true, the new IRECT will expand/contract from the right, otherwise it will come from the left
@@ -951,13 +1013,13 @@ struct IRECT
   inline IRECT FracRectHorizontal(float frac, bool rhs = false) const
   {
     float widthOfSubRect = W() * frac;
-    
-    if(rhs)
+
+    if (rhs)
       return IRECT(R - widthOfSubRect, T, R, B);
     else
       return IRECT(L, T, L + widthOfSubRect, B);
   }
-  
+
   /** Returns a new IRECT with a height that is multiplied by `frac`.
    * @param frac height multiplier
    * @param fromTop if true, the new IRECT will expand/contract from the top, otherwise it will come from the bottom
@@ -966,7 +1028,7 @@ struct IRECT
   {
     float heightOfSubRect = H() * frac;
 
-    if(fromTop)
+    if (fromTop)
       return IRECT(L, T, R, T + heightOfSubRect);
     else
       return IRECT(L, B - heightOfSubRect, R, B);
@@ -981,8 +1043,8 @@ struct IRECT
    * @return IRECT the new IRECT */
   inline IRECT SubRectVertical(int numSlices, int sliceIdx) const
   {
-    float heightOfSubRect = H() / (float) numSlices;
-    float t = heightOfSubRect * (float) sliceIdx;
+    float heightOfSubRect = H() / (float)numSlices;
+    float t = heightOfSubRect * (float)sliceIdx;
 
     return IRECT(L, T + t, R, T + t + heightOfSubRect);
   }
@@ -996,12 +1058,12 @@ struct IRECT
    * @return IRECT the new IRECT */
   inline IRECT SubRectHorizontal(int numSlices, int sliceIdx) const
   {
-    float widthOfSubRect = W() / (float) numSlices;
-    float l = widthOfSubRect * (float) sliceIdx;
+    float widthOfSubRect = W() / (float)numSlices;
+    float l = widthOfSubRect * (float)sliceIdx;
 
     return IRECT(L + l, T, L + l + widthOfSubRect, B);
   }
-  
+
   /** Get a new rectangle which is a "slice" of this rectangle.
    * @param layoutDir EDirection::Vertical or EDirection::Horizontal
    * @param numSlices Number of equal-sized parts to divide this IRECT into
@@ -1009,110 +1071,130 @@ struct IRECT
    * @return IRECT the new rectangle */
   inline IRECT SubRect(EDirection layoutDir, int numSlices, int sliceIdx) const
   {
-    if(layoutDir == EDirection::Vertical)
+    if (layoutDir == EDirection::Vertical)
       return SubRectVertical(numSlices, sliceIdx);
     else
       return SubRectHorizontal(numSlices, sliceIdx);
   }
-  
+
   /** Get a subrect of this IRECT expanding from the top-left corner
    * @param w Width of the desired IRECT
    * @param h Weight of the desired IRECT
    * @return IRECT The resulting subrect */
-  inline IRECT GetFromTLHC(float w, float h) const { return IRECT(L, T, L+w, T+h); }
+  inline IRECT GetFromTLHC(float w, float h) const { return IRECT(L, T, L + w, T + h); }
 
   /** Get a subrect of this IRECT expanding from the bottom-left corner
    * @param w Width of the desired IRECT
    * @param h Height of the desired IRECT
    * @return IRECT The resulting subrect */
-  inline IRECT GetFromBLHC(float w, float h) const { return IRECT(L, B-h, L+w, B); }
+  inline IRECT GetFromBLHC(float w, float h) const { return IRECT(L, B - h, L + w, B); }
 
   /** Get a subrect of this IRECT expanding from the top-right corner
    * @param w Width of the desired IRECT
    * @param h Height of the desired IRECT
    * @return IRECT The resulting subrect */
-  inline IRECT GetFromTRHC(float w, float h) const { return IRECT(R-w, T, R, T+h); }
+  inline IRECT GetFromTRHC(float w, float h) const { return IRECT(R - w, T, R, T + h); }
 
   /** Get a subrect of this IRECT expanding from the bottom-right corner
    * @param w Width of the desired IRECT
    * @param h Height of the desired IRECT
    * @return IRECT The resulting subrect */
-  inline IRECT GetFromBRHC(float w, float h) const { return IRECT(R-w, B-h, R, B); }
+  inline IRECT GetFromBRHC(float w, float h) const { return IRECT(R - w, B - h, R, B); }
 
   /** Get a subrect of this IRECT bounded in Y by the top edge and 'amount'
    * @param amount Size in Y of the desired IRECT
    * @return IRECT The resulting subrect */
-  inline IRECT GetFromTop(float amount) const { return IRECT(L, T, R, T+amount); }
+  inline IRECT GetFromTop(float amount) const { return IRECT(L, T, R, T + amount); }
 
   /** Get a subrect of this IRECT bounded in Y by 'amount' and the bottom edge
    * @param amount Size in Y of the desired IRECT
    * @return IRECT The resulting subrect */
-  inline IRECT GetFromBottom(float amount) const { return IRECT(L, B-amount, R, B); }
+  inline IRECT GetFromBottom(float amount) const { return IRECT(L, B - amount, R, B); }
 
   /** Get a subrect of this IRECT bounded in X by the left edge and 'amount'
    * @param amount Size in X of the desired IRECT
    * @return IRECT The resulting subrect */
-  inline IRECT GetFromLeft(float amount) const { return IRECT(L, T, L+amount, B); }
+  inline IRECT GetFromLeft(float amount) const { return IRECT(L, T, L + amount, B); }
 
   /** Get a subrect of this IRECT bounded in X by 'amount' and the right edge
    * @param amount Size in X of the desired IRECT
    * @return IRECT The resulting subrect */
-  inline IRECT GetFromRight(float amount) const { return IRECT(R-amount, T, R, B); }
-  
+  inline IRECT GetFromRight(float amount) const { return IRECT(R - amount, T, R, B); }
+
   /** Get a subrect of this IRECT reduced in height from the top edge by 'amount'
    * @param amount Size in Y to reduce by
    * @return IRECT The resulting subrect */
-  inline IRECT GetReducedFromTop(float amount) const { return IRECT(L, T+amount, R, B); }
+  inline IRECT GetReducedFromTop(float amount) const { return IRECT(L, T + amount, R, B); }
 
   /** Get a subrect of this IRECT reduced in height from the bottom edge by 'amount'
    * @param amount Size in Y to reduce by
    * @return IRECT The resulting subrect */
-  inline IRECT GetReducedFromBottom(float amount) const { return IRECT(L, T, R, B-amount); }
+  inline IRECT GetReducedFromBottom(float amount) const { return IRECT(L, T, R, B - amount); }
 
   /** Get a subrect of this IRECT reduced in width from the left edge by 'amount'
    * @param amount Size in X to reduce by
    * @return IRECT The resulting subrect */
-  inline IRECT GetReducedFromLeft(float amount) const { return IRECT(L+amount, T, R, B); }
+  inline IRECT GetReducedFromLeft(float amount) const { return IRECT(L + amount, T, R, B); }
 
   /** Get a subrect of this IRECT reduced in width from the right edge by 'amount'
    * @param amount Size in X to reduce by
    * @return IRECT The resulting subrect */
-  inline IRECT GetReducedFromRight(float amount) const { return IRECT(L, T, R-amount, B); }
-  
+  inline IRECT GetReducedFromRight(float amount) const { return IRECT(L, T, R - amount, B); }
+
   /** Reduce in height from the top edge by 'amount' and return the removed region
    * @param amount Size in Y to reduce by
    * @return IRECT The removed subrect */
-  inline IRECT ReduceFromTop(float amount) { IRECT r = GetFromTop(amount); T+=amount; return r; }
-  
+  inline IRECT ReduceFromTop(float amount)
+  {
+    IRECT r = GetFromTop(amount);
+    T += amount;
+    return r;
+  }
+
   /** Reduce in height from the bottom edge by 'amount' and return the removed region
    * @param amount Size in Y to reduce by
    * @return IRECT The removed subrect */
-  inline IRECT ReduceFromBottom(float amount) { IRECT r = GetFromBottom(amount); B-=amount; return r; }
-  
+  inline IRECT ReduceFromBottom(float amount)
+  {
+    IRECT r = GetFromBottom(amount);
+    B -= amount;
+    return r;
+  }
+
   /** Reduce in width from the left edge by 'amount' and return the removed region
    * @param amount Size in X to reduce by
    * @return IRECT The removed subrect */
-  inline IRECT ReduceFromLeft(float amount) { IRECT r = GetFromLeft(amount); L+=amount; return r; }
-  
+  inline IRECT ReduceFromLeft(float amount)
+  {
+    IRECT r = GetFromLeft(amount);
+    L += amount;
+    return r;
+  }
+
   /** Reduce in width from the right edge by 'amount' and return the removed region
    * @param amount Size in X to reduce by
    * @return IRECT The removed subrect */
-  inline IRECT ReduceFromRight(float amount) { IRECT r = GetFromRight(amount); R-=amount; return r; }
-  
+  inline IRECT ReduceFromRight(float amount)
+  {
+    IRECT r = GetFromRight(amount);
+    R -= amount;
+    return r;
+  }
+
   /** Get a subrect (by row, column) of this IRECT which is a cell in a grid of size (nRows * nColumns)
    * @param row Row index of the desired subrect
    * @param col Column index of the desired subrect
    * @param nRows Number of rows in the cell grid
    * @param nColumns Number of columns in the cell grid
    * @return IRECT The resulting subrect */
-  inline IRECT GetGridCell(int row, int col, int nRows, int nColumns/*, EDirection = EDirection::Horizontal*/) const
+  inline IRECT GetGridCell(int row, int col, int nRows, int nColumns /*, EDirection = EDirection::Horizontal*/) const
   {
     assert(row * col <= nRows * nColumns); // not enough cells !
-    
+
     const IRECT vrect = SubRectVertical(nRows, row);
     return vrect.SubRectHorizontal(nColumns, col);
   }
-  
+
   /** Get a subrect (by index) of this IRECT which is a cell (or union of nCells sequential cells on same row/column) in a grid of size (nRows * nColumns)
    * @param cellIndex Index of the desired cell in the cell grid
    * @param nRows Number of rows in the cell grid
@@ -1125,14 +1207,14 @@ struct IRECT
     assert(cellIndex <= nRows * nColumns); // not enough cells !
 
     int cell = 0;
-    
-    if(dir == EDirection::Horizontal)
+
+    if (dir == EDirection::Horizontal)
     {
-      for(int row = 0; row < nRows; row++)
+      for (int row = 0; row < nRows; row++)
       {
-        for(int col = 0; col < nColumns; col++)
+        for (int col = 0; col < nColumns; col++)
         {
-          if(cell == cellIndex)
+          if (cell == cellIndex)
           {
             const IRECT vrect = SubRectVertical(nRows, row);
             IRECT rect = vrect.SubRectHorizontal(nColumns, col);
@@ -1150,14 +1232,15 @@ struct IRECT
     }
     else
     {
-      for(int col = 0; col < nColumns; col++)
+      for (int col = 0; col < nColumns; col++)
       {
-        for(int row = 0; row < nRows; row++)
+        for (int row = 0; row < nRows; row++)
         {
-          if(cell == cellIndex)
+          if (cell == cellIndex)
           {
             const IRECT hrect = SubRectHorizontal(nColumns, col);
-            IRECT rect = hrect.SubRectVertical(nRows, row);;
+            IRECT rect = hrect.SubRectVertical(nRows, row);
+            ;
 
             for (int n = 1; n < nCells && (row + n) < nRows; n++)
             {
@@ -1165,25 +1248,25 @@ struct IRECT
             }
             return rect;
           }
-          
+
           cell++;
         }
       }
     }
-    
+
     return *this;
   }
-  
+
   /** @return true If all the values of this IRECT are within 1/1000th of being an integer */
   bool IsPixelAligned() const
   {
     // If all values are within 1/1000th of a pixel of an integer the IRECT is considered pixel aligned
-      
-    auto isInteger = [](float x){ return std::fabs(x - std::round(x)) <= static_cast<float>(1e-3); };
-      
+
+    auto isInteger = [](float x) { return std::fabs(x - std::round(x)) <= static_cast<float>(1e-3); };
+
     return isInteger(L) && isInteger(T) && isInteger(R) && isInteger(B);
   }
-  
+
   /** Return true if, when scaled by `scale`, this IRECT is pixel aligned
    * When scaling this mutliples each value of the IRECT, it does not scale from the center.
    * @param scale Scale value for the test
@@ -1194,9 +1277,9 @@ struct IRECT
     r.Scale(scale);
     return r.IsPixelAligned();
   }
-  
+
   /** Pixel aligns the rect in an inclusive manner (moves all points outwards) */
-  inline void PixelAlign() 
+  inline void PixelAlign()
   {
     L = std::floor(L);
     T = std::floor(T);
@@ -1212,7 +1295,7 @@ struct IRECT
     // N.B. - double precision is *required* for accuracy of the reciprocal
     Scale(scale);
     PixelAlign();
-    Scale(static_cast<float>(1.0/static_cast<double>(scale)));
+    Scale(static_cast<float>(1.0 / static_cast<double>(scale)));
   }
 
   /** Get a copy of this IRECT with PixelAlign() called
@@ -1223,7 +1306,7 @@ struct IRECT
     r.PixelAlign();
     return r;
   }
-  
+
   /** Get a copy of this IRECT with PixelAlign(scale) called
    * @param scale Scaling factor for the alignment
    * @return IRECT the new rectangle */
@@ -1233,7 +1316,7 @@ struct IRECT
     r.PixelAlign(scale);
     return r;
   }
-    
+
   /** Pixel aligns to nearest pixels
    * This may make the IRECT smaller, unlike PixelAlign(). */
   inline void PixelSnap()
@@ -1243,7 +1326,7 @@ struct IRECT
     R = std::round(R);
     B = std::round(B);
   }
-  
+
   /** Pixel align a scaled version of this IRECT
    * @param scale Scaling factor for the alignment */
   inline void PixelSnap(float scale)
@@ -1251,9 +1334,9 @@ struct IRECT
     // N.B. - double precision is *required* for accuracy of the reciprocal
     Scale(scale);
     PixelSnap();
-    Scale(static_cast<float>(1.0/static_cast<double>(scale)));
+    Scale(static_cast<float>(1.0 / static_cast<double>(scale)));
   }
-  
+
   /** @return IRECT A copy of this IRECT with PixelSnap() called */
   inline IRECT GetPixelSnapped() const
   {
@@ -1261,7 +1344,7 @@ struct IRECT
     r.PixelSnap();
     return r;
   }
-  
+
   /** Get a copy of this IRECT with PixelSnap(scale) called
    * @param Scaling factor for the alignment
    * @return IRECT the new rectangle */
@@ -1271,7 +1354,7 @@ struct IRECT
     r.PixelSnap(scale);
     return r;
   }
-  
+
   /** Pad this IRECT
    * N.B. Using a positive padding value will expand the IRECT, a negative value will contract it
    * @param padding Padding amount */
@@ -1282,7 +1365,7 @@ struct IRECT
     R += padding;
     B += padding;
   }
-  
+
   /** Pad this IRECT
    * N.B. Using a positive padding value will expand the IRECT, a negative value will contract it
    * @param padL Left-padding
@@ -1296,7 +1379,7 @@ struct IRECT
     R += padR;
     B += padB;
   }
-  
+
   /** Pad this IRECT in the X-axis
    * N.B. Using a positive padding value will expand the IRECT, a negative value will contract it
    * @param padding Left and right padding */
@@ -1305,7 +1388,7 @@ struct IRECT
     L -= padding;
     R += padding;
   }
-  
+
   /** Pad this IRECT in the Y-axis
    * N.B. Using a positive padding value will expand the IRECT, a negative value will contract it
    * @param padding Top and bottom padding */
@@ -1314,7 +1397,7 @@ struct IRECT
     T -= padding;
     B += padding;
   }
-  
+
   /** Set the width of this IRECT to 2*padding without changing it's center point on the X-axis
    * @param padding Left and right padding (1/2 the new width) */
   inline void MidHPad(float padding)
@@ -1323,7 +1406,7 @@ struct IRECT
     L = mw - padding;
     R = mw + padding;
   }
-  
+
   /** Set the height of this IRECT to 2*padding without changing it's center point on the Y-axis
    * @param padding Top and bottom padding (1/2 the new height) */
   inline void MidVPad(float padding)
@@ -1337,10 +1420,7 @@ struct IRECT
    * N.B. Using a positive padding value will expand the IRECT, a negative value will contract it
    * @param padding Padding amount
    * @return IRECT the new rectangle */
-  inline IRECT GetPadded(float padding) const
-  {
-    return IRECT(L-padding, T-padding, R+padding, B+padding);
-  }
+  inline IRECT GetPadded(float padding) const { return IRECT(L - padding, T - padding, R + padding, B + padding); }
 
   /** Get a copy of this IRECT with the values padded
    * N.B. Using a positive padding value will expand the IRECT, a negative value will contract it
@@ -1349,44 +1429,29 @@ struct IRECT
    * @param padR Right-padding
    * @param padB Bottom-padding
    * @return IRECT the new rectangle */
-  inline IRECT GetPadded(float padL, float padT, float padR, float padB) const
-  {
-    return IRECT(L-padL, T-padT, R+padR, B+padB);
-  }
+  inline IRECT GetPadded(float padL, float padT, float padR, float padB) const { return IRECT(L - padL, T - padT, R + padR, B + padB); }
 
   /** Get a copy of this IRECT padded in the X-axis
    * N.B. Using a positive padding value will expand the IRECT, a negative value will contract it
    * @param padding Left and right padding
    * @return IRECT the new rectangle */
-  inline IRECT GetHPadded(float padding) const
-  {
-    return IRECT(L-padding, T, R+padding, B);
-  }
+  inline IRECT GetHPadded(float padding) const { return IRECT(L - padding, T, R + padding, B); }
 
   /** Get a copy of this IRECT padded in the Y-axis
    * N.B. Using a positive padding value will expand the IRECT, a negative value will contract it
    * @param padding Top and bottom padding
    * @return IRECT the new rectangle */
-  inline IRECT GetVPadded(float padding) const
-  {
-    return IRECT(L, T-padding, R, B+padding);
-  }
+  inline IRECT GetVPadded(float padding) const { return IRECT(L, T - padding, R, B + padding); }
 
   /** Get a copy of this IRECT where its width = 2 * padding but the center point on the X-axis has not changed
    * @param padding Left and right padding (1/2 the new width)
    * @return IRECT the new rectangle */
-  inline IRECT GetMidHPadded(float padding) const
-  {
-    return IRECT(MW()-padding, T, MW()+padding, B);
-  }
+  inline IRECT GetMidHPadded(float padding) const { return IRECT(MW() - padding, T, MW() + padding, B); }
 
   /** Get a copy of this IRECT where its height = 2 * padding but the center point on the Y-axis has not changed
    * @param padding Top and bottom padding (1/2 the new height)
    * @return IRECT the new rectangle */
-  inline IRECT GetMidVPadded(float padding) const
-  {
-    return IRECT(L, MH()-padding, R, MH()+padding);
-  }
+  inline IRECT GetMidVPadded(float padding) const { return IRECT(L, MH() - padding, R, MH() + padding); }
 
   /** Get a copy of this IRECT with a new width
    * @param w Width of the new rectangle
@@ -1394,24 +1459,24 @@ struct IRECT
    * @return IRECT the new rectangle */
   inline IRECT GetHSliced(float w, bool rhs = false) const
   {
-    if(rhs)
+    if (rhs)
       return IRECT(R - w, T, R, B);
     else
       return IRECT(L, T, L + w, B);
   }
-  
+
   /** Get a copy of this IRECT with a new height
    * @param h Height of the new rectangle
    * @param bot If true the new rectangle will expand from the bottom, otherwise it will expand from the top
    * @return IRECT the new rectangle */
   inline IRECT GetVSliced(float h, bool bot = false) const
   {
-    if(bot)
+    if (bot)
       return IRECT(L, B - h, R, B);
     else
       return IRECT(L, T, R, T + h);
   }
-  
+
   /** Clank will limit this IRECT's bounds based on the boundaries of the IRECT passed in as an argument
    * @param rhs The rectangle to limit with  */
   void Clank(const IRECT& rhs)
@@ -1437,7 +1502,7 @@ struct IRECT
       B = rhs.B - 1;
     }
   }
-  
+
   /** Multiply each field of this IRECT by `scale`.
    * @param scale The amount to multiply each field by */
   void Scale(float scale)
@@ -1447,7 +1512,7 @@ struct IRECT
     R *= scale;
     B *= scale;
   }
-  
+
   /** Scale the width and height of this IRECT by `scale` without changing the center point
    * @param scale The scaling factor */
   void ScaleAboutCentre(float scale)
@@ -1471,7 +1536,7 @@ struct IRECT
     r.Scale(scale);
     return r;
   }
-  
+
   /** Get a copy of this IRECT where the width and height are multiplied by `scale` without changing the center point
    * @param scale Scaling factor
    * @return IRECT the resulting rectangle */
@@ -1481,7 +1546,7 @@ struct IRECT
     r.ScaleAboutCentre(scale);
     return r;
   }
-  
+
   /** Get a rectangle that is a linear interpolation between `start` and `dest`
    * @param start Starting rectangle
    * @param dest Ending rectangle
@@ -1490,10 +1555,10 @@ struct IRECT
   static IRECT LinearInterpolateBetween(const IRECT& start, const IRECT& dest, float progress)
   {
     IRECT result;
-    result.L = start.L + progress * (dest.L -  start.L);
-    result.T = start.T + progress * (dest.T -  start.T);
-    result.R = start.R + progress * (dest.R -  start.R);
-    result.B = start.B + progress * (dest.B -  start.B);
+    result.L = start.L + progress * (dest.L - start.L);
+    result.T = start.T + progress * (dest.T - start.T);
+    result.R = start.R + progress * (dest.R - start.R);
+    result.B = start.B + progress * (dest.B - start.B);
     return result;
   }
 
@@ -1502,8 +1567,8 @@ struct IRECT
    * @param y OUT output Y value of point */
   void GetRandomPoint(float& x, float& y) const
   {
-    const float r1 = static_cast<float>(std::rand()/(static_cast<float>(RAND_MAX)+1.f));
-    const float r2 = static_cast<float>(std::rand()/(static_cast<float>(RAND_MAX)+1.f));
+    const float r1 = static_cast<float>(std::rand() / (static_cast<float>(RAND_MAX) + 1.f));
+    const float r2 = static_cast<float>(std::rand() / (static_cast<float>(RAND_MAX) + 1.f));
 
     x = L + r1 * W();
     y = T + r2 * H();
@@ -1532,18 +1597,15 @@ struct IRECT
     R += r;
     B += b;
   }
-  
+
   /** Get a copy of this rectangle where each field is offset by a specified amount
    * @param l Left offset
    * @param t Top offset
    * @param r Right offset
    * @param b Bottom offset
    * @return IRECT the new rectangle */
-  IRECT GetOffset(float l, float t, float r, float b) const
-  {
-    return IRECT(L + l, T + t, R + r, B + b);
-  }
-  
+  IRECT GetOffset(float l, float t, float r, float b) const { return IRECT(L + l, T + t, R + r, B + b); }
+
   /** Translate this rectangle
    * @param x Offset in the X axis
    * @param y Offset in the Y axis */
@@ -1554,33 +1616,24 @@ struct IRECT
     R += x;
     B += y;
   }
-  
-  /** Get a translated copy of this rectangle 
+
+  /** Get a translated copy of this rectangle
    * @param x Offset in the X axis
    * @param y Offset in the Y axis
    * @return IRECT the new rectangle */
-  IRECT GetTranslated(float x, float y) const
-  {
-    return IRECT(L + x, T + y, R + x, B + y);
-  }
-  
+  IRECT GetTranslated(float x, float y) const { return IRECT(L + x, T + y, R + x, B + y); }
+
   /** Get a copy of this rectangle translated on the X axis
    * @param x Offset
    * @return IRECT the new rectangle */
-  IRECT GetHShifted(float x) const
-  {
-    return GetTranslated(x, 0.f);
-  }
-  
+  IRECT GetHShifted(float x) const { return GetTranslated(x, 0.f); }
+
   /** Get a copy of this rectangle translated on the Y axis
    * @param y Offset
    * @return IRECT the new rectangle */
-  IRECT GetVShifted(float y) const
-  {
-    return GetTranslated(0.f, y);
-  }
+  IRECT GetVShifted(float y) const { return GetTranslated(0.f, y); }
 
-  /** Get a rectangle the size of `sr` but with the same center point as this rectangle 
+  /** Get a rectangle the size of `sr` but with the same center point as this rectangle
    * @param sr Size rectangle
    * @return IRECT the new rectangle */
   IRECT GetCentredInside(const IRECT& sr) const
@@ -1593,7 +1646,7 @@ struct IRECT
 
     return r;
   }
-  
+
   /** Get a rectangle with the same center point as this rectangle and the given size
    * @param w Width of the new rectangle (minimum 1.0)
    * @param h Height of the new rectangle (a value of 0 will make it the same as w, thus a square)
@@ -1601,16 +1654,16 @@ struct IRECT
   IRECT GetCentredInside(float w, float h = 0.f) const
   {
     w = std::max(w, 1.f);
-    
-    if(h <= 0.f)
+
+    if (h <= 0.f)
       h = w;
-    
+
     IRECT r;
     r.L = MW() - w / 2.f;
     r.T = MH() - h / 2.f;
     r.R = r.L + w;
     r.B = r.T + h;
-    
+
     return r;
   }
 
@@ -1622,12 +1675,12 @@ struct IRECT
     IRECT r;
     r.L = MW() - bitmap.FW() / 2.f;
     r.T = MH() - bitmap.FH() / 2.f;
-    r.R = r.L + (float) bitmap.FW();
-    r.B = r.T + (float) bitmap.FH();
+    r.R = r.L + (float)bitmap.FW();
+    r.B = r.T + (float)bitmap.FH();
 
     return r;
   }
-  
+
   /** Vertically align this rect to the reference IRECT
    * @param sr the source IRECT to use as reference
    * @param align the vertical alignment */
@@ -1636,57 +1689,75 @@ struct IRECT
     const float height = H();
     switch (align)
     {
-      case EVAlign::Top: T = sr.T; B = sr.T + height; break;
-      case EVAlign::Bottom: T = sr.B - height; B = sr.B; break;
-      case EVAlign::Middle: T = sr.T + (sr.H() * 0.5f) - (height * 0.5f); B = sr.T + (sr.H() * 0.5f) - (height * 0.5f) + height; break;
+    case EVAlign::Top:
+      T = sr.T;
+      B = sr.T + height;
+      break;
+    case EVAlign::Bottom:
+      T = sr.B - height;
+      B = sr.B;
+      break;
+    case EVAlign::Middle:
+      T = sr.T + (sr.H() * 0.5f) - (height * 0.5f);
+      B = sr.T + (sr.H() * 0.5f) - (height * 0.5f) + height;
+      break;
     }
   }
-  
+
   /** Horizontally align this rect to the reference IRECT
-  * @param sr the IRECT to use as reference
-  * @param align the horizontal alignment */
+   * @param sr the IRECT to use as reference
+   * @param align the horizontal alignment */
   void HAlignTo(const IRECT& sr, EAlign align)
   {
     const float width = W();
     switch (align)
     {
-      case EAlign::Near: L = sr.L; R = sr.L + width; break;
-      case EAlign::Far: L = sr.R - width; R = sr.R; break;
-      case EAlign::Center: L = sr.L + (sr.W() * 0.5f) - (width * 0.5f); R = sr.L + (sr.W() * 0.5f) - (width * 0.5f) + width; break;
+    case EAlign::Near:
+      L = sr.L;
+      R = sr.L + width;
+      break;
+    case EAlign::Far:
+      L = sr.R - width;
+      R = sr.R;
+      break;
+    case EAlign::Center:
+      L = sr.L + (sr.W() * 0.5f) - (width * 0.5f);
+      R = sr.L + (sr.W() * 0.5f) - (width * 0.5f) + width;
+      break;
     }
   }
 
   /** Get a rectangle the same dimensions as this one, vertically aligned to the reference IRECT
-  * @param sr the source IRECT to use as reference
-  * @param align the vertical alignment
-  * @return the new rectangle */
+   * @param sr the source IRECT to use as reference
+   * @param align the vertical alignment
+   * @return the new rectangle */
   IRECT GetVAlignedTo(const IRECT& sr, EVAlign align) const
   {
     IRECT result = *this;
     result.VAlignTo(sr, align);
     return result;
   }
-  
+
   /** @return float Either the width or the height of the rectangle, whichever is less */
   float GetLengthOfShortestSide() const
   {
-    if(W() < H())
-       return W();
+    if (W() < H())
+      return W();
     else
       return H();
   }
-    
+
   /** Get a rectangle the same dimensions as this one, horizontally aligned to the reference IRECT
-  * @param sr the IRECT to use as reference
-  * @param align the horizontal alignment
-  * @return the new rectangle */
+   * @param sr the IRECT to use as reference
+   * @param align the horizontal alignment
+   * @return the new rectangle */
   IRECT GetHAlignedTo(const IRECT& sr, EAlign align) const
   {
     IRECT result = *this;
     result.HAlignTo(sr, align);
     return result;
   }
-  
+
   /** Print the IRECT's details to the console in Debug builds */
   void DBGPrint() { DBGMSG("L: %f, T: %f, R: %f, B: %f,: W: %f, H: %f\n", L, T, R, B, W(), H()); }
 };
@@ -1697,17 +1768,23 @@ struct IMouseMod
   bool L, R, S, C, A;
   ITouchID touchID = 0;
   float touchRadius = 0.f;
-  
+
   /** Create an IMouseMod
    * @param l left mouse button pressed
    * @param r right mouse button pressed
-   * @param s shift pressed 
+   * @param s shift pressed
    * @param c ctrl pressed
    * @param a alt pressed
    * @param touchID touch identifier, for multi-touch */
   IMouseMod(bool l = false, bool r = false, bool s = false, bool c = false, bool a = false, ITouchID touchID = 0)
-  : L(l), R(r), S(s), C(c), A(a), touchID(touchID)
-  {}
+    : L(l)
+    , R(r)
+    , S(s)
+    , C(c)
+    , A(a)
+    , touchID(touchID)
+  {
+  }
 
   /** \c true if this IMouseMod is linked to a touch event */
   bool IsTouch() const { return touchID > 0; }
@@ -1729,9 +1806,9 @@ struct IGestureInfo
 {
   float x = 0.f;
   float y = 0.f;
-  float scale = 0.f; // pinch,
+  float scale = 0.f;    // pinch,
   float velocity = 0.f; // pinch, rotate
-  float angle = 0.f; // rotate,
+  float angle = 0.f;    // rotate,
   EGestureState state = EGestureState::Unknown;
   EGestureType type = EGestureType::Unknown;
 };
@@ -1740,44 +1817,31 @@ struct IGestureInfo
 class IRECTList
 {
 public:
-  IRECTList()
-  {}
-  
+  IRECTList() {}
+
   IRECTList(const IRECTList&) = delete;
   IRECTList& operator=(const IRECTList&) = delete;
 
   /** @return int The number of rectangles in the list */
   int Size() const { return mRects.GetSize(); }
-  
+
   /** Add a rectangle to the list
    * @param rect The IRECT to add */
-  void Add(const IRECT& rect)
-  {
-    mRects.Add(rect);
-  }
-  
+  void Add(const IRECT& rect) { mRects.Add(rect); }
+
   /** Set a specific rectangle in the list (will crash if idx is invalid)
    * @param idx The index to set
    * @param rect The new IRECT */
-  void Set(int idx, const IRECT& rect)
-  {
-    *(mRects.GetFast() + idx) = rect;
-  }
-  
+  void Set(int idx, const IRECT& rect) { *(mRects.GetFast() + idx) = rect; }
+
   /** Get an IRECT from the list (will crash if idx is invalid)
    * @param idx The index to get
    * @return const IRECT& The IRECT at idx */
-  const IRECT& Get(int idx) const
-  {
-    return *(mRects.GetFast() + idx);
-  }
-  
+  const IRECT& Get(int idx) const { return *(mRects.GetFast() + idx); }
+
   /** Clear the list */
-  void Clear()
-  {
-    mRects.Resize(0);
-  }
-  
+  void Clear() { mRects.Resize(0); }
+
   /** Get a union of all rectangles in the list
    * @return IRECT Union of all rectangles in the list */
   IRECT Bounds()
@@ -1787,7 +1851,7 @@ public:
       r = r.Union(Get(i));
     return r;
   }
-  
+
   /** Align the rectangles to pixel boundaries */
   void PixelAlign()
   {
@@ -1810,7 +1874,7 @@ public:
       Set(i, r);
     }
   }
-  
+
   /** Find the first index of the rect that contains point x, y, if it exists
    * @param x Horizontal position to check
    * @param y Vertical position to check
@@ -1819,13 +1883,13 @@ public:
   {
     for (auto i = 0; i < Size(); i++)
     {
-      if(Get(i).Contains(x, y))
+      if (Get(i).Contains(x, y))
         return i;
     }
-    
+
     return -1;
   }
-  
+
   /** Fill an IRECTList with divisons of an input IRECT
    * @param input The input rectangle
    * @param rects The output IRECTList
@@ -1833,16 +1897,17 @@ public:
    * @param colFractions Initializer list of fractions for the grid columns (should sum to 1.0)
    * @param layoutDir By default the cell idx increases horizontally (by row). If set to EDirection::Vertical, cell idx increases vertically (by column).
    * @return \c true if the row and column fractions summed to 1.0, and grid creation was successful */
-  static bool GetFracGrid(const IRECT& input, IRECTList& rects, const std::initializer_list<float>& rowFractions, const std::initializer_list<float>& colFractions, EDirection layoutDir = EDirection::Horizontal)
+  static bool GetFracGrid(
+    const IRECT& input, IRECTList& rects, const std::initializer_list<float>& rowFractions, const std::initializer_list<float>& colFractions, EDirection layoutDir = EDirection::Horizontal)
   {
     IRECT spaceLeft = input;
     float y = 0.;
     float x = 0.;
 
-    if(std::accumulate(rowFractions.begin(), rowFractions.end(), 0.f) != 1.)
+    if (std::accumulate(rowFractions.begin(), rowFractions.end(), 0.f) != 1.)
       return false;
-    
-    if(std::accumulate(colFractions.begin(), colFractions.end(), 0.f) != 1.)
+
+    if (std::accumulate(colFractions.begin(), colFractions.end(), 0.f) != 1.)
       return false;
 
     if (layoutDir == EDirection::Horizontal)
@@ -1850,50 +1915,50 @@ public:
       for (auto& rowFrac : rowFractions)
       {
         IRECT thisRow = input.FracRectVertical(rowFrac, true).GetTranslated(0, y);
-        
+
         x = 0.;
 
         for (auto& colFrac : colFractions)
         {
           IRECT thisCell = thisRow.FracRectHorizontal(colFrac).GetTranslated(x, 0);
-          
+
           rects.Add(thisCell);
-          
+
           x += thisCell.W();
         }
-        
+
         spaceLeft.Intersect(thisRow);
-        
+
         y = rects.Bounds().H();
       }
     }
-    
+
     if (layoutDir == EDirection::Vertical)
     {
       for (auto& colFrac : colFractions)
       {
         IRECT thisCol = input.FracRectHorizontal(colFrac).GetTranslated(x, 0);
-        
+
         y = 0.;
 
         for (auto& rowFrac : rowFractions)
         {
           IRECT thisCell = thisCol.FracRectVertical(rowFrac, true).GetTranslated(0, y);
-          
+
           rects.Add(thisCell);
-          
+
           y += thisCell.H();
         }
-        
+
         spaceLeft.Intersect(thisCol);
-        
+
         x = rects.Bounds().W();
       }
     }
-    
+
     return true;
   }
-  
+
   /** Remove rects that are contained by other rects and intersections and merge any rects that can be merged */
   void Optimize()
   {
@@ -1915,7 +1980,7 @@ public:
         else if (Get(i).Intersects(Get(j)))
         {
           IRECT intersection = Get(i).Intersect(Get(j));
-            
+
           if (Get(i).Mergeable(intersection))
             Set(i, Shrink(Get(i), intersection));
           else if (Get(j).Mergeable(intersection))
@@ -1927,7 +1992,7 @@ public:
         }
       }
     }
-    
+
     for (int i = 0; i < Size(); i++)
     {
       for (int j = i + 1; j < Size(); j++)
@@ -1942,13 +2007,13 @@ public:
       }
     }
   }
-  
+
 private:
-  /** \todo 
+  /** \todo
    * @param r \todo
    * @param i \todo
    * @return IRECT \todo */
-  IRECT Shrink(const IRECT &r, const IRECT &i)
+  IRECT Shrink(const IRECT& r, const IRECT& i)
   {
     if (i.L != r.L)
       return IRECT(r.L, r.T, i.L, r.B);
@@ -1958,12 +2023,12 @@ private:
       return IRECT(i.R, r.T, r.R, r.B);
     return IRECT(r.L, i.B, r.R, r.B);
   }
-  
-  /** \todo 
+
+  /** \todo
    * @param r \todo
    * @param i \todo
    * @return IRECT \todo */
-  IRECT Split(const IRECT r, const IRECT &i)
+  IRECT Split(const IRECT r, const IRECT& i)
   {
     if (r.L == i.L)
     {
@@ -1978,7 +2043,7 @@ private:
         return IRECT(i.R, i.T, r.R, r.B);
       }
     }
-    
+
     if (r.T == i.T)
     {
       Add(IRECT(r.L, r.T, i.L, i.B));
@@ -1990,7 +2055,7 @@ private:
       return IRECT(r.L, i.T, i.L, r.B);
     }
   }
-  
+
   WDL_TypedBuf<IRECT> mRects;
 };
 
@@ -2005,31 +2070,33 @@ struct IMatrix
    * @param tx X translation component of the affine transformation
    * @param ty Y translation component of the affine transformation */
   IMatrix(double xx, double yx, double xy, double yy, double tx, double ty)
-  : mXX(xx), mYX(yx), mXY(xy), mYY(yy), mTX(tx), mTY(ty)
-  {}
-  
+    : mXX(xx)
+    , mYX(yx)
+    , mXY(xy)
+    , mYY(yy)
+    , mTX(tx)
+    , mTY(ty)
+  {
+  }
+
   /** Create an identity matrix */
-  IMatrix() : IMatrix(1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
-  {}
-  
+  IMatrix()
+    : IMatrix(1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+  {
+  }
+
   /** Set the matrix for a translation transform
    * @param x The translation for x values
    * @param y The translation for y values
    * @return IMatrix& The matrix */
-  IMatrix& Translate(float x, float y)
-  {
-    return Transform(IMatrix(1.0, 0.0, 0.0, 1.0, x, y));
-  }
-  
+  IMatrix& Translate(float x, float y) { return Transform(IMatrix(1.0, 0.0, 0.0, 1.0, x, y)); }
+
   /** Set the matrix for a scale transform
    * @param x The scale for x
    * @param y The scale for y
    * @return IMatrix& The matrix */
-  IMatrix& Scale(float x, float y)
-  {
-    return Transform(IMatrix(x, 0.0, 0.0, y, 0.0, 0.0));
-  }
-  
+  IMatrix& Scale(float x, float y) { return Transform(IMatrix(x, 0.0, 0.0, y, 0.0, 0.0)); }
+
   /** Set the matrix for a rotation transform
    * @param a The angle of rotation in degrees
    * @return IMatrix& The matrix */
@@ -2038,19 +2105,16 @@ struct IMatrix
     const double rad = DegToRad(a);
     const double c = std::cos(rad);
     const double s = std::sin(rad);
-    
+
     return Transform(IMatrix(c, s, -s, c, 0.0, 0.0));
   }
-  
+
   /** Set the matrix for a skew transform
    * @param xa The angle to skew x coordinates in degrees
    * @param ya The angle to skew y coordinates in degrees
    * @return IMatrix& The matrix */
-  IMatrix& Skew(float xa, float ya)
-  {
-    return Transform(IMatrix(1.0, std::tan(DegToRad(ya)), std::tan(DegToRad(xa)), 1.0, 0.0, 0.0));
-  }
-  
+  IMatrix& Skew(float xa, float ya) { return Transform(IMatrix(1.0, std::tan(DegToRad(ya)), std::tan(DegToRad(xa)), 1.0, 0.0, 0.0)); }
+
   /** Transforms the point x, y  \todo
    * @param x The x coordinate to transform
    * @param y The y coordinate to transform
@@ -2061,16 +2125,13 @@ struct IMatrix
     x = x0 * mXX + y0 * mXY + mTX;
     y = x0 * mYX + y0 * mYY + mTY;
   };
-  
+
   /** Transforms the point x, y with the matrix
    * @param x The x coordinate to transform
    * @param y The y coordinate to transform */
-  void TransformPoint(double& x, double& y) const
-  {
-    TransformPoint(x, y, x, y);
-  };
-  
-  /** \todo 
+  void TransformPoint(double& x, double& y) const { TransformPoint(x, y, x, y); };
+
+  /** \todo
    * @param before \todo
    * @param after \todo
    * @return IMatrix& The result of the transform */
@@ -2080,45 +2141,45 @@ struct IMatrix
     const double sy = after.H() / before.H();
     const double tx = after.L - before.L * sx;
     const double ty = after.T - before.T * sy;
-    
+
     return *this = IMatrix(sx, 0.0, 0.0, sy, tx, ty);
   }
-  
-  /** Transform this matrix with another 
+
+  /** Transform this matrix with another
    * @param m The matrix with which to transform this one
    * @return IMatrix& The result of the transform */
   IMatrix& Transform(const IMatrix& m)
   {
     IMatrix p = *this;
-    
+
     mXX = m.mXX * p.mXX + m.mYX * p.mXY;
     mYX = m.mXX * p.mYX + m.mYX * p.mYY;
     mXY = m.mXY * p.mXX + m.mYY * p.mXY;
     mYY = m.mXY * p.mYX + m.mYY * p.mYY;
     mTX = m.mTX * p.mXX + m.mTY * p.mXY + p.mTX;
     mTY = m.mTX * p.mYX + m.mTY * p.mYY + p.mTY;
-    
+
     return *this;
   }
-  
+
   /** Changes the matrix to be the inverse of its original value
    * @return IMatrix& The changed matrix */
   IMatrix& Invert()
   {
     IMatrix m = *this;
-    
+
     double d = 1.0 / (m.mXX * m.mYY - m.mYX * m.mXY);
-    
-    mXX =  m.mYY * d;
+
+    mXX = m.mYY * d;
     mYX = -m.mYX * d;
     mXY = -m.mXY * d;
-    mYY =  m.mXX * d;
+    mYY = m.mXX * d;
     mTX = (-(m.mTX * mXX) - (m.mTY * mXY));
     mTY = (-(m.mTX * mYX) - (m.mTY * mYY));
-    
+
     return *this;
   }
-  
+
   double mXX, mYX, mXY, mYY, mTX, mTY;
 };
 
@@ -2126,19 +2187,20 @@ struct IMatrix
 struct IColorStop
 {
   IColorStop()
-  : mOffset(0.f)
-  {}
-  
+    : mOffset(0.f)
+  {
+  }
+
   /** Create an IColor stop
    * @param color The IColor for the stop
    * @param offset The point in the gradient for the stop */
   IColorStop(IColor color, float offset)
-  : mColor(color)
-  , mOffset(offset)
+    : mColor(color)
+    , mOffset(offset)
   {
     assert(offset >= 0.0 && offset <= 1.0);
   }
-  
+
   IColor mColor;
   float mOffset;
 };
@@ -2151,24 +2213,29 @@ struct IPattern
   IColorStop mStops[16];
   int mNStops;
   IMatrix mTransform;
-  
+
   /** Create an IPattern
    * @param type The type of pattern, one of EPatternType */
   IPattern(EPatternType type)
-  : mType(type), mExtend(EPatternExtend::Pad), mNStops(0)
-  {}
-  
+    : mType(type)
+    , mExtend(EPatternExtend::Pad)
+    , mNStops(0)
+  {
+  }
+
   /** Create an IPattern with a solid color fill
    * @param color The color for the single stop */
   IPattern(const IColor& color)
-  : mType(EPatternType::Solid), mExtend(EPatternExtend::Pad), mNStops(1)
+    : mType(EPatternType::Solid)
+    , mExtend(EPatternExtend::Pad)
+    , mNStops(1)
   {
     mStops[0] = IColorStop(color, 0.0);
   }
-  
-  /** Create a linear gradient IPattern 
-   * @param x1 The start x position 
-   * @param y1 The start y position 
+
+  /** Create a linear gradient IPattern
+   * @param x1 The start x position
+   * @param y1 The start y position
    * @param x2 The end x position
    * @param y2 The end y position
    * @param stops An initializer list of IColorStops for the stops
@@ -2176,7 +2243,7 @@ struct IPattern
   static IPattern CreateLinearGradient(float x1, float y1, float x2, float y2, const std::initializer_list<IColorStop>& stops = {})
   {
     IPattern pattern(EPatternType::Linear);
-    
+
     // Calculate the affine transform from one line segment to another!
     const double xd = double(x2 - x1);
     const double yd = double(y2 - y1);
@@ -2184,23 +2251,18 @@ struct IPattern
     const double a = atan2(xd, yd);
     const double s = std::sin(a) / d;
     const double c = std::cos(a) / d;
-      
+
     const double x0 = -(x1 * c - y1 * s);
     const double y0 = -(x1 * s + y1 * c);
-    
-    pattern.SetTransform(static_cast<float>(c),
-                         static_cast<float>(s),
-                         static_cast<float>(-s),
-                         static_cast<float>(c),
-                         static_cast<float>(x0),
-                         static_cast<float>(y0));
-    
+
+    pattern.SetTransform(static_cast<float>(c), static_cast<float>(s), static_cast<float>(-s), static_cast<float>(c), static_cast<float>(x0), static_cast<float>(y0));
+
     for (auto& stop : stops)
       pattern.AddStop(stop.mColor, stop.mOffset);
-    
+
     return pattern;
   }
-  
+
   /** Create a linear gradient IPattern across a rectangular area
    * @param bounds The rectangular area
    * @param direction If the gradient should be horizontal or vertical
@@ -2209,59 +2271,60 @@ struct IPattern
   static IPattern CreateLinearGradient(const IRECT& bounds, EDirection direction, const std::initializer_list<IColorStop>& stops = {})
   {
     float x1, y1, x2, y2;
-    
-    if(direction == EDirection::Horizontal)
+
+    if (direction == EDirection::Horizontal)
     {
-      y1 = bounds.MH(); y2 = y1;
+      y1 = bounds.MH();
+      y2 = y1;
       x1 = bounds.L;
       x2 = bounds.R;
     }
-    else//(direction == EDirection::Vertical)
+    else //(direction == EDirection::Vertical)
     {
-      x1 = bounds.MW(); x2 = x1;
+      x1 = bounds.MW();
+      x2 = x1;
       y1 = bounds.T;
       y2 = bounds.B;
     }
-    
+
     return CreateLinearGradient(x1, y1, x2, y2, stops);
   }
-  
-  /** Create a radial gradient IPattern 
-   * @param x1 The x position of the centre 
-   * @param y1 The y position of the centre 
+
+  /** Create a radial gradient IPattern
+   * @param x1 The x position of the centre
+   * @param y1 The y position of the centre
    * @param r The radius of the gradient
    * @param stops An initializer list of IColorStops for the stops
    * @return IPattern The new IPattern */
   static IPattern CreateRadialGradient(float x1, float y1, float r, const std::initializer_list<IColorStop>& stops = {})
   {
     IPattern pattern(EPatternType::Radial);
-    
+
     const float s = 1.f / r;
 
     pattern.SetTransform(s, 0, 0, s, -(x1 * s), -(y1 * s));
-    
+
     for (auto& stop : stops)
       pattern.AddStop(stop.mColor, stop.mOffset);
-    
+
     return pattern;
   }
 
   /** Create a sweep gradient IPattern (SKIA only)
-   * @param x1 The x position of the centre 
-   * @param y1 The y position of the centre 
+   * @param x1 The x position of the centre
+   * @param y1 The y position of the centre
    * @param stops An initializer list of IColorStops for the stops
    * @param angleStart the start angle of the sweep at in degrees clockwise where 0 is up
    * @param angleEnd the end angle of the sweep at in degrees clockwise where 0 is up
    * @return IPattern The new IPattern */
-  static IPattern CreateSweepGradient(float x1, float y1, const std::initializer_list<IColorStop>& stops = {},
-    float angleStart = 0.f, float angleEnd = 360.f)
+  static IPattern CreateSweepGradient(float x1, float y1, const std::initializer_list<IColorStop>& stops = {}, float angleStart = 0.f, float angleEnd = 360.f)
   {
     IPattern pattern(EPatternType::Sweep);
 
-    #ifdef IGRAPHICS_SKIA
-      angleStart -= 90;
-      angleEnd -= 90;
-    #endif
+#ifdef IGRAPHICS_SKIA
+    angleStart -= 90;
+    angleEnd -= 90;
+#endif
 
     float rad = DegToRad(angleStart);
     float c = std::cos(rad);
@@ -2275,21 +2338,15 @@ struct IPattern
     }
     return pattern;
   }
-  
+
   /** @return int The number of IColorStops in the IPattern */
-  int NStops() const
-  {
-    return mNStops;
-  }
-  
+  int NStops() const { return mNStops; }
+
   /** Get the IColorStop at a particular index (will crash if out of bounds)
    * @param idx The index of the stop
    * @return const IColorStop& The stop */
-  const IColorStop& GetStop(int idx) const
-  {
-    return mStops[idx];
-  }
-  
+  const IColorStop& GetStop(int idx) const { return mStops[idx]; }
+
   /** Add an IColorStop to the IPattern
    * @param color The IColor
    * @param offset The offset */
@@ -2300,25 +2357,19 @@ struct IPattern
     if (mNStops < 16)
       mStops[mNStops++] = IColorStop(color, offset);
   }
-  
-  /** Set the affine transform for the IPattern with values 
+
+  /** Set the affine transform for the IPattern with values
    * @param xx xx component of the affine transformation
    * @param yx yx component of the affine transformation
    * @param xy xy component of the affine transformation
    * @param yy yy component of the affine transformation
    * @param tx X translation component of the affine transformation
    * @param ty Y translation component of the affine transformation */
-  void SetTransform(float xx, float yx, float xy, float yy, float tx, float ty)
-  {
-    mTransform = IMatrix(xx, yx, xy, yy, tx, ty);
-  }
-  
-  /** Set the affine transform for the IPattern with an IMatrix 
+  void SetTransform(float xx, float yx, float xy, float yy, float tx, float ty) { mTransform = IMatrix(xx, yx, xy, yy, tx, ty); }
+
+  /** Set the affine transform for the IPattern with an IMatrix
    * @param transform The affine transform matrix */
-  void SetTransform(const IMatrix& transform)
-  {
-    mTransform = transform;
-  }
+  void SetTransform(const IMatrix& transform) { mTransform = transform; }
 };
 
 /** An abstraction that is used to store a temporary raster image/framebuffer.
@@ -2328,24 +2379,27 @@ struct IPattern
 class ILayer
 {
   friend IGraphics;
-  
+
 public:
   /** Create a layer/offscreen context (used internally)
    * @param pBitmap The APIBitmap to use for the layer
    * @param layerRect The bounds of the layer withing the graphics context
    * @param pControl The control that the layer belongs to
-   * @param controlRect The bounds of the control */
-  ILayer(APIBitmap* pBitmap, const IRECT& layerRect, IControl* pControl, const IRECT& controlRect)
-  : mBitmap(pBitmap)
-  , mControl(pControl)
-  , mControlRECT(controlRect)
-  , mRECT(layerRect)
-  , mInvalid(false)
-  {}
+   * @param controlRect The bounds of the control
+   * @param id A unique identifier for the layer */
+  ILayer(APIBitmap* pBitmap, const IRECT& layerRect, IControl* pControl, const IRECT& controlRect, int id)
+    : mBitmap(pBitmap)
+    , mControl(pControl)
+    , mControlRECT(controlRect)
+    , mRECT(layerRect)
+    , mInvalid(false)
+    , mID(id)
+  {
+  }
 
   ILayer(const ILayer&) = delete;
   ILayer operator=(const ILayer&) = delete;
-  
+
   /** Mark the layer as needing its contents redrawn  */
   void Invalidate() { mInvalid = true; }
 
@@ -2355,15 +2409,19 @@ public:
   /** @return IBitmap An IBitmap to use the layer directly */
   IBitmap GetBitmap() const { return IBitmap(mBitmap.get(), 1, false); }
 
+  /** @return The unique identifier for this layer */
+  int GetID() const { return mID; }
+
   /** @return const IRECT& The bounds of the layer withing the graphics context */
   const IRECT& Bounds() const { return mRECT; }
-  
+
 private:
   std::unique_ptr<APIBitmap> mBitmap;
   IControl* mControl;
   IRECT mControlRECT;
   IRECT mRECT;
   bool mInvalid;
+  int mID;
 };
 
 /** ILayerPtr is a managed pointer for transferring the ownership of layers */
@@ -2374,22 +2432,23 @@ struct IShadow
 {
   IShadow() {}
 
-  /** Create an IShadow 
+  /** Create an IShadow
    * @param pattern The IPattern for the shadow
    * @param blurSize The size of the gaussian blur in points
    * @param xOffset Offset the shadow horizontally
    * @param yOffset Offset the shadow vertically
-   * @param opacity The opacity of the shadow 
+   * @param opacity The opacity of the shadow
    * @param drawForeground Should the layer contents be drawn, or just the shadow */
   IShadow(const IPattern& pattern, float blurSize, float xOffset, float yOffset, float opacity, bool drawForeground = true)
-  : mPattern(pattern)
-  , mBlurSize(blurSize)
-  , mXOffset(xOffset)
-  , mYOffset(yOffset)
-  , mOpacity(opacity)
-  , mDrawForeground(drawForeground)
-  {}
-  
+    : mPattern(pattern)
+    , mBlurSize(blurSize)
+    , mXOffset(xOffset)
+    , mYOffset(yOffset)
+    , mOpacity(opacity)
+    , mDrawForeground(drawForeground)
+  {
+  }
+
   IPattern mPattern = COLOR_BLACK;
   float mBlurSize = 0.f;
   float mXOffset = 0.f;
@@ -2402,63 +2461,66 @@ struct IShadow
 struct IVColorSpec
 {
   IColor mColors[kNumVColors];
-  
+
   /** @return The IColor for the EVColor in this ColorSpec */
-  const IColor& GetColor(EVColor color) const
-  {
-    return mColors[(int) color];
-  }
-  
+  const IColor& GetColor(EVColor color) const { return mColors[(int)color]; }
+
   /** @return The default IColor for an EVColor */
   static const IColor& GetDefaultColor(EVColor idx)
   {
-    switch(idx)
+    switch (idx)
     {
-      case kBG: return DEFAULT_BGCOLOR; // Background
-      case kFG: return DEFAULT_FGCOLOR; // OFF/Foreground
-      case kPR: return DEFAULT_PRCOLOR; // ON/Pressed
-      case kFR: return DEFAULT_FRCOLOR; // Frame
-      case kHL: return DEFAULT_HLCOLOR; // Highlight
-      case kSH: return DEFAULT_SHCOLOR; // Shadow
-      case kX1: return DEFAULT_X1COLOR; // Extra 1
-      case kX2: return DEFAULT_X2COLOR; // Extra 2
-      case kX3: return DEFAULT_X3COLOR; // Extra 3
-      default:
-        return COLOR_TRANSPARENT;
+    case kBG:
+      return DEFAULT_BGCOLOR; // Background
+    case kFG:
+      return DEFAULT_FGCOLOR; // OFF/Foreground
+    case kPR:
+      return DEFAULT_PRCOLOR; // ON/Pressed
+    case kFR:
+      return DEFAULT_FRCOLOR; // Frame
+    case kHL:
+      return DEFAULT_HLCOLOR; // Highlight
+    case kSH:
+      return DEFAULT_SHCOLOR; // Shadow
+    case kX1:
+      return DEFAULT_X1COLOR; // Extra 1
+    case kX2:
+      return DEFAULT_X2COLOR; // Extra 2
+    case kX3:
+      return DEFAULT_X3COLOR; // Extra 3
+    default:
+      return COLOR_TRANSPARENT;
     };
   }
 
   /** Create a new IVColorSpec object with default colors */
-  IVColorSpec()
-  {
-    ResetColors();
-  }
+  IVColorSpec() { ResetColors(); }
 
   /** Create a new IVColorSpec object specifying the colors
    * @param colors Initializer list of IColors */
   IVColorSpec(const std::initializer_list<IColor>& colors)
   {
     assert(colors.size() <= kNumVColors);
-    
+
     int i = 0;
-    
-    for(auto& c : colors)
+
+    for (auto& c : colors)
     {
       mColors[i++] = c;
     }
-    
-    for(; i<kNumVColors; i++)
+
+    for (; i < kNumVColors; i++)
     {
-      mColors[i] = GetDefaultColor((EVColor) i);
+      mColors[i] = GetDefaultColor((EVColor)i);
     }
   }
-  
+
   /** Reset the colors to the defaults */
   void ResetColors()
   {
-    for (int i=0; i<kNumVColors; i++)
+    for (int i = 0; i < kNumVColors; i++)
     {
-      mColors[i] = GetDefaultColor((EVColor) i);
+      mColors[i] = GetDefaultColor((EVColor)i);
     }
   }
 };
@@ -2477,8 +2539,8 @@ static constexpr float DEFAULT_SHADOW_OFFSET = 3.f;
 static constexpr float DEFAULT_WIDGET_FRAC = 1.f;
 static constexpr float DEFAULT_WIDGET_ANGLE = 0.f;
 static constexpr EOrientation DEFAULT_LABEL_ORIENTATION = EOrientation::North;
-const IText DEFAULT_LABEL_TEXT {DEFAULT_TEXT_SIZE + 5.f, EVAlign::Top};
-const IText DEFAULT_VALUE_TEXT {DEFAULT_TEXT_SIZE, EVAlign::Bottom};
+const IText DEFAULT_LABEL_TEXT{DEFAULT_TEXT_SIZE + 5.f, EVAlign::Top};
+const IText DEFAULT_VALUE_TEXT{DEFAULT_TEXT_SIZE, EVAlign::Bottom};
 
 /** A struct encapsulating a set of properties used to configure IVControls */
 struct IVStyle
@@ -2498,7 +2560,7 @@ struct IVStyle
   IText labelText = DEFAULT_LABEL_TEXT;
   IText valueText = DEFAULT_VALUE_TEXT;
   EOrientation labelOrientation = DEFAULT_LABEL_ORIENTATION;
-  
+
   /** Create a new IVStyle to configure common styling for IVControls
    * @param showLabel Show the label
    * @param showValue Show the value
@@ -2529,46 +2591,126 @@ struct IVStyle
           float widgetFrac = DEFAULT_WIDGET_FRAC,
           float angle = DEFAULT_WIDGET_ANGLE,
           EOrientation labelOrientation = DEFAULT_LABEL_ORIENTATION)
-  : hideCursor(hideCursor)
-  , showLabel(showLabel)
-  , showValue(showValue)
-  , drawFrame(drawFrame)
-  , drawShadows(drawShadows)
-  , emboss(emboss)
-  , roundness(roundness)
-  , frameThickness(frameThickness)
-  , shadowOffset(shadowOffset)
-  , widgetFrac(widgetFrac)
-  , angle(angle)
-  , colorSpec(colors)
-  , labelText(labelText)
-  , valueText(valueText)
+    : hideCursor(hideCursor)
+    , showLabel(showLabel)
+    , showValue(showValue)
+    , drawFrame(drawFrame)
+    , drawShadows(drawShadows)
+    , emboss(emboss)
+    , roundness(roundness)
+    , frameThickness(frameThickness)
+    , shadowOffset(shadowOffset)
+    , widgetFrac(widgetFrac)
+    , angle(angle)
+    , colorSpec(colors)
+    , labelText(labelText)
+    , valueText(valueText)
   {
   }
-  
+
   /** Create a new IVStyle based on a list of colors, and defaults for the other elements
    * @param colors  */
   IVStyle(const std::initializer_list<IColor>& colors)
-  : colorSpec(colors)
+    : colorSpec(colors)
   {
   }
-  
-  IVStyle WithShowLabel(bool show = true) const { IVStyle newStyle = *this; newStyle.showLabel = show; return newStyle; }
-  IVStyle WithShowValue(bool show = true) const { IVStyle newStyle = *this; newStyle.showValue = show; return newStyle; }
-  IVStyle WithLabelText(const IText& text) const { IVStyle newStyle = *this; newStyle.labelText = text; return newStyle;}
-  IVStyle WithValueText(const IText& text) const { IVStyle newStyle = *this; newStyle.valueText = text; return newStyle; }
-  IVStyle WithHideCursor(bool hide = true) const { IVStyle newStyle = *this; newStyle.hideCursor = hide; return newStyle; }
-  IVStyle WithColor(EVColor idx, IColor color) const { IVStyle newStyle = *this; newStyle.colorSpec.mColors[idx] = color; return newStyle; }
-  IVStyle WithColors(const IVColorSpec& spec) const { IVStyle newStyle = *this; newStyle.colorSpec = spec; return newStyle; }
-  IVStyle WithRoundness(float v) const { IVStyle newStyle = *this; newStyle.roundness = Clip(v, 0.f, 1.f); return newStyle; }
-  IVStyle WithFrameThickness(float v) const { IVStyle newStyle = *this; newStyle.frameThickness = v; return newStyle; }
-  IVStyle WithShadowOffset(float v) const { IVStyle newStyle = *this; newStyle.shadowOffset = v; return newStyle; }
-  IVStyle WithDrawShadows(bool v = true) const { IVStyle newStyle = *this; newStyle.drawShadows = v; return newStyle; }
-  IVStyle WithDrawFrame(bool v = true) const { IVStyle newStyle = *this; newStyle.drawFrame = v; return newStyle; }
-  IVStyle WithWidgetFrac(float v) const { IVStyle newStyle = *this; newStyle.widgetFrac = Clip(v, 0.f, 1.f); return newStyle; }
-  IVStyle WithAngle(float v) const { IVStyle newStyle = *this; newStyle.angle = Clip(v, 0.f, 360.f); return newStyle; }
-  IVStyle WithEmboss(bool v = true) const { IVStyle newStyle = *this; newStyle.emboss = v; return newStyle; }
-  IVStyle WithLabelOrientation(EOrientation v) const { IVStyle newStyle = *this; newStyle.labelOrientation = v; return newStyle; }
+
+  IVStyle WithShowLabel(bool show = true) const
+  {
+    IVStyle newStyle = *this;
+    newStyle.showLabel = show;
+    return newStyle;
+  }
+  IVStyle WithShowValue(bool show = true) const
+  {
+    IVStyle newStyle = *this;
+    newStyle.showValue = show;
+    return newStyle;
+  }
+  IVStyle WithLabelText(const IText& text) const
+  {
+    IVStyle newStyle = *this;
+    newStyle.labelText = text;
+    return newStyle;
+  }
+  IVStyle WithValueText(const IText& text) const
+  {
+    IVStyle newStyle = *this;
+    newStyle.valueText = text;
+    return newStyle;
+  }
+  IVStyle WithHideCursor(bool hide = true) const
+  {
+    IVStyle newStyle = *this;
+    newStyle.hideCursor = hide;
+    return newStyle;
+  }
+  IVStyle WithColor(EVColor idx, IColor color) const
+  {
+    IVStyle newStyle = *this;
+    newStyle.colorSpec.mColors[idx] = color;
+    return newStyle;
+  }
+  IVStyle WithColors(const IVColorSpec& spec) const
+  {
+    IVStyle newStyle = *this;
+    newStyle.colorSpec = spec;
+    return newStyle;
+  }
+  IVStyle WithRoundness(float v) const
+  {
+    IVStyle newStyle = *this;
+    newStyle.roundness = Clip(v, 0.f, 1.f);
+    return newStyle;
+  }
+  IVStyle WithFrameThickness(float v) const
+  {
+    IVStyle newStyle = *this;
+    newStyle.frameThickness = v;
+    return newStyle;
+  }
+  IVStyle WithShadowOffset(float v) const
+  {
+    IVStyle newStyle = *this;
+    newStyle.shadowOffset = v;
+    return newStyle;
+  }
+  IVStyle WithDrawShadows(bool v = true) const
+  {
+    IVStyle newStyle = *this;
+    newStyle.drawShadows = v;
+    return newStyle;
+  }
+  IVStyle WithDrawFrame(bool v = true) const
+  {
+    IVStyle newStyle = *this;
+    newStyle.drawFrame = v;
+    return newStyle;
+  }
+  IVStyle WithWidgetFrac(float v) const
+  {
+    IVStyle newStyle = *this;
+    newStyle.widgetFrac = Clip(v, 0.f, 1.f);
+    return newStyle;
+  }
+  IVStyle WithAngle(float v) const
+  {
+    IVStyle newStyle = *this;
+    newStyle.angle = Clip(v, 0.f, 360.f);
+    return newStyle;
+  }
+  IVStyle WithEmboss(bool v = true) const
+  {
+    IVStyle newStyle = *this;
+    newStyle.emboss = v;
+    return newStyle;
+  }
+  IVStyle WithLabelOrientation(EOrientation v) const
+  {
+    IVStyle newStyle = *this;
+    newStyle.labelOrientation = v;
+    return newStyle;
+  }
 };
 
 const IVStyle DEFAULT_STYLE = IVStyle();

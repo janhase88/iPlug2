@@ -1039,7 +1039,7 @@ void IGraphics::SetStrictDrawing(bool strict)
 
 void IGraphics::OnMouseDown(const std::vector<IMouseInfo>& points)
 {
-  #include "IPlugLogger.h"
+#include "IPlugLogger.h"
   auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
   if (plug)
   {
@@ -1140,7 +1140,7 @@ void IGraphics::OnMouseDown(const std::vector<IMouseInfo>& points)
 
 void IGraphics::OnMouseUp(const std::vector<IMouseInfo>& points)
 {
-  #include "IPlugLogger.h"
+#include "IPlugLogger.h"
   auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
   if (plug)
   {
@@ -1215,7 +1215,7 @@ void IGraphics::OnTouchCancelled(const std::vector<IMouseInfo>& points)
 
 bool IGraphics::OnMouseOver(float x, float y, const IMouseMod& mod)
 {
-  #include "IPlugLogger.h"
+#include "IPlugLogger.h"
   auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
   if (plug)
   {
@@ -1252,7 +1252,7 @@ void IGraphics::OnMouseOut()
 
 void IGraphics::OnMouseDrag(const std::vector<IMouseInfo>& points)
 {
-  #include "IPlugLogger.h"
+#include "IPlugLogger.h"
   auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
   if (plug)
   {
@@ -2279,12 +2279,22 @@ void IGraphics::EndDragResize()
 
 void IGraphics::StartLayer(IControl* pControl, const IRECT& r, bool cacheable, int MSAASampleCount)
 {
+  auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+    TRACE_SCOPE_F(plug->GetLogFile(), "StartLayer");
+
   auto pixelBackingScale = GetBackingPixelScale();
   IRECT alignedBounds = r.GetPixelAligned(pixelBackingScale);
   const int w = static_cast<int>(std::ceil(pixelBackingScale * std::ceil(alignedBounds.W())));
   const int h = static_cast<int>(std::ceil(pixelBackingScale * std::ceil(alignedBounds.H())));
 
-  PushLayer(new ILayer(CreateAPIBitmap(w, h, GetScreenScale(), GetDrawScale(), cacheable, MSAASampleCount), alignedBounds, pControl, pControl ? pControl->GetRECT() : IRECT()));
+  static int sLayerId = 0;
+  int id = ++sLayerId;
+  auto* pLayer = new ILayer(CreateAPIBitmap(w, h, GetScreenScale(), GetDrawScale(), cacheable, MSAASampleCount), alignedBounds, pControl, pControl ? pControl->GetRECT() : IRECT(), id);
+  PushLayer(pLayer);
+
+  if (plug)
+    Trace(plug->GetLogFile(), TRACELOC, "id=%d w=%d h=%d", id, w, h);
 }
 
 void IGraphics::ResumeLayer(ILayerPtr& layer)
@@ -2300,25 +2310,60 @@ void IGraphics::ResumeLayer(ILayerPtr& layer)
   }
 }
 
-ILayerPtr IGraphics::EndLayer() { return ILayerPtr(PopLayer()); }
+ILayerPtr IGraphics::EndLayer()
+{
+  auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+    TRACE_SCOPE_F(plug->GetLogFile(), "EndLayer");
+
+  ILayerPtr layer(PopLayer());
+
+  if (plug && layer)
+  {
+    const APIBitmap* pBitmap = layer->GetAPIBitmap();
+    Trace(plug->GetLogFile(), TRACELOC, "id=%d w=%d h=%d", layer->GetID(), pBitmap->GetWidth(), pBitmap->GetHeight());
+  }
+
+  return layer;
+}
 
 void IGraphics::PushLayer(ILayer* pLayer)
 {
+  auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+    TRACE_SCOPE_F(plug->GetLogFile(), "PushLayer");
+
   mLayers.push(pLayer);
   UpdateLayer();
   PathTransformReset();
   PathClipRegion(pLayer->Bounds());
   PathClear();
+
+  if (plug && pLayer)
+  {
+    const APIBitmap* pBitmap = pLayer->GetAPIBitmap();
+    Trace(plug->GetLogFile(), TRACELOC, "id=%d w=%d h=%d", pLayer->GetID(), pBitmap->GetWidth(), pBitmap->GetHeight());
+  }
 }
 
 ILayer* IGraphics::PopLayer()
 {
+  auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+    TRACE_SCOPE_F(plug->GetLogFile(), "PopLayer");
+
   ILayer* pLayer = nullptr;
 
   if (!mLayers.empty())
   {
     pLayer = mLayers.top();
     mLayers.pop();
+  }
+
+  if (plug && pLayer)
+  {
+    const APIBitmap* pBitmap = pLayer->GetAPIBitmap();
+    Trace(plug->GetLogFile(), TRACELOC, "id=%d w=%d h=%d", pLayer->GetID(), pBitmap->GetWidth(), pBitmap->GetHeight());
   }
 
   UpdateLayer();
@@ -2331,6 +2376,10 @@ ILayer* IGraphics::PopLayer()
 
 bool IGraphics::CheckLayer(const ILayerPtr& layer)
 {
+  auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+    TRACE_SCOPE_F(plug->GetLogFile(), "CheckLayer");
+
   const APIBitmap* pBitmap = layer ? layer->GetAPIBitmap() : nullptr;
 
   if (pBitmap && layer->mControl && layer->mControlRECT != layer->mControl->GetRECT())
@@ -2339,15 +2388,28 @@ bool IGraphics::CheckLayer(const ILayerPtr& layer)
     layer->Invalidate();
   }
 
+  if (plug && pBitmap)
+    Trace(plug->GetLogFile(), TRACELOC, "id=%d w=%d h=%d", layer->GetID(), pBitmap->GetWidth(), pBitmap->GetHeight());
+
   return pBitmap && !layer->mInvalid && pBitmap->GetDrawScale() == GetDrawScale() && pBitmap->GetScale() == GetScreenScale();
 }
 
 void IGraphics::DrawLayer(const ILayerPtr& layer, const IBlend* pBlend)
 {
+  auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+    TRACE_SCOPE_F(plug->GetLogFile(), "DrawLayer");
+
   PathTransformSave();
   PathTransformReset();
   DrawBitmap(layer->GetBitmap(), layer->Bounds(), 0, 0, pBlend);
   PathTransformRestore();
+
+  if (plug && layer)
+  {
+    const APIBitmap* pBitmap = layer->GetAPIBitmap();
+    Trace(plug->GetLogFile(), TRACELOC, "id=%d w=%d h=%d", layer->GetID(), pBitmap->GetWidth(), pBitmap->GetHeight());
+  }
 }
 
 void IGraphics::DrawFittedLayer(const ILayerPtr& layer, const IRECT& bounds, const IBlend* pBlend)
@@ -2374,6 +2436,17 @@ void IGraphics::DrawRotatedLayer(const ILayerPtr& layer, double angle)
 
 void IGraphics::ApplyLayerDropShadow(ILayerPtr& layer, const IShadow& shadow)
 {
+  auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+  {
+    TRACE_SCOPE_F(plug->GetLogFile(), "ApplyLayerDropShadow");
+    if (layer)
+    {
+      const APIBitmap* pBitmap = layer->GetAPIBitmap();
+      Trace(plug->GetLogFile(), TRACELOC, "id=%d w=%d h=%d", layer->GetID(), pBitmap->GetWidth(), pBitmap->GetHeight());
+    }
+  }
+
   auto GaussianBlurSwap = [](uint8_t* out, uint8_t* in, uint8_t* kernel, int width, int height, int outStride, int inStride, int kernelSize, uint32_t norm) {
     int repeats = 0;
     int fullKernelSize = kernelSize * 2 + 1;

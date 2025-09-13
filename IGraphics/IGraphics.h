@@ -43,6 +43,7 @@
 #include "IPlugConstants.h"
 #include "IPlugLogger.h"
 #include "IPlugPaths.h"
+#include "InstanceSeparation.h"
 
 #include "IGraphicsConstants.h"
 #include "IGraphicsStructs.h"
@@ -1817,11 +1818,17 @@ private:
   std::unique_ptr<IControl> mLiveEdit;
   
   IPopupMenu mPromptPopupMenu;
-  
+
   IRECT mPerfDisplayBounds;
-  
+
   WDL_String mSharedResourcesSubPath;
-  
+#if IPLUG_SEPARATE_BITMAP_CACHE
+  StaticStorage<APIBitmap> mBitmapCache;
+#endif
+#if IPLUG_SEPARATE_SVG_CACHE
+  StaticStorage<SVGHolder> mSVGCache;
+#endif
+
   ECursor mCursorType = ECursor::ARROW;
   int mWidth;
   int mHeight;

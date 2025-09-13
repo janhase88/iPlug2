@@ -92,8 +92,15 @@ void* IGraphicsMac::OpenWindow(void* pParent)
   CloseWindow();
   IGRAPHICS_VIEW* pView = [[IGRAPHICS_VIEW alloc] initWithIGraphics: this];
   mView = (void*) pView;
-    
+
+#ifdef IGRAPHICS_GL
+  {
+    TRACE_SCOPE_F(GetDelegate()->GetPlug()->GetLogFile(), "CreateGLContext");
+    ActivateGLContext();
+  }
+#else
   ActivateGLContext();
+#endif
   OnViewInitialized([pView layer]);
   SetScreenScale([[NSScreen mainScreen] backingScaleFactor]);
   GetDelegate()->LayoutUI(this);
@@ -133,8 +140,11 @@ void IGraphicsMac::CloseWindow()
     IGRAPHICS_VIEW* pView = (IGRAPHICS_VIEW*) mView;
       
 #ifdef IGRAPHICS_GL
-    [[pView pixelFormat] release];
-    [[pView openGLContext] release];
+    {
+      TRACE_SCOPE_F(GetDelegate()->GetPlug()->GetLogFile(), "DestroyGLContext");
+      [[pView pixelFormat] release];
+      [[pView openGLContext] release];
+    }
 #endif
       
     [pView removeAllToolTips];
@@ -724,12 +734,14 @@ EUIAppearance IGraphicsMac::GetUIAppearance() const
 
 void IGraphicsMac::ActivateGLContext()
 {
+  TRACE_SCOPE_F(GetDelegate()->GetPlug()->GetLogFile(), "ActivateGLContext");
   IGRAPHICS_VIEW* pView = (IGRAPHICS_VIEW*) mView;
   [pView activateGLContext];
 }
 
 void IGraphicsMac::DeactivateGLContext()
 {
+  TRACE_SCOPE_F(GetDelegate()->GetPlug()->GetLogFile(), "DeactivateGLContext");
   IGRAPHICS_VIEW* pView = (IGRAPHICS_VIEW*) mView;
   [pView deactivateGLContext];
 }

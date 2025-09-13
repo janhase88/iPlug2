@@ -990,6 +990,7 @@ void IGraphicsWin::GetMouseLocation(float& x, float& y) const
 #ifdef IGRAPHICS_GL
 void IGraphicsWin::CreateGLContext()
 {
+  TRACE_SCOPE_F(GetDelegate()->GetPlug()->GetLogFile(), "CreateGLContext");
   PIXELFORMATDESCRIPTOR pfd = {sizeof(PIXELFORMATDESCRIPTOR),
                                1,
                                PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER, // Flags
@@ -1051,6 +1052,7 @@ void IGraphicsWin::CreateGLContext()
 
 void IGraphicsWin::DestroyGLContext()
 {
+  TRACE_SCOPE_F(GetDelegate()->GetPlug()->GetLogFile(), "DestroyGLContext");
   wglMakeCurrent(NULL, NULL);
   wglDeleteContext(mHGLRC);
 }
@@ -1059,6 +1061,7 @@ void IGraphicsWin::DestroyGLContext()
 void IGraphicsWin::ActivateGLContext()
 {
 #ifdef IGRAPHICS_GL
+  TRACE_SCOPE_F(GetDelegate()->GetPlug()->GetLogFile(), "ActivateGLContext");
   mStartHDC = wglGetCurrentDC();
   mStartHGLRC = wglGetCurrentContext();
   HDC dc = GetDC(mPlugWnd);
@@ -1069,6 +1072,7 @@ void IGraphicsWin::ActivateGLContext()
 void IGraphicsWin::DeactivateGLContext()
 {
 #ifdef IGRAPHICS_GL
+  TRACE_SCOPE_F(GetDelegate()->GetPlug()->GetLogFile(), "DeactivateGLContext");
   ReleaseDC(mPlugWnd, (HDC)GetPlatformContext());
   wglMakeCurrent(mStartHDC, mStartHGLRC); // return current ctxt to start
 #endif

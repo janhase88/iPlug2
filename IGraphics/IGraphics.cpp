@@ -10,6 +10,11 @@
 
 #include "IGraphics.h"
 
+#include <chrono>
+#if !defined(NDEBUG) || defined(IGRAPHICS_DEBUG_RESOURCE_LOAD)
+#include <atomic>
+#endif
+
 #define NANOSVG_IMPLEMENTATION
 #pragma warning(disable:4244) // float conversion
 #include "nanosvg.h"
@@ -40,6 +45,36 @@ using VST3_API_BASE = iplug::IPlugVST3Controller;
 
 using namespace iplug;
 using namespace igraphics;
+
+#if !defined(NDEBUG) || defined(IGRAPHICS_DEBUG_RESOURCE_LOAD)
+static std::atomic<bool> sResourceLoadProfiling {false};
+
+class ResourceLoadTimer
+{
+public:
+  ResourceLoadTimer(const char* label)
+  : mLabel(label)
+  , mStart(std::chrono::high_resolution_clock::now())
+  {}
+
+  ~ResourceLoadTimer()
+  {
+    if (IGraphics::IsResourceLoadProfilingEnabled())
+    {
+      auto elapsed = std::chrono::high_resolution_clock::now() - mStart;
+      DBGMSG("%s loaded in %.3f ms\n", mLabel, std::chrono::duration<double, std::milli>(elapsed).count());
+    }
+  }
+
+private:
+  const char* mLabel;
+  std::chrono::high_resolution_clock::time_point mStart;
+};
+
+#define PROFILE_RESOURCE_LOAD(name) ResourceLoadTimer __rlTimer(name);
+#else
+#define PROFILE_RESOURCE_LOAD(name)
+#endif
 #ifndef OS_WIN
 static StaticStorage<APIBitmap> sBitmapCache;
 static StaticStorage<SVGHolder> sSVGCache;
@@ -88,6 +123,18 @@ IGraphics::~IGraphics()
 #endif
   svgStorage.Release();
 }
+
+#if !defined(NDEBUG) || defined(IGRAPHICS_DEBUG_RESOURCE_LOAD)
+void IGraphics::EnableResourceLoadProfiling(bool enable)
+{
+  sResourceLoadProfiling = enable;
+}
+
+bool IGraphics::IsResourceLoadProfilingEnabled()
+{
+  return sResourceLoadProfiling;
+}
+#endif
 
 void IGraphics::SetScreenScale(float scale)
 {
@@ -1629,6 +1676,7 @@ void IGraphics::EnableLiveEdit(bool enable)
 #ifdef SVG_USE_SKIA
 ISVG IGraphics::LoadSVG(const char* fileName, const char* units, float dpi)
 {
+  PROFILE_RESOURCE_LOAD(fileName);
 #ifdef OS_WIN
   StaticStorage<SVGHolder>::Accessor storage(mSVGCache);
 #else
@@ -1654,6 +1702,7 @@ ISVG IGraphics::LoadSVG(const char* fileName, const char* units, float dpi)
 
 ISVG IGraphics::LoadSVG(const char* name, const void* pData, int dataSize, const char* units, float dpi)
 {
+  PROFILE_RESOURCE_LOAD(name);
 #ifdef OS_WIN
   StaticStorage<SVGHolder>::Accessor storage(mSVGCache);
 #else
@@ -1699,6 +1748,7 @@ ISVG IGraphics::LoadSVG(const char* name, const void* pData, int dataSize, const
 #else
 ISVG IGraphics::LoadSVG(const char* fileName, const char* units, float dpi)
 {
+  PROFILE_RESOURCE_LOAD(fileName);
 #ifdef OS_WIN
   StaticStorage<SVGHolder>::Accessor storage(mSVGCache);
 #else
@@ -1724,6 +1774,7 @@ ISVG IGraphics::LoadSVG(const char* fileName, const char* units, float dpi)
 
 ISVG IGraphics::LoadSVG(const char* name, const void* pData, int dataSize, const char* units, float dpi)
 {
+  PROFILE_RESOURCE_LOAD(name);
 #ifdef OS_WIN
   StaticStorage<SVGHolder>::Accessor storage(mSVGCache);
 #else
@@ -1808,6 +1859,7 @@ WDL_TypedBuf<uint8_t> IGraphics::LoadResource(const char* fileNameOrResID, const
 
 IBitmap IGraphics::LoadBitmap(const char* name, int nStates, bool framesAreHorizontal, int targetScale)
 {
+  PROFILE_RESOURCE_LOAD(name);
   if (targetScale == 0)
     targetScale = GetRoundedScreenScale();
 #ifdef OS_WIN
@@ -1873,6 +1925,7 @@ IBitmap IGraphics::LoadBitmap(const char* name, int nStates, bool framesAreHoriz
 
 IBitmap IGraphics::LoadBitmap(const char *name, const void *pData, int dataSize, int nStates, bool framesAreHorizontal, int targetScale)
 {
+  PROFILE_RESOURCE_LOAD(name);
   if (targetScale == 0)
     targetScale = GetRoundedScreenScale();
 #ifdef OS_WIN
@@ -2283,6 +2336,7 @@ void IGraphics::ApplyLayerDropShadow(ILayerPtr& layer, const IShadow& shadow)
 
 bool IGraphics::LoadFont(const char* fontID, const char* fileNameOrResID)
 {
+  PROFILE_RESOURCE_LOAD(fontID);
   PlatformFontPtr font = LoadPlatformFont(fontID, fileNameOrResID);
   
   if (font)
@@ -2300,6 +2354,7 @@ bool IGraphics::LoadFont(const char* fontID, const char* fileNameOrResID)
 
 bool IGraphics::LoadFont(const char* fontID, void* pData, int dataSize)
 {
+  PROFILE_RESOURCE_LOAD(fontID);
   PlatformFontPtr font = LoadPlatformFont(fontID, pData, dataSize);
 
   if (font)
@@ -2317,6 +2372,7 @@ bool IGraphics::LoadFont(const char* fontID, void* pData, int dataSize)
 
 bool IGraphics::LoadFont(const char* fontID, const char* fontName, ETextStyle style)
 {
+  PROFILE_RESOURCE_LOAD(fontID);
   PlatformFontPtr font = LoadPlatformFont(fontID, fontName, style);
   
   if (font)

@@ -403,10 +403,6 @@ BEGIN_IPLUG_NAMESPACE
 
 Plugin* MakePlug(const iplug::InstanceInfo& info)
 {
-  // From VST3 - is this necessary?
-  static WDL_Mutex sMutex;
-  WDL_MutexLock lock(&sMutex);
-  
   return new PLUG_CLASS_NAME(info);
 }
 
@@ -429,8 +425,6 @@ Plugin* MakePlug(void* pMemory)
 
 Steinberg::FUnknown* MakeController()
 {
-  static WDL_Mutex sMutex;
-  WDL_MutexLock lock(&sMutex);
   iplug::IPlugVST3Controller::InstanceInfo info;
   info.mOtherGUID = Steinberg::FUID(VST3_PROCESSOR_UID);
   // If you are trying to build a distributed VST3 plug-in and you hit an error here like "no matching constructor..." or 
@@ -444,8 +438,6 @@ Steinberg::FUnknown* MakeController()
 
 Steinberg::FUnknown* MakeProcessor()
 {
-  static WDL_Mutex sMutex;
-  WDL_MutexLock lock(&sMutex);
   iplug::IPlugVST3Processor::InstanceInfo info;
   info.mOtherGUID = Steinberg::FUID(VST3_CONTROLLER_UID);
   return static_cast<Steinberg::Vst::IAudioProcessor*>(new PLUG_CLASS_NAME(info));

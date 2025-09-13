@@ -19,6 +19,7 @@
 
 using iplug::LogFileManager;
 using iplug::Trace;
+using iplug::ScopedTimer;
 
 /** IPlug VST3 View  */
 template <class T>
@@ -56,7 +57,9 @@ public:
   Steinberg::tresult PLUGIN_API onSize(Steinberg::ViewRect* pSize) override
   {
     if (auto* plug = dynamic_cast<IPluginBase*>(GetPlug()))
+    {
       TRACEF(plug->GetLogFile());
+    }
 
     if (pSize && mOwner.GetHostResizeEnabled())
     {
@@ -71,7 +74,9 @@ public:
   Steinberg::tresult PLUGIN_API getSize(Steinberg::ViewRect* pSize) override
   {
     if (auto* plug = dynamic_cast<IPluginBase*>(GetPlug()))
+    {
       TRACEF(plug->GetLogFile());
+    }
 
     if (mOwner.HasUI())
     {
@@ -112,7 +117,9 @@ public:
   Steinberg::tresult PLUGIN_API attached(void* pParent, Steinberg::FIDString type) override
   {
     if (auto* plug = dynamic_cast<IPluginBase*>(GetPlug()))
+    {
       TRACE_SCOPE_F(plug->GetLogFile(), "VST3View::attached");
+    }
 
     if (mOwner.HasUI())
     {
@@ -127,7 +134,9 @@ public:
         return Steinberg::kResultFalse;
 #endif
       if (auto* plug = dynamic_cast<IPluginBase*>(GetPlug()))
+      {
         Trace(plug->GetLogFile(), TRACELOC, "attached parent:%p view:%p size:%d:%d", pParent, pView, mOwner.GetEditorWidth(), mOwner.GetEditorHeight());
+      }
       return Steinberg::kResultTrue;
     }
 
@@ -137,12 +146,16 @@ public:
   Steinberg::tresult PLUGIN_API removed() override
   {
     if (auto* plug = dynamic_cast<IPluginBase*>(GetPlug()))
+    {
       TRACE_SCOPE_F(plug->GetLogFile(), "VST3View::removed");
+    }
 
     if (mOwner.HasUI())
     {
-      if (auto* plug = dynamic_cast<IPluginBase*>(GetPlug()))
-        Trace(plug->GetLogFile(), TRACELOC, "removed view:%p", mOwner.GetView());
+        if (auto* plug = dynamic_cast<IPluginBase*>(GetPlug()))
+        {
+          Trace(plug->GetLogFile(), TRACELOC, "removed view:%p", mOwner.GetView());
+        }
       mOwner.CloseWindow();
     }
 

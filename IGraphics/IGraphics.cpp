@@ -10,6 +10,8 @@
 
 #include "IGraphics.h"
 
+#include "IPlugLogger.h"
+
 #include <chrono>
 #if !defined(NDEBUG) || defined(IGRAPHICS_DEBUG_RESOURCE_LOAD)
   #include <atomic>

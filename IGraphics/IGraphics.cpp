@@ -1595,10 +1595,9 @@ void IGraphics::OnGUIIdle()
     TRACEF(plug->GetLogFile());
   ForAllControls(&IControl::OnGUIIdle);
 #ifdef TRACER_BUILD
-  static int idleCount = 0;
-  if (++idleCount >= 60)
+  if (++mIdleCount >= 60)
   {
-    idleCount = 0;
+    mIdleCount = 0;
     int bitmapCount = 0;
     int svgCount = 0;
     {
@@ -2321,8 +2320,7 @@ void IGraphics::StartLayer(IControl* pControl, const IRECT& r, bool cacheable, i
   const int w = static_cast<int>(std::ceil(pixelBackingScale * std::ceil(alignedBounds.W())));
   const int h = static_cast<int>(std::ceil(pixelBackingScale * std::ceil(alignedBounds.H())));
 
-  static int sLayerId = 0;
-  int id = ++sLayerId;
+  int id = ++mLayerId;
   APIBitmap* pBitmap = CreateAPIBitmap(w, h, GetScreenScale(), GetDrawScale(), cacheable, MSAASampleCount);
   WDL_String key;
   if (cacheable)

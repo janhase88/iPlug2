@@ -1919,6 +1919,10 @@ protected:
   friend class ITextEntryControl;
   
   std::stack<ILayer*> mLayers;
+  int mLayerId = 0;
+#ifdef TRACER_BUILD
+  int mIdleCount = 0;
+#endif
 
   IRECT mClipRECT;
   IMatrix mTransform;

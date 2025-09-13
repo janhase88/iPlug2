@@ -11,7 +11,6 @@
 // #define IGRAPHICS_DISABLE_VSYNC
 
 #include <Shlobj.h>
-#include <atomic>
 #include <commctrl.h>
 
 #include <chrono>
@@ -42,7 +41,6 @@ using namespace igraphics;
 #pragma warning(disable : 4312) // Pointer size cast mismatch.
 #pragma warning(disable : 4311) // Pointer size cast mismatch.
 
-static double sFPS = 0.0;
 
 #if !defined(NDEBUG) || defined(IGRAPHICS_DEBUG_RESOURCE_LOAD)
 class ResourceLoadTimer
@@ -764,8 +762,8 @@ LRESULT CALLBACK IGraphicsWin::ParamEditProc(HWND hWnd, UINT msg, WPARAM wParam,
 IGraphicsWin::IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float scale)
   : IGRAPHICS_DRAW_CLASS(dlg, w, h, fps, scale)
 {
-  static std::atomic<int> sClassID{0};
-  mWndClassName = L"IPlugWndClass_" + std::to_wstring(sClassID++);
+  static thread_local int sClassID = 0;
+  mWndClassName = L"IPlugWndClass_" + std::to_wstring(++sClassID);
 
   const COLORREF wcol = RGB(255, 255, 255);
   for (int i = 0; i < 16; ++i)

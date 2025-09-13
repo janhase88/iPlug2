@@ -26,6 +26,7 @@ using namespace iplug;
 IPlugAPIBase::IPlugAPIBase(Config c, EAPI plugAPI)
   : IPluginBase(c.nParams, c.nPresets, c.pluginName)
 {
+  TRACE_SCOPE_F(GetLogFile(), "IPlugAPIBase::IPlugAPIBase");
   mInstanceID = this;
   mUniqueID = c.uniqueID;
   mMfrID = c.mfrID;

@@ -11,6 +11,8 @@
 #include "IGraphicsEditorDelegate.h"
 #include "IGraphics.h"
 #include "IControl.h"
+#include "IPlugPluginBase.h"
+#include "IPlugLogger.h"
 
 using namespace iplug;
 using namespace igraphics;
@@ -26,13 +28,21 @@ IGEditorDelegate::~IGEditorDelegate()
 
 void* IGEditorDelegate::OpenWindow(void* pParent)
 {
+  if(auto* plug = dynamic_cast<IPluginBase*>(this))
+  {
+    TRACE_SCOPE_F(plug->GetLogFile(), "IGraphics::OpenWindow");
+  }
+
   if(!mGraphics)
   {
+    if(auto* plug = dynamic_cast<IPluginBase*>(this))
+      TRACE_SCOPE_F(plug->GetLogFile(), "IGraphics::Init");
+
     mGraphics = std::unique_ptr<IGraphics>(CreateGraphics());
     if (mLastWidth && mLastHeight && mLastScale)
       GetUI()->Resize(mLastWidth, mLastHeight, mLastScale);
   }
-  
+
   if(mGraphics)
     return mGraphics->OpenWindow(pParent);
   else

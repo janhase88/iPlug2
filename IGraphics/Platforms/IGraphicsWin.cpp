@@ -1095,13 +1095,11 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     h = cR.bottom - cR.top;
   }
 
-  if (
 #if IPLUG_SEPARATE_WIN_WINDOWING
-    mWndClassReg++ == 0
+  if (mWndClassReg++ == 0)
 #else
-    sWndClassReg++ == 0
+  if (sWndClassReg++ == 0)
 #endif
-  )
   {
     WNDCLASSW wndClass = { CS_DBLCLKS | CS_OWNDC, WndProc, 0, 0, mHInstance, 0, 0, 0, 0,
 #if IPLUG_SEPARATE_WIN_WINDOWING
@@ -1113,11 +1111,10 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     RegisterClassW(&wndClass);
   }
 
-  mPlugWnd = CreateWindowW(
 #if IPLUG_SEPARATE_WIN_WINDOWING
-    mWndClassName,
+  mPlugWnd = CreateWindowW(mWndClassName,
 #else
-    sWndClassName,
+  mPlugWnd = CreateWindowW(sWndClassName,
 #endif
     L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
 

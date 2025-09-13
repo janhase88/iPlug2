@@ -22,6 +22,7 @@
 #include "IGraphicsWin_dnd.h"
 #include "IPlugParameter.h"
 #include "IPlugPaths.h"
+#include "IPlugPluginBase.h"
 #include "IPopupMenuControl.h"
 
 #include <VersionHelpers.h>
@@ -847,7 +848,8 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
     }
 
     DWORD threadID = GetCurrentThreadId();
-    Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "PlatformResize begin curr:%d:%d target:%d:%d parent:%p grandparent:%p thread:%lu", dlgW, dlgH, dlgW + dw, dlgH + dh, pParent, pGrandparent, threadID);
+    if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+      Trace(plug->GetLogFile(), TRACELOC, "PlatformResize begin curr:%d:%d target:%d:%d parent:%p grandparent:%p thread:%lu", dlgW, dlgH, dlgW + dw, dlgH + dh, pParent, pGrandparent, threadID);
 
     if (!dw && !dh)
       return;
@@ -855,7 +857,8 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
     SetWindowPos(mPlugWnd, 0, 0, 0, dlgW + dw, dlgH + dh, SETPOS_FLAGS);
     int newDlgW = 0, newDlgH = 0;
     GetWindowSize(mPlugWnd, &newDlgW, &newDlgH);
-    Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "PlatformResize end size:%d:%d parent:%p grandparent:%p thread:%lu", newDlgW, newDlgH, pParent, pGrandparent, threadID);
+    if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+      Trace(plug->GetLogFile(), TRACELOC, "PlatformResize end size:%d:%d parent:%p grandparent:%p thread:%lu", newDlgW, newDlgH, pParent, pGrandparent, threadID);
 
     if (pParent && !parentHasResized)
     {
@@ -990,7 +993,8 @@ void IGraphicsWin::GetMouseLocation(float& x, float& y) const
 #ifdef IGRAPHICS_GL
 void IGraphicsWin::CreateGLContext()
 {
-  TRACE_SCOPE_F(GetDelegate()->GetPlug()->GetLogFile(), "CreateGLContext");
+  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+    TRACE_SCOPE_F(plug->GetLogFile(), "CreateGLContext");
   PIXELFORMATDESCRIPTOR pfd = {sizeof(PIXELFORMATDESCRIPTOR),
                                1,
                                PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER, // Flags
@@ -1052,7 +1056,8 @@ void IGraphicsWin::CreateGLContext()
 
 void IGraphicsWin::DestroyGLContext()
 {
-  TRACE_SCOPE_F(GetDelegate()->GetPlug()->GetLogFile(), "DestroyGLContext");
+  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+    TRACE_SCOPE_F(plug->GetLogFile(), "DestroyGLContext");
   wglMakeCurrent(NULL, NULL);
   wglDeleteContext(mHGLRC);
 }
@@ -1061,7 +1066,8 @@ void IGraphicsWin::DestroyGLContext()
 void IGraphicsWin::ActivateGLContext()
 {
 #ifdef IGRAPHICS_GL
-  TRACE_SCOPE_F(GetDelegate()->GetPlug()->GetLogFile(), "ActivateGLContext");
+  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+    TRACE_SCOPE_F(plug->GetLogFile(), "ActivateGLContext");
   mStartHDC = wglGetCurrentDC();
   mStartHGLRC = wglGetCurrentContext();
   HDC dc = GetDC(mPlugWnd);
@@ -1072,7 +1078,8 @@ void IGraphicsWin::ActivateGLContext()
 void IGraphicsWin::DeactivateGLContext()
 {
 #ifdef IGRAPHICS_GL
-  TRACE_SCOPE_F(GetDelegate()->GetPlug()->GetLogFile(), "DeactivateGLContext");
+  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+    TRACE_SCOPE_F(plug->GetLogFile(), "DeactivateGLContext");
   ReleaseDC(mPlugWnd, (HDC)GetPlatformContext());
   wglMakeCurrent(mStartHDC, mStartHGLRC); // return current ctxt to start
 #endif
@@ -1092,7 +1099,8 @@ EMsgBoxResult IGraphicsWin::ShowMessageBox(const char* str, const char* title, E
 
 void* IGraphicsWin::OpenWindow(void* pParent)
 {
-  TRACE_WINDOW_CREATION_START_F(GetDelegate()->GetPlug()->GetLogFile());
+  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+    TRACE_WINDOW_CREATION_START_F(plug->GetLogFile());
   mParentWnd = (HWND)pParent;
   int screenScale = GetScaleForHWND(mParentWnd);
   int x = 0, y = 0, w = WindowWidth() * screenScale, h = WindowHeight() * screenScale;
@@ -1117,10 +1125,12 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   }
 
   DWORD threadID = GetCurrentThreadId();
-  Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "CreateWindowW x:%d y:%d w:%d h:%d parent:%p thread:%lu", x, y, w, h, mParentWnd, threadID);
+  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+    Trace(plug->GetLogFile(), TRACELOC, "CreateWindowW x:%d y:%d w:%d h:%d parent:%p thread:%lu", x, y, w, h, mParentWnd, threadID);
   mPlugWnd = CreateWindowW(mWndClassName.c_str(), L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
   DWORD windowThreadID = GetWindowThreadProcessId(mPlugWnd, nullptr);
-  Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "CreateWindowW returned hwnd:%p thread:%lu windowThread:%lu", mPlugWnd, threadID, windowThreadID);
+  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+    Trace(plug->GetLogFile(), TRACELOC, "CreateWindowW returned hwnd:%p thread:%lu windowThread:%lu", mPlugWnd, threadID, windowThreadID);
 
   HDC dc = GetDC(mPlugWnd);
   SetPlatformContext(dc);
@@ -1201,7 +1211,8 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   }
 
   GetDelegate()->OnUIOpen();
-  TRACE_WINDOW_CREATION_END_F(GetDelegate()->GetPlug()->GetLogFile());
+  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+    TRACE_WINDOW_CREATION_END_F(plug->GetLogFile());
 
   return mPlugWnd;
 }
@@ -1275,7 +1286,8 @@ void IGraphicsWin::CloseWindow()
     DWORD threadID = GetCurrentThreadId();
     int w = 0, h = 0;
     GetWindowSize(mPlugWnd, &w, &h);
-    Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "CloseWindow begin hwnd:%p parent:%p size:%d:%d thread:%lu", mPlugWnd, mParentWnd, w, h, threadID);
+    if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+      Trace(plug->GetLogFile(), TRACELOC, "CloseWindow begin hwnd:%p parent:%p size:%d:%d thread:%lu", mPlugWnd, mParentWnd, w, h, threadID);
     if (mVSYNCEnabled)
       StopVBlankThread();
     else
@@ -1291,11 +1303,11 @@ void IGraphicsWin::CloseWindow()
     }
 #endif
 
-    #ifdef IGRAPHICS_SKIA
+#ifdef IGRAPHICS_SKIA
     DBGMSG("OnViewDestroyed HWND: %p GL Context: %p\n", mPlugWnd, mGrContext.get());
-    #else
+#else
     DBGMSG("OnViewDestroyed HWND: %p GL Context: %p\n", mPlugWnd, nullptr);
-    #endif
+#endif
     OnViewDestroyed();
 
 #ifdef IGRAPHICS_GL
@@ -1344,7 +1356,8 @@ void IGraphicsWin::CloseWindow()
 
     HWND oldWnd = mPlugWnd;
     DestroyWindow(mPlugWnd);
-    Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "CloseWindow destroyed hwnd:%p thread:%lu", oldWnd, threadID);
+    if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+      Trace(plug->GetLogFile(), TRACELOC, "CloseWindow destroyed hwnd:%p thread:%lu", oldWnd, threadID);
 
     mPlugWnd = 0;
 
@@ -2111,20 +2124,24 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* f
   PROFILE_RESOURCE_LOAD(fontID);
   StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
   const auto lookupStart = std::chrono::high_resolution_clock::now();
-  TRACE_CACHE_QUERY_START_F(GetDelegate()->GetPlug()->GetLogFile());
+  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+    TRACE_CACHE_QUERY_START_F(plug->GetLogFile());
   auto* pFont = fontStorage.Find(fontID);
-  TRACE_CACHE_QUERY_END_F(GetDelegate()->GetPlug()->GetLogFile());
+  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+    TRACE_CACHE_QUERY_END_F(plug->GetLogFile());
   const auto lookupEnd = std::chrono::high_resolution_clock::now();
   const auto lookupTime = std::chrono::duration_cast<std::chrono::microseconds>(lookupEnd - lookupStart).count();
   if (pFont)
   {
-    Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadPlatformFont: id=%s cache_hit lookup=%lldus", fontID, static_cast<long long>(lookupTime));
+    if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+      Trace(plug->GetLogFile(), TRACELOC, "LoadPlatformFont: id=%s cache_hit lookup=%lldus", fontID, static_cast<long long>(lookupTime));
     pFont->Retain();
     HFONT font = GetHFont(pFont->GetFamily(), pFont->GetWeight(), pFont->GetItalic(), pFont->GetUnderline());
     if (font)
     {
       mInstalledFonts.push_back(pFont);
-      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "Allocated Font object for cached font %s", fontID);
+      if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+        Trace(plug->GetLogFile(), TRACELOC, "Allocated Font object for cached font %s", fontID);
       return PlatformFontPtr(new Font(font, "", false));
     }
     pFont->Release();
@@ -2132,7 +2149,8 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* f
   }
   else
   {
-    Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadPlatformFont: id=%s cache_miss lookup=%lldus", fontID, static_cast<long long>(lookupTime));
+    if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+      Trace(plug->GetLogFile(), TRACELOC, "LoadPlatformFont: id=%s cache_miss lookup=%lldus", fontID, static_cast<long long>(lookupTime));
   }
 
   void* pFontMem = nullptr;
@@ -2156,7 +2174,8 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* f
       {
         resSize = (int)GetFileSize(file, nullptr);
         pFontMem = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
-        Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "Font %s memory mapped size=%d", fontID, resSize);
+        if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+          Trace(plug->GetLogFile(), TRACELOC, "Font %s memory mapped size=%d", fontID, resSize);
         ret = LoadPlatformFont(fontID, pFontMem, resSize);
         UnmapViewOfFile(pFontMem);
         CloseHandle(mapping);
@@ -2168,7 +2187,8 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* f
   break;
   case kWinBinary: {
     pFontMem = const_cast<void*>(LoadWinResource(fullPath.Get(), "ttf", resSize, GetWinModuleHandle()));
-    Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "Font %s resource loaded size=%d", fontID, resSize);
+    if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+      Trace(plug->GetLogFile(), TRACELOC, "Font %s resource loaded size=%d", fontID, resSize);
     return LoadPlatformFont(fontID, pFontMem, resSize);
   }
   break;
@@ -2195,20 +2215,24 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
   PROFILE_RESOURCE_LOAD(fontID);
   StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
   const auto lookupStart = std::chrono::high_resolution_clock::now();
-  TRACE_CACHE_QUERY_START_F(GetDelegate()->GetPlug()->GetLogFile());
+  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+    TRACE_CACHE_QUERY_START_F(plug->GetLogFile());
   auto* cached = fontStorage.Find(fontID);
-  TRACE_CACHE_QUERY_END_F(GetDelegate()->GetPlug()->GetLogFile());
+  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+    TRACE_CACHE_QUERY_END_F(plug->GetLogFile());
   const auto lookupEnd = std::chrono::high_resolution_clock::now();
   const auto lookupTime = std::chrono::duration_cast<std::chrono::microseconds>(lookupEnd - lookupStart).count();
   if (cached)
   {
-    Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadPlatformFont: id=%s cache_hit lookup=%lldus", fontID, static_cast<long long>(lookupTime));
+    if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+      Trace(plug->GetLogFile(), TRACELOC, "LoadPlatformFont: id=%s cache_hit lookup=%lldus", fontID, static_cast<long long>(lookupTime));
     cached->Retain();
     HFONT font = GetHFont(cached->GetFamily(), cached->GetWeight(), cached->GetItalic(), cached->GetUnderline());
     if (font)
     {
       mInstalledFonts.push_back(cached);
-      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "Allocated Font object for cached font %s", fontID);
+      if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+        Trace(plug->GetLogFile(), TRACELOC, "Allocated Font object for cached font %s", fontID);
       return PlatformFontPtr(new Font(font, "", false));
     }
     cached->Release();
@@ -2216,7 +2240,8 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
   }
   else
   {
-    Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadPlatformFont: id=%s cache_miss lookup=%lldus", fontID, static_cast<long long>(lookupTime));
+    if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+      Trace(plug->GetLogFile(), TRACELOC, "LoadPlatformFont: id=%s cache_miss lookup=%lldus", fontID, static_cast<long long>(lookupTime));
   }
 
   void* pFontMem = pData;
@@ -2228,7 +2253,8 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
   bool italic = fontInfo.IsItalic();
   bool underline = fontInfo.IsUnderline();
 
-  Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "Allocating InstalledFont for %s size=%d", fontID, resSize);
+  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+    Trace(plug->GetLogFile(), TRACELOC, "Allocating InstalledFont for %s size=%d", fontID, resSize);
   std::unique_ptr<InstalledFont> pFont = std::make_unique<InstalledFont>(pFontMem, resSize, family.Get(), weight, italic, underline);
 
   if (pFontMem && pFont && pFont->IsValid())
@@ -2240,8 +2266,10 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
       InstalledFont* stored = pFont.get();
       fontStorage.Add(pFont.release(), fontID);
       mInstalledFonts.push_back(stored);
-      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "Font %s loaded and cached", fontID);
-      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "Allocated Font object for %s", fontID);
+      if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+        Trace(plug->GetLogFile(), TRACELOC, "Font %s loaded and cached", fontID);
+      if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+        Trace(plug->GetLogFile(), TRACELOC, "Allocated Font object for %s", fontID);
       return PlatformFontPtr(new Font(font, "", false));
     }
   }

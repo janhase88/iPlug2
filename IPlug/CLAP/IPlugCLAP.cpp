@@ -13,6 +13,7 @@
 
 #include "IPlugCLAP.h"
 #include "IPlugPluginBase.h"
+#include "IPlugLogger.h"
 #include "host-proxy.hxx"
 #include "plugin.hxx"
 
@@ -907,7 +908,7 @@ bool IPlugCLAP::guiSetScale(double scale) noexcept
 
 bool IPlugCLAP::guiGetSize(uint32_t* pWidth, uint32_t* pHeight) noexcept
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
 
   if (HasUI())
   {

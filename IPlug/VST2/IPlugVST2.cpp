@@ -10,6 +10,7 @@
 
 #include "IPlugVST2.h"
 #include "IPlugPluginBase.h"
+#include "IPlugLogger.h"
 #include <cstdio>
 
 using namespace iplug;
@@ -995,7 +996,7 @@ void IPlugVST2::VSTPreProcess(SAMPLETYPE** inputs, SAMPLETYPE** outputs, VstInt3
 // Deprecated.
 void VSTCALLBACK IPlugVST2::VSTProcess(AEffect* pEffect, float** inputs, float** outputs, VstInt32 nFrames)
 {
-  TRACE_F(_this->GetLogFile());
+  TRACEF(_this->GetLogFile());
   IPlugVST2* _this = (IPlugVST2*)pEffect->object;
   _this->VSTPreProcess(inputs, outputs, nFrames);
   ENTER_PARAMS_MUTEX_STATIC
@@ -1006,7 +1007,7 @@ void VSTCALLBACK IPlugVST2::VSTProcess(AEffect* pEffect, float** inputs, float**
 
 void VSTCALLBACK IPlugVST2::VSTProcessReplacing(AEffect* pEffect, float** inputs, float** outputs, VstInt32 nFrames)
 {
-  TRACE_F(_this->GetLogFile());
+  TRACEF(_this->GetLogFile());
   IPlugVST2* _this = (IPlugVST2*)pEffect->object;
   _this->VSTPreProcess(inputs, outputs, nFrames);
   ENTER_PARAMS_MUTEX_STATIC
@@ -1017,7 +1018,7 @@ void VSTCALLBACK IPlugVST2::VSTProcessReplacing(AEffect* pEffect, float** inputs
 
 void VSTCALLBACK IPlugVST2::VSTProcessDoubleReplacing(AEffect* pEffect, double** inputs, double** outputs, VstInt32 nFrames)
 {
-  TRACE_F(_this->GetLogFile());
+  TRACEF(_this->GetLogFile());
   IPlugVST2* _this = (IPlugVST2*)pEffect->object;
   _this->VSTPreProcess(inputs, outputs, nFrames);
   ENTER_PARAMS_MUTEX_STATIC

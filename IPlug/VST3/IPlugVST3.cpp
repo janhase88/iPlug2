@@ -17,6 +17,7 @@
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 
 #include "IPlugVST3.h"
+#include "IPlugLogger.h"
 
 using namespace iplug;
 using namespace Steinberg;
@@ -43,7 +44,7 @@ Steinberg::uint32 PLUGIN_API IPlugVST3::getTailSamples() { return GetTailIsInfin
 
 tresult PLUGIN_API IPlugVST3::initialize(FUnknown* context)
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
 
   if (SingleComponentEffect::initialize(context) == kResultOk)
   {
@@ -62,21 +63,21 @@ tresult PLUGIN_API IPlugVST3::initialize(FUnknown* context)
 
 tresult PLUGIN_API IPlugVST3::terminate()
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
 
   return SingleComponentEffect::terminate();
 }
 
 tresult PLUGIN_API IPlugVST3::setBusArrangements(SpeakerArrangement* pInputBusArrangements, int32 numInBuses, SpeakerArrangement* pOutputBusArrangements, int32 numOutBuses)
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
 
   return IPlugVST3ProcessorBase::SetBusArrangements(this, pInputBusArrangements, numInBuses, pOutputBusArrangements, numOutBuses) ? kResultTrue : kResultFalse;
 }
 
 tresult PLUGIN_API IPlugVST3::setActive(TBool state)
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
 
   OnActivate((bool)state);
   return SingleComponentEffect::setActive(state);
@@ -84,7 +85,7 @@ tresult PLUGIN_API IPlugVST3::setActive(TBool state)
 
 tresult PLUGIN_API IPlugVST3::setupProcessing(ProcessSetup& newSetup)
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
 
   return SetupProcessing(newSetup, processSetup) ? kResultOk : kResultFalse;
 }
@@ -98,7 +99,7 @@ tresult PLUGIN_API IPlugVST3::setProcessing(TBool state)
 
 tresult PLUGIN_API IPlugVST3::process(ProcessData& data)
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
 
   Process(data, processSetup, audioInputs, audioOutputs, mMidiMsgsFromEditor, mMidiMsgsFromProcessor, mSysExDataFromEditor, mSysexBuf);
   return kResultOk;
@@ -108,14 +109,14 @@ tresult PLUGIN_API IPlugVST3::canProcessSampleSize(int32 symbolicSampleSize) { r
 
 tresult PLUGIN_API IPlugVST3::setState(IBStream* pState)
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
 
   return IPlugVST3State::SetState(this, pState) ? kResultOk : kResultFalse;
 }
 
 tresult PLUGIN_API IPlugVST3::getState(IBStream* pState)
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
 
   return IPlugVST3State::GetState(this, pState) ? kResultOk : kResultFalse;
 }

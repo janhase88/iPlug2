@@ -1,6 +1,7 @@
 #include "IPlugMidiEffect.h"
 #include "IPlug_include_in_plug_src.h"
 #include "IControls.h"
+#include "IPlugLogger.h"
 
 IPlugMidiEffect::IPlugMidiEffect(const InstanceInfo& info)
 : Plugin(info, MakeConfig(kNumParams, kNumPresets))
@@ -59,7 +60,7 @@ void IPlugMidiEffect::ProcessBlock(sample** inputs, sample** outputs, int nFrame
 
 void IPlugMidiEffect::ProcessMidiMsg(const IMidiMsg& msg)
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
   
   int status = msg.StatusMsg();
   

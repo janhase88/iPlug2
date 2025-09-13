@@ -87,7 +87,7 @@ void IPlugResponsiveUI::ProcessBlock(sample** inputs, sample** outputs, int nFra
 
 void IPlugResponsiveUI::ProcessMidiMsg(const IMidiMsg& msg)
 {
-  TRACE;
+  TRACE_F(GetLogFile());
   
   int status = msg.StatusMsg();
   

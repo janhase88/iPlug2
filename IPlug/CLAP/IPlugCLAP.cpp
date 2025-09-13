@@ -32,7 +32,7 @@ IPlugCLAP::IPlugCLAP(const InstanceInfo& info, const Config& config)
   , IPlugProcessor(config, kAPICLAP)
   , ClapPluginHelper(info.mDesc, info.mHost)
 {
-  Trace(TRACELOC, "inst=%p %s", mInstanceID, config.pluginName);
+  Trace(GetLogFile(), TRACELOC, "inst=%p %s", mInstanceID, config.pluginName);
 
   int version = 0;
 
@@ -907,7 +907,7 @@ bool IPlugCLAP::guiSetScale(double scale) noexcept
 
 bool IPlugCLAP::guiGetSize(uint32_t* pWidth, uint32_t* pHeight) noexcept
 {
-  TRACE
+  TRACE_F(GetLogFile());
 
   if (HasUI())
   {
@@ -939,7 +939,7 @@ bool IPlugCLAP::GUIWindowAttach(void* pWindow) noexcept
 
 bool IPlugCLAP::guiAdjustSize(uint32_t* pWidth, uint32_t* pHeight) noexcept
 {
-  Trace(TRACELOC, "inst=%p width:%i height:%i\n", mInstanceID, *pWidth, *pHeight);
+  Trace(GetLogFile(), TRACELOC, "inst=%p width:%i height:%i\n", mInstanceID, *pWidth, *pHeight);
 
   if (HasUI())
   {
@@ -959,7 +959,7 @@ bool IPlugCLAP::guiAdjustSize(uint32_t* pWidth, uint32_t* pHeight) noexcept
 
 bool IPlugCLAP::guiSetSize(uint32_t width, uint32_t height) noexcept
 {
-  Trace(TRACELOC, "inst=%p width:%i height:%i\n", mInstanceID, width, height);
+  Trace(GetLogFile(), TRACELOC, "inst=%p width:%i height:%i\n", mInstanceID, width, height);
 
   if (HasUI())
   {

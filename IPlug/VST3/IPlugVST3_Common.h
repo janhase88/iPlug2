@@ -49,7 +49,7 @@ struct IPlugVST3State
   template <class T>
   static bool SetState(T* pPlug, Steinberg::IBStream* pState)
   {
-    TRACE
+    TRACE_F(pPlug->GetLogFile());
     
     IByteChunk chunk;
     

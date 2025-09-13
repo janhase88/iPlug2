@@ -59,7 +59,7 @@ void IPlugMidiEffect::ProcessBlock(sample** inputs, sample** outputs, int nFrame
 
 void IPlugMidiEffect::ProcessMidiMsg(const IMidiMsg& msg)
 {
-  TRACE;
+  TRACE_F(GetLogFile());
   
   int status = msg.StatusMsg();
   

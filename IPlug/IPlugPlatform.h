@@ -49,16 +49,16 @@
 #ifdef PARAMS_MUTEX
   #define ENTER_PARAMS_MUTEX                                                                                                                                                                           \
     mParams_mutex.Enter();                                                                                                                                                                             \
-    Trace(TRACELOC, "inst=%p %s", this, "ENTER_PARAMS_MUTEX");
+    Trace(this->GetLogFile(), TRACELOC, "inst=%p %s", this, "ENTER_PARAMS_MUTEX");
   #define LEAVE_PARAMS_MUTEX                                                                                                                                                                           \
     mParams_mutex.Leave();                                                                                                                                                                             \
-    Trace(TRACELOC, "inst=%p %s", this, "LEAVE_PARAMS_MUTEX");
+    Trace(this->GetLogFile(), TRACELOC, "inst=%p %s", this, "LEAVE_PARAMS_MUTEX");
   #define ENTER_PARAMS_MUTEX_STATIC                                                                                                                                                                    \
     _this->mParams_mutex.Enter();                                                                                                                                                                      \
-    Trace(TRACELOC, "inst=%p %s", _this, "ENTER_PARAMS_MUTEX");
+    Trace(_this->GetLogFile(), TRACELOC, "inst=%p %s", _this, "ENTER_PARAMS_MUTEX");
   #define LEAVE_PARAMS_MUTEX_STATIC                                                                                                                                                                    \
     _this->mParams_mutex.Leave();                                                                                                                                                                      \
-    Trace(TRACELOC, "inst=%p %s", _this, "LEAVE_PARAMS_MUTEX");
+    Trace(_this->GetLogFile(), TRACELOC, "inst=%p %s", _this, "LEAVE_PARAMS_MUTEX");
 #else
   #define ENTER_PARAMS_MUTEX
   #define LEAVE_PARAMS_MUTEX

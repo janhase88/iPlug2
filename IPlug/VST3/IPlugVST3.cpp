@@ -43,7 +43,7 @@ Steinberg::uint32 PLUGIN_API IPlugVST3::getTailSamples() { return GetTailIsInfin
 
 tresult PLUGIN_API IPlugVST3::initialize(FUnknown* context)
 {
-  TRACE
+  TRACE_F(GetLogFile());
 
   if (SingleComponentEffect::initialize(context) == kResultOk)
   {
@@ -62,21 +62,21 @@ tresult PLUGIN_API IPlugVST3::initialize(FUnknown* context)
 
 tresult PLUGIN_API IPlugVST3::terminate()
 {
-  TRACE
+  TRACE_F(GetLogFile());
 
   return SingleComponentEffect::terminate();
 }
 
 tresult PLUGIN_API IPlugVST3::setBusArrangements(SpeakerArrangement* pInputBusArrangements, int32 numInBuses, SpeakerArrangement* pOutputBusArrangements, int32 numOutBuses)
 {
-  TRACE
+  TRACE_F(GetLogFile());
 
   return IPlugVST3ProcessorBase::SetBusArrangements(this, pInputBusArrangements, numInBuses, pOutputBusArrangements, numOutBuses) ? kResultTrue : kResultFalse;
 }
 
 tresult PLUGIN_API IPlugVST3::setActive(TBool state)
 {
-  TRACE
+  TRACE_F(GetLogFile());
 
   OnActivate((bool)state);
   return SingleComponentEffect::setActive(state);
@@ -84,21 +84,21 @@ tresult PLUGIN_API IPlugVST3::setActive(TBool state)
 
 tresult PLUGIN_API IPlugVST3::setupProcessing(ProcessSetup& newSetup)
 {
-  TRACE
+  TRACE_F(GetLogFile());
 
   return SetupProcessing(newSetup, processSetup) ? kResultOk : kResultFalse;
 }
 
 tresult PLUGIN_API IPlugVST3::setProcessing(TBool state)
 {
-  Trace(TRACELOC, "inst=%p state: %i", this, state);
+  Trace(GetLogFile(), TRACELOC, "inst=%p state: %i", this, state);
 
   return SetProcessing((bool)state) ? kResultOk : kResultFalse;
 }
 
 tresult PLUGIN_API IPlugVST3::process(ProcessData& data)
 {
-  TRACE
+  TRACE_F(GetLogFile());
 
   Process(data, processSetup, audioInputs, audioOutputs, mMidiMsgsFromEditor, mMidiMsgsFromProcessor, mSysExDataFromEditor, mSysexBuf);
   return kResultOk;
@@ -108,14 +108,14 @@ tresult PLUGIN_API IPlugVST3::canProcessSampleSize(int32 symbolicSampleSize) { r
 
 tresult PLUGIN_API IPlugVST3::setState(IBStream* pState)
 {
-  TRACE
+  TRACE_F(GetLogFile());
 
   return IPlugVST3State::SetState(this, pState) ? kResultOk : kResultFalse;
 }
 
 tresult PLUGIN_API IPlugVST3::getState(IBStream* pState)
 {
-  TRACE
+  TRACE_F(GetLogFile());
 
   return IPlugVST3State::GetState(this, pState) ? kResultOk : kResultFalse;
 }
@@ -181,19 +181,19 @@ Steinberg::tresult PLUGIN_API IPlugVST3::setChannelContextInfos(Steinberg::Vst::
 
 void IPlugVST3::BeginInformHostOfParamChange(int idx)
 {
-  Trace(TRACELOC, "inst=%p %d", mInstanceID, idx);
+  Trace(GetLogFile(), TRACELOC, "inst=%p %d", mInstanceID, idx);
   beginEdit(idx);
 }
 
 void IPlugVST3::InformHostOfParamChange(int idx, double normalizedValue)
 {
-  Trace(TRACELOC, "inst=%p %d:%f", mInstanceID, idx, normalizedValue);
+  Trace(GetLogFile(), TRACELOC, "inst=%p %d:%f", mInstanceID, idx, normalizedValue);
   performEdit(idx, normalizedValue);
 }
 
 void IPlugVST3::EndInformHostOfParamChange(int idx)
 {
-  Trace(TRACELOC, "inst=%p %d", mInstanceID, idx);
+  Trace(GetLogFile(), TRACELOC, "inst=%p %d", mInstanceID, idx);
   endEdit(idx);
 }
 

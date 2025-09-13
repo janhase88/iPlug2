@@ -33,15 +33,16 @@ static const AudioUnitPropertyID kIPlugObjectPropertyID = UINT32_MAX-100;
 
 - (id) init
 {
-  TRACE  
   mPlug = nullptr;
+#ifdef TRACER_BUILD
+  if (mPlug)
+    Trace(mPlug->GetLogFile(), TRACELOC, "");
+#endif
   return [super init];
 }
 
 - (NSView*) uiViewForAudioUnit: (AudioUnit) audioUnit withSize: (NSSize) preferredSize
 {
-  TRACE
-
   void* pointers[1];
   UInt32 propertySize = sizeof (pointers);
   
@@ -49,7 +50,11 @@ static const AudioUnitPropertyID kIPlugObjectPropertyID = UINT32_MAX-100;
                             kAudioUnitScope_Global, 0, pointers, &propertySize) == noErr)
   {
     mPlug = (IPlugAPIBase*) pointers[0];
-    
+#ifdef TRACER_BUILD
+    if (mPlug)
+      Trace(mPlug->GetLogFile(), TRACELOC, "");
+#endif
+
     if (mPlug)
     {
       if (mPlug->HasUI())

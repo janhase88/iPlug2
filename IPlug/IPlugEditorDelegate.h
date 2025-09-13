@@ -110,7 +110,6 @@ public:
    * @param sampleOffset For sample accurate parameter changes - index into current block */
   virtual void OnParamChange(int paramIdx, EParamSource source, int sampleOffset = -1)
   {
-    Trace(TRACELOC, "inst=%p idx:%i src:%s\n", this, paramIdx, ParamSourceStrs[source]);
     OnParamChange(paramIdx);
   }
 

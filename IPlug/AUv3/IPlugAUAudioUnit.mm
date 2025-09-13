@@ -774,7 +774,7 @@ static AUAudioUnitPreset* NewAUPreset(NSInteger number, NSString* pName)
 
 - (NSIndexSet*) supportedViewConfigurations:(NSArray<AUAudioUnitViewConfiguration*>*) availableViewConfigurations API_AVAILABLE(macos(10.13), ios(11))
 {
-  TRACE
+  TRACE_F(mPlug->GetLogFile());
 
   NSMutableIndexSet* pSet = [[NSMutableIndexSet alloc] init];
   
@@ -791,7 +791,7 @@ static AUAudioUnitPreset* NewAUPreset(NSInteger number, NSString* pName)
 
 - (void) selectViewConfiguration:(AUAudioUnitViewConfiguration*) viewConfiguration API_AVAILABLE(macos(10.13), ios(11))
 {
-  TRACE
+  TRACE_F(mPlug->GetLogFile());
   dispatch_async(dispatch_get_main_queue(), ^{
     self->mPlug->OnHostSelectedViewConfiguration((int) [viewConfiguration width], (int) [viewConfiguration height]);
   });

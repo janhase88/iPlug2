@@ -50,7 +50,6 @@ using IMsgBoxCompletionHandlerFunc = std::function<void(EMsgBoxResult result)>;
 using IFileDialogCompletionHandlerFunc = std::function<void(const WDL_String& fileName, const WDL_String& path)>;
 using IColorPickerHandlerFunc = std::function<void(const IColor& result)>;
 using IGestureFunc = std::function<void(IControl*, const IGestureInfo&)>;
-using IPopupFunction = std::function<void(IPopupMenu* pMenu)>;
 using IDisplayTickFunc = std::function<void()>;
 using IUIAppearanceChangedFunc = std::function<void(EUIAppearance appearance)>;
 using ITouchID = uintptr_t;
@@ -2403,6 +2402,10 @@ public:
   {
     if (cacheKey)
       mCacheKey.Set(cacheKey);
+
+  }
+
+
 
 
   ~ILayer();

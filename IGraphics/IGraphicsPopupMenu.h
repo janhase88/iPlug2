@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cassert>
 #include <memory>
+#include <functional>
 
 #include "wdlstring.h"
 #include "ptrlist.h"
@@ -28,6 +29,9 @@
 
 BEGIN_IPLUG_NAMESPACE
 BEGIN_IGRAPHICS_NAMESPACE
+
+class IPopupMenu;
+using IPopupFunction = std::function<void(IPopupMenu* pMenu)>;
 
 /** @brief A class for setting the contents of a pop up menu.
  *

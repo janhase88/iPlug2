@@ -15,20 +15,43 @@
 
 #include "IPlugTimer.h"
 #include <atomic>
+#include <mutex>
+#include <unordered_map>
 
 using namespace iplug;
 
-static std::atomic<int> sTimerCount{0};
+namespace
+{
+  // Map owner pointers to active timer counts
+  std::unordered_map<void*, std::atomic<int>> sTimerCounts;
+  std::mutex sCountMutex;
+}
 
 Timer::Timer(void* owner)
   : mOwner(owner)
 {
-  ++sTimerCount;
+  std::lock_guard<std::mutex> lock{sCountMutex};
+  sTimerCounts[owner]++;
 }
 
-Timer::~Timer() { --sTimerCount; }
+Timer::~Timer()
+{
+  std::lock_guard<std::mutex> lock{sCountMutex};
+  if (auto it = sTimerCounts.find(mOwner); it != sTimerCounts.end())
+  {
+    if (--(it->second) == 0)
+      sTimerCounts.erase(it);
+  }
+}
 
-int Timer::GetActiveTimerCount() { return sTimerCount.load(); }
+int Timer::GetActiveTimerCount()
+{
+  std::lock_guard<std::mutex> lock{sCountMutex};
+  int total = 0;
+  for (auto& kv : sTimerCounts)
+    total += kv.second.load();
+  return total;
+}
 
 #if defined OS_MAC || defined OS_IOS
 
@@ -73,22 +96,13 @@ void Timer_impl::TimerProc(CFRunLoopTimerRef timer, void* info)
 
 Timer* Timer::Create(void* owner, ITimerFunction func, uint32_t intervalMs) { return new Timer_impl(owner, func, intervalMs); }
 
-WDL_Mutex Timer_impl::sMutex;
-WDL_PtrList<Timer_impl> Timer_impl::sTimers;
-
 Timer_impl::Timer_impl(void* owner, ITimerFunction func, uint32_t intervalMs)
   : Timer(owner)
   , mTimerFunc(func)
   , mIntervalMs(intervalMs)
 
 {
-  ID = SetTimer(0, 0, intervalMs, TimerProc); // TODO: timer ID correct?
-
-  if (ID)
-  {
-    WDL_MutexLock lock(&sMutex);
-    sTimers.Add(this);
-  }
+  ID = SetTimer(0, reinterpret_cast<UINT_PTR>(this), intervalMs, TimerProc);
 }
 
 Timer_impl::~Timer_impl() { Stop(); }
@@ -98,30 +112,13 @@ void Timer_impl::Stop()
   if (ID)
   {
     KillTimer(0, ID);
-    WDL_MutexLock lock(&sMutex);
-    sTimers.DeletePtr(this);
     ID = 0;
   }
 }
 
 void CALLBACK Timer_impl::TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
 {
-  Timer_impl* pTimer = nullptr;
-
-  {
-    WDL_MutexLock lock(&sMutex);
-
-    for (auto i = 0; i < sTimers.GetSize(); i++)
-    {
-      Timer_impl* t = sTimers.Get(i);
-
-      if (t->ID == idEvent)
-      {
-        pTimer = t;
-        break;
-      }
-    }
-  }
+  Timer_impl* pTimer = reinterpret_cast<Timer_impl*>(idEvent);
 
   if (pTimer)
     pTimer->mTimerFunc(*pTimer);

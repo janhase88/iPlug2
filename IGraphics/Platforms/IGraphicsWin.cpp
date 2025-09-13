@@ -2291,9 +2291,8 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
 
 void IGraphicsWin::CachePlatformFont(const char* fontID, const PlatformFontPtr& font)
 {
-  StaticStorage<HFontHolder>::Accessor hfontStorage(mHFontCache);
-
   HFONT hfont = font->GetDescriptor();
+  StaticStorage<HFontHolder>::Accessor hfontStorage(mHFontCache);
   if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
     TRACE_CACHE_QUERY_START_F(plug->GetLogFile());
   bool exists = hfontStorage.Find(fontID);
@@ -2302,16 +2301,24 @@ void IGraphicsWin::CachePlatformFont(const char* fontID, const PlatformFontPtr& 
 
   if (!exists)
   {
+    hfontStorage.Unlock();
+    auto* holder = new HFontHolder(hfont);
+    hfontStorage.Lock();
     if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
     {
       TRACE_SCOPE_F(plug->GetLogFile(), "CacheInsert(Font)");
       Trace(plug->GetLogFile(), TRACELOC, "CacheInsert Font id:%s", fontID);
-      hfontStorage.Add(new HFontHolder(hfont), fontID);
+      hfontStorage.Add(holder, fontID);
     }
     else
     {
-      hfontStorage.Add(new HFontHolder(hfont), fontID);
+      hfontStorage.Add(holder, fontID);
     }
+    hfontStorage.Unlock();
+  }
+  else
+  {
+    hfontStorage.Unlock();
   }
 }
 

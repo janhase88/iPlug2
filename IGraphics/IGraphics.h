@@ -55,6 +55,14 @@
 #include <memory>
 #include <vector>
 #include <unordered_map>
+#include <cassert>
+
+#if defined(OS_WIN) && defined(IGRAPHICS_GL)
+  #ifndef NOMINMAX
+    #define NOMINMAX
+  #endif
+  #include <windows.h>
+#endif
 
 #ifdef FillRect
 #undef FillRect
@@ -978,8 +986,28 @@ public:
   {
   public:
     ScopedGLContext(IGraphics* pGraphics)
-    : mIGraphics(*pGraphics) { mIGraphics.ActivateGLContext(); }
-    ~ScopedGLContext() { mIGraphics.DeactivateGLContext(); }
+    : mIGraphics(*pGraphics)
+    {
+#if defined IGRAPHICS_GL && defined OS_WIN
+      DBGMSG("ScopedGLContext pre-activate: %p\n", wglGetCurrentContext());
+#endif
+      mIGraphics.ActivateGLContext();
+#if defined IGRAPHICS_GL && defined OS_WIN
+      HGLRC ctx = wglGetCurrentContext();
+      DBGMSG("ScopedGLContext post-activate: %p\n", ctx);
+      assert(ctx);
+#endif
+    }
+    ~ScopedGLContext()
+    {
+#if defined IGRAPHICS_GL && defined OS_WIN
+      DBGMSG("ScopedGLContext pre-deactivate: %p\n", wglGetCurrentContext());
+#endif
+      mIGraphics.DeactivateGLContext();
+#if defined IGRAPHICS_GL && defined OS_WIN
+      DBGMSG("ScopedGLContext post-deactivate: %p\n", wglGetCurrentContext());
+#endif
+    }
   private:
     IGraphics& mIGraphics;
   };

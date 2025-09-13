@@ -1115,6 +1115,11 @@ void* IGraphicsWin::OpenWindow(void* pParent)
 #endif
 
   OnViewInitialized((void*)dc);
+#ifdef IGRAPHICS_SKIA
+  DBGMSG("OnViewInitialized HWND: %p GL Context: %p\n", mPlugWnd, mGrContext.get());
+#else
+  DBGMSG("OnViewInitialized HWND: %p GL Context: %p\n", mPlugWnd, nullptr);
+#endif
 
   SetScreenScale(screenScale); // resizes draw context
 
@@ -1265,6 +1270,11 @@ void IGraphicsWin::CloseWindow()
     }
 #endif
 
+    #ifdef IGRAPHICS_SKIA
+    DBGMSG("OnViewDestroyed HWND: %p GL Context: %p\n", mPlugWnd, mGrContext.get());
+    #else
+    DBGMSG("OnViewDestroyed HWND: %p GL Context: %p\n", mPlugWnd, nullptr);
+    #endif
     OnViewDestroyed();
 
 #ifdef IGRAPHICS_GL

@@ -1092,6 +1092,7 @@ EMsgBoxResult IGraphicsWin::ShowMessageBox(const char* str, const char* title, E
 
 void* IGraphicsWin::OpenWindow(void* pParent)
 {
+  TRACE_WINDOW_CREATION_START_F(GetDelegate()->GetPlug()->GetLogFile());
   mParentWnd = (HWND)pParent;
   int screenScale = GetScaleForHWND(mParentWnd);
   int x = 0, y = 0, w = WindowWidth() * screenScale, h = WindowHeight() * screenScale;
@@ -1200,6 +1201,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   }
 
   GetDelegate()->OnUIOpen();
+  TRACE_WINDOW_CREATION_END_F(GetDelegate()->GetPlug()->GetLogFile());
 
   return mPlugWnd;
 }

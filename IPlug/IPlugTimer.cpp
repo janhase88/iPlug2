@@ -118,10 +118,17 @@ void Timer_impl::Stop()
 
 void CALLBACK Timer_impl::TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
 {
-  Timer_impl* pTimer = reinterpret_cast<Timer_impl*>(idEvent);
+  Timer_impl* pTimer = nullptr;
+
+  {
+    std::lock_guard<std::mutex> lock{sCountMutex};
+    pTimer = reinterpret_cast<Timer_impl*>(idEvent);
+  }
 
   if (pTimer)
+  {
     pTimer->mTimerFunc(*pTimer);
+  }
 }
 #elif defined OS_WEB
 Timer* Timer::Create(void* owner, ITimerFunction func, uint32_t intervalMs) { return new Timer_impl(owner, func, intervalMs); }

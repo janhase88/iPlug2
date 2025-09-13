@@ -1695,12 +1695,17 @@ void IGraphics::EnableLiveEdit(bool enable)
 ISVG IGraphics::LoadSVG(const char* fileName, const char* units, float dpi)
 {
   PROFILE_RESOURCE_LOAD(fileName);
+  auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
   #ifdef OS_WIN
   StaticStorage<SVGHolder>::Accessor storage(mSVGCache);
   #else
   StaticStorage<SVGHolder>::Accessor storage(sSVGCache);
   #endif
+  if (plug)
+    TRACE_CACHE_QUERY_START_F(plug->GetLogFile());
   SVGHolder* pHolder = storage.Find(fileName);
+  if (plug)
+    TRACE_CACHE_QUERY_END_F(plug->GetLogFile());
 
   if (!pHolder)
   {
@@ -1721,12 +1726,17 @@ ISVG IGraphics::LoadSVG(const char* fileName, const char* units, float dpi)
 ISVG IGraphics::LoadSVG(const char* name, const void* pData, int dataSize, const char* units, float dpi)
 {
   PROFILE_RESOURCE_LOAD(name);
+  auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
   #ifdef OS_WIN
   StaticStorage<SVGHolder>::Accessor storage(mSVGCache);
   #else
   StaticStorage<SVGHolder>::Accessor storage(sSVGCache);
   #endif
+  if (plug)
+    TRACE_CACHE_QUERY_START_F(plug->GetLogFile());
   SVGHolder* pHolder = storage.Find(name);
+  if (plug)
+    TRACE_CACHE_QUERY_END_F(plug->GetLogFile());
 
   if (!pHolder)
   {
@@ -1757,7 +1767,14 @@ ISVG IGraphics::LoadSVG(const char* name, const void* pData, int dataSize, const
     }
 
     pHolder = new SVGHolder(svgDOM);
-    storage.Add(pHolder, name);
+    if (plug)
+    {
+      TRACE_SCOPE_F(plug->GetLogFile(), "CacheInsert(SVG)");
+      Trace(plug->GetLogFile(), TRACELOC, "CacheInsert SVG name:%s", name);
+      storage.Add(pHolder, name);
+    }
+    else
+      storage.Add(pHolder, name);
   }
 
   return ISVG(pHolder->mSVGDom);
@@ -1767,12 +1784,17 @@ ISVG IGraphics::LoadSVG(const char* name, const void* pData, int dataSize, const
 ISVG IGraphics::LoadSVG(const char* fileName, const char* units, float dpi)
 {
   PROFILE_RESOURCE_LOAD(fileName);
+  auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
   #ifdef OS_WIN
   StaticStorage<SVGHolder>::Accessor storage(mSVGCache);
   #else
   StaticStorage<SVGHolder>::Accessor storage(sSVGCache);
   #endif
+  if (plug)
+    TRACE_CACHE_QUERY_START_F(plug->GetLogFile());
   SVGHolder* pHolder = storage.Find(fileName);
+  if (plug)
+    TRACE_CACHE_QUERY_END_F(plug->GetLogFile());
 
   if (!pHolder)
   {
@@ -1793,12 +1815,17 @@ ISVG IGraphics::LoadSVG(const char* fileName, const char* units, float dpi)
 ISVG IGraphics::LoadSVG(const char* name, const void* pData, int dataSize, const char* units, float dpi)
 {
   PROFILE_RESOURCE_LOAD(name);
+  auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
   #ifdef OS_WIN
   StaticStorage<SVGHolder>::Accessor storage(mSVGCache);
   #else
   StaticStorage<SVGHolder>::Accessor storage(sSVGCache);
   #endif
+  if (plug)
+    TRACE_CACHE_QUERY_START_F(plug->GetLogFile());
   SVGHolder* pHolder = storage.Find(name);
+  if (plug)
+    TRACE_CACHE_QUERY_END_F(plug->GetLogFile());
 
   if (!pHolder)
   {
@@ -1813,7 +1840,16 @@ ISVG IGraphics::LoadSVG(const char* name, const void* pData, int dataSize, const
 
     pHolder = new SVGHolder(pImage);
 
-    storage.Add(pHolder, name);
+    if (plug)
+    {
+      TRACE_SCOPE_F(plug->GetLogFile(), "CacheInsert(SVG)");
+      Trace(plug->GetLogFile(), TRACELOC, "CacheInsert SVG name:%s", name);
+      storage.Add(pHolder, name);
+    }
+    else
+    {
+      storage.Add(pHolder, name);
+    }
   }
 
   return ISVG(pHolder->mImage);
@@ -1921,9 +1957,14 @@ IBitmap IGraphics::LoadBitmap(const char* name, int nStates, bool framesAreHoriz
 #else
   StaticStorage<APIBitmap>::Accessor storage(sBitmapCache);
 #endif
+  if (plug)
+    TRACE_CACHE_QUERY_START_F(plug->GetLogFile());
   APIBitmap* pAPIBitmap = storage.Find(name, targetScale);
   if (plug)
+  {
+    TRACE_CACHE_QUERY_END_F(plug->GetLogFile());
     Trace(plug->GetLogFile(), TRACELOC, "LoadBitmap cache lookup name:%s scale:%d hit:%d", name, targetScale, pAPIBitmap != nullptr);
+  }
 
   // If the bitmap is not already cached at the targetScale
   if (!pAPIBitmap)
@@ -1965,9 +2006,14 @@ IBitmap IGraphics::LoadBitmap(const char* name, int nStates, bool framesAreHoriz
       // Try in the cache for a mismatched bitmap
       if (sourceScale != targetScale)
       {
+        if (plug)
+          TRACE_CACHE_QUERY_START_F(plug->GetLogFile());
         pAPIBitmap = storage.Find(name, sourceScale);
         if (plug)
+        {
+          TRACE_CACHE_QUERY_END_F(plug->GetLogFile());
           Trace(plug->GetLogFile(), TRACELOC, "LoadBitmap cache lookup mismatched scale:%d hit:%d", sourceScale, pAPIBitmap != nullptr);
+        }
       }
 
       // Load the resource if no match found
@@ -2023,9 +2069,14 @@ IBitmap IGraphics::LoadBitmap(const char* name, const void* pData, int dataSize,
 #else
   StaticStorage<APIBitmap>::Accessor storage(sBitmapCache);
 #endif
+  if (plug)
+    TRACE_CACHE_QUERY_START_F(plug->GetLogFile());
   APIBitmap* pAPIBitmap = storage.Find(name, targetScale);
   if (plug)
+  {
+    TRACE_CACHE_QUERY_END_F(plug->GetLogFile());
     Trace(plug->GetLogFile(), TRACELOC, "LoadBitmap(data) cache lookup name:%s scale:%d hit:%d", name, targetScale, pAPIBitmap != nullptr);
+  }
 
   // If the bitmap is not already cached at the targetScale
   if (!pAPIBitmap)
@@ -2109,7 +2160,16 @@ void IGraphics::RetainBitmap(const IBitmap& bitmap, const char* cacheName)
 #else
   StaticStorage<APIBitmap>::Accessor storage(sBitmapCache);
 #endif
-  storage.Add(bitmap.GetAPIBitmap(), cacheName, bitmap.GetScale());
+  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+  {
+    TRACE_SCOPE_F(plug->GetLogFile(), "CacheInsert(Bitmap)");
+    Trace(plug->GetLogFile(), TRACELOC, "CacheInsert Bitmap name:%s scale:%d", cacheName, bitmap.GetScale());
+    storage.Add(bitmap.GetAPIBitmap(), cacheName, bitmap.GetScale());
+  }
+  else
+  {
+    storage.Add(bitmap.GetAPIBitmap(), cacheName, bitmap.GetScale());
+  }
 }
 
 IBitmap IGraphics::ScaleBitmap(const IBitmap& inBitmap, const char* name, int scale)

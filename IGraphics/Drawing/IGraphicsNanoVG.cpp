@@ -475,7 +475,7 @@ void IGraphicsNanoVG::ApplyShadowMask(ILayerPtr& layer, RawBitmapData& mask, con
     APIBitmap* shadowBitmap = CreateAPIBitmap(width, height, pBitmap->GetScale(), pBitmap->GetDrawScale());
     IBitmap tempLayerBitmap(shadowBitmap, 1, false);
     IBitmap maskBitmap(&maskRawBitmap, 1, false);
-    ILayer shadowLayer(shadowBitmap, layer->Bounds(), nullptr, IRECT(), 0);
+    ILayer shadowLayer(*this, shadowBitmap, layer->Bounds(), nullptr, IRECT(), 0, false, nullptr);
 
     PathTransformSave();
     PushLayer(layer.get());

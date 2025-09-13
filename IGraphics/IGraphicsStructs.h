@@ -2374,54 +2374,81 @@ struct IPattern
 
 /** An abstraction that is used to store a temporary raster image/framebuffer.
  * The layer is drawn with a specific offset to the graphics context.
- * ILayers take ownership of the underlying bitmaps
- * In GPU-based backends (NanoVG), this is a texture. */
+ * ILayers take ownership of the underlying bitmaps unless cacheable,
+ * where the bitmap is retained in the global cache. In GPU-based backends
+ * (NanoVG), this is a texture. */
 class ILayer
 {
   friend IGraphics;
 
 public:
   /** Create a layer/offscreen context (used internally)
+   * @param pGraphics The owning IGraphics instance
    * @param pBitmap The APIBitmap to use for the layer
-   * @param layerRect The bounds of the layer withing the graphics context
+   * @param layerRect The bounds of the layer within the graphics context
    * @param pControl The control that the layer belongs to
    * @param controlRect The bounds of the control
-   * @param id A unique identifier for the layer */
-  ILayer(APIBitmap* pBitmap, const IRECT& layerRect, IControl* pControl, const IRECT& controlRect, int id)
-    : mBitmap(pBitmap)
+   * @param id A unique identifier for the layer
+   * @param cacheable Set \c true if the bitmap is retained in the cache
+   * @param cacheKey The key used when retaining the bitmap */
+  ILayer(IGraphics& pGraphics, APIBitmap* pBitmap, const IRECT& layerRect, IControl* pControl, const IRECT& controlRect, int id, bool cacheable, const char* cacheKey)
+    : mGraphics(pGraphics)
+    , mBitmap(pBitmap)
     , mControl(pControl)
     , mControlRECT(controlRect)
     , mRECT(layerRect)
     , mInvalid(false)
     , mID(id)
+    , mCacheable(cacheable)
   {
+    if (cacheKey)
+      mCacheKey.Set(cacheKey);
+  }
+
+  ~ILayer()
+  {
+    if (mBitmap)
+    {
+      if (mCacheable)
+      {
+        IBitmap bitmap(mBitmap, 1, false, mCacheKey.Get());
+        mGraphics.ReleaseBitmap(bitmap);
+      }
+      else
+      {
+        delete mBitmap;
+      }
+    }
   }
 
   ILayer(const ILayer&) = delete;
-  ILayer operator=(const ILayer&) = delete;
+  ILayer& operator=(const ILayer&) = delete;
 
   /** Mark the layer as needing its contents redrawn  */
   void Invalidate() { mInvalid = true; }
 
   /**  @return const APIBitmap* The API bitmap for the layer */
-  const APIBitmap* GetAPIBitmap() const { return mBitmap.get(); }
+  const APIBitmap* GetAPIBitmap() const { return mBitmap; }
 
   /** @return IBitmap An IBitmap to use the layer directly */
-  IBitmap GetBitmap() const { return IBitmap(mBitmap.get(), 1, false); }
+  IBitmap GetBitmap() const { return IBitmap(mBitmap, 1, false); }
 
   /** @return The unique identifier for this layer */
   int GetID() const { return mID; }
 
-  /** @return const IRECT& The bounds of the layer withing the graphics context */
+  /** @return const IRECT& The bounds of the layer within the graphics context */
   const IRECT& Bounds() const { return mRECT; }
 
 private:
-  std::unique_ptr<APIBitmap> mBitmap;
+  IGraphics& mGraphics;
+  APIBitmap* mBitmap;
   IControl* mControl;
   IRECT mControlRECT;
   IRECT mRECT;
   bool mInvalid;
   int mID;
+  bool mCacheable;
+  WDL_String mCacheKey;
 };
 
 /** ILayerPtr is a managed pointer for transferring the ownership of layers */

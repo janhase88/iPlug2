@@ -74,6 +74,9 @@ public:
   float MeasureText(const IText& text, const char* str, IRECT& bounds) const override;
 
   EUIAppearance GetUIAppearance() const override;
+#ifdef IPLUG_SEPARATE_FONTDESC_CACHE
+  StaticStorage<CoreTextFontDescriptor>& GetFontDescriptorCache() { return mFontDescriptorCache; }
+#endif
 protected:
 
   IPopupMenu* CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT bounds, bool& isAsync) override;
@@ -93,7 +96,10 @@ private:
 
   void RepositionCursor(CGPoint point);
   void StoreCursorPosition();
-  
+
+#ifdef IPLUG_SEPARATE_FONTDESC_CACHE
+  StaticStorage<CoreTextFontDescriptor> mFontDescriptorCache;
+#endif
   void* mView = nullptr;
   CGPoint mCursorLockPosition;
   WDL_String mBundleID, mAppGroupID;

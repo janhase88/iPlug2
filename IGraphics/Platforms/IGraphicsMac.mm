@@ -41,7 +41,9 @@ static int GetSystemVersion()
   return v;
 }
 
+#ifndef IPLUG_SEPARATE_FONTDESC_CACHE
 StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
+#endif
 
 #pragma mark -
 
@@ -49,15 +51,19 @@ IGraphicsMac::IGraphicsMac(IGEditorDelegate& dlg, int w, int h, int fps, float s
 : IGRAPHICS_DRAW_CLASS(dlg, w, h, fps, scale)
 {
   NSApplicationLoad();
+#ifndef IPLUG_SEPARATE_FONTDESC_CACHE
   StaticStorage<CoreTextFontDescriptor>::Accessor storage(sFontDescriptorCache);
   storage.Retain();
+#endif
 }
 
 IGraphicsMac::~IGraphicsMac()
 {
+#ifndef IPLUG_SEPARATE_FONTDESC_CACHE
   StaticStorage<CoreTextFontDescriptor>::Accessor storage(sFontDescriptorCache);
   storage.Release();
-  
+#endif
+
   CloseWindow();
 }
 
@@ -78,7 +84,11 @@ PlatformFontPtr IGraphicsMac::LoadPlatformFont(const char* fontID, void* pData, 
 
 void IGraphicsMac::CachePlatformFont(const char* fontID, const PlatformFontPtr& font)
 {
+#ifdef IPLUG_SEPARATE_FONTDESC_CACHE
+  CoreTextHelpers::CachePlatformFont(fontID, font, mFontDescriptorCache);
+#else
   CoreTextHelpers::CachePlatformFont(fontID, font, sFontDescriptorCache);
+#endif
 }
 
 float IGraphicsMac::MeasureText(const IText& text, const char* str, IRECT& bounds) const

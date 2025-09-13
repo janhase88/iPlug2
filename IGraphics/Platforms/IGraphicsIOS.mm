@@ -46,7 +46,9 @@ END_IPLUG_NAMESPACE
 using namespace iplug;
 using namespace igraphics;
 
+#ifndef IPLUG_SEPARATE_FONTDESC_CACHE
 StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
+#endif
 
 #pragma mark -
 
@@ -340,7 +342,11 @@ PlatformFontPtr IGraphicsIOS::LoadPlatformFont(const char* fontID, void* pData, 
 
 void IGraphicsIOS::CachePlatformFont(const char* fontID, const PlatformFontPtr& font)
 {
+#ifdef IPLUG_SEPARATE_FONTDESC_CACHE
+  CoreTextHelpers::CachePlatformFont(fontID, font, mFontDescriptorCache);
+#else
   CoreTextHelpers::CachePlatformFont(fontID, font, sFontDescriptorCache);
+#endif
 }
 
 void IGraphicsIOS::LaunchBluetoothMidiDialog(float x, float y)

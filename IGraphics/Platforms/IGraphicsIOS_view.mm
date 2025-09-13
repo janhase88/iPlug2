@@ -22,7 +22,9 @@
 #include "IControl.h"
 #include "IPlugParameter.h"
 
+#ifndef IPLUG_SEPARATE_FONTDESC_CACHE
 extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
+#endif
 
 @implementation IGRAPHICS_UITABLEVC
 

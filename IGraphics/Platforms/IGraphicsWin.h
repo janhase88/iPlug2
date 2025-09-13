@@ -179,8 +179,8 @@ private:
 
   WDL_String mMainWndClassName;
 
-  static StaticStorage<InstalledFont> sPlatformFontCache;
-  static StaticStorage<HFontHolder> sHFontCache;
+  StaticStorage<InstalledFont> mPlatformFontCache;
+  StaticStorage<HFontHolder> mHFontCache;
   std::vector<InstalledFont*> mInstalledFonts;
   std::wstring mWndClassName;
   bool mWndClassRegistered = false;

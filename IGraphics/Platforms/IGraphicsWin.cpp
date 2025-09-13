@@ -43,8 +43,6 @@ using namespace igraphics;
 #pragma warning(disable : 4311) // Pointer size cast mismatch.
 
 static double sFPS = 0.0;
-StaticStorage<InstalledFont> IGraphicsWin::sPlatformFontCache;
-StaticStorage<HFontHolder> IGraphicsWin::sHFontCache;
 
 #if !defined(NDEBUG) || defined(IGRAPHICS_DEBUG_RESOURCE_LOAD)
 class ResourceLoadTimer
@@ -776,24 +774,16 @@ IGraphicsWin::IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float s
 #ifndef IGRAPHICS_DISABLE_VSYNC
   mVSYNCEnabled = IsWindows8OrGreater();
 #endif
-
-  StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
-  fontStorage.Retain();
-  StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
-  hfontStorage.Retain();
 }
 
 IGraphicsWin::~IGraphicsWin()
 {
-  StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
+  StaticStorage<InstalledFont>::Accessor fontStorage(mPlatformFontCache);
   for (auto* font : mInstalledFonts)
   {
     if (font->Release() == 0)
       fontStorage.Remove(font);
   }
-  fontStorage.Release();
-  StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
-  hfontStorage.Release();
   DestroyEditWindow();
   CloseWindow();
 }
@@ -1612,7 +1602,7 @@ void IGraphicsWin::CreatePlatformTextEntry(int paramIdx, const IText& text, cons
     return;
   }
 
-  StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
+  StaticStorage<HFontHolder>::Accessor hfontStorage(mHFontCache);
 
   LOGFONTW lFont = {0};
   HFontHolder* hfontHolder = hfontStorage.Find(text.mFont);
@@ -2135,7 +2125,7 @@ static HFONT GetHFont(const char* fontName, int weight, bool italic, bool underl
 PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* fileNameOrResID)
 {
   PROFILE_RESOURCE_LOAD(fontID);
-  StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
+  StaticStorage<InstalledFont>::Accessor fontStorage(mPlatformFontCache);
   const auto lookupStart = std::chrono::high_resolution_clock::now();
   if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
     TRACE_CACHE_QUERY_START_F(plug->GetLogFile());
@@ -2226,7 +2216,7 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* f
 PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, int dataSize)
 {
   PROFILE_RESOURCE_LOAD(fontID);
-  StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
+  StaticStorage<InstalledFont>::Accessor fontStorage(mPlatformFontCache);
   const auto lookupStart = std::chrono::high_resolution_clock::now();
   if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
     TRACE_CACHE_QUERY_START_F(plug->GetLogFile());
@@ -2301,7 +2291,7 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
 
 void IGraphicsWin::CachePlatformFont(const char* fontID, const PlatformFontPtr& font)
 {
-  StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
+  StaticStorage<HFontHolder>::Accessor hfontStorage(mHFontCache);
 
   HFONT hfont = font->GetDescriptor();
   if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))

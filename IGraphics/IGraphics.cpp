@@ -450,9 +450,14 @@ void IGraphics::ShowBubbleControl(IControl* pCaller, float x, float y, const cha
       if (availableBubbleControls.size())
       {
         // this works but why?
+#if IPLUG_SEPARATE_BUBBLE_INDEX
+        availableBubbleControls[mNextBubbleIdx++]->ShowBubble(pCaller, x, y, str, dir, minimumContentBounds, touchID);
+        mNextBubbleIdx %= nBubbleControls;
+#else
         static int whichBubbleControl = 0;
         availableBubbleControls[whichBubbleControl++]->ShowBubble(pCaller, x, y, str, dir, minimumContentBounds, touchID);
         whichBubbleControl %= nBubbleControls;
+#endif
       }
     }
     //    else

@@ -1812,6 +1812,9 @@ private:
   // Order (front-to-back) ToolTip / PopUp / TextEntry / LiveEdit / Corner / PerfDisplay
   std::unique_ptr<ICornerResizerControl> mCornerResizer;
   WDL_PtrList<IBubbleControl> mBubbleControls;
+#if IPLUG_SEPARATE_BUBBLE_INDEX
+  int mNextBubbleIdx = 0;
+#endif
   std::unique_ptr<IPopupMenuControl> mPopupControl;
   std::unique_ptr<IFPSDisplayControl> mPerfDisplay;
   std::unique_ptr<ITextEntryControl> mTextEntryControl;

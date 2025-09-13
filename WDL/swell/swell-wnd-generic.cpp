@@ -41,6 +41,7 @@
 #include "../wdlutf8.h"
 
 #include "swell-dlggen.h"
+#include "swell-timerqueue.h"
 
 #define EDIT_CURSOR_BLINK_LEN 500
 #define EDIT_CURSOR_CYCLE_INTERVAL 3
@@ -839,11 +840,20 @@ typedef struct TimerInfoRec
   TIMERPROC tProc;
   struct TimerInfoRec *_next;
 } TimerInfoRec;
-
+#if IPLUG_SEPARATE_SWELL_TIMER_QUEUE
+static SWELL_TimerQueue s_default_timer_queue;
+static SWELL_TimerQueue* g_timer_queue = &s_default_timer_queue;
+SWELL_TimerQueue* SWELL_SetTimerQueue(SWELL_TimerQueue* q) { SWELL_TimerQueue* o = g_timer_queue; g_timer_queue = q ? q : &s_default_timer_queue; return o; }
+SWELL_TimerQueue* SWELL_GetTimerQueue() { return g_timer_queue; }
+#define m_timer_list (g_timer_queue->timer_list)
+#define m_timermutex (g_timer_queue->timermutex)
+#define spare_timers (g_timer_queue->spare_timers)
+#define m_pmq_mutex (g_timer_queue->pmq_mutex)
+#else
 static TimerInfoRec *m_timer_list;
 static WDL_Mutex m_timermutex;
-
 static TimerInfoRec *spare_timers;
+#endif
 static void free_timer(TimerInfoRec *rec)
 {
   int c = 3; // max spares
@@ -7780,8 +7790,9 @@ typedef struct PMQ_rec
 
   struct PMQ_rec *next;
 } PMQ_rec;
-
+#if !IPLUG_SEPARATE_SWELL_TIMER_QUEUE
 static WDL_Mutex m_pmq_mutex;
+#endif
 static PMQ_rec *m_pmq, *m_pmq_empty, *m_pmq_tail;
 static int m_pmq_size;
 

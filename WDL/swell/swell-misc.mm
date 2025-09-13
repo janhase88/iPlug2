@@ -29,6 +29,7 @@
 #include "swell-internal.h"
 
 #include "../mutex.h"
+#include "swell-timerqueue.h"
 
 HWND g_swell_only_timerhwnd;
 
@@ -357,8 +358,19 @@ typedef struct TimerInfoRec
   NSTimer *timer;
   struct TimerInfoRec *_next;
 } TimerInfoRec;
+#if IPLUG_SEPARATE_SWELL_TIMER_QUEUE
+static SWELL_TimerQueue s_default_timer_queue;
+static SWELL_TimerQueue* g_timer_queue = &s_default_timer_queue;
+SWELL_TimerQueue* SWELL_SetTimerQueue(SWELL_TimerQueue* q) { SWELL_TimerQueue* o = g_timer_queue; g_timer_queue = q ? q : &s_default_timer_queue; return o; }
+SWELL_TimerQueue* SWELL_GetTimerQueue() { return g_timer_queue; }
+#define m_timer_list (g_timer_queue->timer_list)
+#define m_timermutex (g_timer_queue->timermutex)
+#define m_pmq_mutex (g_timer_queue->pmq_init ? &g_timer_queue->pmq_mutex : NULL)
+#define m_pmq_init (g_timer_queue->pmq_init)
+#else
 static TimerInfoRec *m_timer_list;
 static WDL_Mutex m_timermutex;
+#endif
 #ifndef SWELL_NO_POSTMESSAGE
 static pthread_t m_pmq_mainthread;
 static void SWELL_pmq_settimer(HWND h, UINT_PTR timerid, UINT rate, TIMERPROC tProc);
@@ -517,12 +529,13 @@ typedef struct PMQ_rec
   UINT msg;
   WPARAM wParam;
   LPARAM lParam;
-  
+
   struct PMQ_rec *next;
   bool is_special_timer; // if set, then msg=interval(-1 for kill),wParam=timer id, lParam = timerproc
 } PMQ_rec;
-
+#if !IPLUG_SEPARATE_SWELL_TIMER_QUEUE
 static WDL_Mutex *m_pmq_mutex;
+#endif
 static PMQ_rec *m_pmq, *m_pmq_empty, *m_pmq_tail;
 static int m_pmq_size;
 static id m_pmq_timer;
@@ -530,15 +543,27 @@ static id m_pmq_timer;
 
 void SWELL_Internal_PostMessage_Init()
 {
+#if IPLUG_SEPARATE_SWELL_TIMER_QUEUE
+  if (m_pmq_init) return;
+  id del = [NSApp delegate];
+  if (!del || ![del respondsToSelector:@selector(swellPostMessageTick:)]) return;
+
+  m_pmq_mainthread=pthread_self();
+  m_pmq_init = true;
+
+  m_pmq_timer = [NSTimer scheduledTimerWithTimeInterval:0.05 target:(id)del selector:@selector(swellPostMessageTick:) userInfo:nil repeats:YES];
+  [[NSRunLoop currentRunLoop] addTimer:m_pmq_timer forMode:(NSString*)kCFRunLoopCommonModes];
+#else
   if (m_pmq_mutex) return;
   id del = [NSApp delegate];
   if (!del || ![del respondsToSelector:@selector(swellPostMessageTick:)]) return;
-  
+
   m_pmq_mainthread=pthread_self();
   m_pmq_mutex = new WDL_Mutex;
-  
+
   m_pmq_timer = [NSTimer scheduledTimerWithTimeInterval:0.05 target:(id)del selector:@selector(swellPostMessageTick:) userInfo:nil repeats:YES];
   [[NSRunLoop currentRunLoop] addTimer:m_pmq_timer forMode:(NSString*)kCFRunLoopCommonModes];
+#endif
   //  [ release];
   // set a timer to the delegate
 }

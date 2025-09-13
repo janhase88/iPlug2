@@ -2266,7 +2266,16 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
     if (font)
     {
       InstalledFont* stored = pFont.get();
-      fontStorage.Add(pFont.release(), fontID);
+      if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+      {
+        TRACE_SCOPE_F(plug->GetLogFile(), "CacheInsert(Font)");
+        Trace(plug->GetLogFile(), TRACELOC, "CacheInsert Font id:%s", fontID);
+        fontStorage.Add(pFont.release(), fontID);
+      }
+      else
+      {
+        fontStorage.Add(pFont.release(), fontID);
+      }
       mInstalledFonts.push_back(stored);
       if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
         Trace(plug->GetLogFile(), TRACELOC, "Font %s loaded and cached", fontID);
@@ -2284,9 +2293,25 @@ void IGraphicsWin::CachePlatformFont(const char* fontID, const PlatformFontPtr& 
   StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
 
   HFONT hfont = font->GetDescriptor();
+  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+    TRACE_CACHE_QUERY_START_F(plug->GetLogFile());
+  bool exists = hfontStorage.Find(fontID);
+  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+    TRACE_CACHE_QUERY_END_F(plug->GetLogFile());
 
-  if (!hfontStorage.Find(fontID))
-    hfontStorage.Add(new HFontHolder(hfont), fontID);
+  if (!exists)
+  {
+    if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+    {
+      TRACE_SCOPE_F(plug->GetLogFile(), "CacheInsert(Font)");
+      Trace(plug->GetLogFile(), TRACELOC, "CacheInsert Font id:%s", fontID);
+      hfontStorage.Add(new HFontHolder(hfont), fontID);
+    }
+    else
+    {
+      hfontStorage.Add(new HFontHolder(hfont), fontID);
+    }
+  }
 }
 
 DWORD WINAPI VBlankRun(LPVOID lpParam)

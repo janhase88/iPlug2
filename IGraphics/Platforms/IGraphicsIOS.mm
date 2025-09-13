@@ -14,8 +14,8 @@
 
 #include "IGraphicsCoreText.h"
 #include "IGraphicsIOS.h"
-#include "IPlugPluginBase.h"
 #include "IPlugLogger.h"
+#include "IPlugPluginBase.h"
 
 #import "IGraphicsIOS_view.h"
 
@@ -309,7 +309,11 @@ PlatformFontPtr IGraphicsIOS::LoadPlatformFont(const char* fontID, const char* f
 
 PlatformFontPtr IGraphicsIOS::LoadPlatformFont(const char* fontID, void* pData, int dataSize) { return CoreTextHelpers::LoadPlatformFont(fontID, pData, dataSize); }
 
-void IGraphicsIOS::CachePlatformFont(const char* fontID, const PlatformFontPtr& font) { CoreTextHelpers::CachePlatformFont(fontID, font, sFontDescriptorCache); }
+void IGraphicsIOS::CachePlatformFont(const char* fontID, const PlatformFontPtr& font)
+{
+  auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  CoreTextHelpers::CachePlatformFont(fontID, font, sFontDescriptorCache, plug ? plug->GetLogFile() : nullptr);
+}
 
 void IGraphicsIOS::LaunchBluetoothMidiDialog(float x, float y)
 {

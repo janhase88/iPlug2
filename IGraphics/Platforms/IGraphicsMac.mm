@@ -9,8 +9,8 @@
 */
 
 #include "IGraphicsMac.h"
-#include "IPlugLogger.h"
 #import "IGraphicsMac_view.h"
+#include "IPlugLogger.h"
 
 #include "IControl.h"
 #include "IPlugPluginBase.h"
@@ -72,7 +72,11 @@ PlatformFontPtr IGraphicsMac::LoadPlatformFont(const char* fontID, const char* f
 
 PlatformFontPtr IGraphicsMac::LoadPlatformFont(const char* fontID, void* pData, int dataSize) { return CoreTextHelpers::LoadPlatformFont(fontID, pData, dataSize); }
 
-void IGraphicsMac::CachePlatformFont(const char* fontID, const PlatformFontPtr& font) { CoreTextHelpers::CachePlatformFont(fontID, font, sFontDescriptorCache); }
+void IGraphicsMac::CachePlatformFont(const char* fontID, const PlatformFontPtr& font)
+{
+  auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  CoreTextHelpers::CachePlatformFont(fontID, font, sFontDescriptorCache, plug ? plug->GetLogFile() : nullptr);
+}
 
 float IGraphicsMac::MeasureText(const IText& text, const char* str, IRECT& bounds) const { return IGRAPHICS_DRAW_CLASS::MeasureText(text, str, bounds); }
 

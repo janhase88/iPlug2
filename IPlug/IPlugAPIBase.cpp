@@ -23,7 +23,7 @@
 using namespace iplug;
 
 IPlugAPIBase::IPlugAPIBase(Config c, EAPI plugAPI)
-  : IPluginBase(c.nParams, c.nPresets)
+  : IPluginBase(c.nParams, c.nPresets, c.pluginName)
 {
   mInstanceID = this;
   mUniqueID = c.uniqueID;
@@ -41,7 +41,7 @@ IPlugAPIBase::IPlugAPIBase(Config c, EAPI plugAPI)
   mBundleID.Set(c.bundleID);
   mAppGroupID.Set(c.appGroupID);
 
-  Trace(TRACELOC, "inst=%p %s:%s", mInstanceID, c.pluginName, CurrentTime());
+  Trace(mLogFile, TRACELOC, "inst=%p %s:%s", mInstanceID, c.pluginName, CurrentTime());
 
   mParamDisplayStr.Set("", MAX_PARAM_DISPLAY_LEN);
 }
@@ -53,7 +53,7 @@ IPlugAPIBase::~IPlugAPIBase()
     mTimer->Stop();
   }
 
-  TRACE
+  TRACEF(mLogFile);
 }
 
 void IPlugAPIBase::OnHostRequestingImportantParameters(int count, WDL_TypedBuf<int>& results)
@@ -106,7 +106,7 @@ void IPlugAPIBase::SetHost(const char* host, int version)
 
   WDL_String vStr;
   GetVersionStr(version, vStr);
-  Trace(TRACELOC, "inst=%p host_%sknown:%s:%s", mInstanceID, (mHost == kHostUnknown ? "un" : ""), host, vStr.Get());
+  Trace(mLogFile, TRACELOC, "inst=%p host_%sknown:%s:%s", mInstanceID, (mHost == kHostUnknown ? "un" : ""), host, vStr.Get());
 
   HostSpecificInit();
   OnHostIdentified();
@@ -114,7 +114,7 @@ void IPlugAPIBase::SetHost(const char* host, int version)
 
 void IPlugAPIBase::SetParameterValue(int idx, double normalizedValue)
 {
-  Trace(TRACELOC, "inst=%p %d:%f", mInstanceID, idx, normalizedValue);
+  Trace(mLogFile, TRACELOC, "inst=%p %d:%f", mInstanceID, idx, normalizedValue);
   GetParam(idx)->SetNormalized(normalizedValue);
   InformHostOfParamChange(idx, normalizedValue);
   OnParamChange(idx, kUI);

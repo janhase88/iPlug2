@@ -26,7 +26,7 @@ BEGIN_IPLUG_NAMESPACE
 class IPluginBase : public EDITOR_DELEGATE_CLASS
 {
 public:
-  IPluginBase(int nParams, int nPresets);
+  IPluginBase(int nParams, int nPresets, const char* pluginName);
   virtual ~IPluginBase();
   
   IPluginBase(const IPluginBase&) = delete;
@@ -59,6 +59,11 @@ public:
   
   /** @return The plug-in manufacturer's unique four character ID as an integer */
   int GetMfrID() const { return mMfrID; }
+
+#if defined TRACER_BUILD
+  /** @return FILE handle for this instance's log */
+  FILE* GetLogFile() const { return mLogFile; }
+#endif
   
   /** @return The host if it has been identified, see EHost enum for a list of possible hosts */
   EHost GetHost() const { return mHost; }
@@ -143,14 +148,22 @@ public:
   /** Override this method to serialize custom state data, if your plugin does state chunks.
    * @param chunk The output bytechunk where data can be serialized
    * @return \c true if serialization was successful*/
-  virtual bool SerializeState(IByteChunk& chunk) const { TRACE return SerializeParams(chunk); }
+#if defined TRACER_BUILD
+  virtual bool SerializeState(IByteChunk& chunk) const { TRACEF(mLogFile); return SerializeParams(chunk); }
+#else
+  virtual bool SerializeState(IByteChunk& chunk) const { return SerializeParams(chunk); }
+#endif
   
   /** Override this method to unserialize custom state data, if your plugin does state chunks.
    * Implementations should call UnserializeParams() after custom data is unserialized
    * @param chunk The incoming chunk containing the state data.
    * @param startPos The position in the chunk where the data starts
    * @return The new chunk position (endPos)*/
-  virtual int UnserializeState(const IByteChunk& chunk, int startPos) { TRACE return UnserializeParams(chunk, startPos); }
+#if defined TRACER_BUILD
+  virtual int UnserializeState(const IByteChunk& chunk, int startPos) { TRACEF(mLogFile); return UnserializeParams(chunk, startPos); }
+#else
+  virtual int UnserializeState(const IByteChunk& chunk, int startPos) { return UnserializeParams(chunk, startPos); }
+#endif
   
   /** VST3 ONLY! - THIS IS ONLY INCLUDED FOR COMPATIBILITY - NOONE ELSE SHOULD NEED IT!
    * @param chunk The output bytechunk where data can be serialized.
@@ -410,6 +423,9 @@ private:
   int mUniqueID;
   /** Manufacturer unique four char ID as an int */
   int mMfrID;
+#if defined TRACER_BUILD
+  FILE* mLogFile = nullptr;
+#endif
   /** Plug-in version number stored as 0xVVVVRRMM: V = version, R = revision, M = minor revision */
   int mVersion;
   /** Host version number stored as 0xVVVVRRMM: V = version, R = revision, M = minor revision */

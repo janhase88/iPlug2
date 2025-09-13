@@ -140,6 +140,9 @@ void IPlugDrumSynth::ProcessBlock(sample** inputs, sample** outputs, int nFrames
 
 void IPlugDrumSynth::OnIdle()
 {
+  if (auto* base = dynamic_cast<IPluginBase*>(this))
+    TRACE_SCOPE_F(base->GetLogFile(), "OnIdle");
+
   mSender.TransmitData(*this);
 }
 

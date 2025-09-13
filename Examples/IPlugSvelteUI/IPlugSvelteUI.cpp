@@ -1,6 +1,7 @@
 #include "IPlugSvelteUI.h"
 #include "IPlug_include_in_plug_src.h"
 #include "IPlugPaths.h"
+#include "IPlugLogger.h"
 
 IPlugSvelteUI::IPlugSvelteUI(const InstanceInfo& info)
 : Plugin(info, MakeConfig(kNumParams, kNumPresets))
@@ -47,5 +48,8 @@ void IPlugSvelteUI::OnReset()
 
 void IPlugSvelteUI::OnIdle()
 {
+  if (auto* base = dynamic_cast<IPluginBase*>(this))
+    TRACE_SCOPE_F(base->GetLogFile(), "OnIdle");
+
   mSender.TransmitData(*this);
 }

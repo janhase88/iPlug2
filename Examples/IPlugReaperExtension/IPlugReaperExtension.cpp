@@ -1,6 +1,7 @@
 #include "IPlugReaperExtension.h"
 #include "ReaperExt_include_in_plug_src.h"
 
+#include "IPlugLogger.h"
 #include "IControls.h"
 #include "roboto.hpp"
 
@@ -70,6 +71,9 @@ IPlugReaperExtension::IPlugReaperExtension(reaper_plugin_info_t* pRec)
 
 void IPlugReaperExtension::OnIdle()
 {
+  if (auto* base = dynamic_cast<IPluginBase*>(this))
+    TRACE_SCOPE_F(base->GetLogFile(), "OnIdle");
+
   int tracks = CountTracks(0);
   
   if(tracks != mPrevTrackCount) {

@@ -1,6 +1,7 @@
 #include "IPlugChunks.h"
 #include "IPlug_include_in_plug_src.h"
 #include "IControls.h"
+#include "IPlugLogger.h"
 
 IPlugChunks::IPlugChunks(const InstanceInfo& info)
 : Plugin(info, MakeConfig(kNumParams, kNumPresets))
@@ -118,6 +119,9 @@ bool IPlugChunks::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* p
 
 void IPlugChunks::OnIdle()
 {
+  if (auto* base = dynamic_cast<IPluginBase*>(this))
+    TRACE_SCOPE_F(base->GetLogFile(), "OnIdle");
+
   if(mStepPos != mPrevPos)
   {
     mPrevPos = mStepPos;

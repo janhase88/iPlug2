@@ -96,6 +96,9 @@ void IPlugInstrument::ProcessBlock(sample** inputs, sample** outputs, int nFrame
 
 void IPlugInstrument::OnIdle()
 {
+  if (auto* base = dynamic_cast<IPluginBase*>(this))
+    TRACE_SCOPE_F(base->GetLogFile(), "OnIdle");
+
   mMeterSender.TransmitData(*this);
   mLFOVisSender.TransmitData(*this);
 }

@@ -1,5 +1,6 @@
 #include "IPlugCocoaUI.h"
 #include "IPlug_include_in_plug_src.h"
+#include "IPlugLogger.h"
 
 #ifdef FRAMEWORK_BUILD
 #import <AUv3Framework/IPlugCocoaUI-Swift.h>
@@ -77,6 +78,9 @@ bool IPlugCocoaUI::OnHostRequestingSupportedViewConfiguration(int width, int hei
 
 void IPlugCocoaUI::OnIdle()
 {
+  if (auto* base = dynamic_cast<IPluginBase*>(this))
+    TRACE_SCOPE_F(base->GetLogFile(), "OnIdle");
+
   mSender.TransmitData(*this);
 }
 

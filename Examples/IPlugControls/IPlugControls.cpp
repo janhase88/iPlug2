@@ -1,6 +1,7 @@
 #include "IPlugControls.h"
 #include "IPlug_include_in_plug_src.h"
 #include "IPlugPaths.h"
+#include "IPlugLogger.h"
 #include "IconsForkAwesome.h"
 #include "IconsFontaudio.h"
 
@@ -570,6 +571,9 @@ void IPlugControls::OnUIClose()
 #if IPLUG_DSP
 void IPlugControls::OnIdle()
 {
+  if (auto* base = dynamic_cast<IPluginBase*>(this))
+    TRACE_SCOPE_F(base->GetLogFile(), "OnIdle");
+
   mScopeSender.TransmitData(*this);
   mMeterSender.TransmitData(*this);
   mRTTextSender.TransmitData(*this);

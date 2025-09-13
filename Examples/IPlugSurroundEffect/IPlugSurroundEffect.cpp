@@ -1,6 +1,7 @@
 #include "IPlugSurroundEffect.h"
 #include "IPlug_include_in_plug_src.h"
 #include "IControls.h"
+#include "IPlugLogger.h"
 
 uint64_t GetAPIBusTypeForChannelIOConfig(int configIdx, ERoute dir, int busIdx, const IOConfig* pConfig, WDL_TypedBuf<uint64_t>* APIBusTypes)
 {
@@ -79,6 +80,9 @@ IPlugSurroundEffect::IPlugSurroundEffect(const InstanceInfo& info)
 #if IPLUG_DSP
 void IPlugSurroundEffect::OnIdle()
 {
+  if (auto* base = dynamic_cast<IPluginBase*>(this))
+    TRACE_SCOPE_F(base->GetLogFile(), "OnIdle");
+
   mInputPeakSender.TransmitData(*this);
   mOutputPeakSender.TransmitData(*this);
 }

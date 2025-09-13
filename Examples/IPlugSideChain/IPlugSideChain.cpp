@@ -1,5 +1,6 @@
 #include "IPlugSideChain.h"
 #include "IPlug_include_in_plug_src.h"
+#include "IPlugLogger.h"
 
 IPlugSideChain::IPlugSideChain(const InstanceInfo& info)
 : Plugin(info, MakeConfig(kNumParams, kNumPresets))
@@ -32,6 +33,9 @@ IPlugSideChain::IPlugSideChain(const InstanceInfo& info)
 
 void IPlugSideChain::OnIdle()
 {
+  if (auto* base = dynamic_cast<IPluginBase*>(this))
+    TRACE_SCOPE_F(base->GetLogFile(), "OnIdle");
+
   mInputPeakSender.TransmitData(*this);
   mOutputPeakSender.TransmitData(*this);
   

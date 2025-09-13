@@ -1,5 +1,6 @@
 #include "IPlugSwiftUI.h"
 #include "IPlug_include_in_plug_src.h"
+#include "IPlugLogger.h"
 
 #ifdef FRAMEWORK_BUILD
 #import <AUv3Framework/IPlugSwiftUI-Swift.h>
@@ -20,6 +21,9 @@ IPlugSwiftUI::IPlugSwiftUI(const InstanceInfo& info)
 
 void IPlugSwiftUI::OnIdle()
 {
+  if (auto* base = dynamic_cast<IPluginBase*>(this))
+    TRACE_SCOPE_F(base->GetLogFile(), "OnIdle");
+
   mScopeSender.TransmitData(*this);
 }
 

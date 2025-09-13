@@ -2095,17 +2095,28 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* f
   PROFILE_RESOURCE_LOAD(fontID);
   StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
 
+  const auto lookupStart = std::chrono::high_resolution_clock::now();
   if (auto* pFont = fontStorage.Find(fontID))
   {
+    const auto lookupEnd = std::chrono::high_resolution_clock::now();
+    const auto lookupTime = std::chrono::duration_cast<std::chrono::microseconds>(lookupEnd - lookupStart).count();
+    Trace(TRACELOC, "LoadPlatformFont: id=%s cache_hit lookup=%lldus", fontID, static_cast<long long>(lookupTime));
     pFont->Retain();
     HFONT font = GetHFont(pFont->GetFamily(), pFont->GetWeight(), pFont->GetItalic(), pFont->GetUnderline());
     if (font)
     {
       mInstalledFonts.push_back(pFont);
+      Trace(TRACELOC, "Allocated Font object for cached font %s", fontID);
       return PlatformFontPtr(new Font(font, "", false));
     }
     pFont->Release();
     return nullptr;
+  }
+  else
+  {
+    const auto lookupEnd = std::chrono::high_resolution_clock::now();
+    const auto lookupTime = std::chrono::duration_cast<std::chrono::microseconds>(lookupEnd - lookupStart).count();
+    Trace(TRACELOC, "LoadPlatformFont: id=%s cache_miss lookup=%lldus", fontID, static_cast<long long>(lookupTime));
   }
 
   void* pFontMem = nullptr;
@@ -2129,6 +2140,7 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* f
       {
         resSize = (int)GetFileSize(file, nullptr);
         pFontMem = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
+        Trace(TRACELOC, "Font %s memory mapped size=%d", fontID, resSize);
         ret = LoadPlatformFont(fontID, pFontMem, resSize);
         UnmapViewOfFile(pFontMem);
         CloseHandle(mapping);
@@ -2140,6 +2152,7 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* f
   break;
   case kWinBinary: {
     pFontMem = const_cast<void*>(LoadWinResource(fullPath.Get(), "ttf", resSize, GetWinModuleHandle()));
+    Trace(TRACELOC, "Font %s resource loaded size=%d", fontID, resSize);
     return LoadPlatformFont(fontID, pFontMem, resSize);
   }
   break;
@@ -2166,17 +2179,28 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
   PROFILE_RESOURCE_LOAD(fontID);
   StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
 
+  const auto lookupStart = std::chrono::high_resolution_clock::now();
   if (auto* cached = fontStorage.Find(fontID))
   {
+    const auto lookupEnd = std::chrono::high_resolution_clock::now();
+    const auto lookupTime = std::chrono::duration_cast<std::chrono::microseconds>(lookupEnd - lookupStart).count();
+    Trace(TRACELOC, "LoadPlatformFont: id=%s cache_hit lookup=%lldus", fontID, static_cast<long long>(lookupTime));
     cached->Retain();
     HFONT font = GetHFont(cached->GetFamily(), cached->GetWeight(), cached->GetItalic(), cached->GetUnderline());
     if (font)
     {
       mInstalledFonts.push_back(cached);
+      Trace(TRACELOC, "Allocated Font object for cached font %s", fontID);
       return PlatformFontPtr(new Font(font, "", false));
     }
     cached->Release();
     return nullptr;
+  }
+  else
+  {
+    const auto lookupEnd = std::chrono::high_resolution_clock::now();
+    const auto lookupTime = std::chrono::duration_cast<std::chrono::microseconds>(lookupEnd - lookupStart).count();
+    Trace(TRACELOC, "LoadPlatformFont: id=%s cache_miss lookup=%lldus", fontID, static_cast<long long>(lookupTime));
   }
 
   void* pFontMem = pData;
@@ -2188,6 +2212,7 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
   bool italic = fontInfo.IsItalic();
   bool underline = fontInfo.IsUnderline();
 
+  Trace(TRACELOC, "Allocating InstalledFont for %s size=%d", fontID, resSize);
   std::unique_ptr<InstalledFont> pFont = std::make_unique<InstalledFont>(pFontMem, resSize, family.Get(), weight, italic, underline);
 
   if (pFontMem && pFont && pFont->IsValid())
@@ -2199,6 +2224,8 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
       InstalledFont* stored = pFont.get();
       fontStorage.Add(pFont.release(), fontID);
       mInstalledFonts.push_back(stored);
+      Trace(TRACELOC, "Font %s loaded and cached", fontID);
+      Trace(TRACELOC, "Allocated Font object for %s", fontID);
       return PlatformFontPtr(new Font(font, "", false));
     }
   }

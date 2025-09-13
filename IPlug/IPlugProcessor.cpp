@@ -14,6 +14,7 @@
  */
 
 #include "IPlugProcessor.h"
+#include "IPlugLogger.h"
 
 #ifdef OS_WIN
   #define strtok_r strtok_s
@@ -250,10 +251,10 @@ bool IPlugProcessor::LegalIO(int NInputChans, int NOutputChans) const
     legal = ((NInputChans < 0 || NInputChans == pIO->GetTotalNChannels(ERoute::kInput)) && (NOutputChans < 0 || NOutputChans == pIO->GetTotalNChannels(ERoute::kOutput)));
   }
 
-  #ifdef TRACER_BUILD
+#ifdef TRACER_BUILD
   if (auto* base = dynamic_cast<const IPluginBase*>(this))
     Trace(base->GetLogFile(), TRACELOC, "inst=%p %d:%d:%s", this, NInputChans, NOutputChans, (legal ? "legal" : "illegal"));
-  #endif
+#endif
   return legal;
 }
 

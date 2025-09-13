@@ -10,6 +10,7 @@
 
 #include "IPlugAPP.h"
 #include "IPlugAPP_host.h"
+#include "IPlugLogger.h"
 
 #if defined OS_MAC || defined OS_LINUX
   #include <IPlugSWELL.h>

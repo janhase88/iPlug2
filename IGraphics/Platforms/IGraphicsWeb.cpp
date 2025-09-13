@@ -15,6 +15,8 @@
 #include "IGraphicsWeb.h"
 #include "IPlugPluginBase.h"
 
+#include "IPlugLogger.h"
+
 BEGIN_IPLUG_NAMESPACE
 BEGIN_IGRAPHICS_NAMESPACE
 

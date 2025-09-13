@@ -20,6 +20,7 @@
 using iplug::LogFileManager;
 using iplug::ScopedTimer;
 using iplug::Trace;
+using iplug::IPluginBase;
 
 /** IPlug VST3 View  */
 template <class T>

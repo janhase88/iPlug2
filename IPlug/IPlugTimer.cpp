@@ -26,15 +26,9 @@ Timer::Timer(void* owner)
   ++sTimerCount;
 }
 
-Timer::~Timer()
-{
-  --sTimerCount;
-}
+Timer::~Timer() { --sTimerCount; }
 
-int Timer::GetActiveTimerCount()
-{
-  return sTimerCount.load();
-}
+int Timer::GetActiveTimerCount() { return sTimerCount.load(); }
 
 #if defined OS_MAC || defined OS_IOS
 
@@ -112,18 +106,25 @@ void Timer_impl::Stop()
 
 void CALLBACK Timer_impl::TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
 {
-  WDL_MutexLock lock(&sMutex);
+  Timer_impl* pTimer = nullptr;
 
-  for (auto i = 0; i < sTimers.GetSize(); i++)
   {
-    Timer_impl* pTimer = sTimers.Get(i);
+    WDL_MutexLock lock(&sMutex);
 
-    if (pTimer->ID == idEvent)
+    for (auto i = 0; i < sTimers.GetSize(); i++)
     {
-      pTimer->mTimerFunc(*pTimer);
-      return;
+      Timer_impl* t = sTimers.Get(i);
+
+      if (t->ID == idEvent)
+      {
+        pTimer = t;
+        break;
+      }
     }
   }
+
+  if (pTimer)
+    pTimer->mTimerFunc(*pTimer);
 }
 #elif defined OS_WEB
 Timer* Timer::Create(void* owner, ITimerFunction func, uint32_t intervalMs) { return new Timer_impl(owner, func, intervalMs); }

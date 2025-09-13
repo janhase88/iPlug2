@@ -57,6 +57,10 @@
 #include <vector>
 #include <unordered_map>
 
+#if IPLUG_SEPARATE_GL_CONTEXT
+#include "../WDL/lice/lice_gl_ctx.h"
+#endif
+
 #ifdef FillRect
 #undef FillRect
 #endif
@@ -1830,6 +1834,9 @@ private:
 #endif
 #if IPLUG_SEPARATE_SVG_CACHE
   StaticStorage<SVGHolder> mSVGCache;
+#endif
+#if IPLUG_SEPARATE_GL_CONTEXT
+  LICE_GL_ctx mGLContext;
 #endif
 
   ECursor mCursorType = ECursor::ARROW;

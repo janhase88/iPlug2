@@ -8,19 +8,35 @@ LICE_GLBitmap::LICE_GLBitmap()
   m_bmp = 0;
   m_fbo = 0;
   m_tex = 0;
-  m_bufloc = EMPTY;  
+  m_bufloc = EMPTY;
+#if IPLUG_SEPARATE_GL_CONTEXT
+  m_ctx = nullptr;
+#endif
 }
 
 // This is separate from the constructor for initialization order reasons
+#if IPLUG_SEPARATE_GL_CONTEXT
+void LICE_GLBitmap::Init(LICE_GL_ctx* ctx, LICE_IBitmap* bmp, int w, int h)
+{
+  m_ctx = ctx;
+  m_bmp = bmp;
+  if (w > 0 && h > 0) CreateFBO(w, h);
+}
+#else
 void LICE_GLBitmap::Init(LICE_IBitmap* bmp, int w, int h)
 {
   m_bmp = bmp;
   if (w > 0 && h > 0) CreateFBO(w, h);
 }
+#endif
 
 bool LICE_GLBitmap::CreateFBO(int w, int h)
 {
+#if IPLUG_SEPARATE_GL_CONTEXT
+  if (m_ctx && m_ctx->IsValid())
+#else
   if (LICE_GL_IsValid())
+#endif
   {   
     if (m_fbo) ReleaseFBO();
     glGenFramebuffersEXT(1, &m_fbo);  // create a new empty FBO
@@ -39,23 +55,39 @@ bool LICE_GLBitmap::CreateFBO(int w, int h)
       }
       glDisable(GL_TEXTURE_RECTANGLE_ARB);  // done texturing
     }
-  
+
     return BindFBO();  // this tests the FBO for validity
-  } 
+  }
   return false;
 }
 
+#if IPLUG_SEPARATE_GL_CONTEXT
+LICE_GL_SysBitmap::LICE_GL_SysBitmap(LICE_GL_ctx* ctx, int w, int h)
+: LICE_GLBitmap(ctx), m_sysbmp(w, h)
+{
+  Init(ctx, &m_sysbmp, w, h);
+}
+#else
 LICE_GL_SysBitmap::LICE_GL_SysBitmap(int w, int h)
 : m_sysbmp(w, h)
 {
   Init(&m_sysbmp, w, h);
 }
+#endif
 
+#if IPLUG_SEPARATE_GL_CONTEXT
+LICE_GL_MemBitmap::LICE_GL_MemBitmap(LICE_GL_ctx* ctx, int w, int h)
+: LICE_GLBitmap(ctx), m_membmp(w, h)
+{
+  Init(ctx, &m_membmp, w, h);
+}
+#else
 LICE_GL_MemBitmap::LICE_GL_MemBitmap(int w, int h)
 : m_membmp(w, h)
 {
   Init(&m_membmp, w, h);
 }
+#endif
 
 HDC LICE_GL_SysBitmap::getDC()
 {
@@ -223,10 +255,14 @@ bool LICE_GLBitmap::BindFBO()
     else
     {
       ReleaseFBO();
+#if IPLUG_SEPARATE_GL_CONTEXT
+      if (m_ctx) m_ctx->Close(); // if we fail once we're done with GL
+#else
       LICE_GL_CloseCtx(); // if we fail once we're done with GL
+#endif
     }
   }
-  return valid; 
+  return valid;
 }
 
 void LICE_GLBitmap::ReleaseFBO()
@@ -433,7 +469,12 @@ bool LICE_GLBitmap::DrawCBezier_accel(LICE_Ext_DrawCBezier_acceldata* p)
   if (!p) return false;
   if (!FramebufferToGPU()) return false;
 
-  GLUnurbsObj* nurbs = LICE_GL_GetNurbsObj();
+  GLUnurbsObj* nurbs =
+#if IPLUG_SEPARATE_GL_CONTEXT
+    m_ctx ? m_ctx->GetNurbsObj() : nullptr;
+#else
+    LICE_GL_GetNurbsObj();
+#endif
   if (!nurbs) return false;
 
 p->color = LICE_RGBA(255,255,255,255);  // temp for easy ID of GL rendering
@@ -464,7 +505,12 @@ bool LICE_GLBitmap::DrawGlyph_accel(LICE_Ext_DrawGlyph_acceldata* p)
 
   glEnable(GL_TEXTURE_RECTANGLE_ARB);
 
-  int texID = LICE_GL_GetTexFromGlyph(p->alphas, p->glyph_w, p->glyph_h);
+  int texID =
+#if IPLUG_SEPARATE_GL_CONTEXT
+    (m_ctx ? m_ctx->GetTexFromGlyph(p->alphas, p->glyph_w, p->glyph_h) : 0);
+#else
+    LICE_GL_GetTexFromGlyph(p->alphas, p->glyph_w, p->glyph_h);
+#endif
   if (!texID) return false;
   
   SetGLColor(p->color, p->alpha, p->mode);
@@ -663,7 +709,11 @@ bool LICE_GLBitmap::WindowBlit(LICE_Ext_WindowBlit_data* p)
   if (!FramebufferToGPU()) return false;
 
   HWND hwnd = p->hwnd;
+#if IPLUG_SEPARATE_GL_CONTEXT
+  if (!m_ctx || hwnd != m_ctx->GetWindow()) return 0;
+#else
   if (hwnd != LICE_GL_GetWindow()) return 0;
+#endif
 
   glFinish();
 

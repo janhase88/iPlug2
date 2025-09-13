@@ -1,50 +1,6 @@
 #include "lice_gl_ctx.h"
 
-#define MAX_CACHED_GLYPHS 4096
-
-// create one hidden window per process to hold the openGL state,
-// its GL render context stays current for the life of the process,
-// we serve all framebuffers from the same render context
-
-class LICE_GL_ctx
-{
-public:
-
-  LICE_GL_ctx();
-  ~LICE_GL_ctx();
-
-  bool IsValid();
-  HWND GetWindow() { return m_hwnd; }
-  void Close();
-
-  GLUnurbsObj* GetNurbsObj(int linetol=8);  // linetol = maximum number of straight-line pixels
-
-  int GetTexFromGlyph(const unsigned char* glyph, int glyph_w, int glyph_h);
-  void ClearTex();
-
-  struct GlyphCache
-  {
-    unsigned int tex;
-    unsigned char* glyph; // lives on the heap
-    int glyph_w, glyph_h;
-  };
-
-private:
-
-  bool Init();
-
-  bool m_init_tried;
-  HINSTANCE m_gldll;
-  HWND m_hwnd;
-  HGLRC m_glrc;
-
-  GLUnurbsObj* m_nurbs; // keep this here for easy reuse
-
-  GlyphCache m_glyphCache[MAX_CACHED_GLYPHS];
-  int m_nCachedGlyphs;
-};
-
-LICE_GL_ctx::LICE_GL_ctx() 
+LICE_GL_ctx::LICE_GL_ctx()
 {
   m_init_tried = false;
   m_gldll = 0;

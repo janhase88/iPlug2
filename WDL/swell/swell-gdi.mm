@@ -36,6 +36,7 @@
 #include "../mutex.h"
 #include "../assocarray.h"
 #include "../wdlcstring.h"
+#include "swell-fontnamecache.h"
 
 #ifdef __SSE__
 #include <xmmintrin.h>
@@ -641,11 +642,29 @@ void SWELL_SetPixel(HDC ctx, int x, int y, int c)
 }
 
 
-static WDL_Mutex s_fontnamecache_mutex;
-
 #ifdef SWELL_CLEANUP_ON_UNLOAD
 static void releaseString(NSString *s) { [s release]; }
 #endif
+
+#if IPLUG_SEPARATE_SWELL_FONTNAME_CACHE
+SWELL_FontNameCache::SWELL_FontNameCache()
+: cache(true,
+#ifdef SWELL_CLEANUP_ON_UNLOAD
+        releaseString
+#else
+        NULL
+#endif
+        )
+{}
+
+static SWELL_FontNameCache s_default_fontnamecache;
+static SWELL_FontNameCache* g_fontnamecache = &s_default_fontnamecache;
+SWELL_FontNameCache* SWELL_SetFontNameCache(SWELL_FontNameCache* c) { SWELL_FontNameCache* o = g_fontnamecache; g_fontnamecache = c ? c : &s_default_fontnamecache; return o; }
+SWELL_FontNameCache* SWELL_GetFontNameCache() { return g_fontnamecache; }
+#define s_fontnamecache_mutex (g_fontnamecache->mutex)
+#define s_fontnamecache (g_fontnamecache->cache)
+#else
+static WDL_Mutex s_fontnamecache_mutex;
 static WDL_StringKeyedArray<NSString *> s_fontnamecache(true,
 #ifdef SWELL_CLEANUP_ON_UNLOAD
       releaseString
@@ -653,6 +672,7 @@ static WDL_StringKeyedArray<NSString *> s_fontnamecache(true,
       NULL
 #endif
       );
+#endif
 
 static NSString *SWELL_GetCachedFontName(const char *nm)
 {

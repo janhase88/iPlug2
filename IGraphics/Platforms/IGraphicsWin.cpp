@@ -14,6 +14,8 @@
 #include <atomic>
 #include <commctrl.h>
 
+#include <chrono>
+
 #include "heapbuf.h"
 
 #include "IGraphicsWin.h"
@@ -40,6 +42,34 @@ using namespace igraphics;
 static double sFPS = 0.0;
 StaticStorage<InstalledFont> IGraphicsWin::sPlatformFontCache;
 StaticStorage<HFontHolder> IGraphicsWin::sHFontCache;
+
+#if !defined(NDEBUG) || defined(IGRAPHICS_DEBUG_RESOURCE_LOAD)
+class ResourceLoadTimer
+{
+public:
+  ResourceLoadTimer(const char* label)
+  : mLabel(label)
+  , mStart(std::chrono::high_resolution_clock::now())
+  {}
+
+  ~ResourceLoadTimer()
+  {
+    if (IGraphics::IsResourceLoadProfilingEnabled())
+    {
+      auto elapsed = std::chrono::high_resolution_clock::now() - mStart;
+      DBGMSG("%s loaded in %.3f ms\n", mLabel, std::chrono::duration<double, std::milli>(elapsed).count());
+    }
+  }
+
+private:
+  const char* mLabel;
+  std::chrono::high_resolution_clock::time_point mStart;
+};
+
+#define PROFILE_RESOURCE_LOAD(name) ResourceLoadTimer __rlTimer(name);
+#else
+#define PROFILE_RESOURCE_LOAD(name)
+#endif
 
 #define PARAM_EDIT_ID 99
 #define IPLUG_TIMER_ID 2
@@ -2053,6 +2083,7 @@ static HFONT GetHFont(const char* fontName, int weight, bool italic, bool underl
 
 PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* fileNameOrResID)
 {
+  PROFILE_RESOURCE_LOAD(fontID);
   StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
 
   if (auto* pFont = fontStorage.Find(fontID))
@@ -2110,6 +2141,7 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* f
 
 PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* fontName, ETextStyle style)
 {
+  PROFILE_RESOURCE_LOAD(fontID);
   int weight = style == ETextStyle::Bold ? FW_BOLD : FW_REGULAR;
   bool italic = style == ETextStyle::Italic;
   bool underline = false;
@@ -2122,6 +2154,7 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* f
 
 PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, int dataSize)
 {
+  PROFILE_RESOURCE_LOAD(fontID);
   StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
 
   if (auto* cached = fontStorage.Find(fontID))

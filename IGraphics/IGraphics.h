@@ -1206,7 +1206,15 @@ public:
 
   /**@return \c true if live edit mode is enabled */
   bool LiveEditEnabled() const { return mLiveEdit != nullptr; }
-  
+
+#if !defined(NDEBUG) || defined(IGRAPHICS_DEBUG_RESOURCE_LOAD)
+  /** Enable or disable diagnostic timing for resource loading */
+  static void EnableResourceLoadProfiling(bool enable);
+
+  /** @return \c true if diagnostic timing for resource loading is enabled */
+  static bool IsResourceLoadProfilingEnabled();
+#endif
+
   /** Returns an IRECT that represents the entire UI bounds
    * This is useful for programatically arranging UI elements by slicing up the IRECT using the various IRECT methods
    * @return An IRECT that corresponds to the entire UI area, with, L = 0, T = 0, R = Width() and B  = Height() */

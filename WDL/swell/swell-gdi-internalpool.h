@@ -20,10 +20,48 @@
   // used for HDC/HGDIOBJ pooling (to avoid excess heap use), used by swell-gdi.mm and swell-gdi-generic.cpp
 */
 
+#ifndef IPLUG_SEPARATE_SWELL_GDI_POOL
+#define IPLUG_SEPARATE_SWELL_GDI_POOL 0
+#endif
+
 #if defined(_DEBUG)
   #define SWELL_GDI_DEBUG
 #endif
+#if IPLUG_SEPARATE_SWELL_GDI_POOL
 
+#ifdef SWELL_GDI_DEBUG
+#include "../ptrlist.h"
+#endif
+
+struct SWELL_GdiPool
+{
+  WDL_Mutex* ctxpool_mutex = nullptr;
+#ifdef SWELL_GDI_DEBUG
+  WDL_PtrList<HDC__>* ctxpool_debug = nullptr;
+  WDL_PtrList<HGDIOBJ__>* objpool_debug = nullptr;
+#else
+  HDC__* ctxpool = nullptr;
+  int ctxpool_size = 0;
+  HGDIOBJ__* objpool = nullptr;
+  int objpool_size = 0;
+#endif
+};
+
+SWELL_GdiPool* SWELL_SetGdiPool(SWELL_GdiPool* p);
+SWELL_GdiPool* SWELL_GetGdiPool();
+
+#define m_ctxpool_mutex (SWELL_GetGdiPool()->ctxpool_mutex)
+#ifdef SWELL_GDI_DEBUG
+#define m_ctxpool_debug (SWELL_GetGdiPool()->ctxpool_debug)
+#define m_objpool_debug (SWELL_GetGdiPool()->objpool_debug)
+#else
+#define m_ctxpool (SWELL_GetGdiPool()->ctxpool)
+#define m_ctxpool_size (SWELL_GetGdiPool()->ctxpool_size)
+#define m_objpool (SWELL_GetGdiPool()->objpool)
+#define m_objpool_size (SWELL_GetGdiPool()->objpool_size)
+#endif
+
+#else
 static WDL_Mutex *m_ctxpool_mutex;
 #ifdef SWELL_GDI_DEBUG
   #include "../ptrlist.h"
@@ -35,8 +73,7 @@ static WDL_Mutex *m_ctxpool_mutex;
   static HGDIOBJ__ *m_objpool;
   static int m_objpool_size;
 #endif
-
-
+#endif
 
 HDC__ *SWELL_GDP_CTX_NEW()
 {

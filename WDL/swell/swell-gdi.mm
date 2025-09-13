@@ -149,6 +149,13 @@ static CGColorRef CreateColor(int col, float alpha=1.0f)
 
 #include "swell-gdi-internalpool.h"
 
+#if IPLUG_SEPARATE_SWELL_GDI_POOL
+static SWELL_GdiPool s_default_gdi_pool;
+static SWELL_GdiPool* g_gdi_pool = &s_default_gdi_pool;
+SWELL_GdiPool* SWELL_SetGdiPool(SWELL_GdiPool* p) { SWELL_GdiPool* o = g_gdi_pool; g_gdi_pool = p ? p : &s_default_gdi_pool; return o; }
+SWELL_GdiPool* SWELL_GetGdiPool() { return g_gdi_pool; }
+#endif
+
 char g_swell_disable_retina;
 
 int SWELL_IsRetinaDC(HDC hdc)

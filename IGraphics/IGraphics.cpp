@@ -372,6 +372,8 @@ void IGraphics::AttachPanelBackground(const IPattern& color)
 
 IControl* IGraphics::AttachControl(IControl* pControl, int ctrlTag, const char* group, int zIndex)
 {
+  TRACE_SCOPE_F(GetDelegate()->GetPlug()->GetLogFile(), "AttachControl");
+  Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "ctrlTag=%d group=%s", ctrlTag, group ? group : "");
   if (ctrlTag > kNoTag)
   {
     auto result = mCtrlTags.insert(std::make_pair(ctrlTag, pControl));

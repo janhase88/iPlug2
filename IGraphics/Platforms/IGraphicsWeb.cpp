@@ -440,6 +440,7 @@ IGraphicsWeb::~IGraphicsWeb()
 
 void* IGraphicsWeb::OpenWindow(void* pHandle)
 {
+  TRACE_WINDOW_CREATION_START_F(GetDelegate()->GetPlug()->GetLogFile());
 #ifdef IGRAPHICS_GL
   EmscriptenWebGLContextAttributes attr;
   emscripten_webgl_init_context_attributes(&attr);
@@ -457,7 +458,8 @@ void* IGraphicsWeb::OpenWindow(void* pHandle)
 
   GetDelegate()->LayoutUI(this);
   GetDelegate()->OnUIOpen();
-  
+  TRACE_WINDOW_CREATION_END_F(GetDelegate()->GetPlug()->GetLogFile());
+
   return nullptr;
 }
 

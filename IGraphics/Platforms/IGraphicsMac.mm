@@ -88,6 +88,7 @@ float IGraphicsMac::MeasureText(const IText& text, const char* str, IRECT& bound
 
 void* IGraphicsMac::OpenWindow(void* pParent)
 {
+  TRACE_WINDOW_CREATION_START_F(GetDelegate()->GetPlug()->GetLogFile());
   TRACEF(GetDelegate()->GetPlug()->GetLogFile());
   CloseWindow();
   IGRAPHICS_VIEW* pView = [[IGRAPHICS_VIEW alloc] initWithIGraphics: this];
@@ -106,11 +107,13 @@ void* IGraphicsMac::OpenWindow(void* pParent)
   GetDelegate()->LayoutUI(this);
   UpdateTooltips();
   GetDelegate()->OnUIOpen();
-  
+
   if (pParent)
   {
     [(NSView*) pParent addSubview: pView];
   }
+
+  TRACE_WINDOW_CREATION_END_F(GetDelegate()->GetPlug()->GetLogFile());
 
   return mView;
 }

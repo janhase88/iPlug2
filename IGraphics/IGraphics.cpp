@@ -1039,6 +1039,15 @@ void IGraphics::SetStrictDrawing(bool strict)
 
 void IGraphics::OnMouseDown(const std::vector<IMouseInfo>& points)
 {
+  #include "IPlugLogger.h"
+  auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+  {
+    TRACE_SCOPE_F(plug->GetLogFile(), "OnMouseDown");
+    if (!points.empty())
+      Trace(plug->GetLogFile(), TRACELOC, "x:%f y:%f", points[0].x, points[0].y);
+  }
+
   //  Trace("IGraphics::OnMouseDown", __LINE__, "x:%0.2f, y:%0.2f, mod:LRSCA: %i%i%i%i%i", x, y, mod.L, mod.R, mod.S, mod.C, mod.A);
 
   bool singlePoint = points.size() == 1;
@@ -1131,6 +1140,15 @@ void IGraphics::OnMouseDown(const std::vector<IMouseInfo>& points)
 
 void IGraphics::OnMouseUp(const std::vector<IMouseInfo>& points)
 {
+  #include "IPlugLogger.h"
+  auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+  {
+    TRACE_SCOPE_F(plug->GetLogFile(), "OnMouseUp");
+    if (!points.empty())
+      Trace(plug->GetLogFile(), TRACELOC, "x:%f y:%f", points[0].x, points[0].y);
+  }
+
   //  Trace("IGraphics::OnMouseUp", __LINE__, "x:%0.2f, y:%0.2f, mod:LRSCA: %i%i%i%i%i", x, y, mod.L, mod.R, mod.S, mod.C, mod.A);
 
   if (ControlIsCaptured())
@@ -1197,7 +1215,13 @@ void IGraphics::OnTouchCancelled(const std::vector<IMouseInfo>& points)
 
 bool IGraphics::OnMouseOver(float x, float y, const IMouseMod& mod)
 {
-  Trace("IGraphics::OnMouseOver", __LINE__, "x:%0.2f, y:%0.2f, mod:LRSCA: %i%i%i%i%i", x, y, mod.L, mod.R, mod.S, mod.C, mod.A);
+  #include "IPlugLogger.h"
+  auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+  {
+    TRACE_SCOPE_F(plug->GetLogFile(), "OnMouseOver");
+    Trace(plug->GetLogFile(), TRACELOC, "x:%f y:%f", x, y);
+  }
 
   // N.B. GetMouseControl handles which controls can receive mouseovers
   IControl* pControl = GetMouseControl(x, y, false, true);
@@ -1228,8 +1252,14 @@ void IGraphics::OnMouseOut()
 
 void IGraphics::OnMouseDrag(const std::vector<IMouseInfo>& points)
 {
-  Trace("IGraphics::OnMouseDrag:", __LINE__, "x:%0.2f, y:%0.2f, dX:%0.2f, dY:%0.2f, mod:LRSCA: %i%i%i%i%i", points[0].x, points[0].y, points[0].dX, points[0].dY, points[0].ms.L, points[0].ms.R,
-        points[0].ms.S, points[0].ms.C, points[0].ms.A);
+  #include "IPlugLogger.h"
+  auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+  {
+    TRACE_SCOPE_F(plug->GetLogFile(), "OnMouseDrag");
+    if (!points.empty())
+      Trace(plug->GetLogFile(), TRACELOC, "x:%f y:%f", points[0].x, points[0].y);
+  }
 
   if (mResizingInProcess && points.size() == 1)
     OnDragResize(points[0].x, points[0].y);

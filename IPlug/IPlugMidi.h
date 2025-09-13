@@ -402,7 +402,7 @@ struct IMidiMsg
   }
 
   /** Log a message (TRACER BUILDS) */
-  void LogMsg() { Trace(TRACELOC, "inst=%p midi:(%s:%d:%d:%d)", this, StatusMsgStr(StatusMsg()), Channel(), mData1, mData2); }
+  void LogMsg() {}
 
   /** Print a message (DEBUG BUILDS) */
   void PrintMsg() const { DBGMSG("midi: offset %i, (%s:%d:%d:%d)\n", mOffset, StatusMsgStr(StatusMsg()), Channel(), mData1, mData2); }
@@ -467,8 +467,6 @@ struct ISysEx
   /** Log a message (TRACER BUILDS) */
   void LogMsg()
   {
-    char str[96];
-    Trace(TRACELOC, "inst=%p sysex:(%d:%s)", this, mSize, SysExStr(str, sizeof(str), mData, mSize));
   }
 };
 

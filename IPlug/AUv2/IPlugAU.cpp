@@ -179,7 +179,7 @@ OSStatus IPlugAU::IPlugAUEntry(ComponentParameters* params, void* pPlug)
 {
   int select = params->what;
 
-  Trace(TRACELOC, "inst=%p (%d:%s)", mInstanceID, select, AUSelectStr(select));
+  Trace(GetLogFile(), TRACELOC, "inst=%p (%d:%s)", mInstanceID, select, AUSelectStr(select));
 
   if (select == kComponentOpenSelect)
   {
@@ -438,7 +438,7 @@ UInt32 IPlugAU::GetChannelLayoutTags(AudioUnitScope scope, AudioUnitElement elem
 // pData == 0 means return property info only.
 OSStatus IPlugAU::GetProperty(AudioUnitPropertyID propID, AudioUnitScope scope, AudioUnitElement element, UInt32* pDataSize, Boolean* pWriteable, void* pData)
 {
-  Trace(TRACELOC, "inst=%p %s(%d:%s):(%d:%s):%d", mInstanceID, (pData ? "" : "info:"), propID, AUPropertyStr(propID), scope, AUScopeStr(scope), element);
+  Trace(GetLogFile(), TRACELOC, "inst=%p %s(%d:%s):(%d:%s):%d", mInstanceID, (pData ? "" : "info:"), propID, AUPropertyStr(propID), scope, AUScopeStr(scope), element);
 
   switch (propID)
   {
@@ -744,7 +744,7 @@ OSStatus IPlugAU::GetProperty(AudioUnitPropertyID propID, AudioUnitScope scope, 
         else
           pChInfo->outChannels = pIO->GetTotalNChannels(kOutput);
 
-        Trace(TRACELOC, "inst=%p IO:%d:%d", mInstanceID, pChInfo->inChannels, pChInfo->outChannels);
+        Trace(GetLogFile(), TRACELOC, "inst=%p IO:%d:%d", mInstanceID, pChInfo->inChannels, pChInfo->outChannels);
       }
     }
     return noErr;
@@ -1120,7 +1120,7 @@ OSStatus IPlugAU::GetProperty(AudioUnitPropertyID propID, AudioUnitScope scope, 
 
 OSStatus IPlugAU::SetProperty(AudioUnitPropertyID propID, AudioUnitScope scope, AudioUnitElement element, UInt32* pDataSize, const void* pData)
 {
-  Trace(TRACELOC, "inst=%p (%d:%s):(%d:%s):%d", mInstanceID, propID, AUPropertyStr(propID), scope, AUScopeStr(scope), element);
+  Trace(GetLogFile(), TRACELOC, "inst=%p (%d:%s):(%d:%s):%d", mInstanceID, propID, AUPropertyStr(propID), scope, AUScopeStr(scope), element);
 
   InformListeners(propID, scope);
 
@@ -1198,7 +1198,7 @@ OSStatus IPlugAU::SetProperty(AudioUnitPropertyID propID, AudioUnitScope scope, 
     connectionOK &= CheckLegalIO(scope, element, nHostChannels);
     connectionOK &= (pASBD->mFormatID == kAudioFormatLinearPCM && pASBD->mFormatFlags & kAudioFormatFlagsCanonical);
 
-    Trace(TRACELOC, "inst=%p %d:%d:%s:%s:%s", mInstanceID, nHostChannels, pBus->mNPlugChannels, (pASBD->mFormatID == kAudioFormatLinearPCM ? "linearPCM" : "notLinearPCM"),
+    Trace(GetLogFile(), TRACELOC, "inst=%p %d:%d:%s:%s:%s", mInstanceID, nHostChannels, pBus->mNPlugChannels, (pASBD->mFormatID == kAudioFormatLinearPCM ? "linearPCM" : "notLinearPCM"),
           (pASBD->mFormatFlags & kAudioFormatFlagsCanonical ? "canonicalFormat" : "notCanonicalFormat"), (connectionOK ? "connectionOK" : "connectionNotOK"));
 
     // bool interleaved = !(pASBD->mFormatFlags & kAudioFormatFlagIsNonInterleaved);
@@ -1396,7 +1396,7 @@ bool IPlugAU::CheckLegalIO()
 
 void IPlugAU::AssessInputConnections()
 {
-  TRACE
+  TRACE_F(GetLogFile());
   SetChannelConnections(ERoute::kInput, 0, MaxNChannels(ERoute::kInput), false);
 
   int nIn = mInBuses.GetSize();
@@ -1436,7 +1436,7 @@ void IPlugAU::AssessInputConnections()
       {
         // The host set up a connection without specifying how many channels in the stream.
         // Assume the host will send all the channels the plugin asks for, and hope for the best.
-        Trace(TRACELOC, "inst=%p AssumeChannels:%d", mInstanceID, pInBus->mNPlugChannels);
+        Trace(GetLogFile(), TRACELOC, "inst=%p AssumeChannels:%d", mInstanceID, pInBus->mNPlugChannels);
         pInBus->mNHostChannels = pInBus->mNPlugChannels;
       }
       int nConnected = pInBus->mNHostChannels;
@@ -1445,7 +1445,7 @@ void IPlugAU::AssessInputConnections()
       SetChannelConnections(ERoute::kInput, startChannelIdx + nConnected, nUnconnected, false);
     }
 
-    Trace(TRACELOC, "inst=%p %d:%s:%d:%d:%d", mInstanceID, i, AUInputTypeStr(pInBusConn->mInputType), startChannelIdx, pInBus->mNPlugChannels, pInBus->mNHostChannels);
+    Trace(GetLogFile(), TRACELOC, "inst=%p %d:%s:%d:%d:%d", mInstanceID, i, AUInputTypeStr(pInBusConn->mInputType), startChannelIdx, pInBus->mNPlugChannels, pInBus->mNHostChannels);
   }
 }
 
@@ -1472,7 +1472,7 @@ OSStatus IPlugAU::GetState(CFPropertyListRef* ppPropList)
   }
 
   *ppPropList = pDict;
-  TRACE
+  TRACE_F(GetLogFile());
   return noErr;
 }
 
@@ -1515,7 +1515,7 @@ OSStatus IPlugAU::SetState(CFPropertyListRef pPropList)
 // pData == 0 means return property info only.
 OSStatus IPlugAU::GetProc(AudioUnitElement element, UInt32* pDataSize, void* pData)
 {
-  Trace(TRACELOC, "inst=%p %s:(%d:%s)", mInstanceID, (pData ? "" : "Info"), element, AUSelectStr(element));
+  Trace(GetLogFile(), TRACELOC, "inst=%p %s:(%d:%s)", mInstanceID, (pData ? "" : "Info"), element, AUSelectStr(element));
 
   switch (element)
   {
@@ -1556,7 +1556,7 @@ OSStatus IPlugAU::GetProc(AudioUnitElement element, UInt32* pDataSize, void* pDa
 OSStatus IPlugAU::GetParamProc(void* pPlug, AudioUnitParameterID paramID, AudioUnitScope scope, AudioUnitElement element, AudioUnitParameterValue* pValue)
 {
   IPlugAU* _this = (IPlugAU*)pPlug;
-  Trace(TRACELOC, "inst=%p %d:(%d:%s):%d", _this->mInstanceID, paramID, scope, AUScopeStr(scope), element);
+  Trace(_this->GetLogFile(), TRACELOC, "inst=%p %d:(%d:%s):%d", _this->mInstanceID, paramID, scope, AUScopeStr(scope), element);
 
   ASSERT_SCOPE(kAudioUnitScope_Global);
   assert(_this != NULL);
@@ -1570,7 +1570,7 @@ OSStatus IPlugAU::GetParamProc(void* pPlug, AudioUnitParameterID paramID, AudioU
 OSStatus IPlugAU::SetParamProc(void* pPlug, AudioUnitParameterID paramID, AudioUnitScope scope, AudioUnitElement element, AudioUnitParameterValue value, UInt32 offsetFrames)
 {
   IPlugAU* _this = (IPlugAU*)pPlug;
-  Trace(TRACELOC, "inst=%p %d:(%d:%s):%d", _this->mInstanceID, paramID, scope, AUScopeStr(scope), element);
+  Trace(_this->GetLogFile(), TRACELOC, "inst=%p %d:(%d:%s):%d", _this->mInstanceID, paramID, scope, AUScopeStr(scope), element);
 
   // In the SDK, offset frames is only looked at in group scope.
   ASSERT_SCOPE(kAudioUnitScope_Global);
@@ -1585,7 +1585,7 @@ OSStatus IPlugAU::SetParamProc(void* pPlug, AudioUnitParameterID paramID, AudioU
 static inline OSStatus RenderCallback(
   AURenderCallbackStruct* pCB, AudioUnitRenderActionFlags* pFlags, const AudioTimeStamp* pTimestamp, UInt32 inputBusIdx, UInt32 nFrames, AudioBufferList* pOutBufList)
 {
-  TRACE
+  TRACE_F(((IPlugAU*)pCB->inputProcRefCon)->GetLogFile());
   return pCB->inputProc(pCB->inputProcRefCon, pFlags, pTimestamp, inputBusIdx, nFrames, pOutBufList);
 }
 
@@ -1593,7 +1593,7 @@ static inline OSStatus RenderCallback(
 OSStatus IPlugAU::RenderProc(void* pPlug, AudioUnitRenderActionFlags* pFlags, const AudioTimeStamp* pTimestamp, UInt32 outputBusIdx, UInt32 nFrames, AudioBufferList* pOutBufList)
 {
   IPlugAU* _this = (IPlugAU*)pPlug;
-  Trace(TRACELOC, "inst=%p %d:%d:%d", _this->mInstanceID, outputBusIdx, pOutBufList->mNumberBuffers, nFrames);
+  Trace(_this->GetLogFile(), TRACELOC, "inst=%p %d:%d:%d", _this->mInstanceID, outputBusIdx, pOutBufList->mNumberBuffers, nFrames);
 
   _this->mLastRenderTimeStamp = *pTimestamp;
 
@@ -1816,7 +1816,7 @@ IPlugAU::IPlugAU(const InstanceInfo& info, const Config& config)
   : IPlugAPIBase(config, kAPIAU)
   , IPlugProcessor(config, kAPIAU)
 {
-  Trace(TRACELOC, "inst=%p %s", mInstanceID, config.pluginName);
+  Trace(GetLogFile(), TRACELOC, "inst=%p %s", mInstanceID, config.pluginName);
 
   memset(&mHostCallbacks, 0, sizeof(HostCallbackInfo));
   memset(&mMidiCallback, 0, sizeof(AUMIDIOutputCallbackStruct));
@@ -1897,19 +1897,19 @@ void IPlugAU::SendAUEvent(AudioUnitEventType type, AudioComponentInstance ci, in
 
 void IPlugAU::BeginInformHostOfParamChange(int idx)
 {
-  Trace(TRACELOC, "inst=%p %d", mInstanceID, idx);
+  Trace(GetLogFile(), TRACELOC, "inst=%p %d", mInstanceID, idx);
   SendAUEvent(kAudioUnitEvent_BeginParameterChangeGesture, mCI, idx);
 }
 
 void IPlugAU::InformHostOfParamChange(int idx, double normalizedValue)
 {
-  Trace(TRACELOC, "inst=%p %d:%f", mInstanceID, idx, normalizedValue);
+  Trace(GetLogFile(), TRACELOC, "inst=%p %d:%f", mInstanceID, idx, normalizedValue);
   SendAUEvent(kAudioUnitEvent_ParameterValueChange, mCI, idx);
 }
 
 void IPlugAU::EndInformHostOfParamChange(int idx)
 {
-  Trace(TRACELOC, "inst=%p %d", mInstanceID, idx);
+  Trace(GetLogFile(), TRACELOC, "inst=%p %d", mInstanceID, idx);
   SendAUEvent(kAudioUnitEvent_EndParameterChangeGesture, mCI, idx);
 }
 
@@ -1978,7 +1978,7 @@ void IPlugAU::PreProcess()
 
 void IPlugAU::ResizeScratchBuffers()
 {
-  TRACE
+  TRACE_F(GetLogFile());
   int NInputs = MaxNChannels(ERoute::kInput) * GetBlockSize();
   int NOutputs = MaxNChannels(ERoute::kOutput) * GetBlockSize();
   mInScratchBuf.Resize(NInputs);
@@ -1989,7 +1989,7 @@ void IPlugAU::ResizeScratchBuffers()
 
 void IPlugAU::InformListeners(AudioUnitPropertyID propID, AudioUnitScope scope)
 {
-  TRACE
+  TRACE_F(GetLogFile());
   int i, n = mPropertyListeners.GetSize();
 
   for (i = 0; i < n; ++i)
@@ -2005,7 +2005,7 @@ void IPlugAU::InformListeners(AudioUnitPropertyID propID, AudioUnitScope scope)
 
 void IPlugAU::SetLatency(int samples)
 {
-  TRACE
+  TRACE_F(GetLogFile());
   InformListeners(kAudioUnitProperty_Latency, kAudioUnitScope_Global);
   IPlugProcessor::SetLatency(samples);
 }

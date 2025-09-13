@@ -149,7 +149,7 @@ void IPlugDrumSynth::OnReset()
 
 void IPlugDrumSynth::ProcessMidiMsg(const IMidiMsg& msg)
 {
-  TRACE;
+  TRACE_F(GetLogFile());
   
   int status = msg.StatusMsg();
   

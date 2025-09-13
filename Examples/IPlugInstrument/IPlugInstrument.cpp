@@ -107,7 +107,7 @@ void IPlugInstrument::OnReset()
 
 void IPlugInstrument::ProcessMidiMsg(const IMidiMsg& msg)
 {
-  TRACE;
+  TRACE_F(GetLogFile());
   
   int status = msg.StatusMsg();
   

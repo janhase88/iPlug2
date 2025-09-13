@@ -67,7 +67,7 @@ void IPlugWebUI::OnParamChange(int paramIdx)
 
 void IPlugWebUI::ProcessMidiMsg(const IMidiMsg& msg)
 {
-  TRACE;
+  TRACE_F(GetLogFile());
   
   msg.PrintMsg();
   SendMidiMsg(msg);

@@ -24,7 +24,7 @@ IPlugAUv3::IPlugAUv3(const InstanceInfo& instanceInfo, const Config& config)
   : IPlugAPIBase(config, kAPIAUv3)
   , IPlugProcessor(config, kAPIAUv3)
 {
-  Trace(TRACELOC, "inst=%p %s", mInstanceID, config.pluginName);
+  Trace(GetLogFile(), TRACELOC, "inst=%p %s", mInstanceID, config.pluginName);
 }
 
 void IPlugAUv3::SetAUAudioUnit(void* pAUAudioUnit) { mAUAudioUnit = pAUAudioUnit; }

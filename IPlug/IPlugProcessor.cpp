@@ -60,7 +60,10 @@ IPlugProcessor::IPlugProcessor(const Config& config, EAPI plugAPI)
 
 IPlugProcessor::~IPlugProcessor()
 {
-  TRACE
+#ifdef TRACER_BUILD
+  if (auto* base = dynamic_cast<IPluginBase*>(this))
+    Trace(base->GetLogFile(), TRACELOC, "");
+#endif
 
   mChannelData[ERoute::kInput].Empty(true);
   mChannelData[ERoute::kOutput].Empty(true);
@@ -247,7 +250,10 @@ bool IPlugProcessor::LegalIO(int NInputChans, int NOutputChans) const
     legal = ((NInputChans < 0 || NInputChans == pIO->GetTotalNChannels(ERoute::kInput)) && (NOutputChans < 0 || NOutputChans == pIO->GetTotalNChannels(ERoute::kOutput)));
   }
 
-  Trace(TRACELOC, "inst=%p %d:%d:%s", this, NInputChans, NOutputChans, (legal ? "legal" : "illegal"));
+  #ifdef TRACER_BUILD
+  if (auto* base = dynamic_cast<const IPluginBase*>(this))
+    Trace(base->GetLogFile(), TRACELOC, "inst=%p %d:%d:%s", this, NInputChans, NOutputChans, (legal ? "legal" : "illegal"));
+  #endif
   return legal;
 }
 

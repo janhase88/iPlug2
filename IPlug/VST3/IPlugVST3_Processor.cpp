@@ -32,7 +32,7 @@ uint32 PLUGIN_API IPlugVST3Processor::getTailSamples() { return GetTailIsInfinit
 
 tresult PLUGIN_API IPlugVST3Processor::initialize(FUnknown* context)
 {
-  TRACE
+  TRACE_F(GetLogFile());
 
   if (AudioEffect::initialize(context) == kResultOk)
   {
@@ -51,14 +51,14 @@ tresult PLUGIN_API IPlugVST3Processor::terminate() { return AudioEffect::termina
 
 tresult PLUGIN_API IPlugVST3Processor::setBusArrangements(SpeakerArrangement* pInputBusArrangements, int32 numInBuses, SpeakerArrangement* pOutputBusArrangements, int32 numOutBuses)
 {
-  TRACE
+  TRACE_F(GetLogFile());
 
   return SetBusArrangements(this, pInputBusArrangements, numInBuses, pOutputBusArrangements, numOutBuses) ? kResultTrue : kResultFalse;
 }
 
 tresult PLUGIN_API IPlugVST3Processor::setActive(TBool state)
 {
-  TRACE
+  TRACE_F(GetLogFile());
 
   OnActivate((bool)state);
   return AudioEffect::setActive(state);
@@ -66,21 +66,21 @@ tresult PLUGIN_API IPlugVST3Processor::setActive(TBool state)
 
 tresult PLUGIN_API IPlugVST3Processor::setupProcessing(ProcessSetup& newSetup)
 {
-  TRACE
+  TRACE_F(GetLogFile());
 
   return SetupProcessing(newSetup, processSetup) ? kResultOk : kResultFalse;
 }
 
 tresult PLUGIN_API IPlugVST3Processor::setProcessing(TBool state)
 {
-  Trace(TRACELOC, "inst=%p state: %i", this, state);
+  Trace(GetLogFile(), TRACELOC, "inst=%p state: %i", this, state);
 
   return SetProcessing((bool)state) ? kResultOk : kResultFalse;
 }
 
 tresult PLUGIN_API IPlugVST3Processor::process(ProcessData& data)
 {
-  TRACE
+  TRACE_F(GetLogFile());
 
   Process(data, processSetup, audioInputs, audioOutputs, mMidiMsgsFromEditor, mMidiMsgsFromProcessor, mSysExDataFromEditor, mSysexBuf);
   return kResultOk;
@@ -90,14 +90,14 @@ tresult PLUGIN_API IPlugVST3Processor::canProcessSampleSize(int32 symbolicSample
 
 tresult PLUGIN_API IPlugVST3Processor::setState(IBStream* pState)
 {
-  TRACE
+  TRACE_F(GetLogFile());
 
   return IPlugVST3State::SetState(this, pState) ? kResultOk : kResultFalse;
 }
 
 tresult PLUGIN_API IPlugVST3Processor::getState(IBStream* pState)
 {
-  TRACE
+  TRACE_F(GetLogFile());
 
   return IPlugVST3State::GetState(this, pState) ? kResultOk : kResultFalse;
 }

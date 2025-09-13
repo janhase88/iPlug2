@@ -184,7 +184,7 @@ IPlugVST2::IPlugVST2(const InstanceInfo& info, const Config& config)
   , IPlugProcessor(config, kAPIVST2)
   , mHostCallback(info.mVSTHostCallback)
 {
-  Trace(TRACELOC, "inst=%p %s", mInstanceID, config.pluginName);
+  Trace(GetLogFile(), TRACELOC, "inst=%p %s", mInstanceID, config.pluginName);
 
   mHasVSTExtensions = VSTEXT_NONE;
 
@@ -366,7 +366,7 @@ VstIntPtr VSTCALLBACK IPlugVST2::VSTDispatcher(AEffect* pEffect, VstInt32 opCode
   //    return 0;
   //  }
 
-  Trace(TRACELOC, "inst=%p %d(%s):%d:%d", _this->mInstanceID, opCode, VSTOpcodeStr(opCode), idx, (int)value);
+  Trace(_this->GetLogFile(), TRACELOC, "inst=%p %d(%s):%d:%d", _this->mInstanceID, opCode, VSTOpcodeStr(opCode), idx, (int)value);
 
   switch (opCode)
   {
@@ -742,7 +742,7 @@ VstIntPtr VSTCALLBACK IPlugVST2::VSTDispatcher(AEffect* pEffect, VstInt32 opCode
   case effCanDo: {
     if (ptr)
     {
-      Trace(TRACELOC, "inst=%p VSTCanDo(%s)", _this->mInstanceID, (char*)ptr);
+      Trace(_this->GetLogFile(), TRACELOC, "inst=%p VSTCanDo(%s)", _this->mInstanceID, (char*)ptr);
       if (!strcmp((char*)ptr, "receiveVstTimeInfo"))
       {
         return 1;
@@ -995,7 +995,7 @@ void IPlugVST2::VSTPreProcess(SAMPLETYPE** inputs, SAMPLETYPE** outputs, VstInt3
 // Deprecated.
 void VSTCALLBACK IPlugVST2::VSTProcess(AEffect* pEffect, float** inputs, float** outputs, VstInt32 nFrames)
 {
-  TRACE
+  TRACE_F(_this->GetLogFile());
   IPlugVST2* _this = (IPlugVST2*)pEffect->object;
   _this->VSTPreProcess(inputs, outputs, nFrames);
   ENTER_PARAMS_MUTEX_STATIC
@@ -1006,7 +1006,7 @@ void VSTCALLBACK IPlugVST2::VSTProcess(AEffect* pEffect, float** inputs, float**
 
 void VSTCALLBACK IPlugVST2::VSTProcessReplacing(AEffect* pEffect, float** inputs, float** outputs, VstInt32 nFrames)
 {
-  TRACE
+  TRACE_F(_this->GetLogFile());
   IPlugVST2* _this = (IPlugVST2*)pEffect->object;
   _this->VSTPreProcess(inputs, outputs, nFrames);
   ENTER_PARAMS_MUTEX_STATIC
@@ -1017,7 +1017,7 @@ void VSTCALLBACK IPlugVST2::VSTProcessReplacing(AEffect* pEffect, float** inputs
 
 void VSTCALLBACK IPlugVST2::VSTProcessDoubleReplacing(AEffect* pEffect, double** inputs, double** outputs, VstInt32 nFrames)
 {
-  TRACE
+  TRACE_F(_this->GetLogFile());
   IPlugVST2* _this = (IPlugVST2*)pEffect->object;
   _this->VSTPreProcess(inputs, outputs, nFrames);
   ENTER_PARAMS_MUTEX_STATIC
@@ -1029,7 +1029,7 @@ void VSTCALLBACK IPlugVST2::VSTProcessDoubleReplacing(AEffect* pEffect, double**
 float VSTCALLBACK IPlugVST2::VSTGetParameter(AEffect* pEffect, VstInt32 idx)
 {
   IPlugVST2* _this = (IPlugVST2*)pEffect->object;
-  Trace(TRACELOC, "inst=%p %d", _this->mInstanceID, idx);
+  Trace(_this->GetLogFile(), TRACELOC, "inst=%p %d", _this->mInstanceID, idx);
   if (idx >= 0 && idx < _this->NParams())
   {
     ENTER_PARAMS_MUTEX_STATIC
@@ -1044,7 +1044,7 @@ float VSTCALLBACK IPlugVST2::VSTGetParameter(AEffect* pEffect, VstInt32 idx)
 void VSTCALLBACK IPlugVST2::VSTSetParameter(AEffect* pEffect, VstInt32 idx, float value)
 {
   IPlugVST2* _this = (IPlugVST2*)pEffect->object;
-  Trace(TRACELOC, "inst=%p %d:%f", _this->mInstanceID, idx, value);
+  Trace(_this->GetLogFile(), TRACELOC, "inst=%p %d:%f", _this->mInstanceID, idx, value);
   if (idx >= 0 && idx < _this->NParams())
   {
     ENTER_PARAMS_MUTEX_STATIC

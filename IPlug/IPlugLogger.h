@@ -16,6 +16,8 @@
  *
  * To trace some arbitrary data:                 Trace(TRACELOC, "inst=%p %s:%d", pInst, myStr, myInt);
  * To simply create a trace entry in the log:    TRACE
+ * To time a block using labels:                 TRACE_START("mytask"); ... TRACE_END("mytask");
+ * Predefined helpers are available for window creation, cache queries and resource loads.
  * No need to wrap tracer calls in #ifdef TRACER_BUILD because Trace is a no-op unless TRACER_BUILD is defined.
  */
 
@@ -29,6 +31,8 @@
 
 #include <cassert>
 #include <chrono>
+#include <string>
+#include <unordered_map>
 
 
 #include "mutex.h"
@@ -78,6 +82,7 @@ static void DBGMSG(const char* format, ...)
 
 #define TRACELOC __FUNCTION__, __LINE__
 static void Trace(const char* funcName, int line, const char* fmtStr, ...);
+static void Trace(const char* funcName, int line, const char* id, bool start);
 
 #define APPEND_TIMESTAMP(str) AppendTimestamp(__DATE__, __TIME__, str)
 
@@ -182,14 +187,14 @@ static const char* AppendTimestamp(const char* Mmm_dd_yyyy, const char* hh_mm_ss
     ScopedTimer(const char* funcName, int line, const char* label)
       : mFuncName(funcName), mLine(line), mLabel(label)
 #ifdef TRACER_BUILD
-      , mStart(std::chrono::high_resolution_clock::now())
+      , mStart(std::chrono::steady_clock::now())
 #endif
     {}
 
     ~ScopedTimer()
     {
 #ifdef TRACER_BUILD
-      auto end = std::chrono::high_resolution_clock::now();
+      auto end = std::chrono::steady_clock::now();
       auto us = std::chrono::duration_cast<std::chrono::microseconds>(end - mStart).count();
       Trace(mFuncName, mLine, "%s %lldus", mLabel, (long long) us);
 #endif
@@ -200,7 +205,7 @@ static const char* AppendTimestamp(const char* Mmm_dd_yyyy, const char* hh_mm_ss
     int mLine;
     const char* mLabel;
 #ifdef TRACER_BUILD
-    std::chrono::high_resolution_clock::time_point mStart;
+    std::chrono::steady_clock::time_point mStart;
 #endif
   };
 
@@ -208,8 +213,24 @@ static const char* AppendTimestamp(const char* Mmm_dd_yyyy, const char* hh_mm_ss
   #define IPLUG_TRACE_CONCAT_INNER(a, b) a##b
   #define IPLUG_TRACE_CONCAT(a, b) IPLUG_TRACE_CONCAT_INNER(a, b)
   #define TRACE_SCOPE(label) ScopedTimer IPLUG_TRACE_CONCAT(_iplugScopedTimer_, __LINE__)(TRACELOC, label)
+  #define TRACE_START(id) Trace(TRACELOC, id, true)
+  #define TRACE_END(id)   Trace(TRACELOC, id, false)
+  #define TRACE_WINDOW_CREATION_START() TRACE_START("WindowCreation")
+  #define TRACE_WINDOW_CREATION_END()   TRACE_END("WindowCreation")
+  #define TRACE_CACHE_QUERY_START()     TRACE_START("CacheQuery")
+  #define TRACE_CACHE_QUERY_END()       TRACE_END("CacheQuery")
+  #define TRACE_RESOURCE_LOAD_START()   TRACE_START("ResourceLoad")
+  #define TRACE_RESOURCE_LOAD_END()     TRACE_END("ResourceLoad")
 #else
   #define TRACE_SCOPE(label)
+  #define TRACE_START(id)
+  #define TRACE_END(id)
+  #define TRACE_WINDOW_CREATION_START()
+  #define TRACE_WINDOW_CREATION_END()
+  #define TRACE_CACHE_QUERY_START()
+  #define TRACE_CACHE_QUERY_END()
+  #define TRACE_RESOURCE_LOAD_START()
+  #define TRACE_RESOURCE_LOAD_END()
 #endif
 
   #if defined TRACER_BUILD
@@ -233,6 +254,30 @@ static const char* AppendTimestamp(const char* Mmm_dd_yyyy, const char* hh_mm_ss
   } \
   strcat(str, "\r\n"); \
   }
+
+void Trace(const char* funcName, int line, const char* id, bool start)
+{
+  static std::unordered_map<std::string, std::chrono::steady_clock::time_point> timers;
+
+  if (start)
+  {
+    timers[id] = std::chrono::steady_clock::now();
+  }
+  else
+  {
+    auto it = timers.find(id);
+    if (it != timers.end())
+    {
+      auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - it->second).count();
+      Trace(funcName, line, "%s %lldus", id, (long long) elapsed);
+      timers.erase(it);
+    }
+    else
+    {
+      Trace(funcName, line, "%s end", id);
+    }
+  }
+}
 
 
 static intptr_t GetOrdinalThreadID(intptr_t sysThreadID)

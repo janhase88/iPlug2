@@ -270,13 +270,14 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
   };
 
   pGraphics->CheckTabletInput(msg);
+  if (msg == pGraphics->mVBlankMsg)
+  {
+    pGraphics->OnDisplayTimer(wParam);
+    return 0;
+  }
 
   switch (msg)
   {
-    case WM_VBLANK:
-      pGraphics->OnDisplayTimer(wParam);
-      return 0;
-
     case WM_TIMER:
       if (wParam == IPLUG_TIMER_ID)
         pGraphics->OnDisplayTimer(0);
@@ -777,6 +778,14 @@ IGraphicsWin::IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float s
 
 #ifndef IGRAPHICS_DISABLE_VSYNC
   mVSYNCEnabled = IsWindows8OrGreater();
+#endif
+
+#if IPLUG_SEPARATE_VBLANK
+  WDL_String msgStr;
+  msgStr.SetFormatted(64, "WM_VBLANK_%p", this);
+  mVBlankMsg = RegisterWindowMessageW(UTF8AsUTF16(msgStr.Get()).Get());
+#else
+  mVBlankMsg = WM_VBLANK;
 #endif
 }
 
@@ -2418,7 +2427,7 @@ DWORD IGraphicsWin::OnVBlankRun()
 void IGraphicsWin::VBlankNotify()
 {
   mVBlankCount++;
-  ::PostMessageW(mVBlankWindow, WM_VBLANK, mVBlankCount, 0);
+  ::PostMessageW(mVBlankWindow, mVBlankMsg, mVBlankCount, 0);
 }
 
 #ifndef NO_IGRAPHICS

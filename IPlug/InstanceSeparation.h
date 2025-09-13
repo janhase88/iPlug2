@@ -33,6 +33,11 @@
   #define IPLUG_SEPARATE_SKIA_FONT_CACHE 0
 #endif
 
+#ifndef IPLUG_SEPARATE_FONTDESC_CACHE
+  // Separate CoreText font descriptor caches per IGraphics instance (macOS/iOS)
+  #define IPLUG_SEPARATE_FONTDESC_CACHE 0
+#endif
+
 #ifndef IPLUG_SEPARATE_IOS_TEXTURE_CACHE
   #define IPLUG_SEPARATE_IOS_TEXTURE_CACHE 0
 #endif
@@ -59,6 +64,11 @@
 
 #ifndef IPLUG_SEPARATE_QWERTY_STATE
   #define IPLUG_SEPARATE_QWERTY_STATE 0
+#endif
+
+#ifndef IPLUG_SEPARATE_OSC_STATE
+  // Separate Open Sound Control (OSC) state per plug-in instance
+  #define IPLUG_SEPARATE_OSC_STATE 0
 #endif
 
 #ifndef IPLUG_SEPARATE_BUBBLE_INDEX

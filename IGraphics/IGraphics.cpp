@@ -2380,8 +2380,13 @@ void IGraphics::SetQwertyMidiKeyHandlerFunc(std::function<void(const IMidiMsg& m
     IMidiMsg msg;
 
     int note = 0;
+#if IPLUG_SEPARATE_QWERTY_STATE
+    int& base = mQwertyBase;
+    bool* keysDown = mQwertyKeysDown;
+#else
     static int base = 48;
     static bool keysDown[128] = {};
+#endif
 
     auto onOctSwitch = [&]() {
       base = Clip(base, 24, 96);

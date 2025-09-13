@@ -1868,7 +1868,11 @@ private:
   IKeyHandlerFunc mKeyHandlerFunc = nullptr;
   IDisplayTickFunc mDisplayTickFunc = nullptr;
   IUIAppearanceChangedFunc mAppearanceChangedFunc = nullptr;
-  
+#if IPLUG_SEPARATE_QWERTY_STATE
+  int mQwertyBase = 48;
+  bool mQwertyKeysDown[128] = {};
+#endif
+
 protected:
   IGEditorDelegate* mDelegate;
   bool mCursorHidden = false;

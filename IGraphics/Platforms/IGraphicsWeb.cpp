@@ -419,8 +419,12 @@ IGraphicsWeb::~IGraphicsWeb() {}
 
 void* IGraphicsWeb::OpenWindow(void* pHandle)
 {
-  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+  IPluginBase* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+  {
+    TRACE_SCOPE_F(plug->GetLogFile(), "IGraphicsWeb::OpenWindow");
     TRACE_WINDOW_CREATION_START_F(plug->GetLogFile());
+  }
 #ifdef IGRAPHICS_GL
   EmscriptenWebGLContextAttributes attr;
   emscripten_webgl_init_context_attributes(&attr);
@@ -438,8 +442,11 @@ void* IGraphicsWeb::OpenWindow(void* pHandle)
 
   GetDelegate()->LayoutUI(this);
   GetDelegate()->OnUIOpen();
-  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+  if (plug)
+  {
     TRACE_WINDOW_CREATION_END_F(plug->GetLogFile());
+    Trace(plug->GetLogFile(), TRACELOC, "OpenWindow size:%d:%d", WindowWidth(), WindowHeight());
+  }
 
   return nullptr;
 }

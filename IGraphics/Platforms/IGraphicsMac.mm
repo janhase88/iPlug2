@@ -82,9 +82,12 @@ float IGraphicsMac::MeasureText(const IText& text, const char* str, IRECT& bound
 
 void* IGraphicsMac::OpenWindow(void* pParent)
 {
-  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+  IPluginBase* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+    TRACE_SCOPE_F(plug->GetLogFile(), "IGraphicsMac::OpenWindow");
+  if (plug)
     TRACE_WINDOW_CREATION_START_F(plug->GetLogFile());
-  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+  if (plug)
     TRACEF(plug->GetLogFile());
   CloseWindow();
   IGRAPHICS_VIEW* pView = [[IGRAPHICS_VIEW alloc] initWithIGraphics:this];
@@ -110,28 +113,50 @@ void* IGraphicsMac::OpenWindow(void* pParent)
     [(NSView*)pParent addSubview:pView];
   }
 
-  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+  if (plug)
+  {
+    Trace(plug->GetLogFile(), TRACELOC, "OpenWindow view:%p parent:%p size:%d:%d", mView, pParent, WindowWidth(), WindowHeight());
     TRACE_WINDOW_CREATION_END_F(plug->GetLogFile());
+  }
 
   return mView;
 }
 
 void IGraphicsMac::AttachPlatformView(const IRECT& r, void* pView)
 {
+  IPluginBase* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+    TRACE_SCOPE_F(plug->GetLogFile(), "IGraphicsMac::AttachPlatformView");
+  if (plug)
+    Trace(plug->GetLogFile(), TRACELOC, "AttachPlatformView view:%p rect:%d:%d:%d:%d", pView, r.L, r.T, r.R, r.B);
   NSView* pNewSubView = (NSView*)pView;
   [pNewSubView setFrame:ToNSRect(this, r)];
 
   [(IGRAPHICS_VIEW*)mView addSubview:(NSView*)pNewSubView];
 }
 
-void IGraphicsMac::RemovePlatformView(void* pView) { [(NSView*)pView removeFromSuperview]; }
+void IGraphicsMac::RemovePlatformView(void* pView)
+{
+  IPluginBase* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+    TRACE_SCOPE_F(plug->GetLogFile(), "IGraphicsMac::RemovePlatformView");
+  if (plug)
+    Trace(plug->GetLogFile(), TRACELOC, "RemovePlatformView view:%p", pView);
+  [(NSView*)pView removeFromSuperview];
+}
 
 void IGraphicsMac::HidePlatformView(void* pView, bool hide) { [(NSView*)pView setHidden:hide]; }
 
 void IGraphicsMac::CloseWindow()
 {
+  IPluginBase* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+    TRACE_SCOPE_F(plug->GetLogFile(), "IGraphicsMac::CloseWindow");
+
   if (mView)
   {
+    if (plug)
+      Trace(plug->GetLogFile(), TRACELOC, "CloseWindow view:%p", mView);
     IGRAPHICS_VIEW* pView = (IGRAPHICS_VIEW*)mView;
 
 #ifdef IGRAPHICS_GL

@@ -1101,8 +1101,12 @@ EMsgBoxResult IGraphicsWin::ShowMessageBox(const char* str, const char* title, E
 
 void* IGraphicsWin::OpenWindow(void* pParent)
 {
-  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+  IPluginBase* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+    TRACE_SCOPE_F(plug->GetLogFile(), "IGraphicsWin::OpenWindow");
+  if (plug)
     TRACE_WINDOW_CREATION_START_F(plug->GetLogFile());
+
   mParentWnd = (HWND)pParent;
   int screenScale = GetScaleForHWND(mParentWnd);
   int x = 0, y = 0, w = WindowWidth() * screenScale, h = WindowHeight() * screenScale;
@@ -1127,12 +1131,15 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   }
 
   DWORD threadID = GetCurrentThreadId();
-  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+  if (plug)
     Trace(plug->GetLogFile(), TRACELOC, "CreateWindowW x:%d y:%d w:%d h:%d parent:%p thread:%lu", x, y, w, h, mParentWnd, threadID);
   mPlugWnd = CreateWindowW(mWndClassName.c_str(), L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
   DWORD windowThreadID = GetWindowThreadProcessId(mPlugWnd, nullptr);
-  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+  if (plug)
+  {
     Trace(plug->GetLogFile(), TRACELOC, "CreateWindowW returned hwnd:%p thread:%lu windowThread:%lu", mPlugWnd, threadID, windowThreadID);
+    Trace(plug->GetLogFile(), TRACELOC, "OpenWindow created hwnd:%p parent:%p size:%d:%d", mPlugWnd, mParentWnd, w, h);
+  }
 
   HDC dc = GetDC(mPlugWnd);
   SetPlatformContext(dc);
@@ -1283,12 +1290,16 @@ IRECT IGraphicsWin::GetWindowRECT()
 
 void IGraphicsWin::CloseWindow()
 {
+  IPluginBase* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+    TRACE_SCOPE_F(plug->GetLogFile(), "IGraphicsWin::CloseWindow");
+
   if (mPlugWnd)
   {
     DWORD threadID = GetCurrentThreadId();
     int w = 0, h = 0;
     GetWindowSize(mPlugWnd, &w, &h);
-    if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+    if (plug)
       Trace(plug->GetLogFile(), TRACELOC, "CloseWindow begin hwnd:%p parent:%p size:%d:%d thread:%lu", mPlugWnd, mParentWnd, w, h, threadID);
     if (mVSYNCEnabled)
       StopVBlankThread();
@@ -1358,7 +1369,7 @@ void IGraphicsWin::CloseWindow()
 
     HWND oldWnd = mPlugWnd;
     DestroyWindow(mPlugWnd);
-    if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+    if (plug)
       Trace(plug->GetLogFile(), TRACELOC, "CloseWindow destroyed hwnd:%p thread:%lu", oldWnd, threadID);
 
     mPlugWnd = 0;

@@ -48,6 +48,21 @@ using VST3_API_BASE = iplug::IPlugVST3Controller;
 using namespace iplug;
 using namespace igraphics;
 
+ILayer::~ILayer()
+{
+  if (mBitmap)
+  {
+    if (mCacheable)
+    {
+      mGraphics.ReleaseBitmap(IBitmap(mBitmap, 1, false, mCacheKey.Get()));
+    }
+    else
+    {
+      delete mBitmap;
+    }
+  }
+}
+
 #if !defined(NDEBUG) || defined(IGRAPHICS_DEBUG_RESOURCE_LOAD)
 static std::atomic<bool> sResourceLoadProfiling{false};
 
@@ -2137,10 +2152,12 @@ IBitmap IGraphics::ScaleBitmap(const IBitmap& inBitmap, const char* name, int sc
   mDrawScale = inBitmap.GetDrawScale();
 
   IRECT bounds = IRECT(0, 0, inBitmap.W() / inBitmap.GetDrawScale(), inBitmap.H() / inBitmap.GetDrawScale());
-  StartLayer(nullptr, bounds, true);
+  StartLayer(nullptr, bounds, false);
   DrawBitmap(inBitmap, bounds, 0, 0, nullptr);
   ILayerPtr layer = EndLayer();
-  IBitmap outBitmap = IBitmap(layer->mBitmap.release(), inBitmap.N(), inBitmap.GetFramesAreHorizontal(), name);
+  APIBitmap* pAPIBitmap = layer->mBitmap;
+  layer->mBitmap = nullptr;
+  IBitmap outBitmap = IBitmap(pAPIBitmap, inBitmap.N(), inBitmap.GetFramesAreHorizontal(), name);
   RetainBitmap(outBitmap, name);
 
   mScreenScale = screenScale;
@@ -2306,7 +2323,14 @@ void IGraphics::StartLayer(IControl* pControl, const IRECT& r, bool cacheable, i
 
   static int sLayerId = 0;
   int id = ++sLayerId;
-  auto* pLayer = new ILayer(CreateAPIBitmap(w, h, GetScreenScale(), GetDrawScale(), cacheable, MSAASampleCount), alignedBounds, pControl, pControl ? pControl->GetRECT() : IRECT(), id);
+  APIBitmap* pBitmap = CreateAPIBitmap(w, h, GetScreenScale(), GetDrawScale(), cacheable, MSAASampleCount);
+  WDL_String key;
+  if (cacheable)
+  {
+    key.SetFormatted(32, "layer-%i", id);
+    RetainBitmap(IBitmap(pBitmap, 1, false, key.Get()), key.Get());
+  }
+  auto* pLayer = new ILayer(*this, pBitmap, alignedBounds, pControl, pControl ? pControl->GetRECT() : IRECT(), id, cacheable, key.GetLength() ? key.Get() : nullptr);
   PushLayer(pLayer);
 
   if (plug)
@@ -2396,7 +2420,15 @@ bool IGraphics::CheckLayer(const ILayerPtr& layer)
   if (plug)
     TRACE_SCOPE_F(plug->GetLogFile(), "CheckLayer");
 
-  const APIBitmap* pBitmap = layer ? layer->GetAPIBitmap() : nullptr;
+  APIBitmap* pBitmap = layer ? layer->mBitmap : nullptr;
+
+  if (!pBitmap && layer && layer->mCacheable && layer->mCacheKey.GetLength())
+  {
+    StaticStorage<APIBitmap>::Accessor storage(mBitmapCache);
+    pBitmap = storage.Find(layer->mCacheKey.Get(), GetScreenScale());
+    if (pBitmap)
+      layer->mBitmap = pBitmap;
+  }
 
   if (pBitmap && layer->mControl && layer->mControlRECT != layer->mControl->GetRECT())
   {

@@ -293,12 +293,16 @@ static EM_BOOL wheel_callback(int eventType, const EmscriptenWheelEvent* pEvent,
 
 EM_BOOL touch_callback(int eventType, const EmscriptenTouchEvent* pEvent, void* pUserData)
 {
-  IGraphics* pGraphics = (IGraphics*) pUserData;
+  IGraphicsWeb* pGraphics = (IGraphicsWeb*) pUserData;
   const float drawScale = pGraphics->GetDrawScale();
 
   std::vector<IMouseInfo> points;
 
+#if IPLUG_SEPARATE_WEB_TOUCH_CACHE
+  EmscriptenTouchPoint* previousTouches = pGraphics->mPreviousTouches;
+#else
   static EmscriptenTouchPoint previousTouches[32];
+#endif
   
   for (auto i = 0; i < pEvent->numTouches; i++)
   {
@@ -319,7 +323,7 @@ EM_BOOL touch_callback(int eventType, const EmscriptenTouchEvent* pEvent, void* 
       points.push_back(info);
   }
 
-  memcpy(previousTouches, pEvent->touches, sizeof(previousTouches));
+  memcpy(previousTouches, pEvent->touches, sizeof(EmscriptenTouchPoint) * 32);
   
   switch (eventType)
   {

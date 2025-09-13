@@ -20,6 +20,7 @@
 #include "IPlugPlatform.h"
 
 #include "IGraphics_select.h"
+#include "InstanceSeparation.h"
 
 using namespace emscripten;
 
@@ -79,7 +80,10 @@ public:
   static void OnMainLoopTimer();
   double mPrevX = 0.;
   double mPrevY = 0.;
-  
+#if IPLUG_SEPARATE_WEB_TOUCH_CACHE
+  EmscriptenTouchPoint mPreviousTouches[32] = {};
+#endif
+
 protected:
   IPopupMenu* CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT bounds, bool& isAsync) override;
   void CreatePlatformTextEntry(int paramIdx, const IText& text, const IRECT& bounds, int length, const char* str) override;

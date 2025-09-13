@@ -19,6 +19,7 @@
 #include "IPlugLogger.h"
 #include "IPlugParameter.h"
 #include "IPlugStructs.h"
+#include "InstanceSeparation.h"
 #if defined OS_WIN && IPLUG_SEPARATE_TIMER_MANAGER
   #include "IPlugTimer.h"
 #endif

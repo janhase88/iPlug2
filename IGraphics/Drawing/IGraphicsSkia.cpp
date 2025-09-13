@@ -164,7 +164,9 @@ struct IGraphicsSkia::Font
 };
 
 // Fonts
+#if !IPLUG_SEPARATE_SKIA_FONT_CACHE
 StaticStorage<IGraphicsSkia::Font> IGraphicsSkia::sFontCache;
+#endif
 
 #pragma mark - Utility conversions
 
@@ -361,21 +363,27 @@ IGraphicsSkia::IGraphicsSkia(IGEditorDelegate& dlg, int w, int h, int fps, float
 #elif defined IGRAPHICS_GL
   DBGMSG("IGraphics Skia GL @ %i FPS\n", fps);
 #endif
-  StaticStorage<Font>::Accessor storage(sFontCache);
+  StaticStorage<Font>::Accessor storage(
+#if IPLUG_SEPARATE_SKIA_FONT_CACHE
+    mFontCache
+#else
+    sFontCache
+#endif
+  );
   storage.Retain();
 
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
-   if (!mFontCollection)
+  if (!mFontCollection)
   {
-     mFontMgr = SParagraphFontMgr();
-     mTypefaceProvider = sk_make_sp<skia::textlayout::TypefaceFontProvider>();
-     mTypefaceProvider->ref();// <-- CHANGED THIS LINE
-     mFontCollection = sk_make_sp<skia::textlayout::FontCollection>();
-     mFontCollection->setAssetFontManager(mTypefaceProvider);
-     mFontCollection->setDefaultFontManager(mFontMgr);
-     mFontCollection->enableFontFallback();
-   }
-  #endif
+    mFontMgr = SParagraphFontMgr();
+    mTypefaceProvider = sk_make_sp<skia::textlayout::TypefaceFontProvider>();
+    mTypefaceProvider->ref(); // <-- CHANGED THIS LINE
+    mFontCollection = sk_make_sp<skia::textlayout::FontCollection>();
+    mFontCollection->setAssetFontManager(mTypefaceProvider);
+    mFontCollection->setDefaultFontManager(mFontMgr);
+    mFontCollection->enableFontFallback();
+  }
+#endif
 }
 
 IGraphicsSkia::~IGraphicsSkia()
@@ -385,7 +393,13 @@ IGraphicsSkia::~IGraphicsSkia()
     mFontCollection->clearCaches();
 
   {
-    StaticStorage<Font>::Accessor storage(sFontCache);
+    StaticStorage<Font>::Accessor storage(
+  #if IPLUG_SEPARATE_SKIA_FONT_CACHE
+      mFontCache
+  #else
+      sFontCache
+  #endif
+    );
     storage.Release();
   }
 
@@ -694,7 +708,13 @@ sk_sp<SkFontMgr> IGraphicsSkia::SParagraphFontMgr()
 
 bool IGraphicsSkia::LoadAPIFont(const char* fontID, const PlatformFontPtr& font)
 {
-  StaticStorage<Font>::Accessor storage(sFontCache);
+  StaticStorage<Font>::Accessor storage(
+#if IPLUG_SEPARATE_SKIA_FONT_CACHE
+    mFontCache
+#else
+    sFontCache
+#endif
+  );
   Font* cached = storage.Find(fontID);
 
   if (cached)
@@ -708,16 +728,16 @@ bool IGraphicsSkia::LoadAPIFont(const char* fontID, const PlatformFontPtr& font)
 
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
 
-    //if (!mFontCollection)
+    // if (!mFontCollection)
     //{
-    //  mFontMgr = SParagraphFontMgr(); 
-    //  mTypefaceProvider = sk_make_sp<skia::textlayout::TypefaceFontProvider>();
-    //  mTypefaceProvider->ref();// <-- CHANGED THIS LINE
-    //  mFontCollection = sk_make_sp<skia::textlayout::FontCollection>();
-    //  mFontCollection->setAssetFontManager(mTypefaceProvider);
-    //  mFontCollection->setDefaultFontManager(mFontMgr);
-    //  mFontCollection->enableFontFallback();
-    //}
+    //   mFontMgr = SParagraphFontMgr();
+    //   mTypefaceProvider = sk_make_sp<skia::textlayout::TypefaceFontProvider>();
+    //   mTypefaceProvider->ref();// <-- CHANGED THIS LINE
+    //   mFontCollection = sk_make_sp<skia::textlayout::FontCollection>();
+    //   mFontCollection->setAssetFontManager(mTypefaceProvider);
+    //   mFontCollection->setDefaultFontManager(mFontMgr);
+    //   mFontCollection->enableFontFallback();
+    // }
 
     // Create the typeface using our private font manager instance.
     auto typeFace = mFontMgr->makeFromData(wrappedData);
@@ -742,7 +762,13 @@ void IGraphicsSkia::PrepareAndMeasureText(const IText& text, const char* str, IR
 {
   using namespace skia::textlayout;
 
-  StaticStorage<Font>::Accessor storage(sFontCache);
+  StaticStorage<Font>::Accessor storage(
+#if IPLUG_SEPARATE_SKIA_FONT_CACHE
+    mFontCache
+#else
+    sFontCache
+#endif
+  );
   Font* pFont = storage.Find(text.mFont);
   assert(pFont && "No font found - did you forget to load it?");
 
@@ -817,7 +843,13 @@ void IGraphicsSkia::DoDrawText(const IText& text, const char* str, const IRECT& 
   SkFont font; // Dummy, not used by new implementation but required by signature.
   PrepareAndMeasureText(text, str, measured, x, y, font);
 
-  StaticStorage<Font>::Accessor storage(sFontCache);
+  StaticStorage<Font>::Accessor storage(
+#if IPLUG_SEPARATE_SKIA_FONT_CACHE
+    mFontCache
+#else
+    sFontCache
+#endif
+  );
   Font* pFont = storage.Find(text.mFont);
   assert(pFont && "No font found - did you forget to load it?");
 

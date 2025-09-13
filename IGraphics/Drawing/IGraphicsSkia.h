@@ -179,7 +179,11 @@ private:
   void* mMTLLayer;
 #endif
 
+#if IPLUG_SEPARATE_SKIA_FONT_CACHE
+  StaticStorage<Font> mFontCache;
+#else
   static StaticStorage<Font> sFontCache;
+#endif
 };
 
 END_IGRAPHICS_NAMESPACE

@@ -105,6 +105,10 @@ static int m_doeff = 0;
 
 static LICE_IBitmap* tmpbmp = 0;
 
+#if IPLUG_SEPARATE_GL_CONTEXT
+static LICE_GL_ctx s_glctx;
+#endif
+
 static DWORD m_start_time, m_frame_cnt;
 bool m_cap;
 
@@ -305,9 +309,13 @@ static void DoPaint(HWND hwndDlg, HDC dc)
       int x, y, tw, th;
 
       static LICE_IBitmap* glbmp = 0;
-      if (!glbmp) 
+      if (!glbmp)
       {
+#if IPLUG_SEPARATE_GL_CONTEXT
+        glbmp = new LICE_GL_SysBitmap(&s_glctx, 0, 0);
+#else
         glbmp = new LICE_GL_SysBitmap(0, 0);
+#endif
         glbmp->resize(w, h);
 
         glbmp = new LICE_GL_SubBitmap(glbmp, 20, 80, 50, 20);
@@ -317,7 +325,11 @@ static void DoPaint(HWND hwndDlg, HDC dc)
 
       if (!tmpbmp)
       {
+#if IPLUG_SEPARATE_GL_CONTEXT
+        tmpbmp = new LICE_GL_MemBitmap(&s_glctx, 0, 0);
+#else
         tmpbmp = new LICE_GL_MemBitmap(0, 0);
+#endif
         tmpbmp->resize(20, 20);
         //tmpbmp = new LICE_MemBitmap(20, 20);
       }

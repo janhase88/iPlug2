@@ -1,12 +1,17 @@
 #include "lice.h"
 #include "lice_extended.h"
+#include "lice_gl_ctx.h"
 
 // interface class for LICE_GL_SysBitmap and LICE_GL_MemBitmap
 class LICE_GLBitmap : public LICE_IBitmap
 {
 public:
 
+#if IPLUG_SEPARATE_GL_CONTEXT
+  LICE_GLBitmap(LICE_GL_ctx* ctx = nullptr);
+#else
   LICE_GLBitmap();
+#endif
   ~LICE_GLBitmap();
 
   LICE_pixel* getBits();
@@ -49,10 +54,17 @@ private:
   enum { EMPTY, INGPU, INMEM };
   int m_bufloc; // where is the current framebuffer?
   LICE_IBitmap* m_bmp;
+#if IPLUG_SEPARATE_GL_CONTEXT
+  LICE_GL_ctx* m_ctx;
+#endif
 
 protected:
 
+#if IPLUG_SEPARATE_GL_CONTEXT
+  void Init(LICE_GL_ctx* ctx, LICE_IBitmap* bmp, int w, int h);
+#else
   void Init(LICE_IBitmap* bmp, int w, int h);
+#endif
   bool FramebufferToGPU();
   void FramebufferFromGPU();
 };
@@ -61,7 +73,11 @@ class LICE_GL_SysBitmap : public LICE_GLBitmap
 {
 public:
 
+#if IPLUG_SEPARATE_GL_CONTEXT
+  LICE_GL_SysBitmap(LICE_GL_ctx* ctx, int w=0, int h=0);
+#else
   LICE_GL_SysBitmap(int w=0, int h=0);
+#endif
 
   HDC getDC();
 
@@ -75,7 +91,11 @@ class LICE_GL_MemBitmap : public LICE_GLBitmap
 {
 public:
 
+#if IPLUG_SEPARATE_GL_CONTEXT
+  LICE_GL_MemBitmap(LICE_GL_ctx* ctx, int w=0, int h=0);
+#else
   LICE_GL_MemBitmap(int w=0, int h=0);
+#endif
 
   HDC getDC() { return 0; }
 

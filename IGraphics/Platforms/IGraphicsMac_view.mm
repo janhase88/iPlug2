@@ -377,7 +377,9 @@ static int MacKeyEventToVK(NSEvent* pEvent, int& flag)
 
 #pragma mark -
 
+#ifndef IPLUG_SEPARATE_FONTDESC_CACHE
 extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
+#endif
 
 @implementation IGRAPHICS_VIEW
 
@@ -1132,7 +1134,11 @@ static void MakeCursorFromName(NSCursor*& cursor, const char *name)
     [mTextFieldView setDrawsBackground: TRUE];
   }
 
+#ifdef IPLUG_SEPARATE_FONTDESC_CACHE
+  CoreTextFontDescriptor* CTFontDescriptor = CoreTextHelpers::GetCTFontDescriptor(text, mGraphics->GetFontDescriptorCache());
+#else
   CoreTextFontDescriptor* CTFontDescriptor = CoreTextHelpers::GetCTFontDescriptor(text, sFontDescriptorCache);
+#endif
   double ratio = CTFontDescriptor->GetEMRatio() * mGraphics->GetDrawScale();
   NSFontDescriptor* fontDescriptor = (NSFontDescriptor*) CTFontDescriptor->GetDescriptor();
   NSFont* font = [NSFont fontWithDescriptor: fontDescriptor size: text.mSize * ratio];

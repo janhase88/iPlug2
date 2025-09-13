@@ -11,6 +11,9 @@
 #pragma once
 
 #include "IGraphics_select.h"
+#ifdef IPLUG_SEPARATE_FONTDESC_CACHE
+#include "IGraphicsCoreText.h"
+#endif
 
 BEGIN_IPLUG_NAMESPACE
 BEGIN_IGRAPHICS_NAMESPACE
@@ -71,8 +74,11 @@ public:
   void AttachGestureRecognizer(EGestureType type) override;
   
   bool PlatformSupportsMultiTouch() const override { return true; }
-  
+
   EUIAppearance GetUIAppearance() const override;
+#ifdef IPLUG_SEPARATE_FONTDESC_CACHE
+  StaticStorage<CoreTextFontDescriptor>& GetFontDescriptorCache() { return mFontDescriptorCache; }
+#endif
 
 protected:
   PlatformFontPtr LoadPlatformFont(const char* fontID, const char* fileNameOrResID) override;
@@ -84,6 +90,9 @@ protected:
   void CreatePlatformTextEntry(int paramIdx, const IText& text, const IRECT& bounds, int length, const char* str) override;
 
 private:
+#ifdef IPLUG_SEPARATE_FONTDESC_CACHE
+  StaticStorage<CoreTextFontDescriptor> mFontDescriptorCache;
+#endif
   void* mView = nullptr;
   WDL_String mBundleID;
   WDL_String mAppGroupID;

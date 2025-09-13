@@ -97,7 +97,7 @@ struct LogFile
   {
 #ifdef OS_WIN
     char logFilePath[MAX_WIN32_PATH_LEN];
-    snprintf(logFilePath, MAX_WIN32_PATH_LEN, "%s/%s", "C:\\", LOGFILE);
+    snprintf(logFilePath, MAX_WIN32_PATH_LEN, "C:\\temp\\%s", LOGFILE);
 #else
     char logFilePath[MAX_MACOS_PATH_LEN];
     snprintf(logFilePath, MAX_MACOS_PATH_LEN, "%s/%s", getenv("HOME"), LOGFILE);

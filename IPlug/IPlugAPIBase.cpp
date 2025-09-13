@@ -193,6 +193,12 @@ void IPlugAPIBase::OnTimer(Timer& t)
   OnIdle();
 }
 
+void IPlugAPIBase::OnIdle()
+{
+  if (auto* base = dynamic_cast<IPluginBase*>(this))
+    TRACE_SCOPE_F(base->GetLogFile(), "OnIdle");
+}
+
 void IPlugAPIBase::SendMidiMsgFromUI(const IMidiMsg& msg)
 {
   DeferMidiMsg(msg);                             // queue the message so that it will be handled by the processor

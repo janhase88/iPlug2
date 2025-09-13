@@ -115,6 +115,9 @@ handle:
 
 void IPlugResponsiveUI::OnIdle()
 {
+  if (auto* base = dynamic_cast<IPluginBase*>(this))
+    TRACE_SCOPE_F(base->GetLogFile(), "OnIdle");
+
   mScopeSender.TransmitData(*this);
 }
 

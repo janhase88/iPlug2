@@ -1,6 +1,7 @@
 #include "IPlugVisualizer.h"
 #include "IPlug_include_in_plug_src.h"
 #include "IControls.h"
+#include "IPlugLogger.h"
 
 constexpr int kCtrlTagSpectrumAnalyzer = 0;
 
@@ -55,6 +56,9 @@ bool IPlugVisualizer::OnMessage(int msgTag, int ctrlTag, int dataSize, const voi
 
 void IPlugVisualizer::OnIdle()
 {
+  if (auto* base = dynamic_cast<IPluginBase*>(this))
+    TRACE_SCOPE_F(base->GetLogFile(), "OnIdle");
+
   mSender.TransmitData(*this);
 }
 

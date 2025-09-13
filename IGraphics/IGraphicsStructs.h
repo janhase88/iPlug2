@@ -2403,7 +2403,7 @@ public:
   {
     if (cacheKey)
       mCacheKey.Set(cacheKey);
-  }
+
 
   ~ILayer();
 

@@ -113,7 +113,7 @@ private:
   DragAndDropHelpers::DropTarget* mDropTarget = nullptr;
   bool mOLEInited = false;
 
-  /** Called either in response to WM_TIMER tick or user message WM_VBLANK, triggered by VSYNC thread
+  /** Called either in response to WM_TIMER tick or instance-specific VSYNC message, triggered by VSYNC thread
     * @param vBlankCount will allow redraws to get paced by the vblank message. Passing 0 is a WM_TIMER fallback. */
   void OnDisplayTimer(int vBlankCount = 0);
 
@@ -158,8 +158,9 @@ private:
   void StartVBlankThread(HWND hWnd);
   void StopVBlankThread();
   void VBlankNotify();
-    
+
   HWND mVBlankWindow = 0; // Window to post messages to for every vsync
+  UINT mVBlankMsg = 0; // Message ID for VSYNC notifications
   volatile bool mVBlankShutdown = false; // Flag to indiciate that the vsync thread should shutdown
   HANDLE mVBlankThread = INVALID_HANDLE_VALUE; //ID of thread.
   volatile DWORD mVBlankCount = 0; // running count of vblank events since the start of the window.

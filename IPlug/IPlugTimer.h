@@ -33,7 +33,15 @@
 #include <emscripten/html5.h>
 #endif
 
+#ifndef IPLUG_SEPARATE_TIMER_MANAGER
+#define IPLUG_SEPARATE_TIMER_MANAGER 0
+#endif
+
 BEGIN_IPLUG_NAMESPACE
+
+#if defined OS_WIN
+struct TimerManager;
+#endif
 
 /** Base class for timer */
 struct Timer
@@ -44,7 +52,11 @@ struct Timer
   
   using ITimerFunction = std::function<void(Timer& t)>;
 
-  static Timer* Create(ITimerFunction func, uint32_t intervalMs);
+  static Timer* Create(ITimerFunction func, uint32_t intervalMs
+#if defined OS_WIN && IPLUG_SEPARATE_TIMER_MANAGER
+                      , TimerManager* pTimerManager = nullptr
+#endif
+                      );
   virtual ~Timer() {};
   virtual void Stop() = 0;
 };
@@ -67,17 +79,43 @@ private:
   uint32_t mIntervalMs;
 };
 #elif defined OS_WIN
+
+class Timer_impl;
+
+struct TimerManager
+{
+  WDL_Mutex mMutex;
+  WDL_PtrList<Timer_impl> mTimers;
+#if IPLUG_SEPARATE_TIMER_MANAGER
+  TimerManager();
+  ~TimerManager();
+  static Timer_impl* FindTimer(UINT_PTR id);
+  static TimerManager& Global();
+private:
+  static WDL_Mutex sMgrMutex;
+  static WDL_PtrList<TimerManager> sManagers;
+#endif
+};
+
 class Timer_impl : public Timer
 {
 public:
-  Timer_impl(ITimerFunction func, uint32_t intervalMs);
+  Timer_impl(ITimerFunction func, uint32_t intervalMs
+#if IPLUG_SEPARATE_TIMER_MANAGER
+             , TimerManager* pTimerManager = nullptr
+#endif
+             );
   ~Timer_impl();
   void Stop() override;
   static void CALLBACK TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
-  
+
 private:
+#if IPLUG_SEPARATE_TIMER_MANAGER
+  TimerManager* mManager;
+#else
   static WDL_Mutex sMutex;
   static WDL_PtrList<Timer_impl> sTimers;
+#endif
   UINT_PTR ID = 0;
   ITimerFunction mTimerFunc;
   uint32_t mIntervalMs;

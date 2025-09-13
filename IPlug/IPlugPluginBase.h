@@ -19,6 +19,9 @@
 #include "IPlugParameter.h"
 #include "IPlugStructs.h"
 #include "IPlugLogger.h"
+#if defined OS_WIN && IPLUG_SEPARATE_TIMER_MANAGER
+#include "IPlugTimer.h"
+#endif
 
 BEGIN_IPLUG_NAMESPACE
 
@@ -28,9 +31,13 @@ class IPluginBase : public EDITOR_DELEGATE_CLASS
 public:
   IPluginBase(int nParams, int nPresets);
   virtual ~IPluginBase();
-  
+
   IPluginBase(const IPluginBase&) = delete;
   IPluginBase& operator=(const IPluginBase&) = delete;
+
+#if defined OS_WIN && IPLUG_SEPARATE_TIMER_MANAGER
+  TimerManager& GetTimerManager() { return mTimerManager; }
+#endif
 
 #pragma mark - Plug-in properties
   /** @return the name of the plug-in as a CString */
@@ -397,6 +404,9 @@ public:
   friend class IPlugAPIBase;
   
 private:
+#if defined OS_WIN && IPLUG_SEPARATE_TIMER_MANAGER
+  TimerManager mTimerManager;
+#endif
   int mCurrentPresetIdx = 0;
   /** \c true if the plug-in does opaque state chunks. If false the host will provide a default interface */
   bool mStateChunks = false;

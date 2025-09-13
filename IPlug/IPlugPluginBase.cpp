@@ -19,14 +19,24 @@
 
 using namespace iplug;
 
-IPluginBase::IPluginBase(int nParams, int nPresets)
+IPluginBase::IPluginBase(int nParams, int nPresets, const char* pluginName)
   : EDITOR_DELEGATE_CLASS(nParams)
 {
   for (int i = 0; i < nPresets; ++i)
     mPresets.Add(new IPreset());
+
+#if defined TRACER_BUILD
+  mLogFile = LogFileManager::GetInstance().GetInstance(this, pluginName);
+#endif
 }
 
-IPluginBase::~IPluginBase() { mPresets.Empty(true); }
+IPluginBase::~IPluginBase()
+{
+#if defined TRACER_BUILD
+  LogFileManager::GetInstance().ReleaseInstance(this);
+#endif
+  mPresets.Empty(true);
+}
 
 int IPluginBase::GetPluginVersion(bool decimal) const
 {
@@ -112,13 +122,15 @@ void IPluginBase::GetBuildInfoStr(WDL_String& str, const char* date, const char*
 
 bool IPluginBase::SerializeParams(IByteChunk& chunk) const
 {
-  TRACE
+#if defined TRACER_BUILD
+  TRACEF(mLogFile);
+#endif
   bool savedOK = true;
   int i, n = mParams.GetSize();
   for (i = 0; i < n && savedOK; ++i)
   {
     IParam* pParam = mParams.Get(i);
-    Trace(TRACELOC, "inst=%p %d %s %f", this, i, pParam->GetName(), pParam->Value());
+    Trace(mLogFile, TRACELOC, "inst=%p %d %s %f", this, i, pParam->GetName(), pParam->Value());
     double v = pParam->Value();
     savedOK &= (chunk.Put(&v) > 0);
   }
@@ -127,7 +139,7 @@ bool IPluginBase::SerializeParams(IByteChunk& chunk) const
 
 int IPluginBase::UnserializeParams(const IByteChunk& chunk, int startPos)
 {
-  TRACE
+  TRACEF(mLogFile);
   int i, n = mParams.GetSize(), pos = startPos;
   ENTER_PARAMS_MUTEX
   for (i = 0; i < n && pos >= 0; ++i)
@@ -138,7 +150,7 @@ int IPluginBase::UnserializeParams(const IByteChunk& chunk, int startPos)
     if (pos >= 0)
     {
       pParam->Set(v);
-      Trace(TRACELOC, "inst=%p %d %s %f", this, i, pParam->GetName(), pParam->Value());
+      Trace(mLogFile, TRACELOC, "inst=%p %d %s %f", this, i, pParam->GetName(), pParam->Value());
     }
   }
 
@@ -322,7 +334,7 @@ void IPluginBase::MakePreset(const char* name, ...)
 
 void IPluginBase::MakePresetFromNamedParams(const char* name, int nParamsNamed, ...)
 {
-  TRACE
+  TRACEF(mLogFile);
   IPreset* pPreset = GetNextUninitializedPreset(&mPresets);
   if (pPreset)
   {
@@ -401,13 +413,13 @@ static void MakeDefaultUserPresetName(WDL_PtrList<IPreset>* pPresets, char* str)
 
 void IPluginBase::EnsureDefaultPreset()
 {
-  TRACE
+  TRACEF(mLogFile);
   MakeDefaultPreset("Empty", mPresets.GetSize());
 }
 
 void IPluginBase::PruneUninitializedPresets()
 {
-  TRACE
+  TRACEF(mLogFile);
   int i = 0;
   while (i < mPresets.GetSize())
   {
@@ -425,7 +437,7 @@ void IPluginBase::PruneUninitializedPresets()
 
 bool IPluginBase::RestorePreset(int idx)
 {
-  TRACE
+  TRACEF(mLogFile);
   bool restoredOK = false;
   if (idx >= 0 && idx < mPresets.GetSize())
   {
@@ -485,7 +497,7 @@ void IPluginBase::ModifyCurrentPreset(const char* name)
     IPreset* pPreset = mPresets.Get(mCurrentPresetIdx);
     pPreset->mChunk.Clear();
 
-    Trace(TRACELOC, "inst=%p %d %s", this, mCurrentPresetIdx, pPreset->mName);
+    Trace(mLogFile, TRACELOC, "inst=%p %d %s", this, mCurrentPresetIdx, pPreset->mName);
 
     SerializeState(pPreset->mChunk);
 
@@ -498,7 +510,7 @@ void IPluginBase::ModifyCurrentPreset(const char* name)
 
 bool IPluginBase::SerializePresets(IByteChunk& chunk) const
 {
-  TRACE
+  TRACEF(mLogFile);
   bool savedOK = true;
   int n = mPresets.GetSize();
   for (int i = 0; i < n && savedOK; ++i)
@@ -506,7 +518,7 @@ bool IPluginBase::SerializePresets(IByteChunk& chunk) const
     IPreset* pPreset = mPresets.Get(i);
     chunk.PutStr(pPreset->mName);
 
-    Trace(TRACELOC, "inst=%p %d %s", this, i, pPreset->mName);
+    Trace(mLogFile, TRACELOC, "inst=%p %d %s", this, i, pPreset->mName);
 
     chunk.Put(&pPreset->mInitialized);
     if (pPreset->mInitialized)
@@ -519,7 +531,7 @@ bool IPluginBase::SerializePresets(IByteChunk& chunk) const
 
 int IPluginBase::UnserializePresets(const IByteChunk& chunk, int startPos)
 {
-  TRACE
+  TRACEF(mLogFile);
   WDL_String name;
   int n = mPresets.GetSize(), pos = startPos;
   for (int i = 0; i < n && pos >= 0; ++i)
@@ -528,7 +540,7 @@ int IPluginBase::UnserializePresets(const IByteChunk& chunk, int startPos)
     pos = chunk.GetStr(name, pos);
     strcpy(pPreset->mName, name.Get());
 
-    Trace(TRACELOC, "inst=%p %d %s", this, i, pPreset->mName);
+    Trace(mLogFile, TRACELOC, "inst=%p %d %s", this, i, pPreset->mName);
 
     pos = chunk.Get<bool>(&(pPreset->mInitialized), pos);
     if (pPreset->mInitialized)

@@ -19,7 +19,15 @@
  * To time a block using labels:                 TRACE_START("mytask"); ... TRACE_END("mytask");
  * Predefined helpers are available for window creation, cache queries and resource loads.
  * No need to wrap tracer calls in #ifdef TRACER_BUILD because Trace is a no-op unless TRACER_BUILD is defined.
- */
+ *
+ * From 2024 onwards each plug-in instance writes to its own log file.  The log
+ * files are created by \ref LogFileManager using the plug-in name and an
+* incrementing index such that the nth instance of "MyPlugin" will produce a
+* file like `MyPlugin_n.txt` in the platform specific log folder.  For example
+* on Windows the path will be `C:\\temp\\MyPlugin_1.txt`.  The per-instance
+* FILE* can be retrieved via IPluginBase::GetLogFile() and passed to the TRACEF
+* family of macros in order to direct output to a particular instance.
+*/
 
 #include <cassert>
 #include <cctype>
@@ -29,7 +37,6 @@
 #include <cstring>
 #include <ctime>
 
-#include <cassert>
 #include <chrono>
 #include <string>
 #include <unordered_map>
@@ -68,7 +75,7 @@ static void DBGMSG(const char* format, ...)
 #endif
 
 #if defined TRACER_BUILD
-  #define TRACE Trace(TRACELOC, "");
+  #define TRACE Trace(LogFileManager::GetInstance().GetInstance(nullptr, "IPlugLog"), TRACELOC, "");
 
   #if defined OS_WIN
     #define SYS_THREAD_ID (intptr_t)GetCurrentThreadId()
@@ -81,52 +88,65 @@ static void DBGMSG(const char* format, ...)
 #endif
 
 #define TRACELOC __FUNCTION__, __LINE__
+static void Trace(FILE* logFile, const char* funcName, int line, const char* fmtStr, ...);
 static void Trace(const char* funcName, int line, const char* fmtStr, ...);
-static void Trace(const char* funcName, int line, const char* id, bool start);
+static void Trace(FILE* logFile, const char* funcName, int line, const char* id, bool start);
 
 #define APPEND_TIMESTAMP(str) AppendTimestamp(__DATE__, __TIME__, str)
 
-struct LogFile
+/**
+ * Manager class responsible for creating and returning FILE handles for each
+ * plug-in instance.  The key is typically the address of the instance.  Files
+ * are created lazily and named using the plug-in name and an incrementing
+ * index, e.g. `MyPlugin_1.txt` for the first instance of "MyPlugin".
+ */
+class LogFileManager
 {
-  FILE* mFP;
-  static LogFile* sInstance;
-
-  static LogFile* GetInstance()
+public:
+  static LogFileManager& GetInstance()
   {
-    if (!sInstance)
-      sInstance = new LogFile();
-    return sInstance;
+    static LogFileManager sManager;
+    return sManager;
   }
 
-  LogFile()
+  FILE* GetInstance(void* instanceKey, const char* pluginName)
   {
+    WDL_MutexLock lock(&mMutex);
+    auto it = mFiles.find(instanceKey);
+    if (it != mFiles.end())
+      return it->second;
+
+    int idx = ++mInstanceCounts[pluginName];
 #ifdef OS_WIN
     char logFilePath[MAX_WIN32_PATH_LEN];
-    snprintf(logFilePath, MAX_WIN32_PATH_LEN, "C:\\temp\\%s", LOGFILE);
+    snprintf(logFilePath, MAX_WIN32_PATH_LEN, "C:\\temp\\%s_%d.txt", pluginName, idx);
 #else
     char logFilePath[MAX_MACOS_PATH_LEN];
-    snprintf(logFilePath, MAX_MACOS_PATH_LEN, "%s/%s", getenv("HOME"), LOGFILE);
+    snprintf(logFilePath, MAX_MACOS_PATH_LEN, "%s/%s_%d.txt", getenv("HOME"), pluginName, idx);
 #endif
-    mFP = fopenUTF8(logFilePath, "w");
-    assert(mFP);
-
+    FILE* fp = fopenUTF8(logFilePath, "w");
+    assert(fp);
     DBGMSG("Logging to %s\n", logFilePath);
+    mFiles[instanceKey] = fp;
+    return fp;
   }
 
-  ~LogFile()
+  void ReleaseInstance(void* instanceKey)
   {
-    if (mFP)
+    WDL_MutexLock lock(&mMutex);
+    auto it = mFiles.find(instanceKey);
+    if (it != mFiles.end())
     {
-      fclose(mFP);
-      mFP = nullptr;
+      fclose(it->second);
+      mFiles.erase(it);
     }
   }
 
-  LogFile(const LogFile&) = delete;
-  LogFile& operator=(const LogFile&) = delete;
+private:
+  WDL_Mutex mMutex;
+  std::unordered_map<void*, FILE*> mFiles;
+  std::unordered_map<std::string, int> mInstanceCounts;
 };
-
-inline LogFile* LogFile::sInstance = nullptr;
 
 static bool IsWhitespace(char c) { return (c == ' ' || c == '\t' || c == '\n' || c == '\r'); }
 
@@ -184,8 +204,8 @@ static const char* AppendTimestamp(const char* Mmm_dd_yyyy, const char* hh_mm_ss
   class ScopedTimer
   {
   public:
-    ScopedTimer(const char* funcName, int line, const char* label)
-      : mFuncName(funcName), mLine(line), mLabel(label)
+    ScopedTimer(FILE* logFile, const char* funcName, int line, const char* label)
+      : mLogFile(logFile), mFuncName(funcName), mLine(line), mLabel(label)
 #ifdef TRACER_BUILD
       , mStart(std::chrono::steady_clock::now())
 #endif
@@ -196,11 +216,12 @@ static const char* AppendTimestamp(const char* Mmm_dd_yyyy, const char* hh_mm_ss
 #ifdef TRACER_BUILD
       auto end = std::chrono::steady_clock::now();
       auto us = std::chrono::duration_cast<std::chrono::microseconds>(end - mStart).count();
-      Trace(mFuncName, mLine, "%s %lldus", mLabel, (long long) us);
+      Trace(mLogFile, mFuncName, mLine, "%s %lldus", mLabel, (long long) us);
 #endif
     }
 
   private:
+    FILE* mLogFile;
     const char* mFuncName;
     int mLine;
     const char* mLabel;
@@ -212,15 +233,27 @@ static const char* AppendTimestamp(const char* Mmm_dd_yyyy, const char* hh_mm_ss
 #ifdef TRACER_BUILD
   #define IPLUG_TRACE_CONCAT_INNER(a, b) a##b
   #define IPLUG_TRACE_CONCAT(a, b) IPLUG_TRACE_CONCAT_INNER(a, b)
-  #define TRACE_SCOPE(label) ScopedTimer IPLUG_TRACE_CONCAT(_iplugScopedTimer_, __LINE__)(TRACELOC, label)
-  #define TRACE_START(id) Trace(TRACELOC, id, true)
-  #define TRACE_END(id)   Trace(TRACELOC, id, false)
+  #define TRACE_SCOPE(label) ScopedTimer IPLUG_TRACE_CONCAT(_iplugScopedTimer_, __LINE__)(LogFileManager::GetInstance().GetInstance(nullptr, "IPlugLog"), TRACELOC, label)
+  #define TRACE_START(id) Trace(LogFileManager::GetInstance().GetInstance(nullptr, "IPlugLog"), TRACELOC, id, true)
+  #define TRACE_END(id)   Trace(LogFileManager::GetInstance().GetInstance(nullptr, "IPlugLog"), TRACELOC, id, false)
   #define TRACE_WINDOW_CREATION_START() TRACE_START("WindowCreation")
   #define TRACE_WINDOW_CREATION_END()   TRACE_END("WindowCreation")
   #define TRACE_CACHE_QUERY_START()     TRACE_START("CacheQuery")
   #define TRACE_CACHE_QUERY_END()       TRACE_END("CacheQuery")
   #define TRACE_RESOURCE_LOAD_START()   TRACE_START("ResourceLoad")
   #define TRACE_RESOURCE_LOAD_END()     TRACE_END("ResourceLoad")
+
+  // Macros that allow specifying a log FILE* explicitly
+  #define TRACEF(file) Trace(file, TRACELOC, "")
+  #define TRACE_SCOPE_F(file, label) ScopedTimer IPLUG_TRACE_CONCAT(_iplugScopedTimer_, __LINE__)(file, TRACELOC, label)
+  #define TRACE_START_F(file, id) Trace(file, TRACELOC, id, true)
+  #define TRACE_END_F(file, id)   Trace(file, TRACELOC, id, false)
+  #define TRACE_WINDOW_CREATION_START_F(file) TRACE_START_F(file, "WindowCreation")
+  #define TRACE_WINDOW_CREATION_END_F(file)   TRACE_END_F(file, "WindowCreation")
+  #define TRACE_CACHE_QUERY_START_F(file)     TRACE_START_F(file, "CacheQuery")
+  #define TRACE_CACHE_QUERY_END_F(file)       TRACE_END_F(file, "CacheQuery")
+  #define TRACE_RESOURCE_LOAD_START_F(file)   TRACE_START_F(file, "ResourceLoad")
+  #define TRACE_RESOURCE_LOAD_END_F(file)     TRACE_END_F(file, "ResourceLoad")
 #else
   #define TRACE_SCOPE(label)
   #define TRACE_START(id)
@@ -231,6 +264,16 @@ static const char* AppendTimestamp(const char* Mmm_dd_yyyy, const char* hh_mm_ss
   #define TRACE_CACHE_QUERY_END()
   #define TRACE_RESOURCE_LOAD_START()
   #define TRACE_RESOURCE_LOAD_END()
+  #define TRACEF(file)
+  #define TRACE_SCOPE_F(file, label)
+  #define TRACE_START_F(file, id)
+  #define TRACE_END_F(file, id)
+  #define TRACE_WINDOW_CREATION_START_F(file)
+  #define TRACE_WINDOW_CREATION_END_F(file)
+  #define TRACE_CACHE_QUERY_START_F(file)
+  #define TRACE_CACHE_QUERY_END_F(file)
+  #define TRACE_RESOURCE_LOAD_START_F(file)
+  #define TRACE_RESOURCE_LOAD_END_F(file)
 #endif
 
   #if defined TRACER_BUILD
@@ -255,7 +298,7 @@ static const char* AppendTimestamp(const char* Mmm_dd_yyyy, const char* hh_mm_ss
   strcat(str, "\r\n"); \
   }
 
-void Trace(const char* funcName, int line, const char* id, bool start)
+void Trace(FILE* logFile, const char* funcName, int line, const char* id, bool start)
 {
   static std::unordered_map<std::string, std::chrono::steady_clock::time_point> timers;
 
@@ -269,12 +312,12 @@ void Trace(const char* funcName, int line, const char* id, bool start)
     if (it != timers.end())
     {
       auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - it->second).count();
-      Trace(funcName, line, "%s %lldus", id, (long long) elapsed);
+      Trace(logFile, funcName, line, "%s %lldus", id, (long long) elapsed);
       timers.erase(it);
     }
     else
     {
-      Trace(funcName, line, "%s end", id);
+      Trace(logFile, funcName, line, "%s end", id);
     }
   }
 }
@@ -298,7 +341,7 @@ static intptr_t GetOrdinalThreadID(intptr_t sysThreadID)
 }
 
   #define MAX_LOG_LINES 16384
-void Trace(const char* funcName, int line, const char* format, ...)
+void Trace(FILE* logFile, const char* funcName, int line, const char* format, ...)
 {
   static int sTrace = 0;
   static int32_t sProcessCount = 0;
@@ -307,8 +350,7 @@ void Trace(const char* funcName, int line, const char* format, ...)
   if (sTrace++ < MAX_LOG_LINES)
   {
   #ifndef TRACETOSTDOUT
-    LogFile* sLogFile = LogFile::GetInstance();
-    assert(sLogFile->mFP);
+    assert(logFile);
   #endif
     static WDL_Mutex sLogMutex;
     char str[TXTLEN];
@@ -324,13 +366,13 @@ void Trace(const char* funcName, int line, const char* format, ...)
     {
       if (++sProcessCount > MAX_PROCESS_TRACE_COUNT)
       {
-        fflush(sLogFile->mFP);
+        fflush(logFile);
         return;
       }
       else if (sProcessCount == MAX_PROCESS_TRACE_COUNT)
       {
-        fprintf(sLogFile->mFP, "**************** DISABLING PROCESS TRACING AFTER %d HITS ****************\n\n", sProcessCount);
-        fflush(sLogFile->mFP);
+        fprintf(logFile, "**************** DISABLING PROCESS TRACING AFTER %d HITS ****************\n\n", sProcessCount);
+        fflush(logFile);
         return;
       }
     }
@@ -343,22 +385,87 @@ void Trace(const char* funcName, int line, const char* format, ...)
     {
       if (++sIdleCount > MAX_IDLE_TRACE_COUNT)
       {
-        fflush(sLogFile->mFP);
+        fflush(logFile);
         return;
       }
       else if (sIdleCount == MAX_IDLE_TRACE_COUNT)
       {
-        fprintf(sLogFile->mFP, "**************** DISABLING IDLE/MOUSEOVER TRACING AFTER %d HITS ****************\n", sIdleCount);
-        fflush(sLogFile->mFP);
+        fprintf(logFile, "**************** DISABLING IDLE/MOUSEOVER TRACING AFTER %d HITS ****************\n", sIdleCount);
+        fflush(logFile);
         return;
       }
     }
 
     if (threadID > 0)
-      fprintf(sLogFile->mFP, "*** -");
+      fprintf(logFile, "*** -");
 
-    fprintf(sLogFile->mFP, "[%ld:%s:%d]%s", threadID, funcName, line, str);
-    fflush(sLogFile->mFP);
+    fprintf(logFile, "[%ld:%s:%d]%s", threadID, funcName, line, str);
+    fflush(logFile);
+  #endif
+  }
+}
+
+void Trace(const char* funcName, int line, const char* format, ...)
+{
+  FILE* logFile = LogFileManager::GetInstance().GetInstance(nullptr, "IPlugLog");
+  static int sTrace = 0;
+  static int32_t sProcessCount = 0;
+  static int32_t sIdleCount = 0;
+
+  if (sTrace++ < MAX_LOG_LINES)
+  {
+  #ifndef TRACETOSTDOUT
+    assert(logFile);
+  #endif
+    static WDL_Mutex sLogMutex;
+    char str[TXTLEN];
+    VARARGS_TO_STR(str);
+
+  #ifdef TRACETOSTDOUT
+    DBGMSG("[%ld:%s:%d]%s", GetOrdinalThreadID(SYS_THREAD_ID), funcName, line, str);
+  #else
+    WDL_MutexLock lock(&sLogMutex);
+    intptr_t threadID = GetOrdinalThreadID(SYS_THREAD_ID);
+
+    if (strstr(funcName, "rocess") || strstr(funcName, "ender"))
+    {
+      if (++sProcessCount > MAX_PROCESS_TRACE_COUNT)
+      {
+        fflush(logFile);
+        return;
+      }
+      else if (sProcessCount == MAX_PROCESS_TRACE_COUNT)
+      {
+        fprintf(logFile, "**************** DISABLING PROCESS TRACING AFTER %d HITS ****************\n\n", sProcessCount);
+        fflush(logFile);
+        return;
+      }
+    }
+
+    #ifdef VST2_API
+    if (strstr(str, "effGetProgram") || strstr(str, "effEditGetRect") || strstr(funcName, "MouseOver"))
+    #else
+    if (strstr(funcName, "MouseOver") || strstr(funcName, "idle"))
+    #endif
+    {
+      if (++sIdleCount > MAX_IDLE_TRACE_COUNT)
+      {
+        fflush(logFile);
+        return;
+      }
+      else if (sIdleCount == MAX_IDLE_TRACE_COUNT)
+      {
+        fprintf(logFile, "**************** DISABLING IDLE/MOUSEOVER TRACING AFTER %d HITS ****************\n", sIdleCount);
+        fflush(logFile);
+        return;
+      }
+    }
+
+    if (threadID > 0)
+      fprintf(logFile, "*** -");
+
+    fprintf(logFile, "[%ld:%s:%d]%s", threadID, funcName, line, str);
+    fflush(logFile);
   #endif
   }
 }
@@ -729,7 +836,9 @@ static const char* AUScopeStr(int scope)
   #endif // AU_API
 
 #else  // TRACER_BUILD
+static void Trace(FILE* logFile, const char* funcName, int line, const char* format, ...) {}
 static void Trace(const char* funcName, int line, const char* format, ...) {}
+static void Trace(FILE* logFile, const char* funcName, int line, const char* id, bool start) {}
 static const char* VSTOpcodeStr(int opCode) { return ""; }
 static const char* AUSelectStr(int select) { return ""; }
 static const char* AUPropertyStr(int propID) { return ""; }

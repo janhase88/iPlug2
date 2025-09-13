@@ -383,7 +383,7 @@ extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
 
 - (id) initWithIGraphics: (IGraphicsMac*) pGraphics
 {
-  TRACE
+  TRACEF(pGraphics->GetDelegate()->GetPlug()->GetLogFile());
 
   mGraphics = pGraphics;
   NSRect r = NSMakeRect(0.f, 0.f, (float) pGraphics->WindowWidth(), (float) pGraphics->WindowHeight());

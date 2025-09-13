@@ -97,7 +97,7 @@ IGraphicsIOS::~IGraphicsIOS()
 
 void* IGraphicsIOS::OpenWindow(void* pParent)
 {
-  TRACE
+  TRACEF(GetDelegate()->GetPlug()->GetLogFile());
   CloseWindow();
   IGRAPHICS_VIEW* view = [[IGRAPHICS_VIEW alloc] initWithIGraphics: this];
   mView = (void*) view;

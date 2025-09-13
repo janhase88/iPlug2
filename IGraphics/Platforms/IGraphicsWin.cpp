@@ -847,7 +847,7 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
     }
 
     DWORD threadID = GetCurrentThreadId();
-    Trace(TRACELOC, "PlatformResize begin curr:%d:%d target:%d:%d parent:%p grandparent:%p thread:%lu", dlgW, dlgH, dlgW + dw, dlgH + dh, pParent, pGrandparent, threadID);
+    Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "PlatformResize begin curr:%d:%d target:%d:%d parent:%p grandparent:%p thread:%lu", dlgW, dlgH, dlgW + dw, dlgH + dh, pParent, pGrandparent, threadID);
 
     if (!dw && !dh)
       return;
@@ -855,7 +855,7 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
     SetWindowPos(mPlugWnd, 0, 0, 0, dlgW + dw, dlgH + dh, SETPOS_FLAGS);
     int newDlgW = 0, newDlgH = 0;
     GetWindowSize(mPlugWnd, &newDlgW, &newDlgH);
-    Trace(TRACELOC, "PlatformResize end size:%d:%d parent:%p grandparent:%p thread:%lu", newDlgW, newDlgH, pParent, pGrandparent, threadID);
+    Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "PlatformResize end size:%d:%d parent:%p grandparent:%p thread:%lu", newDlgW, newDlgH, pParent, pGrandparent, threadID);
 
     if (pParent && !parentHasResized)
     {
@@ -1112,10 +1112,10 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   }
 
   DWORD threadID = GetCurrentThreadId();
-  Trace(TRACELOC, "CreateWindowW x:%d y:%d w:%d h:%d parent:%p thread:%lu", x, y, w, h, mParentWnd, threadID);
+  Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "CreateWindowW x:%d y:%d w:%d h:%d parent:%p thread:%lu", x, y, w, h, mParentWnd, threadID);
   mPlugWnd = CreateWindowW(mWndClassName.c_str(), L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
   DWORD windowThreadID = GetWindowThreadProcessId(mPlugWnd, nullptr);
-  Trace(TRACELOC, "CreateWindowW returned hwnd:%p thread:%lu windowThread:%lu", mPlugWnd, threadID, windowThreadID);
+  Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "CreateWindowW returned hwnd:%p thread:%lu windowThread:%lu", mPlugWnd, threadID, windowThreadID);
 
   HDC dc = GetDC(mPlugWnd);
   SetPlatformContext(dc);
@@ -1269,7 +1269,7 @@ void IGraphicsWin::CloseWindow()
     DWORD threadID = GetCurrentThreadId();
     int w = 0, h = 0;
     GetWindowSize(mPlugWnd, &w, &h);
-    Trace(TRACELOC, "CloseWindow begin hwnd:%p parent:%p size:%d:%d thread:%lu", mPlugWnd, mParentWnd, w, h, threadID);
+    Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "CloseWindow begin hwnd:%p parent:%p size:%d:%d thread:%lu", mPlugWnd, mParentWnd, w, h, threadID);
     if (mVSYNCEnabled)
       StopVBlankThread();
     else
@@ -1338,7 +1338,7 @@ void IGraphicsWin::CloseWindow()
 
     HWND oldWnd = mPlugWnd;
     DestroyWindow(mPlugWnd);
-    Trace(TRACELOC, "CloseWindow destroyed hwnd:%p thread:%lu", oldWnd, threadID);
+    Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "CloseWindow destroyed hwnd:%p thread:%lu", oldWnd, threadID);
 
     mPlugWnd = 0;
 
@@ -2110,13 +2110,13 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* f
   {
     const auto lookupEnd = std::chrono::high_resolution_clock::now();
     const auto lookupTime = std::chrono::duration_cast<std::chrono::microseconds>(lookupEnd - lookupStart).count();
-    Trace(TRACELOC, "LoadPlatformFont: id=%s cache_hit lookup=%lldus", fontID, static_cast<long long>(lookupTime));
+    Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadPlatformFont: id=%s cache_hit lookup=%lldus", fontID, static_cast<long long>(lookupTime));
     pFont->Retain();
     HFONT font = GetHFont(pFont->GetFamily(), pFont->GetWeight(), pFont->GetItalic(), pFont->GetUnderline());
     if (font)
     {
       mInstalledFonts.push_back(pFont);
-      Trace(TRACELOC, "Allocated Font object for cached font %s", fontID);
+      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "Allocated Font object for cached font %s", fontID);
       return PlatformFontPtr(new Font(font, "", false));
     }
     pFont->Release();
@@ -2126,7 +2126,7 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* f
   {
     const auto lookupEnd = std::chrono::high_resolution_clock::now();
     const auto lookupTime = std::chrono::duration_cast<std::chrono::microseconds>(lookupEnd - lookupStart).count();
-    Trace(TRACELOC, "LoadPlatformFont: id=%s cache_miss lookup=%lldus", fontID, static_cast<long long>(lookupTime));
+    Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadPlatformFont: id=%s cache_miss lookup=%lldus", fontID, static_cast<long long>(lookupTime));
   }
 
   void* pFontMem = nullptr;
@@ -2150,7 +2150,7 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* f
       {
         resSize = (int)GetFileSize(file, nullptr);
         pFontMem = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
-        Trace(TRACELOC, "Font %s memory mapped size=%d", fontID, resSize);
+        Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "Font %s memory mapped size=%d", fontID, resSize);
         ret = LoadPlatformFont(fontID, pFontMem, resSize);
         UnmapViewOfFile(pFontMem);
         CloseHandle(mapping);
@@ -2162,7 +2162,7 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* f
   break;
   case kWinBinary: {
     pFontMem = const_cast<void*>(LoadWinResource(fullPath.Get(), "ttf", resSize, GetWinModuleHandle()));
-    Trace(TRACELOC, "Font %s resource loaded size=%d", fontID, resSize);
+    Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "Font %s resource loaded size=%d", fontID, resSize);
     return LoadPlatformFont(fontID, pFontMem, resSize);
   }
   break;
@@ -2194,13 +2194,13 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
   {
     const auto lookupEnd = std::chrono::high_resolution_clock::now();
     const auto lookupTime = std::chrono::duration_cast<std::chrono::microseconds>(lookupEnd - lookupStart).count();
-    Trace(TRACELOC, "LoadPlatformFont: id=%s cache_hit lookup=%lldus", fontID, static_cast<long long>(lookupTime));
+    Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadPlatformFont: id=%s cache_hit lookup=%lldus", fontID, static_cast<long long>(lookupTime));
     cached->Retain();
     HFONT font = GetHFont(cached->GetFamily(), cached->GetWeight(), cached->GetItalic(), cached->GetUnderline());
     if (font)
     {
       mInstalledFonts.push_back(cached);
-      Trace(TRACELOC, "Allocated Font object for cached font %s", fontID);
+      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "Allocated Font object for cached font %s", fontID);
       return PlatformFontPtr(new Font(font, "", false));
     }
     cached->Release();
@@ -2210,7 +2210,7 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
   {
     const auto lookupEnd = std::chrono::high_resolution_clock::now();
     const auto lookupTime = std::chrono::duration_cast<std::chrono::microseconds>(lookupEnd - lookupStart).count();
-    Trace(TRACELOC, "LoadPlatformFont: id=%s cache_miss lookup=%lldus", fontID, static_cast<long long>(lookupTime));
+    Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadPlatformFont: id=%s cache_miss lookup=%lldus", fontID, static_cast<long long>(lookupTime));
   }
 
   void* pFontMem = pData;
@@ -2222,7 +2222,7 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
   bool italic = fontInfo.IsItalic();
   bool underline = fontInfo.IsUnderline();
 
-  Trace(TRACELOC, "Allocating InstalledFont for %s size=%d", fontID, resSize);
+  Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "Allocating InstalledFont for %s size=%d", fontID, resSize);
   std::unique_ptr<InstalledFont> pFont = std::make_unique<InstalledFont>(pFontMem, resSize, family.Get(), weight, italic, underline);
 
   if (pFontMem && pFont && pFont->IsValid())
@@ -2234,8 +2234,8 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
       InstalledFont* stored = pFont.get();
       fontStorage.Add(pFont.release(), fontID);
       mInstalledFonts.push_back(stored);
-      Trace(TRACELOC, "Font %s loaded and cached", fontID);
-      Trace(TRACELOC, "Allocated Font object for %s", fontID);
+      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "Font %s loaded and cached", fontID);
+      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "Allocated Font object for %s", fontID);
       return PlatformFontPtr(new Font(font, "", false));
     }
   }

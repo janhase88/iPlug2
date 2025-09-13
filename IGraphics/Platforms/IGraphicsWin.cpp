@@ -48,9 +48,10 @@ class ResourceLoadTimer
 {
 public:
   ResourceLoadTimer(const char* label)
-  : mLabel(label)
-  , mStart(std::chrono::high_resolution_clock::now())
-  {}
+    : mLabel(label)
+    , mStart(std::chrono::high_resolution_clock::now())
+  {
+  }
 
   ~ResourceLoadTimer()
   {
@@ -66,9 +67,9 @@ private:
   std::chrono::high_resolution_clock::time_point mStart;
 };
 
-#define PROFILE_RESOURCE_LOAD(name) ResourceLoadTimer __rlTimer(name);
+  #define PROFILE_RESOURCE_LOAD(name) ResourceLoadTimer __rlTimer(name);
 #else
-#define PROFILE_RESOURCE_LOAD(name)
+  #define PROFILE_RESOURCE_LOAD(name)
 #endif
 
 #define PARAM_EDIT_ID 99
@@ -845,10 +846,16 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
       }
     }
 
+    DWORD threadID = GetCurrentThreadId();
+    Trace(TRACELOC, "PlatformResize begin curr:%d:%d target:%d:%d parent:%p grandparent:%p thread:%lu", dlgW, dlgH, dlgW + dw, dlgH + dh, pParent, pGrandparent, threadID);
+
     if (!dw && !dh)
       return;
 
     SetWindowPos(mPlugWnd, 0, 0, 0, dlgW + dw, dlgH + dh, SETPOS_FLAGS);
+    int newDlgW = 0, newDlgH = 0;
+    GetWindowSize(mPlugWnd, &newDlgW, &newDlgH);
+    Trace(TRACELOC, "PlatformResize end size:%d:%d parent:%p grandparent:%p thread:%lu", newDlgW, newDlgH, pParent, pGrandparent, threadID);
 
     if (pParent && !parentHasResized)
     {
@@ -1104,7 +1111,11 @@ void* IGraphicsWin::OpenWindow(void* pParent)
       mWndClassRegistered = true;
   }
 
+  DWORD threadID = GetCurrentThreadId();
+  Trace(TRACELOC, "CreateWindowW x:%d y:%d w:%d h:%d parent:%p thread:%lu", x, y, w, h, mParentWnd, threadID);
   mPlugWnd = CreateWindowW(mWndClassName.c_str(), L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
+  DWORD windowThreadID = GetWindowThreadProcessId(mPlugWnd, nullptr);
+  Trace(TRACELOC, "CreateWindowW returned hwnd:%p thread:%lu windowThread:%lu", mPlugWnd, threadID, windowThreadID);
 
   HDC dc = GetDC(mPlugWnd);
   SetPlatformContext(dc);
@@ -1250,6 +1261,10 @@ void IGraphicsWin::CloseWindow()
 {
   if (mPlugWnd)
   {
+    DWORD threadID = GetCurrentThreadId();
+    int w = 0, h = 0;
+    GetWindowSize(mPlugWnd, &w, &h);
+    Trace(TRACELOC, "CloseWindow begin hwnd:%p parent:%p size:%d:%d thread:%lu", mPlugWnd, mParentWnd, w, h, threadID);
     if (mVSYNCEnabled)
       StopVBlankThread();
     else
@@ -1306,20 +1321,14 @@ void IGraphicsWin::CloseWindow()
 
 
     if (mOLEInited)
-
-
     {
-
-
       OleUninitialize();
-
-
       mOLEInited = false;
     }
 
-
+    HWND oldWnd = mPlugWnd;
     DestroyWindow(mPlugWnd);
-
+    Trace(TRACELOC, "CloseWindow destroyed hwnd:%p thread:%lu", oldWnd, threadID);
 
     mPlugWnd = 0;
 

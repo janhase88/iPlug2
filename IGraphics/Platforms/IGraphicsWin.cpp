@@ -57,8 +57,10 @@ typedef HGLRC(WINAPI* PFNWGLCREATECONTEXTATTRIBSARBPROC) (HDC hDC, HGLRC hShareC
 
 #pragma mark - Static storage
 
+#if !IPLUG_SEPARATE_FONT_CACHE_WIN
 StaticStorage<IGraphicsWin::InstalledFont> IGraphicsWin::sPlatformFontCache;
 StaticStorage<HFontHolder> IGraphicsWin::sHFontCache;
+#endif
 
 #pragma mark - Mouse and tablet helpers
 
@@ -752,8 +754,20 @@ LRESULT CALLBACK IGraphicsWin::ParamEditProc(HWND hWnd, UINT msg, WPARAM wParam,
 IGraphicsWin::IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float scale)
   : IGRAPHICS_DRAW_CLASS(dlg, w, h, fps, scale)
 {
-  StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
-  StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
+  StaticStorage<InstalledFont>::Accessor fontStorage(
+#if IPLUG_SEPARATE_FONT_CACHE_WIN
+    mPlatformFontCache
+#else
+    sPlatformFontCache
+#endif
+  );
+  StaticStorage<HFontHolder>::Accessor hfontStorage(
+#if IPLUG_SEPARATE_FONT_CACHE_WIN
+    mHFontCache
+#else
+    sHFontCache
+#endif
+  );
   fontStorage.Retain();
   hfontStorage.Retain();
 
@@ -764,8 +778,20 @@ IGraphicsWin::IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float s
 
 IGraphicsWin::~IGraphicsWin()
 {
-  StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
-  StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
+  StaticStorage<InstalledFont>::Accessor fontStorage(
+#if IPLUG_SEPARATE_FONT_CACHE_WIN
+    mPlatformFontCache
+#else
+    sPlatformFontCache
+#endif
+  );
+  StaticStorage<HFontHolder>::Accessor hfontStorage(
+#if IPLUG_SEPARATE_FONT_CACHE_WIN
+    mHFontCache
+#else
+    sHFontCache
+#endif
+  );
   fontStorage.Release();
   hfontStorage.Release();
   DestroyEditWindow();
@@ -1520,7 +1546,13 @@ void IGraphicsWin::CreatePlatformTextEntry(int paramIdx, const IText& text, cons
     return;
   }
 
-  StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
+  StaticStorage<HFontHolder>::Accessor hfontStorage(
+#if IPLUG_SEPARATE_FONT_CACHE_WIN
+    mHFontCache
+#else
+    sHFontCache
+#endif
+  );
 
   LOGFONTW lFont = {0};
   HFontHolder* hfontHolder = hfontStorage.Find(text.mFont);
@@ -2048,7 +2080,13 @@ static HFONT GetHFont(const char* fontName, int weight, bool italic, bool underl
 
 PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* fileNameOrResID)
 {
-  StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
+  StaticStorage<InstalledFont>::Accessor fontStorage(
+#if IPLUG_SEPARATE_FONT_CACHE_WIN
+    mPlatformFontCache
+#else
+    sPlatformFontCache
+#endif
+  );
 
   void* pFontMem = nullptr;
   int resSize = 0;
@@ -2106,7 +2144,13 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* f
 
 PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, int dataSize)
 {
-  StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
+  StaticStorage<InstalledFont>::Accessor fontStorage(
+#if IPLUG_SEPARATE_FONT_CACHE_WIN
+    mPlatformFontCache
+#else
+    sPlatformFontCache
+#endif
+  );
 
   std::unique_ptr<InstalledFont> pFont;
   void* pFontMem = pData;
@@ -2136,7 +2180,13 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
 
 void IGraphicsWin::CachePlatformFont(const char* fontID, const PlatformFontPtr& font)
 {
-  StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
+  StaticStorage<HFontHolder>::Accessor hfontStorage(
+#if IPLUG_SEPARATE_FONT_CACHE_WIN
+    mHFontCache
+#else
+    sHFontCache
+#endif
+  );
 
   HFONT hfont = font->GetDescriptor();
 

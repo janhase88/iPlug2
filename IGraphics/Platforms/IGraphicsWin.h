@@ -14,8 +14,9 @@
 #include <windowsx.h>
 #include <winuser.h>
 
-#include "IGraphics_select.h"
 #include "IGraphicsWinFonts.h"
+#include "IGraphics_select.h"
+#include "InstanceSeparation.h"
 #include <vector>
 #include <string>
 
@@ -177,8 +178,13 @@ private:
 
   WDL_String mMainWndClassName;
     
+#if IPLUG_SEPARATE_FONT_CACHE_WIN
+  StaticStorage<InstalledFont> mPlatformFontCache;
+  StaticStorage<HFontHolder> mHFontCache;
+#else
   static StaticStorage<InstalledFont> sPlatformFontCache;
   static StaticStorage<HFontHolder> sHFontCache;
+#endif
 
   std::unordered_map<ITouchID, IMouseInfo> mDeltaCapture; // associative array of touch id pointers to IMouseInfo structs, so that we can get deltas
 };

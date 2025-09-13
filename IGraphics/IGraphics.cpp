@@ -92,6 +92,10 @@ IGraphics::IGraphics(IGEditorDelegate& dlg, int w, int h, int fps, float scale)
   , mMaxScale(DEFAULT_MAX_DRAW_SCALE)
   , mDelegate(&dlg)
 {
+  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+  {
+    TRACE_SCOPE_F(plug->GetLogFile(), "IGraphics::IGraphics");
+  }
 #ifdef OS_WIN
   StaticStorage<APIBitmap>::Accessor bitmapStorage(mBitmapCache);
 #else

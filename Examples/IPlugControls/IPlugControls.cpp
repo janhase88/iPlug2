@@ -8,6 +8,7 @@
 IPlugControls::IPlugControls(const InstanceInfo& info)
 : Plugin(info, MakeConfig(kNumParams, kNumPresets))
 {
+  TRACE_SCOPE_F(GetLogFile(), "IPlugControls::IPlugControls");
   GetParam(kParamGain)->InitDouble("Gain", 100., 0., 100.0, 0.01, "%");
   GetParam(kParamMode)->InitEnum("Mode", 0, 4, "", IParam::kFlagsNone, "", "one", "two", "three", "four");
   GetParam(kParamFreq1)->InitDouble("Freq 1 - X", 0.5, 0.001, 10., 0.01, "Hz", IParam::kFlagsNone, "", IParam::ShapePowCurve(1.));
@@ -19,6 +20,10 @@ IPlugControls::IPlugControls(const InstanceInfo& info)
   };
   
   mLayoutFunc = [&](IGraphics* pGraphics) {
+    if(auto* plug = dynamic_cast<IPluginBase*>(pGraphics->GetDelegate()))
+    {
+      TRACE_SCOPE_F(plug->GetLogFile(), "IPlugControls::LayoutUI");
+    }
     if(pGraphics->NControls())
     {
       //Could handle new layout here
@@ -587,6 +592,7 @@ void IPlugControls::OnIdle()
 
 void IPlugControls::OnReset()
 {
+  TRACE_SCOPE_F(GetLogFile(), "IPlugControls::OnReset");
   mPeakAvgMeterSender.Reset(GetSampleRate());
 }
 

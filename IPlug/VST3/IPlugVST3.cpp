@@ -44,7 +44,7 @@ Steinberg::uint32 PLUGIN_API IPlugVST3::getTailSamples() { return GetTailIsInfin
 
 tresult PLUGIN_API IPlugVST3::initialize(FUnknown* context)
 {
-  TRACEF(GetLogFile());
+  TRACE_SCOPE_F(GetLogFile(), "IPlugVST3::initialize");
 
   if (SingleComponentEffect::initialize(context) == kResultOk)
   {
@@ -63,7 +63,7 @@ tresult PLUGIN_API IPlugVST3::initialize(FUnknown* context)
 
 tresult PLUGIN_API IPlugVST3::terminate()
 {
-  TRACEF(GetLogFile());
+  TRACE_SCOPE_F(GetLogFile(), "IPlugVST3::terminate");
 
   return SingleComponentEffect::terminate();
 }

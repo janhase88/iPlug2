@@ -962,6 +962,15 @@ void IGraphics::DrawControl(IControl* pControl, const IRECT& bounds, float scale
     }
 
     PrepareRegion(clipBounds);
+    auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+    if (plug)
+    {
+      WDL_String label{pControl->GetName()};
+      label.AppendFormatted(64, ":%d", pControl->GetTag());
+      if (CStringHasContents(pControl->GetGroup()))
+        label.AppendFormatted(64, ":%s", pControl->GetGroup());
+      TRACE_SCOPE_F(plug->GetLogFile(), label.Get());
+    }
     pControl->Draw(*this);
 #ifdef AAX_API
     pControl->DrawPTHighlight(*this);

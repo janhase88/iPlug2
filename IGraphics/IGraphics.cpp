@@ -2106,7 +2106,9 @@ EResourceLocation IGraphics::SearchImageResource(const char* name, const char* t
       fullName.SetFormatted((int) (strlen(name) + strlen("@2x")), "%s@%dx%s", baseName.Get(), sourceScale, ext.Get());
     }
 
+    TRACE_CACHE_QUERY_START_F(GetDelegate()->GetPlug()->GetLogFile());
     EResourceLocation found = LocateResource(fullName.Get(), type, result, GetBundleID(), GetWinModuleHandle(), GetSharedResourcesSubPath());
+    TRACE_CACHE_QUERY_END_F(GetDelegate()->GetPlug()->GetLogFile());
 
     if (found > EResourceLocation::kNotFound)
     {
@@ -2134,7 +2136,9 @@ APIBitmap* IGraphics::SearchBitmapInCache(const char* name, int targetScale, int
 
   for (sourceScale = targetScale; sourceScale > 0; SearchNextScale(sourceScale, targetScale))
   {
+    TRACE_CACHE_QUERY_START_F(GetDelegate()->GetPlug()->GetLogFile());
     APIBitmap* pBitmap = storage.Find(name, sourceScale);
+    TRACE_CACHE_QUERY_END_F(GetDelegate()->GetPlug()->GetLogFile());
 
     if (pBitmap)
     {

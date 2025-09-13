@@ -17,8 +17,6 @@
  * base/source/timer.cpp, so thanks to them
  * */
 
-#include "mutex.h"
-#include "ptrlist.h"
 #include <cmath>
 #include <cstring>
 #include <functional>
@@ -80,12 +78,6 @@ public:
   static void CALLBACK TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
 
 private:
-  static WDL_Mutex sMutex;
-  /**
-   * Global list of timers required for mapping from OS timer IDs. Consider
-   * replacing with a per-instance manager to avoid cross-plugin interactions.
-   */
-  static WDL_PtrList<Timer_impl> sTimers;
   UINT_PTR ID = 0;
   ITimerFunction mTimerFunc;
   uint32_t mIntervalMs;

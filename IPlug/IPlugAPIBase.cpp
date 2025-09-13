@@ -19,6 +19,7 @@
 #include <ctime>
 
 #include "IPlugAPIBase.h"
+#include "IPlugLogger.h"
 
 using namespace iplug;
 

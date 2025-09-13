@@ -1,6 +1,7 @@
 #include "IPlugWebUI.h"
 #include "IPlug_include_in_plug_src.h"
 #include "IPlugPaths.h"
+#include "IPlugLogger.h"
 
 IPlugWebUI::IPlugWebUI(const InstanceInfo& info)
 : Plugin(info, MakeConfig(kNumParams, kNumPresets))
@@ -67,7 +68,7 @@ void IPlugWebUI::OnParamChange(int paramIdx)
 
 void IPlugWebUI::ProcessMidiMsg(const IMidiMsg& msg)
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
   
   msg.PrintMsg();
   SendMidiMsg(msg);

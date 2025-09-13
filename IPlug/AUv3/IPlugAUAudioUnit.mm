@@ -15,6 +15,7 @@
 #import "IPlugAUAudioUnit.h"
 #include "IPlugAUv3.h"
 #include "AUv2/IPlugAU_ioconfig.h"
+#include "IPlugLogger.h"
 
 #if !__has_feature(objc_arc)
 #error This file must be compiled with Arc. Use -fobjc-arc flag
@@ -774,7 +775,7 @@ static AUAudioUnitPreset* NewAUPreset(NSInteger number, NSString* pName)
 
 - (NSIndexSet*) supportedViewConfigurations:(NSArray<AUAudioUnitViewConfiguration*>*) availableViewConfigurations API_AVAILABLE(macos(10.13), ios(11))
 {
-  TRACE_F(mPlug->GetLogFile());
+  TRACEF(mPlug->GetLogFile());
 
   NSMutableIndexSet* pSet = [[NSMutableIndexSet alloc] init];
   
@@ -791,7 +792,7 @@ static AUAudioUnitPreset* NewAUPreset(NSInteger number, NSString* pName)
 
 - (void) selectViewConfiguration:(AUAudioUnitViewConfiguration*) viewConfiguration API_AVAILABLE(macos(10.13), ios(11))
 {
-  TRACE_F(mPlug->GetLogFile());
+  TRACEF(mPlug->GetLogFile());
   dispatch_async(dispatch_get_main_queue(), ^{
     self->mPlug->OnHostSelectedViewConfiguration((int) [viewConfiguration width], (int) [viewConfiguration height]);
   });

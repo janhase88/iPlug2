@@ -1,6 +1,7 @@
 #include "IPlugInstrument.h"
 #include "IPlug_include_in_plug_src.h"
 #include "LFO.h"
+#include "IPlugLogger.h"
 
 IPlugInstrument::IPlugInstrument(const InstanceInfo& info)
 : iplug::Plugin(info, MakeConfig(kNumParams, kNumPresets))
@@ -107,7 +108,7 @@ void IPlugInstrument::OnReset()
 
 void IPlugInstrument::ProcessMidiMsg(const IMidiMsg& msg)
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
   
   int status = msg.StatusMsg();
   

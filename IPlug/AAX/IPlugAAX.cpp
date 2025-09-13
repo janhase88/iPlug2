@@ -19,6 +19,7 @@
 #include "AAX_CNumberDisplayDelegate.h"
 #include "AAX_CUnitDisplayDelegateDecorator.h"
 #include "IPlugAAX_TaperDelegate.h"
+#include "IPlugLogger.h"
 
 using namespace iplug;
 
@@ -26,13 +27,13 @@ AAX_CEffectParameters* AAX_CALLBACK IPlugAAX::Create() { return MakePlug(Instanc
 
 void AAX_CEffectGUI_IPLUG::CreateViewContents()
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
   mPlug = dynamic_cast<IPlugAAX*>(GetEffectParameters());
 }
 
 void AAX_CEffectGUI_IPLUG::CreateViewContainer()
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
 
   void* pWindow = GetViewContainerPtr();
 
@@ -106,7 +107,7 @@ IPlugAAX::~IPlugAAX() { mParamIDs.Empty(true); }
 
 AAX_Result IPlugAAX::EffectInit()
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
 
   if (GetHost() == kHostUninit)
     SetHost("ProTools", 0); // TODO:vendor version correct?
@@ -186,7 +187,7 @@ AAX_Result IPlugAAX::EffectInit()
 
 AAX_Result IPlugAAX::UpdateParameterNormalizedValue(AAX_CParamID paramID, double iValue, AAX_EUpdateSource iSource)
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
 
   AAX_Result result = AAX_SUCCESS;
 
@@ -219,7 +220,7 @@ AAX_Result IPlugAAX::UpdateParameterNormalizedValue(AAX_CParamID paramID, double
 
 void IPlugAAX::RenderAudio(AAX_SIPlugRenderInfo* pRenderInfo, const TParamValPair* inSynchronizedParamValues[], int32_t inNumSynchronizedParamValues)
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
 
   // Get bypass parameter value
   bool bypass;
@@ -411,7 +412,7 @@ AAX_Result IPlugAAX::GetChunkIDFromIndex(int32_t index, AAX_CTypeID* pChunkID) c
 
 AAX_Result IPlugAAX::GetChunkSize(AAX_CTypeID chunkID, uint32_t* pSize) const
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
 
   if (chunkID == GetUniqueID())
   {
@@ -435,7 +436,7 @@ AAX_Result IPlugAAX::GetChunkSize(AAX_CTypeID chunkID, uint32_t* pSize) const
 
 AAX_Result IPlugAAX::GetChunk(AAX_CTypeID chunkID, AAX_SPlugInChunk* pChunk) const
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
 
   if (chunkID == GetUniqueID())
   {
@@ -456,7 +457,7 @@ AAX_Result IPlugAAX::GetChunk(AAX_CTypeID chunkID, AAX_SPlugInChunk* pChunk) con
 
 AAX_Result IPlugAAX::SetChunk(AAX_CTypeID chunkID, const AAX_SPlugInChunk* pChunk)
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
   // TODO: UI thread only?
 
   if (chunkID == GetUniqueID())
@@ -481,7 +482,7 @@ AAX_Result IPlugAAX::SetChunk(AAX_CTypeID chunkID, const AAX_SPlugInChunk* pChun
 
 AAX_Result IPlugAAX::CompareActiveChunk(const AAX_SPlugInChunk* pChunk, AAX_CBoolean* pIsEqual) const
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
 
   if (pChunk->fChunkID != GetUniqueID())
   {
@@ -526,19 +527,19 @@ AAX_Result IPlugAAX::NotificationReceived(AAX_CTypeID type, const void* pData, u
 
 void IPlugAAX::BeginInformHostOfParamChange(int idx)
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
   TouchParameter(mParamIDs.Get(idx)->Get());
 }
 
 void IPlugAAX::InformHostOfParamChange(int idx, double normalizedValue)
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
   SetParameterNormalizedValue(mParamIDs.Get(idx)->Get(), normalizedValue);
 }
 
 void IPlugAAX::EndInformHostOfParamChange(int idx)
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
   ReleaseParameter(mParamIDs.Get(idx)->Get());
 }
 

@@ -22,6 +22,7 @@
 #include "IGraphicsCoreText.h"
 #include "IPlugParameter.h"
 #include "IPlugPluginBase.h"
+#include "IPlugLogger.h"
 
 extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
 

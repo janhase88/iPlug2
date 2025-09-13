@@ -58,7 +58,7 @@ public:
     
   Steinberg::tresult PLUGIN_API onSize(Steinberg::ViewRect* pSize) override
   {
-    TRACE_F(mOwner.GetLogFile());
+    TRACEF(mOwner.GetLogFile());
     
     if (pSize && mOwner.GetHostResizeEnabled())
     {
@@ -72,7 +72,7 @@ public:
   
   Steinberg::tresult PLUGIN_API getSize(Steinberg::ViewRect* pSize) override
   {
-    TRACE_F(mOwner.GetLogFile());
+    TRACEF(mOwner.GetLogFile());
     
     if (mOwner.HasUI())
     {
@@ -338,7 +338,7 @@ public:
 
   void Resize(int w, int h)
   {
-    TRACE_F(mOwner.GetLogFile());
+    TRACEF(mOwner.GetLogFile());
     
     Steinberg::ViewRect newSize = Steinberg::ViewRect(0, 0, w, h);
     plugFrame->resizeView(this, &newSize);

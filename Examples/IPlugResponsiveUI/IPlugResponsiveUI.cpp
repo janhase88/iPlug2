@@ -2,6 +2,7 @@
 #include "IPlug_include_in_plug_src.h"
 #include "IControls.h"
 #include "Test/TestSizeControl.h"
+#include "IPlugLogger.h"
 
 IPlugResponsiveUI::IPlugResponsiveUI(const InstanceInfo& info)
 : Plugin(info, MakeConfig(kNumParams, kNumPresets))
@@ -87,7 +88,7 @@ void IPlugResponsiveUI::ProcessBlock(sample** inputs, sample** outputs, int nFra
 
 void IPlugResponsiveUI::ProcessMidiMsg(const IMidiMsg& msg)
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
   
   int status = msg.StatusMsg();
   

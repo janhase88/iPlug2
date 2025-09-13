@@ -15,6 +15,7 @@
 #include "IPlugAPIBase.h"
 #include "IPlugVST3_Parameter.h"
 #include "IPlugVST3_ControllerBase.h"
+#include "IPlugLogger.h"
 
 BEGIN_IPLUG_NAMESPACE
 
@@ -49,7 +50,7 @@ struct IPlugVST3State
   template <class T>
   static bool SetState(T* pPlug, Steinberg::IBStream* pState)
   {
-    TRACE_F(pPlug->GetLogFile());
+    TRACEF(pPlug->GetLogFile());
     
     IByteChunk chunk;
     

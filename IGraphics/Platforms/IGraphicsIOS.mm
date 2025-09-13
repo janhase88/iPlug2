@@ -15,6 +15,7 @@
 #include "IGraphicsCoreText.h"
 #include "IGraphicsIOS.h"
 #include "IPlugPluginBase.h"
+#include "IPlugLogger.h"
 
 #import "IGraphicsIOS_view.h"
 

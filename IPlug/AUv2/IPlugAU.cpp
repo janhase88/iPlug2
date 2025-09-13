@@ -16,6 +16,7 @@
 #include "IPlugAU.h"
 #include "IPlugAU_ioconfig.h"
 #include "dfx-au-utilities.h"
+#include "IPlugLogger.h"
 
 using namespace iplug;
 
@@ -1396,7 +1397,7 @@ bool IPlugAU::CheckLegalIO()
 
 void IPlugAU::AssessInputConnections()
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
   SetChannelConnections(ERoute::kInput, 0, MaxNChannels(ERoute::kInput), false);
 
   int nIn = mInBuses.GetSize();
@@ -1472,7 +1473,7 @@ OSStatus IPlugAU::GetState(CFPropertyListRef* ppPropList)
   }
 
   *ppPropList = pDict;
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
   return noErr;
 }
 
@@ -1585,7 +1586,7 @@ OSStatus IPlugAU::SetParamProc(void* pPlug, AudioUnitParameterID paramID, AudioU
 static inline OSStatus RenderCallback(
   AURenderCallbackStruct* pCB, AudioUnitRenderActionFlags* pFlags, const AudioTimeStamp* pTimestamp, UInt32 inputBusIdx, UInt32 nFrames, AudioBufferList* pOutBufList)
 {
-  TRACE_F(((IPlugAU*)pCB->inputProcRefCon)->GetLogFile());
+  TRACEF(((IPlugAU*)pCB->inputProcRefCon)->GetLogFile());
   return pCB->inputProc(pCB->inputProcRefCon, pFlags, pTimestamp, inputBusIdx, nFrames, pOutBufList);
 }
 
@@ -1978,7 +1979,7 @@ void IPlugAU::PreProcess()
 
 void IPlugAU::ResizeScratchBuffers()
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
   int NInputs = MaxNChannels(ERoute::kInput) * GetBlockSize();
   int NOutputs = MaxNChannels(ERoute::kOutput) * GetBlockSize();
   mInScratchBuf.Resize(NInputs);
@@ -1989,7 +1990,7 @@ void IPlugAU::ResizeScratchBuffers()
 
 void IPlugAU::InformListeners(AudioUnitPropertyID propID, AudioUnitScope scope)
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
   int i, n = mPropertyListeners.GetSize();
 
   for (i = 0; i < n; ++i)
@@ -2005,7 +2006,7 @@ void IPlugAU::InformListeners(AudioUnitPropertyID propID, AudioUnitScope scope)
 
 void IPlugAU::SetLatency(int samples)
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
   InformListeners(kAudioUnitProperty_Latency, kAudioUnitScope_Global);
   IPlugProcessor::SetLatency(samples);
 }

@@ -1,5 +1,6 @@
 #include "IPlugDrumSynth.h"
 #include "IPlug_include_in_plug_src.h"
+#include "IPlugLogger.h"
 
 #if IPLUG_EDITOR
 #include "IControls.h"
@@ -149,7 +150,7 @@ void IPlugDrumSynth::OnReset()
 
 void IPlugDrumSynth::ProcessMidiMsg(const IMidiMsg& msg)
 {
-  TRACE_F(GetLogFile());
+  TRACEF(GetLogFile());
   
   int status = msg.StatusMsg();
   

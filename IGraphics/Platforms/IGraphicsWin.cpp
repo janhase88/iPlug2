@@ -36,9 +36,13 @@ using namespace igraphics;
 #pragma warning(disable:4312) // Pointer size cast mismatch.
 #pragma warning(disable:4311) // Pointer size cast mismatch.
 
-static int nWndClassReg = 0;
-static const wchar_t* wndClassName = L"IPlugWndClass";
-static double sFPS = 0.0;
+#if IPLUG_SEPARATE_WIN_WINDOWING
+// Per-instance windowing variables are stored on the IGraphicsWin instance
+#else
+int IGraphicsWin::sWndClassReg = 0;
+const wchar_t* IGraphicsWin::sWndClassName = L"IPlugWndClass";
+double IGraphicsWin::sFPS = 0.0;
+#endif
 
 #define PARAM_EDIT_ID 99
 #define IPLUG_TIMER_ID 2
@@ -1077,13 +1081,31 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     h = cR.bottom - cR.top;
   }
 
-  if (nWndClassReg++ == 0)
+  if (
+#if IPLUG_SEPARATE_WIN_WINDOWING
+    mWndClassReg++ == 0
+#else
+    sWndClassReg++ == 0
+#endif
+  )
   {
-    WNDCLASSW wndClass = { CS_DBLCLKS | CS_OWNDC, WndProc, 0, 0, mHInstance, 0, 0, 0, 0, wndClassName };
+    WNDCLASSW wndClass = { CS_DBLCLKS | CS_OWNDC, WndProc, 0, 0, mHInstance, 0, 0, 0, 0,
+#if IPLUG_SEPARATE_WIN_WINDOWING
+      mWndClassName
+#else
+      sWndClassName
+#endif
+    };
     RegisterClassW(&wndClass);
   }
 
-  mPlugWnd = CreateWindowW(wndClassName, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
+  mPlugWnd = CreateWindowW(
+#if IPLUG_SEPARATE_WIN_WINDOWING
+    mWndClassName,
+#else
+    sWndClassName,
+#endif
+    L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
 
   HDC dc = GetDC(mPlugWnd);
   SetPlatformContext(dc);
@@ -1104,9 +1126,16 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     RegisterTouchWindow(mPlugWnd, 0);
   }
 
-  if (!mPlugWnd && --nWndClassReg == 0)
+  if (!mPlugWnd &&
+#if IPLUG_SEPARATE_WIN_WINDOWING
+      --mWndClassReg == 0)
   {
-    UnregisterClassW(wndClassName, mHInstance);
+    UnregisterClassW(mWndClassName, mHInstance);
+#else
+      --sWndClassReg == 0)
+  {
+    UnregisterClassW(sWndClassName, mHInstance);
+#endif
   }
   else
   {
@@ -1306,9 +1335,16 @@ void IGraphicsWin::CloseWindow()
 
     mPlugWnd = 0;
 
-    if (--nWndClassReg == 0)
+    if (
+#if IPLUG_SEPARATE_WIN_WINDOWING
+        --mWndClassReg == 0)
     {
-      UnregisterClassW(wndClassName, mHInstance);
+      UnregisterClassW(mWndClassName, mHInstance);
+#else
+        --sWndClassReg == 0)
+    {
+      UnregisterClassW(sWndClassName, mHInstance);
+#endif
     }
   }
 }

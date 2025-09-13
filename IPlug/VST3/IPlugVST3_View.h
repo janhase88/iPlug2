@@ -14,6 +14,7 @@
 #include "pluginterfaces/base/keycodes.h"
 
 #include "IPlugStructs.h"
+#include "IPlugLogger.h"
 
 /** IPlug VST3 View  */
 template <class T>

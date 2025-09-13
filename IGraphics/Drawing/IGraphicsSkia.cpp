@@ -663,8 +663,12 @@ bool IGraphicsSkia::LoadAPIFont(const char* fontID, const PlatformFontPtr& font)
   Font* cached = storage.Find(fontID);
 
   if (cached)
+  {
+    storage.Unlock();
     return true;
+  }
 
+  storage.Unlock();
   IFontDataPtr data = font->GetFontData();
 
   if (data->IsValid())
@@ -686,7 +690,9 @@ bool IGraphicsSkia::LoadAPIFont(const char* fontID, const PlatformFontPtr& font)
 
     if (typeFace)
     {
+      storage.Lock();
       storage.Add(new Font(std::move(data), typeFace), fontID);
+      storage.Unlock();
 
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
       mTypefaceProvider->registerTypeface(typeFace, SkString(fontID));

@@ -506,14 +506,36 @@ template <class T>
 class StaticStorage
 {
 public:
-  /** Accessor class that mantains thread safety when using static storage via RAII */
-  class Accessor : private WDL_MutexLock
+  /** Accessor class that maintains thread safety for static storage.
+   *  By default the mutex is locked on construction, but callers can
+   *  explicitly lock and unlock around expensive operations. */
+  class Accessor
   {
   public:
     Accessor(StaticStorage& storage)
-      : WDL_MutexLock(&storage.mMutex)
-      , mStorage(storage)
+      : mStorage(storage)
     {
+      Lock();
+    }
+
+    ~Accessor() { Unlock(); }
+
+    void Lock()
+    {
+      if (!mLocked)
+      {
+        mStorage.mMutex.Enter();
+        mLocked = true;
+      }
+    }
+
+    void Unlock()
+    {
+      if (mLocked)
+      {
+        mStorage.mMutex.Leave();
+        mLocked = false;
+      }
     }
 
     T* Find(const char* str, double scale = 1.) { return mStorage.Find(str, scale); }
@@ -526,6 +548,7 @@ public:
 
   private:
     StaticStorage& mStorage;
+    bool mLocked = false;
   };
 
   StaticStorage() {}

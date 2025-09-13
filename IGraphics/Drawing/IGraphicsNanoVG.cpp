@@ -293,6 +293,7 @@ IBitmap IGraphicsNanoVG::LoadBitmap(const char* name, int nStates, bool framesAr
   // NanoVG does not use the global static cache, since bitmaps are textures linked to a context
   StaticStorage<APIBitmap>::Accessor storage(mBitmapCache);
   APIBitmap* pAPIBitmap = storage.Find(name, targetScale);
+  storage.Unlock();
 
   // If the bitmap is not already cached at the targetScale
   if (!pAPIBitmap)
@@ -316,7 +317,9 @@ IBitmap IGraphicsNanoVG::LoadBitmap(const char* name, int nStates, bool framesAr
 
     pAPIBitmap = LoadAPIBitmap(fullPathOrResourceID.Get(), sourceScale, resourceFound, ext);
 
+    storage.Lock();
     storage.Add(pAPIBitmap, name, sourceScale);
+    storage.Unlock();
 
     assert(pAPIBitmap && "Bitmap not loaded");
   }
@@ -369,6 +372,7 @@ APIBitmap* IGraphicsNanoVG::LoadAPIBitmap(const char* name, const void* pData, i
 
   if (!pBitmap)
   {
+    storage.Unlock();
     int idx = 0;
     int nvgImageFlags = 0;
 
@@ -379,7 +383,13 @@ APIBitmap* IGraphicsNanoVG::LoadAPIBitmap(const char* name, const void* pData, i
 
     pBitmap = new Bitmap(mVG, name, scale, idx, false);
 
+    storage.Lock();
     storage.Add(pBitmap, name, scale);
+    storage.Unlock();
+  }
+  else
+  {
+    storage.Unlock();
   }
 
   return pBitmap;
@@ -792,15 +802,19 @@ bool IGraphicsNanoVG::LoadAPIFont(const char* fontID, const PlatformFontPtr& fon
 
   if (cached)
   {
+    storage.Unlock();
     nvgCreateFontFaceMem(mVG, fontID, cached->Get(), cached->GetSize(), cached->GetFaceIdx(), 0);
     return true;
   }
 
+  storage.Unlock();
   IFontDataPtr data = font->GetFontData();
 
   if (data->IsValid() && nvgCreateFontFaceMem(mVG, fontID, data->Get(), data->GetSize(), data->GetFaceIdx(), 0) != -1)
   {
+    storage.Lock();
     storage.Add(data.release(), fontID);
+    storage.Unlock();
     return true;
   }
 

@@ -1705,6 +1705,7 @@ ISVG IGraphics::LoadSVG(const char* fileName, const char* units, float dpi)
   SVGHolder* pHolder = storage.Find(fileName);
   if (plug)
     TRACE_CACHE_QUERY_END_F(plug->GetLogFile());
+  storage.Unlock();
 
   if (!pHolder)
   {
@@ -1739,6 +1740,7 @@ ISVG IGraphics::LoadSVG(const char* name, const void* pData, int dataSize, const
 
   if (!pHolder)
   {
+    storage.Unlock();
     sk_sp<SkSVGDOM> svgDOM;
     SkDOM xmlDom;
 
@@ -1766,6 +1768,7 @@ ISVG IGraphics::LoadSVG(const char* name, const void* pData, int dataSize, const
     }
 
     pHolder = new SVGHolder(svgDOM);
+    storage.Lock();
     if (plug)
     {
       TRACE_SCOPE_F(plug->GetLogFile(), "CacheInsert(SVG)");
@@ -1774,6 +1777,11 @@ ISVG IGraphics::LoadSVG(const char* name, const void* pData, int dataSize, const
     }
     else
       storage.Add(pHolder, name);
+    storage.Unlock();
+  }
+  else
+  {
+    storage.Unlock();
   }
 
   return ISVG(pHolder->mSVGDom);
@@ -1794,6 +1802,7 @@ ISVG IGraphics::LoadSVG(const char* fileName, const char* units, float dpi)
   SVGHolder* pHolder = storage.Find(fileName);
   if (plug)
     TRACE_CACHE_QUERY_END_F(plug->GetLogFile());
+  storage.Unlock();
 
   if (!pHolder)
   {
@@ -1828,6 +1837,7 @@ ISVG IGraphics::LoadSVG(const char* name, const void* pData, int dataSize, const
 
   if (!pHolder)
   {
+    storage.Unlock();
     NSVGimage* pImage = nullptr;
 
     WDL_String svgStr;
@@ -1839,6 +1849,7 @@ ISVG IGraphics::LoadSVG(const char* name, const void* pData, int dataSize, const
 
     pHolder = new SVGHolder(pImage);
 
+    storage.Lock();
     if (plug)
     {
       TRACE_SCOPE_F(plug->GetLogFile(), "CacheInsert(SVG)");
@@ -1849,6 +1860,11 @@ ISVG IGraphics::LoadSVG(const char* name, const void* pData, int dataSize, const
     {
       storage.Add(pHolder, name);
     }
+    storage.Unlock();
+  }
+  else
+  {
+    storage.Unlock();
   }
 
   return ISVG(pHolder->mImage);
@@ -1964,6 +1980,7 @@ IBitmap IGraphics::LoadBitmap(const char* name, int nStates, bool framesAreHoriz
     TRACE_CACHE_QUERY_END_F(plug->GetLogFile());
     Trace(plug->GetLogFile(), TRACELOC, "LoadBitmap cache lookup name:%s scale:%d hit:%d", name, targetScale, pAPIBitmap != nullptr);
   }
+  storage.Unlock();
 
   // If the bitmap is not already cached at the targetScale
   if (!pAPIBitmap)
@@ -2005,6 +2022,7 @@ IBitmap IGraphics::LoadBitmap(const char* name, int nStates, bool framesAreHoriz
       // Try in the cache for a mismatched bitmap
       if (sourceScale != targetScale)
       {
+        storage.Lock();
         if (plug)
           TRACE_CACHE_QUERY_START_F(plug->GetLogFile());
         pAPIBitmap = storage.Find(name, sourceScale);
@@ -2013,6 +2031,7 @@ IBitmap IGraphics::LoadBitmap(const char* name, int nStates, bool framesAreHoriz
           TRACE_CACHE_QUERY_END_F(plug->GetLogFile());
           Trace(plug->GetLogFile(), TRACELOC, "LoadBitmap cache lookup mismatched scale:%d hit:%d", sourceScale, pAPIBitmap != nullptr);
         }
+        storage.Unlock();
       }
 
       // Load the resource if no match found
@@ -2076,6 +2095,7 @@ IBitmap IGraphics::LoadBitmap(const char* name, const void* pData, int dataSize,
     TRACE_CACHE_QUERY_END_F(plug->GetLogFile());
     Trace(plug->GetLogFile(), TRACELOC, "LoadBitmap(data) cache lookup name:%s scale:%d hit:%d", name, targetScale, pAPIBitmap != nullptr);
   }
+  storage.Unlock();
 
   // If the bitmap is not already cached at the targetScale
   if (!pAPIBitmap)

@@ -120,11 +120,10 @@ PlatformFontPtr CoreTextHelpers::LoadPlatformFont(const char* fontID, void* pDat
 
 void CoreTextHelpers::CachePlatformFont(const char* fontID, const PlatformFontPtr& font, StaticStorage<CoreTextFontDescriptor>& cache, FILE* logFile)
 {
-  StaticStorage<CoreTextFontDescriptor>::Accessor storage(cache);
-
   CTFontDescriptorRef descriptor = font->GetDescriptor();
   IFontDataPtr data = font->GetFontData();
 
+  StaticStorage<CoreTextFontDescriptor>::Accessor storage(cache);
   if (logFile)
     TRACE_CACHE_QUERY_START_F(logFile);
   auto* existing = storage.Find(fontID);
@@ -133,12 +132,20 @@ void CoreTextHelpers::CachePlatformFont(const char* fontID, const PlatformFontPt
 
   if (!existing)
   {
+    storage.Unlock();
+    auto* desc = new CoreTextFontDescriptor(descriptor, data->GetHeightEMRatio());
+    storage.Lock();
     if (logFile)
     {
       TRACE_SCOPE_F(logFile, "CacheInsert(Font)");
       Trace(logFile, TRACELOC, "CacheInsert Font id:%s", fontID);
+      storage.Add(desc, fontID);
     }
-    storage.Add(new CoreTextFontDescriptor(descriptor, data->GetHeightEMRatio()), fontID);
+    else
+    {
+      storage.Add(desc, fontID);
+    }
+    storage.Unlock();
   }
 }
 

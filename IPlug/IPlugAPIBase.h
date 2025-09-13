@@ -117,7 +117,7 @@ public:
   }
 
   /** Override this method to get an "idle"" call on the main thread */
-  virtual void OnIdle() {}
+  virtual void OnIdle();
 
 #pragma mark - Methods you can call - some of which have custom implementations in the API classes, some implemented in IPlugAPIBase.cpp
   /** SetParameterValue is called from the UI in the middle of a parameter change gesture (possibly via delegate) in order to update a parameter's value.

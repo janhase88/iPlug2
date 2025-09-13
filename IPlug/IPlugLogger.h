@@ -81,6 +81,7 @@ static void Trace(const char* funcName, int line, const char* fmtStr, ...);
 struct LogFile
 {
   FILE* mFP;
+  #if !IPLUG_SEPARATE_LOGGER_STATE
   static LogFile* sInstance;
 
   static LogFile* GetInstance()
@@ -89,6 +90,7 @@ struct LogFile
       sInstance = new LogFile();
     return sInstance;
   }
+  #endif
 
   LogFile()
   {
@@ -118,11 +120,17 @@ struct LogFile
   LogFile& operator=(const LogFile&) = delete;
 };
 
+#if !IPLUG_SEPARATE_LOGGER_STATE
 inline LogFile* LogFile::sInstance = nullptr;
+#endif
 
 struct IPlugLogger
 {
+  #if IPLUG_SEPARATE_LOGGER_STATE
+  LogFile mLogFile;
+  #else
   LogFile* mLogFile = nullptr;
+  #endif
   int mTrace = 0;
   int32_t mProcessCount = 0;
   int32_t mIdleCount = 0;
@@ -131,7 +139,9 @@ struct IPlugLogger
   IPlugLogger()
   {
 #ifndef TRACETOSTDOUT
+  #if !IPLUG_SEPARATE_LOGGER_STATE
     mLogFile = LogFile::GetInstance();
+  #endif
 #endif
   }
 };
@@ -251,7 +261,11 @@ void Trace(const char* funcName, int line, const char* format, ...)
   if (logger.mTrace++ < MAX_LOG_LINES)
   {
   #ifndef TRACETOSTDOUT
+  #if IPLUG_SEPARATE_LOGGER_STATE
+    LogFile* sLogFile = &logger.mLogFile;
+  #else
     LogFile* sLogFile = logger.mLogFile;
+  #endif
     assert(sLogFile && sLogFile->mFP);
   #endif
     char str[TXTLEN];

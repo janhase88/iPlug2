@@ -17,6 +17,7 @@
 #include "IPlugLogger.h"
 
 using iplug::Trace;
+using iplug::LogFileManager;
 
 /** IPlug VST3 View  */
 template <class T>

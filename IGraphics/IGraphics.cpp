@@ -1582,7 +1582,7 @@ void IGraphics::PopupHostContextMenuForParam(int controlIdx, int paramIdx, float
 
 void IGraphics::OnGUIIdle()
 {
-  TRACE
+  TRACEF(GetDelegate()->GetPlug()->GetLogFile());
   ForAllControls(&IControl::OnGUIIdle);
 #ifdef TRACER_BUILD
   static int idleCount = 0;
@@ -1610,7 +1610,7 @@ void IGraphics::OnGUIIdle()
       svgCount = storage.Size();
     }
 #endif
-    Trace(TRACELOC, "bitmaps:%d svg:%d fonts:%d timers:%d", bitmapCount, svgCount, GetFontCacheCount(), Timer::GetActiveTimerCount());
+    Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "bitmaps:%d svg:%d fonts:%d timers:%d", bitmapCount, svgCount, GetFontCacheCount(), Timer::GetActiveTimerCount());
   }
 #endif
 }
@@ -1805,19 +1805,19 @@ ISVG IGraphics::LoadSVG(const char* name, const void* pData, int dataSize, const
 WDL_TypedBuf<uint8_t> IGraphics::LoadResource(const char* fileNameOrResID, const char* fileType)
 {
   auto start = std::chrono::high_resolution_clock::now();
-  Trace(TRACELOC, "LoadResource start name:%s type:%s", fileNameOrResID, fileType);
+  Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadResource start name:%s type:%s", fileNameOrResID, fileType);
 
   WDL_TypedBuf<uint8_t> result;
 
   WDL_String path;
   EResourceLocation resourceFound = LocateResource(fileNameOrResID, fileType, path, GetBundleID(), GetWinModuleHandle(), GetSharedResourcesSubPath());
 
-  Trace(TRACELOC, "LoadResource resolved name:%s location:%d path:%s", fileNameOrResID, (int) resourceFound, path.Get());
+  Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadResource resolved name:%s location:%d path:%s", fileNameOrResID, (int) resourceFound, path.Get());
 
   if (resourceFound == EResourceLocation::kNotFound)
   {
     auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count();
-    Trace(TRACELOC, "LoadResource end name:%s not_found %lldus", fileNameOrResID, (long long) us);
+    Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadResource end name:%s not_found %lldus", fileNameOrResID, (long long) us);
     return result;
   }
 
@@ -1837,7 +1837,7 @@ WDL_TypedBuf<uint8_t> IGraphics::LoadResource(const char* fileNameOrResID, const
     if (!fd)
     {
       auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count();
-      Trace(TRACELOC, "LoadResource end name:%s fopen_failed %lldus", fileNameOrResID, (long long) us);
+      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadResource end name:%s fopen_failed %lldus", fileNameOrResID, (long long) us);
       return result;
     }
 
@@ -1846,7 +1846,7 @@ WDL_TypedBuf<uint8_t> IGraphics::LoadResource(const char* fileNameOrResID, const
     {
       fclose(fd);
       auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count();
-      Trace(TRACELOC, "LoadResource end name:%s seek_end_failed %lldus", fileNameOrResID, (long long) us);
+      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadResource end name:%s seek_end_failed %lldus", fileNameOrResID, (long long) us);
       return result;
     }
     long size = ftell(fd);
@@ -1856,7 +1856,7 @@ WDL_TypedBuf<uint8_t> IGraphics::LoadResource(const char* fileNameOrResID, const
     {
       fclose(fd);
       auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count();
-      Trace(TRACELOC, "LoadResource end name:%s seek_set_failed %lldus", fileNameOrResID, (long long) us);
+      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadResource end name:%s seek_set_failed %lldus", fileNameOrResID, (long long) us);
       return result;
     }
 
@@ -1867,14 +1867,14 @@ WDL_TypedBuf<uint8_t> IGraphics::LoadResource(const char* fileNameOrResID, const
       fclose(fd);
       result.Resize(0, true);
       auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count();
-      Trace(TRACELOC, "LoadResource end name:%s read_failed %lldus", fileNameOrResID, (long long) us);
+      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadResource end name:%s read_failed %lldus", fileNameOrResID, (long long) us);
       return result;
     }
     fclose(fd);
   }
 
   auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count();
-  Trace(TRACELOC, "LoadResource end name:%s ok %lldus", fileNameOrResID, (long long) us);
+  Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadResource end name:%s ok %lldus", fileNameOrResID, (long long) us);
 
   return result;
 }
@@ -1882,7 +1882,7 @@ WDL_TypedBuf<uint8_t> IGraphics::LoadResource(const char* fileNameOrResID, const
 IBitmap IGraphics::LoadBitmap(const char* name, int nStates, bool framesAreHorizontal, int targetScale)
 {
   auto start = std::chrono::high_resolution_clock::now();
-  Trace(TRACELOC, "LoadBitmap start name:%s target:%d", name, targetScale);
+  Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadBitmap start name:%s target:%d", name, targetScale);
 
   PROFILE_RESOURCE_LOAD(name);
   if (targetScale == 0)
@@ -1893,7 +1893,7 @@ IBitmap IGraphics::LoadBitmap(const char* name, int nStates, bool framesAreHoriz
   StaticStorage<APIBitmap>::Accessor storage(sBitmapCache);
 #endif
   APIBitmap* pAPIBitmap = storage.Find(name, targetScale);
-  Trace(TRACELOC, "LoadBitmap cache lookup name:%s scale:%d hit:%d", name, targetScale, pAPIBitmap != nullptr);
+  Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadBitmap cache lookup name:%s scale:%d hit:%d", name, targetScale, pAPIBitmap != nullptr);
 
   // If the bitmap is not already cached at the targetScale
   if (!pAPIBitmap)
@@ -1911,19 +1911,19 @@ IBitmap IGraphics::LoadBitmap(const char* name, int nStates, bool framesAreHoriz
     if (!bitmapTypeSupported)
     {
       auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count();
-      Trace(TRACELOC, "LoadBitmap end name:%s unsupported_ext %lldus", name, (long long) us);
+      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadBitmap end name:%s unsupported_ext %lldus", name, (long long) us);
       return IBitmap(); // return invalid IBitmap
     }
 
     EResourceLocation resourceLocation = SearchImageResource(name, ext, fullPath, targetScale, sourceScale);
-    Trace(TRACELOC, "LoadBitmap resource search name:%s location:%d path:%s sourceScale:%d", name, (int) resourceLocation, fullPath.Get(), sourceScale);
+    Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadBitmap resource search name:%s location:%d path:%s sourceScale:%d", name, (int) resourceLocation, fullPath.Get(), sourceScale);
 
     if (resourceLocation == EResourceLocation::kNotFound)
     {
-      Trace(TRACELOC, "LoadBitmap fallback: searching cache for %s", name);
+      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadBitmap fallback: searching cache for %s", name);
       // If no resource exists then search the cache for a suitable match
       pAPIBitmap = SearchBitmapInCache(name, targetScale, sourceScale);
-      Trace(TRACELOC, "LoadBitmap cache search result name:%s hit:%d sourceScale:%d", name, pAPIBitmap != nullptr, sourceScale);
+      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadBitmap cache search result name:%s hit:%d sourceScale:%d", name, pAPIBitmap != nullptr, sourceScale);
     }
     else
     {
@@ -1931,13 +1931,13 @@ IBitmap IGraphics::LoadBitmap(const char* name, int nStates, bool framesAreHoriz
       if (sourceScale != targetScale)
       {
         pAPIBitmap = storage.Find(name, sourceScale);
-        Trace(TRACELOC, "LoadBitmap cache lookup mismatched scale:%d hit:%d", sourceScale, pAPIBitmap != nullptr);
+        Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadBitmap cache lookup mismatched scale:%d hit:%d", sourceScale, pAPIBitmap != nullptr);
       }
 
       // Load the resource if no match found
       if (!pAPIBitmap)
       {
-        Trace(TRACELOC, "LoadBitmap loading resource %s", fullPath.Get());
+        Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadBitmap loading resource %s", fullPath.Get());
         loadedBitmap = std::unique_ptr<APIBitmap>(LoadAPIBitmap(fullPath.Get(), sourceScale, resourceLocation, ext));
         pAPIBitmap = loadedBitmap.get();
       }
@@ -1949,20 +1949,20 @@ IBitmap IGraphics::LoadBitmap(const char* name, int nStates, bool framesAreHoriz
     // Scale or retain if needed (N.B. - scaling retains in the cache)
     if (pAPIBitmap->GetScale() != targetScale)
     {
-      Trace(TRACELOC, "LoadBitmap scaling from %d to %d", pAPIBitmap->GetScale(), targetScale);
+      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadBitmap scaling from %d to %d", pAPIBitmap->GetScale(), targetScale);
       auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count();
-      Trace(TRACELOC, "LoadBitmap end name:%s scaled %lldus", name, (long long) us);
+      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadBitmap end name:%s scaled %lldus", name, (long long) us);
       return ScaleBitmap(IBitmap(pAPIBitmap, nStates, framesAreHorizontal, name), name, targetScale);
     }
     else if (loadedBitmap)
     {
       RetainBitmap(IBitmap(loadedBitmap.release(), nStates, framesAreHorizontal, name), name);
-      Trace(TRACELOC, "LoadBitmap retained new bitmap %s", name);
+      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadBitmap retained new bitmap %s", name);
     }
   }
 
   auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count();
-  Trace(TRACELOC, "LoadBitmap end name:%s target:%d %lldus", name, targetScale, (long long) us);
+  Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadBitmap end name:%s target:%d %lldus", name, targetScale, (long long) us);
 
   return IBitmap(pAPIBitmap, nStates, framesAreHorizontal, name);
 }
@@ -1970,7 +1970,7 @@ IBitmap IGraphics::LoadBitmap(const char* name, int nStates, bool framesAreHoriz
 IBitmap IGraphics::LoadBitmap(const char *name, const void *pData, int dataSize, int nStates, bool framesAreHorizontal, int targetScale)
 {
   auto start = std::chrono::high_resolution_clock::now();
-  Trace(TRACELOC, "LoadBitmap(data) start name:%s target:%d", name, targetScale);
+  Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadBitmap(data) start name:%s target:%d", name, targetScale);
 
   PROFILE_RESOURCE_LOAD(name);
   if (targetScale == 0)
@@ -1981,7 +1981,7 @@ IBitmap IGraphics::LoadBitmap(const char *name, const void *pData, int dataSize,
   StaticStorage<APIBitmap>::Accessor storage(sBitmapCache);
 #endif
   APIBitmap* pAPIBitmap = storage.Find(name, targetScale);
-  Trace(TRACELOC, "LoadBitmap(data) cache lookup name:%s scale:%d hit:%d", name, targetScale, pAPIBitmap != nullptr);
+  Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadBitmap(data) cache lookup name:%s scale:%d hit:%d", name, targetScale, pAPIBitmap != nullptr);
 
   // If the bitmap is not already cached at the targetScale
   if (!pAPIBitmap)
@@ -1999,18 +1999,18 @@ IBitmap IGraphics::LoadBitmap(const char *name, const void *pData, int dataSize,
     if (!bitmapTypeSupported)
     {
       auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count();
-      Trace(TRACELOC, "LoadBitmap(data) end name:%s unsupported_ext %lldus", name, (long long) us);
+      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadBitmap(data) end name:%s unsupported_ext %lldus", name, (long long) us);
       return IBitmap(); // return invalid IBitmap
     }
 
     // Seach the cache for an existing copy, maybe with a different scale
     pAPIBitmap = SearchBitmapInCache(name, targetScale, sourceScale);
-    Trace(TRACELOC, "LoadBitmap(data) cache search result name:%s hit:%d sourceScale:%d", name, pAPIBitmap != nullptr, sourceScale);
+    Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadBitmap(data) cache search result name:%s hit:%d sourceScale:%d", name, pAPIBitmap != nullptr, sourceScale);
 
     // It's definitely not loaded, so load it with scale = 1.
     if (!pAPIBitmap)
     {
-      Trace(TRACELOC, "LoadBitmap(data) loading from data");
+      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadBitmap(data) loading from data");
       loadedBitmap = std::unique_ptr<APIBitmap>(LoadAPIBitmap(name, pData, dataSize, 1));
       pAPIBitmap = loadedBitmap.get();
     }
@@ -2022,20 +2022,20 @@ IBitmap IGraphics::LoadBitmap(const char *name, const void *pData, int dataSize,
     // Scale or retain if needed (N.B. - scaling retains in the cache)
     if (pAPIBitmap->GetScale() != targetScale)
     {
-      Trace(TRACELOC, "LoadBitmap(data) scaling from %d to %d", pAPIBitmap->GetScale(), targetScale);
+      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadBitmap(data) scaling from %d to %d", pAPIBitmap->GetScale(), targetScale);
       auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count();
-      Trace(TRACELOC, "LoadBitmap(data) end name:%s scaled %lldus", name, (long long) us);
+      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadBitmap(data) end name:%s scaled %lldus", name, (long long) us);
       return ScaleBitmap(IBitmap(pAPIBitmap, nStates, framesAreHorizontal, name), name, targetScale);
     }
     else if (loadedBitmap)
     {
       RetainBitmap(IBitmap(loadedBitmap.release(), nStates, framesAreHorizontal, name), name);
-      Trace(TRACELOC, "LoadBitmap(data) retained new bitmap %s", name);
+      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadBitmap(data) retained new bitmap %s", name);
     }
   }
 
   auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count();
-  Trace(TRACELOC, "LoadBitmap(data) end name:%s target:%d %lldus", name, targetScale, (long long) us);
+  Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadBitmap(data) end name:%s target:%d %lldus", name, targetScale, (long long) us);
 
   return IBitmap(pAPIBitmap, nStates, framesAreHorizontal, name);
 }
@@ -2093,7 +2093,7 @@ auto SearchNextScale = [](int& sourceScale, int targetScale) {
 EResourceLocation IGraphics::SearchImageResource(const char* name, const char* type, WDL_String& result, int targetScale, int& sourceScale)
 {
   auto start = std::chrono::high_resolution_clock::now();
-  Trace(TRACELOC, "SearchImageResource start name:%s type:%s target:%d", name, type, targetScale);
+  Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "SearchImageResource start name:%s type:%s target:%d", name, type, targetScale);
 
   for (sourceScale = targetScale ; sourceScale > 0; SearchNextScale(sourceScale, targetScale))
   {
@@ -2111,20 +2111,20 @@ EResourceLocation IGraphics::SearchImageResource(const char* name, const char* t
     if (found > EResourceLocation::kNotFound)
     {
       auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count();
-      Trace(TRACELOC, "SearchImageResource end name:%s location:%d path:%s sourceScale:%d %lldus", name, (int) found, result.Get(), sourceScale, (long long) us);
+      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "SearchImageResource end name:%s location:%d path:%s sourceScale:%d %lldus", name, (int) found, result.Get(), sourceScale, (long long) us);
       return found;
     }
   }
 
   auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count();
-  Trace(TRACELOC, "SearchImageResource end name:%s not_found %lldus", name, (long long) us);
+  Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "SearchImageResource end name:%s not_found %lldus", name, (long long) us);
   return EResourceLocation::kNotFound;
 }
 
 APIBitmap* IGraphics::SearchBitmapInCache(const char* name, int targetScale, int& sourceScale)
 {
   auto start = std::chrono::high_resolution_clock::now();
-  Trace(TRACELOC, "SearchBitmapInCache start name:%s target:%d", name, targetScale);
+  Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "SearchBitmapInCache start name:%s target:%d", name, targetScale);
 
 #ifdef OS_WIN
   StaticStorage<APIBitmap>::Accessor storage(mBitmapCache);
@@ -2139,13 +2139,13 @@ APIBitmap* IGraphics::SearchBitmapInCache(const char* name, int targetScale, int
     if (pBitmap)
     {
       auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count();
-      Trace(TRACELOC, "SearchBitmapInCache end name:%s hit scale:%d %lldus", name, sourceScale, (long long) us);
+      Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "SearchBitmapInCache end name:%s hit scale:%d %lldus", name, sourceScale, (long long) us);
       return pBitmap;
     }
   }
 
   auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count();
-  Trace(TRACELOC, "SearchBitmapInCache end name:%s miss %lldus", name, (long long) us);
+  Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "SearchBitmapInCache end name:%s miss %lldus", name, (long long) us);
   return nullptr;
 }
 

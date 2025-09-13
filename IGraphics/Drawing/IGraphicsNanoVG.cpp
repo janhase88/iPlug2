@@ -139,9 +139,6 @@ IGraphicsNanoVG::Bitmap::~Bitmap()
   }
 }
 
-// Fonts
-static StaticStorage<IFontData> sFontCache;
-
 extern std::map<std::string, MTLTexturePtr> gTextureMap;
 
 // Retrieving pixels
@@ -231,14 +228,12 @@ IGraphicsNanoVG::IGraphicsNanoVG(IGEditorDelegate& dlg, int w, int h, int fps, f
 : IGraphics(dlg, w, h, fps, scale)
 {
   DBGMSG("IGraphics NanoVG @ %i FPS\n", fps);
-  StaticStorage<IFontData>::Accessor storage(sFontCache);
-  storage.Retain();
 }
 
-IGraphicsNanoVG::~IGraphicsNanoVG() 
+IGraphicsNanoVG::~IGraphicsNanoVG()
 {
-  StaticStorage<IFontData>::Accessor storage(sFontCache);
-  storage.Release();
+  StaticStorage<IFontData>::Accessor storage(mFontCache);
+  storage.Clear();
   ClearFBOStack();
 }
 
@@ -740,7 +735,7 @@ void IGraphicsNanoVG::PathFill(const IPattern& pattern, const IFillOptions& opti
 
 bool IGraphicsNanoVG::LoadAPIFont(const char* fontID, const PlatformFontPtr& font)
 {
-  StaticStorage<IFontData>::Accessor storage(sFontCache);
+  StaticStorage<IFontData>::Accessor storage(mFontCache);
   IFontData* cached = storage.Find(fontID);
     
   if (cached)
@@ -994,6 +989,6 @@ void IGraphicsNanoVG::DrawMultiLineText(const IText& text, const char* str, cons
 
 int IGraphicsNanoVG::GetFontCacheCount() const
 {
-  StaticStorage<IFontData>::Accessor storage(sFontCache);
+  StaticStorage<IFontData>::Accessor storage(mFontCache);
   return storage.Size();
 }

@@ -18,8 +18,8 @@
 #include "IPlugStructs.h"
 
 using iplug::LogFileManager;
-using iplug::Trace;
 using iplug::ScopedTimer;
+using iplug::Trace;
 
 /** IPlug VST3 View  */
 template <class T>
@@ -56,7 +56,7 @@ public:
 
   Steinberg::tresult PLUGIN_API onSize(Steinberg::ViewRect* pSize) override
   {
-    if (auto* plug = dynamic_cast<IPluginBase*>(GetPlug()))
+    if (IPluginBase* plug = dynamic_cast<IPluginBase*>(GetPlug()))
     {
       TRACEF(plug->GetLogFile());
     }
@@ -73,7 +73,7 @@ public:
 
   Steinberg::tresult PLUGIN_API getSize(Steinberg::ViewRect* pSize) override
   {
-    if (auto* plug = dynamic_cast<IPluginBase*>(GetPlug()))
+    if (IPluginBase* plug = dynamic_cast<IPluginBase*>(GetPlug()))
     {
       TRACEF(plug->GetLogFile());
     }
@@ -116,7 +116,7 @@ public:
 
   Steinberg::tresult PLUGIN_API attached(void* pParent, Steinberg::FIDString type) override
   {
-    if (auto* plug = dynamic_cast<IPluginBase*>(GetPlug()))
+    if (IPluginBase* plug = dynamic_cast<IPluginBase*>(GetPlug()))
     {
       TRACE_SCOPE_F(plug->GetLogFile(), "VST3View::attached");
     }
@@ -133,7 +133,7 @@ public:
       else // Carbon
         return Steinberg::kResultFalse;
 #endif
-      if (auto* plug = dynamic_cast<IPluginBase*>(GetPlug()))
+      if (IPluginBase* plug = dynamic_cast<IPluginBase*>(GetPlug()))
       {
         Trace(plug->GetLogFile(), TRACELOC, "attached parent:%p view:%p size:%d:%d", pParent, pView, mOwner.GetEditorWidth(), mOwner.GetEditorHeight());
       }
@@ -145,17 +145,17 @@ public:
 
   Steinberg::tresult PLUGIN_API removed() override
   {
-    if (auto* plug = dynamic_cast<IPluginBase*>(GetPlug()))
+    if (IPluginBase* plug = dynamic_cast<IPluginBase*>(GetPlug()))
     {
       TRACE_SCOPE_F(plug->GetLogFile(), "VST3View::removed");
     }
 
     if (mOwner.HasUI())
     {
-        if (auto* plug = dynamic_cast<IPluginBase*>(GetPlug()))
-        {
-          Trace(plug->GetLogFile(), TRACELOC, "removed view:%p", mOwner.GetView());
-        }
+      if (IPluginBase* plug = dynamic_cast<IPluginBase*>(GetPlug()))
+      {
+        Trace(plug->GetLogFile(), TRACELOC, "removed view:%p", mOwner.GetView());
+      }
       mOwner.CloseWindow();
     }
 

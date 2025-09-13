@@ -1,6 +1,10 @@
 #ifndef _EEL_LICE_H_
 #define _EEL_LICE_H_
 
+#ifndef IPLUG_SEPARATE_EEL_IMAGE_CACHE
+#define IPLUG_SEPARATE_EEL_IMAGE_CACHE 0
+#endif
+
 // #define EEL_LICE_GET_FILENAME_FOR_STRING(idx, fs, p) (((sInst*)opaque)->GetFilenameForParameter(idx,fs,p))
 // #define EEL_LICE_GET_CONTEXT(opaque) (((opaque) ? (((sInst *)opaque)->m_gfx_state) : NULL)
 
@@ -210,8 +214,20 @@ public:
   {
     LICE_IBitmap *bm;
     int refcnt;
+#if IPLUG_SEPARATE_EEL_IMAGE_CACHE
+    eel_lice_state* owner;
+#endif
 
-    img_shared_state(LICE_IBitmap *b) : bm(b), refcnt(1) { }
+    img_shared_state(LICE_IBitmap *b
+#if IPLUG_SEPARATE_EEL_IMAGE_CACHE
+                     , eel_lice_state* o
+#endif
+    )
+      : bm(b), refcnt(1)
+#if IPLUG_SEPARATE_EEL_IMAGE_CACHE
+      , owner(o)
+#endif
+    { }
 
     void release()
     {
@@ -222,6 +238,18 @@ public:
 
     ~img_shared_state()
     {
+#if IPLUG_SEPARATE_EEL_IMAGE_CACHE
+      owner->m_img_cache_mutex.Enter();
+      for (int x = 0; x < owner->m_img_cache.GetSize(); x ++)
+      {
+        if (owner->m_img_cache.Enumerate(x) == this)
+        {
+          owner->m_img_cache.DeleteByIndex(x);
+          break;
+        }
+      }
+      owner->m_img_cache_mutex.Leave();
+#else
       s_img_cache_mutex.Enter();
       for (int x = 0; x < s_img_cache.GetSize(); x ++)
       {
@@ -232,13 +260,19 @@ public:
         }
       }
       s_img_cache_mutex.Leave();
-      if (LICE_FUNCTION_VALID(LICE__Destroy)) 
+#endif
+      if (LICE_FUNCTION_VALID(LICE__Destroy))
         LICE__Destroy(bm);
     }
   };
 
+#if IPLUG_SEPARATE_EEL_IMAGE_CACHE
+  WDL_StringKeyedArray<img_shared_state *> m_img_cache;
+  WDL_Mutex m_img_cache_mutex;
+#else
   static WDL_StringKeyedArray<img_shared_state *> s_img_cache;
   static WDL_Mutex s_img_cache_mutex;
+#endif
 
   struct img_state
   {
@@ -399,8 +433,10 @@ public:
 
 #ifndef EEL_LICE_API_ONLY
 
+#if !IPLUG_SEPARATE_EEL_IMAGE_CACHE
 WDL_StringKeyedArray<eel_lice_state::img_shared_state *> eel_lice_state::s_img_cache(true);
 WDL_Mutex eel_lice_state::s_img_cache_mutex;
+#endif
 
 eel_lice_state::eel_lice_state(NSEEL_VMCTX vm, void *ctx, int image_slots, int font_slots)
 {
@@ -1070,6 +1106,26 @@ EEL_F eel_lice_state::gfx_getdropfile(void *opaque, int np, EEL_F **parms)
 
 bool eel_lice_state::do_load_image(int img, const char *str)
 {
+#if IPLUG_SEPARATE_EEL_IMAGE_CACHE
+  m_img_cache_mutex.Enter();
+  img_shared_state *s = m_img_cache.Get(str);
+  if (s)
+  {
+    wdl_atomic_incr(&s->refcnt);
+  }
+  else
+  {
+    m_img_cache_mutex.Leave();
+
+    LICE_IBitmap *bm = LICE_LoadImage(str,NULL,false);
+    if (!bm) return false;
+
+    s = new img_shared_state(bm, this);
+    m_img_cache_mutex.Enter();
+    m_img_cache.Insert(str,s);
+  }
+  m_img_cache_mutex.Leave();
+#else
   s_img_cache_mutex.Enter();
   img_shared_state *s = s_img_cache.Get(str);
   if (s)
@@ -1088,6 +1144,7 @@ bool eel_lice_state::do_load_image(int img, const char *str)
     s_img_cache.Insert(str,s);
   }
   s_img_cache_mutex.Leave();
+#endif
   m_gfx_images.Get()[img].clear(NULL,s);
 
   return true;

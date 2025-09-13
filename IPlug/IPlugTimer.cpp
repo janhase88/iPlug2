@@ -15,42 +15,29 @@
 
 #include "IPlugTimer.h"
 #include <atomic>
-#include <mutex>
-#include <unordered_map>
 
 using namespace iplug;
 
 namespace
 {
-  // Map owner pointers to active timer counts
-  std::unordered_map<void*, std::atomic<int>> sTimerCounts;
-  std::mutex sCountMutex;
+  // Number of active timers across all owners
+  std::atomic<int> sTimerCount{0};
 }
 
 Timer::Timer(void* owner)
   : mOwner(owner)
 {
-  std::lock_guard<std::mutex> lock{sCountMutex};
-  sTimerCounts[owner]++;
+  sTimerCount.fetch_add(1, std::memory_order_relaxed);
 }
 
 Timer::~Timer()
 {
-  std::lock_guard<std::mutex> lock{sCountMutex};
-  if (auto it = sTimerCounts.find(mOwner); it != sTimerCounts.end())
-  {
-    if (--(it->second) == 0)
-      sTimerCounts.erase(it);
-  }
+  sTimerCount.fetch_sub(1, std::memory_order_relaxed);
 }
 
 int Timer::GetActiveTimerCount()
 {
-  std::lock_guard<std::mutex> lock{sCountMutex};
-  int total = 0;
-  for (auto& kv : sTimerCounts)
-    total += kv.second.load();
-  return total;
+  return sTimerCount.load(std::memory_order_relaxed);
 }
 
 #if defined OS_MAC || defined OS_IOS
@@ -118,12 +105,7 @@ void Timer_impl::Stop()
 
 void CALLBACK Timer_impl::TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
 {
-  Timer_impl* pTimer = nullptr;
-
-  {
-    std::lock_guard<std::mutex> lock{sCountMutex};
-    pTimer = reinterpret_cast<Timer_impl*>(idEvent);
-  }
+  Timer_impl* pTimer = reinterpret_cast<Timer_impl*>(idEvent);
 
   if (pTimer)
   {

@@ -1,9 +1,7 @@
 #ifndef _EEL_LICE_H_
 #define _EEL_LICE_H_
 
-#ifndef IPLUG_SEPARATE_EEL_IMAGE_CACHE
-#define IPLUG_SEPARATE_EEL_IMAGE_CACHE 0
-#endif
+#include "IPlug/InstanceSeparation.h"
 
 // #define EEL_LICE_GET_FILENAME_FOR_STRING(idx, fs, p) (((sInst*)opaque)->GetFilenameForParameter(idx,fs,p))
 // #define EEL_LICE_GET_CONTEXT(opaque) (((opaque) ? (((sInst *)opaque)->m_gfx_state) : NULL)

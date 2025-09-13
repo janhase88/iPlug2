@@ -32,12 +32,9 @@
 
 #include "IPlugConstants.h"
 #include "IPlugUtilities.h"
+#include "IPlug/InstanceSeparation.h"
 
 BEGIN_IPLUG_NAMESPACE
-
-#ifndef IPLUG_SEPARATE_LOGGER_STATE
-  #define IPLUG_SEPARATE_LOGGER_STATE 0
-#endif
 
 #ifdef NDEBUG
   #define DBGMSG(...)                                                                                                                                                                                  \

@@ -3,9 +3,7 @@
 #include "../mutex.h"
 #include "../assocarray.h"
 
-#ifndef IPLUG_SEPARATE_SWELL_FONTNAME_CACHE
-#define IPLUG_SEPARATE_SWELL_FONTNAME_CACHE 0
-#endif
+#include "IPlug/InstanceSeparation.h"
 
 struct NSString;
 

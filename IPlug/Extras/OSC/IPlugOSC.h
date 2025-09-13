@@ -28,13 +28,10 @@
 #include "IPlugOSC_msg.h"
 #include "IPlugPlatform.h"
 #include "IPlugTimer.h"
+#include "InstanceSeparation.h"
 
 
 BEGIN_IPLUG_NAMESPACE
-
-#ifndef IPLUG_SEPARATE_OSC_STATE
-  #define IPLUG_SEPARATE_OSC_STATE 0
-#endif
 
 #ifndef OSC_TIMER_RATE
 static constexpr int OSC_TIMER_RATE = 100;

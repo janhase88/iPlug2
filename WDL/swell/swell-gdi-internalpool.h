@@ -20,9 +20,7 @@
   // used for HDC/HGDIOBJ pooling (to avoid excess heap use), used by swell-gdi.mm and swell-gdi-generic.cpp
 */
 
-#ifndef IPLUG_SEPARATE_SWELL_GDI_POOL
-#define IPLUG_SEPARATE_SWELL_GDI_POOL 0
-#endif
+#include "IPlug/InstanceSeparation.h"
 
 #if defined(_DEBUG)
   #define SWELL_GDI_DEBUG

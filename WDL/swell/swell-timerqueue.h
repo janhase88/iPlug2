@@ -2,9 +2,7 @@
 
 #include "../mutex.h"
 
-#ifndef IPLUG_SEPARATE_SWELL_TIMER_QUEUE
-#define IPLUG_SEPARATE_SWELL_TIMER_QUEUE 0
-#endif
+#include "IPlug/InstanceSeparation.h"
 
 struct TimerInfoRec;
 

@@ -48,6 +48,21 @@ using VST3_API_BASE = iplug::IPlugVST3Controller;
 using namespace iplug;
 using namespace igraphics;
 
+ILayer::~ILayer()
+{
+  if (mBitmap)
+  {
+    if (mCacheable)
+    {
+      mGraphics.ReleaseBitmap(IBitmap(mBitmap, 1, false, mCacheKey.Get()));
+    }
+    else
+    {
+      delete mBitmap;
+    }
+  }
+}
+
 #if !defined(NDEBUG) || defined(IGRAPHICS_DEBUG_RESOURCE_LOAD)
 static std::atomic<bool> sResourceLoadProfiling{false};
 

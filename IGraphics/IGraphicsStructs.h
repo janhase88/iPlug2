@@ -2403,23 +2403,9 @@ public:
   {
     if (cacheKey)
       mCacheKey.Set(cacheKey);
-  }
 
-  ~ILayer()
-  {
-    if (mBitmap)
-    {
-      if (mCacheable)
-      {
-        IBitmap bitmap(mBitmap, 1, false, mCacheKey.Get());
-        mGraphics.ReleaseBitmap(bitmap);
-      }
-      else
-      {
-        delete mBitmap;
-      }
-    }
-  }
+
+  ~ILayer();
 
   ILayer(const ILayer&) = delete;
   ILayer& operator=(const ILayer&) = delete;

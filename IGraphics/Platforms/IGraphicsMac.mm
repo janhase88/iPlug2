@@ -9,6 +9,7 @@
 */
 
 #include "IGraphicsMac.h"
+#include "IPlugLogger.h"
 #import "IGraphicsMac_view.h"
 
 #include "IControl.h"

@@ -24,6 +24,8 @@
 #include "IPlugPaths.h"
 #include "IPopupMenuControl.h"
 
+#include "IPlugLogger.h"
+
 #include <VersionHelpers.h>
 #include <wininet.h>
 

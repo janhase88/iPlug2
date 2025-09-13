@@ -197,6 +197,10 @@ private:
   static StaticStorage<HFontHolder> sHFontCache;
 #endif
 
+#if IPLUG_SEPARATE_WIN_COLOR_CACHE
+  COLORREF mCustomColorStorage[16];
+#endif
+
   std::unordered_map<ITouchID, IMouseInfo> mDeltaCapture; // associative array of touch id pointers to IMouseInfo structs, so that we can get deltas
 };
 

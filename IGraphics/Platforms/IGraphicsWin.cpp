@@ -787,6 +787,11 @@ IGraphicsWin::IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float s
 #else
   mVBlankMsg = WM_VBLANK;
 #endif
+#if IPLUG_SEPARATE_WIN_COLOR_CACHE
+  const COLORREF w = RGB(255, 255, 255);
+  for (int i = 0; i < 16; ++i)
+    mCustomColorStorage[i] = w;
+#endif
 }
 
 IGraphicsWin::~IGraphicsWin()
@@ -1851,14 +1856,19 @@ bool IGraphicsWin::PromptForColor(IColor& color, const char* prompt, IColorPicke
   UTF8AsUTF16 promptWide(prompt);
 
   const COLORREF w = RGB(255, 255, 255);
+#if IPLUG_SEPARATE_WIN_COLOR_CACHE
+  COLORREF* pCustomColorStorage = mCustomColorStorage;
+#else
   static COLORREF customColorStorage[16] = { w, w, w, w, w, w, w, w, w, w, w, w, w, w, w, w };
-  
+  COLORREF* pCustomColorStorage = customColorStorage;
+#endif
+
   CHOOSECOLORW cc;
   memset(&cc, 0, sizeof(CHOOSECOLORW));
   cc.lStructSize = sizeof(CHOOSECOLORW);
   cc.hwndOwner = mPlugWnd;
   cc.rgbResult = RGB(color.R, color.G, color.B);
-  cc.lpCustColors = customColorStorage;
+  cc.lpCustColors = pCustomColorStorage;
   cc.lCustData = (LPARAM) promptWide.Get();
   cc.lpfnHook = CCHookProc;
   cc.Flags = CC_RGBINIT | CC_ANYCOLOR | CC_FULLOPEN | CC_SOLIDCOLOR | CC_ENABLEHOOK;

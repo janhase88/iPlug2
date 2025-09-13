@@ -18,6 +18,8 @@
  * Depending on the API macro defined, a different entry point and helper methods are activated
 */
 
+#include "InstanceSeparation.h"
+
 #pragma mark - OS_WIN
 
 // clang-format off
@@ -391,8 +393,13 @@ BEGIN_IPLUG_NAMESPACE
 Plugin* MakePlug(const iplug::InstanceInfo& info)
 {
   // From VST3 - is this necessary?
+#if IPLUG_SEPARATE_MAKEPLUG_MUTEX
+  WDL_Mutex mutex;
+  WDL_MutexLock lock(&mutex);
+#else
   static WDL_Mutex sMutex;
   WDL_MutexLock lock(&sMutex);
+#endif
   
   return new PLUG_CLASS_NAME(info);
 }
@@ -416,8 +423,14 @@ Plugin* MakePlug(void* pMemory)
 
 Steinberg::FUnknown* MakeController()
 {
+  // Guard controller creation across instances
+#if IPLUG_SEPARATE_MAKEPLUG_MUTEX
+  WDL_Mutex mutex;
+  WDL_MutexLock lock(&mutex);
+#else
   static WDL_Mutex sMutex;
   WDL_MutexLock lock(&sMutex);
+#endif
   iplug::IPlugVST3Controller::InstanceInfo info;
   info.mOtherGUID = Steinberg::FUID(VST3_PROCESSOR_UID);
   // If you are trying to build a distributed VST3 plug-in and you hit an error here like "no matching constructor..." or 
@@ -431,8 +444,13 @@ Steinberg::FUnknown* MakeController()
 
 Steinberg::FUnknown* MakeProcessor()
 {
+#if IPLUG_SEPARATE_MAKEPLUG_MUTEX
+  WDL_Mutex mutex;
+  WDL_MutexLock lock(&mutex);
+#else
   static WDL_Mutex sMutex;
   WDL_MutexLock lock(&sMutex);
+#endif
   iplug::IPlugVST3Processor::InstanceInfo info;
   info.mOtherGUID = Steinberg::FUID(VST3_CONTROLLER_UID);
   return static_cast<Steinberg::Vst::IAudioProcessor*>(new PLUG_CLASS_NAME(info));

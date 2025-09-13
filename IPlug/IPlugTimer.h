@@ -26,15 +26,12 @@
 #include "mutex.h"
 
 #include "IPlugPlatform.h"
+#include "InstanceSeparation.h"
 
 #if defined OS_MAC || defined OS_IOS
 #include <CoreFoundation/CoreFoundation.h>
 #elif defined OS_WEB
 #include <emscripten/html5.h>
-#endif
-
-#ifndef IPLUG_SEPARATE_TIMER_MANAGER
-#define IPLUG_SEPARATE_TIMER_MANAGER 0
 #endif
 
 BEGIN_IPLUG_NAMESPACE

@@ -1,4 +1,5 @@
 #include "lice_gl_ctx.h"
+#include "../../IPlug/InstanceSeparation.h"
 
 LICE_GL_ctx::LICE_GL_ctx()
 {
@@ -184,6 +185,7 @@ int LICE_GL_ctx::GetTexFromGlyph(const unsigned char* glyph, int glyph_w, int gl
 
 ////////
 
+#if !IPLUG_SEPARATE_GL_CONTEXT
 static LICE_GL_ctx s_glctx;  // one static opengl context object per process
 
 
@@ -217,4 +219,4 @@ void LICE_GL_ClearTex()
 {
   s_glctx.ClearTex();
 }
-
+#endif

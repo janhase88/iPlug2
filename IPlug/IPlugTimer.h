@@ -23,6 +23,9 @@
 #include <stdint.h>
 
 #include "IPlugPlatform.h"
+#ifdef OS_WIN
+#include <windows.h>
+#endif
 
 #if defined OS_MAC || defined OS_IOS
   #include <CoreFoundation/CoreFoundation.h>

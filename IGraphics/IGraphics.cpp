@@ -78,10 +78,6 @@ private:
 #else
   #define PROFILE_RESOURCE_LOAD(name)
 #endif
-#ifndef OS_WIN
-static StaticStorage<APIBitmap> sBitmapCache;
-static StaticStorage<SVGHolder> sSVGCache;
-#endif
 
 IGraphics::IGraphics(IGEditorDelegate& dlg, int w, int h, int fps, float scale)
   : mWidth(w)
@@ -96,17 +92,9 @@ IGraphics::IGraphics(IGEditorDelegate& dlg, int w, int h, int fps, float scale)
   {
     TRACE_SCOPE_F(plug->GetLogFile(), "IGraphics::IGraphics");
   }
-#ifdef OS_WIN
   StaticStorage<APIBitmap>::Accessor bitmapStorage(mBitmapCache);
-#else
-  StaticStorage<APIBitmap>::Accessor bitmapStorage(sBitmapCache);
-#endif
   bitmapStorage.Retain();
-#ifdef OS_WIN
   StaticStorage<SVGHolder>::Accessor svgStorage(mSVGCache);
-#else
-  StaticStorage<SVGHolder>::Accessor svgStorage(sSVGCache);
-#endif
   svgStorage.Retain();
 }
 
@@ -117,17 +105,9 @@ IGraphics::~IGraphics()
 
   mCursorHidden = false;
   RemoveAllControls();
-#ifdef OS_WIN
   StaticStorage<APIBitmap>::Accessor bitmapStorage(mBitmapCache);
-#else
-  StaticStorage<APIBitmap>::Accessor bitmapStorage(sBitmapCache);
-#endif
   bitmapStorage.Release();
-#ifdef OS_WIN
   StaticStorage<SVGHolder>::Accessor svgStorage(mSVGCache);
-#else
-  StaticStorage<SVGHolder>::Accessor svgStorage(sSVGCache);
-#endif
   svgStorage.Release();
 }
 
@@ -1606,7 +1586,6 @@ void IGraphics::OnGUIIdle()
     idleCount = 0;
     int bitmapCount = 0;
     int svgCount = 0;
-  #ifdef OS_WIN
     {
       StaticStorage<APIBitmap>::Accessor storage(mBitmapCache);
       bitmapCount = storage.Size();
@@ -1615,16 +1594,6 @@ void IGraphics::OnGUIIdle()
       StaticStorage<SVGHolder>::Accessor storage(mSVGCache);
       svgCount = storage.Size();
     }
-  #else
-    {
-      StaticStorage<APIBitmap>::Accessor storage(sBitmapCache);
-      bitmapCount = storage.Size();
-    }
-    {
-      StaticStorage<SVGHolder>::Accessor storage(sSVGCache);
-      svgCount = storage.Size();
-    }
-  #endif
     if (plug)
       Trace(plug->GetLogFile(), TRACELOC, "bitmaps:%d svg:%d fonts:%d timers:%d", bitmapCount, svgCount, GetFontCacheCount(), Timer::GetActiveTimerCount());
   }
@@ -1695,11 +1664,7 @@ ISVG IGraphics::LoadSVG(const char* fileName, const char* units, float dpi)
 {
   PROFILE_RESOURCE_LOAD(fileName);
   auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
-  #ifdef OS_WIN
   StaticStorage<SVGHolder>::Accessor storage(mSVGCache);
-  #else
-  StaticStorage<SVGHolder>::Accessor storage(sSVGCache);
-  #endif
   if (plug)
     TRACE_CACHE_QUERY_START_F(plug->GetLogFile());
   SVGHolder* pHolder = storage.Find(fileName);
@@ -1727,11 +1692,7 @@ ISVG IGraphics::LoadSVG(const char* name, const void* pData, int dataSize, const
 {
   PROFILE_RESOURCE_LOAD(name);
   auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
-  #ifdef OS_WIN
   StaticStorage<SVGHolder>::Accessor storage(mSVGCache);
-  #else
-  StaticStorage<SVGHolder>::Accessor storage(sSVGCache);
-  #endif
   if (plug)
     TRACE_CACHE_QUERY_START_F(plug->GetLogFile());
   SVGHolder* pHolder = storage.Find(name);
@@ -1792,11 +1753,7 @@ ISVG IGraphics::LoadSVG(const char* fileName, const char* units, float dpi)
 {
   PROFILE_RESOURCE_LOAD(fileName);
   auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
-  #ifdef OS_WIN
   StaticStorage<SVGHolder>::Accessor storage(mSVGCache);
-  #else
-  StaticStorage<SVGHolder>::Accessor storage(sSVGCache);
-  #endif
   if (plug)
     TRACE_CACHE_QUERY_START_F(plug->GetLogFile());
   SVGHolder* pHolder = storage.Find(fileName);
@@ -1824,11 +1781,7 @@ ISVG IGraphics::LoadSVG(const char* name, const void* pData, int dataSize, const
 {
   PROFILE_RESOURCE_LOAD(name);
   auto* plug = dynamic_cast<IPluginBase*>(GetDelegate());
-  #ifdef OS_WIN
   StaticStorage<SVGHolder>::Accessor storage(mSVGCache);
-  #else
-  StaticStorage<SVGHolder>::Accessor storage(sSVGCache);
-  #endif
   if (plug)
     TRACE_CACHE_QUERY_START_F(plug->GetLogFile());
   SVGHolder* pHolder = storage.Find(name);
@@ -1967,11 +1920,7 @@ IBitmap IGraphics::LoadBitmap(const char* name, int nStates, bool framesAreHoriz
   PROFILE_RESOURCE_LOAD(name);
   if (targetScale == 0)
     targetScale = GetRoundedScreenScale();
-#ifdef OS_WIN
   StaticStorage<APIBitmap>::Accessor storage(mBitmapCache);
-#else
-  StaticStorage<APIBitmap>::Accessor storage(sBitmapCache);
-#endif
   if (plug)
     TRACE_CACHE_QUERY_START_F(plug->GetLogFile());
   APIBitmap* pAPIBitmap = storage.Find(name, targetScale);
@@ -2082,11 +2031,7 @@ IBitmap IGraphics::LoadBitmap(const char* name, const void* pData, int dataSize,
   PROFILE_RESOURCE_LOAD(name);
   if (targetScale == 0)
     targetScale = GetRoundedScreenScale();
-#ifdef OS_WIN
   StaticStorage<APIBitmap>::Accessor storage(mBitmapCache);
-#else
-  StaticStorage<APIBitmap>::Accessor storage(sBitmapCache);
-#endif
   if (plug)
     TRACE_CACHE_QUERY_START_F(plug->GetLogFile());
   APIBitmap* pAPIBitmap = storage.Find(name, targetScale);
@@ -2164,21 +2109,13 @@ IBitmap IGraphics::LoadBitmap(const char* name, const void* pData, int dataSize,
 
 void IGraphics::ReleaseBitmap(const IBitmap& bitmap)
 {
-#ifdef OS_WIN
   StaticStorage<APIBitmap>::Accessor storage(mBitmapCache);
-#else
-  StaticStorage<APIBitmap>::Accessor storage(sBitmapCache);
-#endif
   storage.Remove(bitmap.GetAPIBitmap());
 }
 
 void IGraphics::RetainBitmap(const IBitmap& bitmap, const char* cacheName)
 {
-#ifdef OS_WIN
   StaticStorage<APIBitmap>::Accessor storage(mBitmapCache);
-#else
-  StaticStorage<APIBitmap>::Accessor storage(sBitmapCache);
-#endif
   if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
   {
     TRACE_SCOPE_F(plug->GetLogFile(), "CacheInsert(Bitmap)");
@@ -2268,11 +2205,7 @@ APIBitmap* IGraphics::SearchBitmapInCache(const char* name, int targetScale, int
   if (plug)
     Trace(plug->GetLogFile(), TRACELOC, "SearchBitmapInCache start name:%s target:%d", name, targetScale);
 
-#ifdef OS_WIN
   StaticStorage<APIBitmap>::Accessor storage(mBitmapCache);
-#else
-  StaticStorage<APIBitmap>::Accessor storage(sBitmapCache);
-#endif
 
   for (sourceScale = targetScale; sourceScale > 0; SearchNextScale(sourceScale, targetScale))
   {

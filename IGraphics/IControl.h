@@ -90,15 +90,21 @@ public:
    * @param x The X coordinate of the mouse event
    * @param y The Y coordinate of the mouse event
    * @param mod A struct indicating which modifier keys are held for the event */
-  virtual void OnMouseUp(float x, float y, const IMouseMod& mod) {}
+  virtual void OnMouseUp(float x, float y, const IMouseMod& mod);
 
-  /** Implement this method to respond to a mouse drag event on this control. 
+  /** Implement this method to respond to a mouse drag event on this control.
    * @param x The X coordinate of the mouse event
    * @param y The Y coordinate of the mouse event
    * @param dX The X delta (difference) since the last event
    * @param dY The Y delta (difference) since the last event
    * @param mod A struct indicating which modifier keys are held for the event */
-  virtual void OnMouseDrag(float x, float y, float dX, float dY, const IMouseMod& mod) {}
+  virtual void OnMouseDrag(float x, float y, float dX, float dY, const IMouseMod& mod);
+
+  /** Implement this method to respond to a mouse move event on this control.
+   * @param x The X coordinate of the mouse event
+   * @param y The Y coordinate of the mouse event
+   * @param mod A struct indicating which modifier keys are held for the event */
+  virtual void OnMouseMove(float x, float y, const IMouseMod& mod);
    
   /** Implement this method to respond to a mouse double click event on this control. 
    * @param x The X coordinate of the mouse event

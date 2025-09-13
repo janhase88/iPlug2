@@ -14,6 +14,8 @@
 
 #include "IControl.h"
 #include "IPlugParameter.h"
+#include "IPlugLogger.h"
+#include "IPlugPluginBase.h"
 
 
 BEGIN_IPLUG_NAMESPACE
@@ -251,8 +253,23 @@ void IControl::SetDisabled(bool disable)
 
 void IControl::OnMouseDown(float x, float y, const IMouseMod& mod)
 {
+  if (auto* plug = dynamic_cast<IPluginBase*>(GetUI()->GetDelegate()))
+    TRACE_SCOPE_F(plug->GetLogFile(), "IControl::OnMouseDown");
+
   if (mod.R)
     PromptUserInput(GetValIdxForPos(x, y));
+}
+
+void IControl::OnMouseUp(float x, float y, const IMouseMod& mod)
+{
+  if (auto* plug = dynamic_cast<IPluginBase*>(GetUI()->GetDelegate()))
+    TRACE_SCOPE_F(plug->GetLogFile(), "IControl::OnMouseUp");
+}
+
+void IControl::OnMouseDrag(float x, float y, float dX, float dY, const IMouseMod& mod)
+{
+  if (auto* plug = dynamic_cast<IPluginBase*>(GetUI()->GetDelegate()))
+    TRACE_SCOPE_F(plug->GetLogFile(), "IControl::OnMouseDrag");
 }
 
 void IControl::OnMouseDblClick(float x, float y, const IMouseMod& mod)
@@ -266,10 +283,19 @@ void IControl::OnMouseDblClick(float x, float y, const IMouseMod& mod)
 
 void IControl::OnMouseOver(float x, float y, const IMouseMod& mod)
 {
+  if (auto* plug = dynamic_cast<IPluginBase*>(GetUI()->GetDelegate()))
+    TRACE_SCOPE_F(plug->GetLogFile(), "IControl::OnMouseOver");
+
   bool prev = mMouseIsOver;
   mMouseIsOver = true;
   if (prev == false)
     SetDirty(false);
+}
+
+void IControl::OnMouseMove(float x, float y, const IMouseMod& mod)
+{
+  if (auto* plug = dynamic_cast<IPluginBase*>(GetUI()->GetDelegate()))
+    TRACE_SCOPE_F(plug->GetLogFile(), "IControl::OnMouseMove");
 }
 
 void IControl::OnMouseOut()

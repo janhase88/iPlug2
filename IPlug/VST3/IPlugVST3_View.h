@@ -418,6 +418,9 @@ public:
     Steinberg::ViewRect newSize = Steinberg::ViewRect(0, 0, w, h);
     plugFrame->resizeView(this, &newSize);
   }
+ 
+private:
+  T* GetPlug() const { return &mOwner; }
 
   T& mOwner;
 };

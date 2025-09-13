@@ -176,6 +176,16 @@ private:
   float mHiddenCursorY = 0.f;
   int mTooltipIdx = -1;
 
+#if IPLUG_SEPARATE_WIN_WINDOWING
+  int mWndClassReg = 0;
+  const wchar_t* mWndClassName = L"IPlugWndClass";
+  double mFPS = 0.0;
+#else
+  static int sWndClassReg;
+  static const wchar_t* sWndClassName;
+  static double sFPS;
+#endif
+
   WDL_String mMainWndClassName;
     
 #if IPLUG_SEPARATE_FONT_CACHE_WIN

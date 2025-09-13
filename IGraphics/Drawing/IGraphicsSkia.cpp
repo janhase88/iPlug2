@@ -83,7 +83,9 @@
 using namespace iplug;
 using namespace igraphics;
 
+#if defined OS_IOS && defined IGRAPHICS_METAL && !IPLUG_SEPARATE_IOS_TEXTURE_CACHE
 extern std::map<std::string, MTLTexturePtr> gTextureMap;
+#endif
 
 #pragma mark - Private Classes and Structs
 

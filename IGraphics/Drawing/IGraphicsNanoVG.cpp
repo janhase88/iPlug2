@@ -67,6 +67,10 @@
 #include <map>
 #include <string>
 
+#if defined OS_IOS && defined IGRAPHICS_METAL && IPLUG_SEPARATE_IOS_TEXTURE_CACHE
+  #include "../Platforms/IGraphicsIOS.h"
+#endif
+
 using namespace iplug;
 using namespace igraphics;
 
@@ -145,7 +149,9 @@ IGraphicsNanoVG::Bitmap::~Bitmap()
 static StaticStorage<IFontData> sFontCache;
 #endif
 
+#if defined OS_IOS && defined IGRAPHICS_METAL && !IPLUG_SEPARATE_IOS_TEXTURE_CACHE
 extern std::map<std::string, MTLTexturePtr> gTextureMap;
+#endif
 
 // Retrieving pixels
 static void nvgReadPixels(NVGcontext* pContext, int image, int x, int y, int width, int height, void* pData)
@@ -349,7 +355,13 @@ APIBitmap* IGraphicsNanoVG::LoadAPIBitmap(const char* fileNameOrResID, int scale
 #ifdef OS_IOS
   if (location == EResourceLocation::kPreloadedTexture)
   {
+  #if IPLUG_SEPARATE_IOS_TEXTURE_CACHE
+    IGraphicsIOS* pGIOS = dynamic_cast<IGraphicsIOS*>(this);
+    if (pGIOS)
+      idx = mnvgCreateImageFromHandle(mVG, pGIOS->GetTextureMap()[fileNameOrResID], nvgImageFlags);
+  #else
     idx = mnvgCreateImageFromHandle(mVG, gTextureMap[fileNameOrResID], nvgImageFlags);
+  #endif
   }
   else
 #endif

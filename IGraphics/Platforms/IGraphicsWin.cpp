@@ -2108,12 +2108,14 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* f
 {
   PROFILE_RESOURCE_LOAD(fontID);
   StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
-
   const auto lookupStart = std::chrono::high_resolution_clock::now();
-  if (auto* pFont = fontStorage.Find(fontID))
+  TRACE_CACHE_QUERY_START_F(GetDelegate()->GetPlug()->GetLogFile());
+  auto* pFont = fontStorage.Find(fontID);
+  TRACE_CACHE_QUERY_END_F(GetDelegate()->GetPlug()->GetLogFile());
+  const auto lookupEnd = std::chrono::high_resolution_clock::now();
+  const auto lookupTime = std::chrono::duration_cast<std::chrono::microseconds>(lookupEnd - lookupStart).count();
+  if (pFont)
   {
-    const auto lookupEnd = std::chrono::high_resolution_clock::now();
-    const auto lookupTime = std::chrono::duration_cast<std::chrono::microseconds>(lookupEnd - lookupStart).count();
     Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadPlatformFont: id=%s cache_hit lookup=%lldus", fontID, static_cast<long long>(lookupTime));
     pFont->Retain();
     HFONT font = GetHFont(pFont->GetFamily(), pFont->GetWeight(), pFont->GetItalic(), pFont->GetUnderline());
@@ -2128,8 +2130,6 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* f
   }
   else
   {
-    const auto lookupEnd = std::chrono::high_resolution_clock::now();
-    const auto lookupTime = std::chrono::duration_cast<std::chrono::microseconds>(lookupEnd - lookupStart).count();
     Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadPlatformFont: id=%s cache_miss lookup=%lldus", fontID, static_cast<long long>(lookupTime));
   }
 
@@ -2192,12 +2192,14 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
 {
   PROFILE_RESOURCE_LOAD(fontID);
   StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
-
   const auto lookupStart = std::chrono::high_resolution_clock::now();
-  if (auto* cached = fontStorage.Find(fontID))
+  TRACE_CACHE_QUERY_START_F(GetDelegate()->GetPlug()->GetLogFile());
+  auto* cached = fontStorage.Find(fontID);
+  TRACE_CACHE_QUERY_END_F(GetDelegate()->GetPlug()->GetLogFile());
+  const auto lookupEnd = std::chrono::high_resolution_clock::now();
+  const auto lookupTime = std::chrono::duration_cast<std::chrono::microseconds>(lookupEnd - lookupStart).count();
+  if (cached)
   {
-    const auto lookupEnd = std::chrono::high_resolution_clock::now();
-    const auto lookupTime = std::chrono::duration_cast<std::chrono::microseconds>(lookupEnd - lookupStart).count();
     Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadPlatformFont: id=%s cache_hit lookup=%lldus", fontID, static_cast<long long>(lookupTime));
     cached->Retain();
     HFONT font = GetHFont(cached->GetFamily(), cached->GetWeight(), cached->GetItalic(), cached->GetUnderline());
@@ -2212,8 +2214,6 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
   }
   else
   {
-    const auto lookupEnd = std::chrono::high_resolution_clock::now();
-    const auto lookupTime = std::chrono::duration_cast<std::chrono::microseconds>(lookupEnd - lookupStart).count();
     Trace(GetDelegate()->GetPlug()->GetLogFile(), TRACELOC, "LoadPlatformFont: id=%s cache_miss lookup=%lldus", fontID, static_cast<long long>(lookupTime));
   }
 

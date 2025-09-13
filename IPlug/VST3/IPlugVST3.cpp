@@ -16,8 +16,8 @@
 #include "pluginterfaces/vst/ivstmidicontrollers.h"
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 
-#include "IPlugVST3.h"
 #include "IPlugLogger.h"
+#include "IPlugVST3.h"
 
 using namespace iplug;
 using namespace Steinberg;
@@ -134,13 +134,27 @@ tresult PLUGIN_API IPlugVST3::setParamNormalized(ParamID tag, ParamValue value)
 
 IPlugView* PLUGIN_API IPlugVST3::createView(const char* name)
 {
+  TRACE_SCOPE_F(GetLogFile(), "VST3View::createView");
+
   if (HasUI() && name && strcmp(name, "editor") == 0)
   {
     mView = new ViewType(*this);
+    Trace(GetLogFile(), TRACELOC, "createView name:%s view:%p", name, mView);
     return mView;
   }
 
   return nullptr;
+}
+
+tresult PLUGIN_API IPlugVST3::releaseView(IPlugView* view)
+{
+  TRACE_SCOPE_F(GetLogFile(), "VST3View::releaseView");
+  Trace(GetLogFile(), TRACELOC, "releaseView view:%p", view);
+
+  if (view == mView)
+    mView = nullptr;
+
+  return kResultTrue;
 }
 
 tresult PLUGIN_API IPlugVST3::setEditorState(IBStream* pState)

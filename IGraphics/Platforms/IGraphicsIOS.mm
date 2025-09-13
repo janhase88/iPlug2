@@ -14,8 +14,8 @@
 
 #include "IGraphicsCoreText.h"
 #include "IGraphicsIOS.h"
-#include "IPlugPluginBase.h"
 #include "IPlugLogger.h"
+#include "IPlugPluginBase.h"
 
 #import "IGraphicsIOS_view.h"
 
@@ -96,8 +96,12 @@ IGraphicsIOS::~IGraphicsIOS() { CloseWindow(); }
 
 void* IGraphicsIOS::OpenWindow(void* pParent)
 {
-  if (auto* plug = dynamic_cast<IPluginBase*>(GetDelegate()))
+  IPluginBase* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+  {
+    TRACE_SCOPE_F(plug->GetLogFile(), "IGraphicsIOS::OpenWindow");
     TRACEF(plug->GetLogFile());
+  }
   CloseWindow();
   IGRAPHICS_VIEW* view = [[IGRAPHICS_VIEW alloc] initWithIGraphics:this];
   mView = (void*)view;
@@ -116,13 +120,22 @@ void* IGraphicsIOS::OpenWindow(void* pParent)
     [(UIView*)pParent addSubview:view];
   }
 
+  if (plug)
+    Trace(plug->GetLogFile(), TRACELOC, "OpenWindow view:%p parent:%p size:%d:%d", mView, pParent, WindowWidth(), WindowHeight());
+
   return mView;
 }
 
 void IGraphicsIOS::CloseWindow()
 {
+  IPluginBase* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+    TRACE_SCOPE_F(plug->GetLogFile(), "IGraphicsIOS::CloseWindow");
+
   if (mView)
   {
+    if (plug)
+      Trace(plug->GetLogFile(), TRACELOC, "CloseWindow view:%p", mView);
     IGRAPHICS_VIEW* pView = (IGRAPHICS_VIEW*)mView;
     [pView removeFromSuperview];
     [pView release];
@@ -145,6 +158,11 @@ void IGraphicsIOS::PlatformResize(bool parentHasResized)
 
 void IGraphicsIOS::AttachPlatformView(const IRECT& r, void* pView)
 {
+  IPluginBase* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+    TRACE_SCOPE_F(plug->GetLogFile(), "IGraphicsIOS::AttachPlatformView");
+  if (plug)
+    Trace(plug->GetLogFile(), TRACELOC, "AttachPlatformView view:%p rect:%d:%d:%d:%d", pView, r.L, r.T, r.R, r.B);
   IGRAPHICS_VIEW* pMainView = (IGRAPHICS_VIEW*)mView;
 
   UIView* pNewSubView = (UIView*)pView;
@@ -153,7 +171,15 @@ void IGraphicsIOS::AttachPlatformView(const IRECT& r, void* pView)
   [pMainView addSubview:pNewSubView];
 }
 
-void IGraphicsIOS::RemovePlatformView(void* pView) { [(UIView*)pView removeFromSuperview]; }
+void IGraphicsIOS::RemovePlatformView(void* pView)
+{
+  IPluginBase* plug = dynamic_cast<IPluginBase*>(GetDelegate());
+  if (plug)
+    TRACE_SCOPE_F(plug->GetLogFile(), "IGraphicsIOS::RemovePlatformView");
+  if (plug)
+    Trace(plug->GetLogFile(), TRACELOC, "RemovePlatformView view:%p", pView);
+  [(UIView*)pView removeFromSuperview];
+}
 
 void IGraphicsIOS::HidePlatformView(void* pView, bool hide) { [(UIView*)pView setHidden:hide]; }
 

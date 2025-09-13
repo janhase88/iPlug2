@@ -93,7 +93,7 @@ public:
   Steinberg::Vst::ParamValue PLUGIN_API getParamNormalized(Steinberg::Vst::ParamID tag) override;
   Steinberg::tresult PLUGIN_API setParamNormalized(Steinberg::Vst::ParamID tag, Steinberg::Vst::ParamValue value) override;
   Steinberg::IPlugView* PLUGIN_API createView(const char* name) override;
-  Steinberg::tresult PLUGIN_API releaseView(Steinberg::IPlugView* view) override;
+  Steinberg::tresult PLUGIN_API releaseView(Steinberg::IPlugView* view);
   Steinberg::tresult PLUGIN_API setEditorState(Steinberg::IBStream* pState) override;
   Steinberg::tresult PLUGIN_API getEditorState(Steinberg::IBStream* pState) override;
   Steinberg::tresult PLUGIN_API setComponentState(Steinberg::IBStream* state) override;

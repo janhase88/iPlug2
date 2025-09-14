@@ -55,13 +55,13 @@
   #include "include/ports/SkFontMgr_mac_ct.h"
 
 #elif defined OS_WIN
-#include "include/ports/SkTypeface_win.h"
+  #include "include/ports/SkTypeface_win.h"
 
-#if !defined(NOGDI)
-#  define NOGDI          // prevent <windows.h> from defining LOGFONT
-#endif
+  #if !defined(NOGDI)
+    #define NOGDI // prevent <windows.h> from defining LOGFONT
+  #endif
 
-#include <windows.h>
+  #include <windows.h>
 
   #pragma comment(lib, "skia.lib")
 
@@ -93,7 +93,7 @@
   #include "include/gpu/ganesh/vk/GrVkTypes.h"
   #include "include/gpu/vk/VulkanBackendContext.h"
   #if defined(OS_WIN) && !defined(VK_USE_PLATFORM_WIN32_KHR)
-  #  define VK_USE_PLATFORM_WIN32_KHR
+    #define VK_USE_PLATFORM_WIN32_KHR
   #endif
   #include <vulkan/vulkan.h>
   #if defined OS_WIN
@@ -511,7 +511,9 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   mVKInFlightFence.handle = ctx->inFlightFence;
 
   skgpu::VulkanBackendContext backendContext = {};
-  backendContext.fGetProc = [](const char* name, VkInstance instance, VkDevice) {
+  backendContext.fGetProc = [](const char* name, VkInstance instance, VkDevice device) {
+    if (device)
+      return vkGetDeviceProcAddr(device, name);
     return vkGetInstanceProcAddr(instance, name);
   };
   backendContext.fInstance = mVKInstance;
@@ -519,7 +521,7 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   backendContext.fDevice = mVKDevice;
   backendContext.fQueue = mVKQueue;
   backendContext.fGraphicsQueueIndex = mVKQueueFamily;
-  backendContext.fMaxAPIVersion = VK_API_VERSION_1_0;
+  backendContext.fMaxAPIVersion = VK_API_VERSION_1_1;
   mGrContext = GrDirectContexts::MakeVulkan(backendContext);
 #endif
 

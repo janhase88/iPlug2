@@ -1026,7 +1026,7 @@ bool IGraphicsWin::CreateVulkanContext()
   VkApplicationInfo appInfo{};
   appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
   appInfo.pApplicationName = "iPlug2";
-  appInfo.apiVersion = VK_API_VERSION_1_0;
+  appInfo.apiVersion = VK_API_VERSION_1_1;
 
   const char* extensions[] = {"VK_KHR_surface", "VK_KHR_win32_surface"};
   VkInstanceCreateInfo instInfo{};

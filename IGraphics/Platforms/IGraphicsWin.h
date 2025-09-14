@@ -29,6 +29,23 @@
 BEGIN_IPLUG_NAMESPACE
 BEGIN_IGRAPHICS_NAMESPACE
 
+#ifdef IGRAPHICS_VULKAN
+struct VulkanContext
+{
+  VkInstance instance = VK_NULL_HANDLE;
+  VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+  VkDevice device = VK_NULL_HANDLE;
+  VkSurfaceKHR surface = VK_NULL_HANDLE;
+  VkSwapchainKHR swapchain = VK_NULL_HANDLE;
+  VkQueue queue = VK_NULL_HANDLE;
+  uint32_t queueFamily = 0;
+  VkSemaphore imageAvailableSemaphore = VK_NULL_HANDLE;
+  VkSemaphore renderFinishedSemaphore = VK_NULL_HANDLE;
+  VkFence inFlightFence = VK_NULL_HANDLE;
+  std::vector<VkImage>* swapchainImages = nullptr;
+};
+#endif
+
 // Forward declare the OLE drop target helper (defined in IGraphicsWin_dnd.h)
 namespace DragAndDropHelpers { class DropTarget; }
 
@@ -101,6 +118,10 @@ public:
 
   DWORD OnVBlankRun();
 
+#ifdef IGRAPHICS_VULKAN
+  void UpdateVulkanSwapchain(VkSwapchainKHR swapchain, const std::vector<VkImage>& images);
+#endif
+
 protected:
   IPopupMenu* CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT bounds, bool& isAsync) override;
   void CreatePlatformTextEntry(int paramIdx, const IText& text, const IRECT& bounds, int length, const char* str) override;
@@ -148,12 +169,16 @@ private:
   void ActivateVulkanContext();
   void DeactivateVulkanContext();
   VkInstance mVkInstance = VK_NULL_HANDLE;
+  VkPhysicalDevice mVkPhysicalDevice = VK_NULL_HANDLE;
   VkDevice mVkDevice = VK_NULL_HANDLE;
   VkSurfaceKHR mVkSurface = VK_NULL_HANDLE;
   VkSwapchainKHR mVkSwapchain = VK_NULL_HANDLE;
   VkQueue mPresentQueue = VK_NULL_HANDLE;
+  uint32_t mVkQueueFamily = 0;
   VkSemaphore mImageAvailableSemaphore = VK_NULL_HANDLE;
   VkSemaphore mRenderFinishedSemaphore = VK_NULL_HANDLE;
+  VkFence mInFlightFence = VK_NULL_HANDLE;
+  std::vector<VkImage> mVkSwapchainImages;
 #endif
 
 #ifdef IGRAPHICS_GL

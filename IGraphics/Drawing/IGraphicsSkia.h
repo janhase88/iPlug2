@@ -192,6 +192,9 @@ private:
   uint32_t mVKQueueFamily = 0;
   std::vector<void*> mVKSwapchainImages;
   uint32_t mVKCurrentImage = 0;
+  void* mVKImageAvailableSemaphore = nullptr;
+  void* mVKRenderFinishedSemaphore = nullptr;
+  void* mVKInFlightFence = nullptr;
 #endif
 
   static StaticStorage<Font> sFontCache;

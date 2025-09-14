@@ -85,6 +85,7 @@
   #include "include/gpu/ganesh/vk/GrVkDirectContext.h"
   #include <vulkan/vulkan.h>
   #if defined OS_WIN
+    #include "../Platforms/IGraphicsWin.h"
     #pragma comment(lib, "vulkan-1.lib")
   #endif
 #endif
@@ -468,114 +469,33 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   mMTLCommandQueue = (void*)commandQueue;
   mMTLLayer = pContext;
 #elif defined IGRAPHICS_VULKAN
-  HWND hwnd = (HWND)pContext;
+  VulkanContext* ctx = static_cast<VulkanContext*>(pContext);
 
-  VkApplicationInfo appInfo{};
-  appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-  appInfo.pApplicationName = "IGraphicsSkia";
-  appInfo.apiVersion = VK_API_VERSION_1_0;
-
-  const char* instExt[] = { VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_WIN32_SURFACE_EXTENSION_NAME };
-  VkInstanceCreateInfo instInfo{};
-  instInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-  instInfo.pApplicationInfo = &appInfo;
-  instInfo.enabledExtensionCount = 2;
-  instInfo.ppEnabledExtensionNames = instExt;
-
-  VkInstance instance = VK_NULL_HANDLE;
-  vkCreateInstance(&instInfo, nullptr, &instance);
-
-  uint32_t gpuCount = 0;
-  vkEnumeratePhysicalDevices(instance, &gpuCount, nullptr);
-  std::vector<VkPhysicalDevice> gpus(gpuCount);
-  vkEnumeratePhysicalDevices(instance, &gpuCount, gpus.data());
-  VkPhysicalDevice physDevice = gpus[0];
-
-  uint32_t queueCount = 0;
-  vkGetPhysicalDeviceQueueFamilyProperties(physDevice, &queueCount, nullptr);
-  std::vector<VkQueueFamilyProperties> queueProps(queueCount);
-  vkGetPhysicalDeviceQueueFamilyProperties(physDevice, &queueCount, queueProps.data());
-  uint32_t queueFamily = 0;
-  for (uint32_t i = 0; i < queueCount; ++i)
+  mVKInstance = ctx->instance;
+  mVKPhysicalDevice = ctx->physicalDevice;
+  mVKDevice = ctx->device;
+  mVKSurface = ctx->surface;
+  mVKSwapchain = ctx->swapchain;
+  mVKQueue = ctx->queue;
+  mVKQueueFamily = ctx->queueFamily;
+  mVKImageAvailableSemaphore = ctx->imageAvailableSemaphore;
+  mVKRenderFinishedSemaphore = ctx->renderFinishedSemaphore;
+  mVKInFlightFence = ctx->inFlightFence;
+  mVKSwapchainImages.clear();
+  if (ctx->swapchainImages)
   {
-    if (queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
-    {
-      queueFamily = i;
-      break;
-    }
+    for (auto img : *ctx->swapchainImages)
+      mVKSwapchainImages.push_back((void*)img);
   }
 
-  float priority = 1.0f;
-  VkDeviceQueueCreateInfo queueInfo{};
-  queueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-  queueInfo.queueFamilyIndex = queueFamily;
-  queueInfo.queueCount = 1;
-  queueInfo.pQueuePriorities = &priority;
-
-  const char* devExt[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
-  VkDeviceCreateInfo devInfo{};
-  devInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-  devInfo.queueCreateInfoCount = 1;
-  devInfo.pQueueCreateInfos = &queueInfo;
-  devInfo.enabledExtensionCount = 1;
-  devInfo.ppEnabledExtensionNames = devExt;
-
-  VkDevice device = VK_NULL_HANDLE;
-  vkCreateDevice(physDevice, &devInfo, nullptr, &device);
-  VkQueue queue = VK_NULL_HANDLE;
-  vkGetDeviceQueue(device, queueFamily, 0, &queue);
-
-  VkWin32SurfaceCreateInfoKHR surfInfo{};
-  surfInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-  surfInfo.hinstance = GetModuleHandle(nullptr);
-  surfInfo.hwnd = hwnd;
-  VkSurfaceKHR surface = VK_NULL_HANDLE;
-  vkCreateWin32SurfaceKHR(instance, &surfInfo, nullptr, &surface);
-
-  VkSurfaceCapabilitiesKHR caps{};
-  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physDevice, surface, &caps);
-
-  VkSwapchainCreateInfoKHR swapInfo{};
-  swapInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-  swapInfo.surface = surface;
-  swapInfo.minImageCount = caps.minImageCount + 1;
-  if (caps.maxImageCount > 0 && swapInfo.minImageCount > caps.maxImageCount)
-    swapInfo.minImageCount = caps.maxImageCount;
-  swapInfo.imageFormat = VK_FORMAT_B8G8R8A8_UNORM;
-  swapInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
-  swapInfo.imageExtent = caps.currentExtent;
-  swapInfo.imageArrayLayers = 1;
-  swapInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-  swapInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  swapInfo.preTransform = caps.currentTransform;
-  swapInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-  swapInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
-  swapInfo.clipped = VK_TRUE;
-
-  VkSwapchainKHR swapchain = VK_NULL_HANDLE;
-  vkCreateSwapchainKHR(device, &swapInfo, nullptr, &swapchain);
-
-  uint32_t imageCount = 0;
-  vkGetSwapchainImagesKHR(device, swapchain, &imageCount, nullptr);
-  mVKSwapchainImages.resize(imageCount);
-  vkGetSwapchainImagesKHR(device, swapchain, &imageCount, reinterpret_cast<VkImage*>(mVKSwapchainImages.data()));
-
   GrVkBackendContext backendContext = {};
-  backendContext.fInstance = instance;
-  backendContext.fPhysicalDevice = physDevice;
-  backendContext.fDevice = device;
-  backendContext.fQueue = queue;
-  backendContext.fGraphicsQueueIndex = queueFamily;
+  backendContext.fInstance = (VkInstance)mVKInstance;
+  backendContext.fPhysicalDevice = (VkPhysicalDevice)mVKPhysicalDevice;
+  backendContext.fDevice = (VkDevice)mVKDevice;
+  backendContext.fQueue = (VkQueue)mVKQueue;
+  backendContext.fGraphicsQueueIndex = mVKQueueFamily;
   backendContext.fMaxAPIVersion = VK_API_VERSION_1_0;
   mGrContext = GrDirectContexts::MakeVulkan(backendContext);
-
-  mVKInstance = instance;
-  mVKPhysicalDevice = physDevice;
-  mVKDevice = device;
-  mVKQueue = queue;
-  mVKSurface = surface;
-  mVKSwapchain = swapchain;
-  mVKQueueFamily = queueFamily;
 #endif
 
   DrawResize();
@@ -595,24 +515,15 @@ void IGraphicsSkia::OnViewDestroyed()
   mMTLLayer = nullptr;
   mMTLDevice = nullptr;
 #elif defined IGRAPHICS_VULKAN
-  if (mVKDevice)
-  {
-    vkDeviceWaitIdle((VkDevice)mVKDevice);
-    if (mVKSwapchain)
-      vkDestroySwapchainKHR((VkDevice)mVKDevice, (VkSwapchainKHR)mVKSwapchain, nullptr);
-    vkDestroyDevice((VkDevice)mVKDevice, nullptr);
-    mVKDevice = nullptr;
-  }
-  if (mVKSurface)
-  {
-    vkDestroySurfaceKHR((VkInstance)mVKInstance, (VkSurfaceKHR)mVKSurface, nullptr);
-    mVKSurface = nullptr;
-  }
-  if (mVKInstance)
-  {
-    vkDestroyInstance((VkInstance)mVKInstance, nullptr);
-    mVKInstance = nullptr;
-  }
+  mVKInstance = nullptr;
+  mVKPhysicalDevice = nullptr;
+  mVKDevice = nullptr;
+  mVKSurface = nullptr;
+  mVKSwapchain = nullptr;
+  mVKQueue = nullptr;
+  mVKImageAvailableSemaphore = nullptr;
+  mVKRenderFinishedSemaphore = nullptr;
+  mVKInFlightFence = nullptr;
   mVKSwapchainImages.clear();
 #endif
 }
@@ -663,6 +574,14 @@ void IGraphicsSkia::DrawResize()
       vkGetSwapchainImagesKHR((VkDevice)mVKDevice, swapchain, &imageCount, nullptr);
       mVKSwapchainImages.resize(imageCount);
       vkGetSwapchainImagesKHR((VkDevice)mVKDevice, swapchain, &imageCount, reinterpret_cast<VkImage*>(mVKSwapchainImages.data()));
+      if (auto pWin = dynamic_cast<IGraphicsWin*>(this))
+      {
+        std::vector<VkImage> imgs;
+        imgs.reserve(mVKSwapchainImages.size());
+        for (auto img : mVKSwapchainImages)
+          imgs.push_back((VkImage)img);
+        pWin->UpdateVulkanSwapchain(swapchain, imgs);
+      }
     }
 #endif
   }
@@ -745,13 +664,11 @@ void IGraphicsSkia::BeginFrame()
     int width = WindowWidth() * GetScreenScale();
     int height = WindowHeight() * GetScreenScale();
 
-    VkSemaphoreCreateInfo semInfo{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
-    VkSemaphore acquireSem = VK_NULL_HANDLE;
-    vkCreateSemaphore((VkDevice)mVKDevice, &semInfo, nullptr, &acquireSem);
+    vkWaitForFences((VkDevice)mVKDevice, 1, (VkFence*)&mVKInFlightFence, VK_TRUE, UINT64_MAX);
+    vkResetFences((VkDevice)mVKDevice, 1, (VkFence*)&mVKInFlightFence);
 
     uint32_t imageIndex = 0;
-    vkAcquireNextImageKHR((VkDevice)mVKDevice, (VkSwapchainKHR)mVKSwapchain, UINT64_MAX, acquireSem, VK_NULL_HANDLE, &imageIndex);
-    vkDestroySemaphore((VkDevice)mVKDevice, acquireSem, nullptr);
+    vkAcquireNextImageKHR((VkDevice)mVKDevice, (VkSwapchainKHR)mVKSwapchain, UINT64_MAX, (VkSemaphore)mVKImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
     mVKCurrentImage = imageIndex;
 
     GrVkImageInfo imageInfo{};
@@ -813,8 +730,22 @@ void IGraphicsSkia::EndFrame()
   [commandBuffer presentDrawable:(id<CAMetalDrawable>)mMTLDrawable];
   [commandBuffer commit];
   #elif defined IGRAPHICS_VULKAN
+  VkSemaphore waitSemaphores[] = { (VkSemaphore)mVKImageAvailableSemaphore };
+  VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+  VkSubmitInfo submitInfo{};
+  submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+  submitInfo.waitSemaphoreCount = 1;
+  submitInfo.pWaitSemaphores = waitSemaphores;
+  submitInfo.pWaitDstStageMask = waitStages;
+  submitInfo.commandBufferCount = 0;
+  submitInfo.signalSemaphoreCount = 1;
+  submitInfo.pSignalSemaphores = (VkSemaphore*)&mVKRenderFinishedSemaphore;
+  vkQueueSubmit((VkQueue)mVKQueue, 1, &submitInfo, (VkFence)mVKInFlightFence);
+
   VkPresentInfoKHR presentInfo{};
   presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+  presentInfo.waitSemaphoreCount = 1;
+  presentInfo.pWaitSemaphores = (VkSemaphore*)&mVKRenderFinishedSemaphore;
   VkSwapchainKHR swapchain = (VkSwapchainKHR)mVKSwapchain;
   presentInfo.swapchainCount = 1;
   presentInfo.pSwapchains = &swapchain;

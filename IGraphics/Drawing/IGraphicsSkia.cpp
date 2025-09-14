@@ -57,6 +57,8 @@
 #elif defined OS_WIN
   #include <windows.h>
 
+  #include "include/ports/SkTypeface_win.h"
+
   #pragma comment(lib, "skia.lib")
 
   #ifndef IGRAPHICS_NO_SKIA_SKPARAGRAPH
@@ -707,7 +709,6 @@ void IGraphicsSkia::BeginFrame()
 
     GrVkImageInfo imageInfo{};
     imageInfo.fImage = mVKSwapchainImages[imageIndex];
-    imageInfo.fAlloc = {VK_NULL_HANDLE, 0, 0, 0};
     imageInfo.fImageLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
     imageInfo.fImageTiling = VK_IMAGE_TILING_OPTIMAL;
     imageInfo.fFormat = mVKSwapchainFormat;
@@ -1507,5 +1508,9 @@ const char* IGraphicsSkia::GetDrawingAPIStr()
   return "SKIA | GL3";
 #elif defined IGRAPHICS_METAL
   return "SKIA | Metal";
+#elif defined IGRAPHICS_VULKAN
+  return "SKIA | Vulkan";
+#else
+  return "SKIA";
 #endif
 }

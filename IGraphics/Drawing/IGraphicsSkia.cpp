@@ -684,19 +684,10 @@ void IGraphicsSkia::BeginFrame()
       mScreenSurface.reset();
       return;
     }
-    if (vkResetFences(mVKDevice, 1, &mVKInFlightFence) != VK_SUCCESS)
-    {
-      mVKSkipFrame = true;
-      mScreenSurface.reset();
-      return;
-    }
-
     uint32_t imageIndex = 0;
     VkResult res = vkAcquireNextImageKHR(mVKDevice, mVKSwapchain, UINT64_MAX, mVKImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
     if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
     {
-      vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
-      vkResetFences(mVKDevice, 1, &mVKInFlightFence);
       DrawResize();
       mVKSkipFrame = true;
       return;
@@ -704,6 +695,12 @@ void IGraphicsSkia::BeginFrame()
     else if (res != VK_SUCCESS)
     {
       mVKSkipFrame = true;
+      return;
+    }
+    if (vkResetFences(mVKDevice, 1, &mVKInFlightFence) != VK_SUCCESS)
+    {
+      mVKSkipFrame = true;
+      mScreenSurface.reset();
       return;
     }
     mVKCurrentImage = imageIndex;

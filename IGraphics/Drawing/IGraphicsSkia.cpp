@@ -767,9 +767,15 @@ void IGraphicsSkia::EndFrame()
     flushInfo.fNumSemaphores = 1;
     flushInfo.fSignalSemaphores = &signalSemaphore;
     if (dContext->flush(flushInfo) != GrSemaphoresSubmitted::kYes)
+    {
+      vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // signal fence
       return;
+    }
     if (!dContext->submit())
+    {
+      vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // signal fence
       return;
+    }
   }
 
   VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -793,7 +799,6 @@ void IGraphicsSkia::EndFrame()
   if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
   {
     vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
-    vkResetFences(mVKDevice, 1, &mVKInFlightFence);
     DrawResize();
     mVKSkipFrame = true;
     return;

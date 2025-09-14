@@ -560,18 +560,37 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
           addDrawRect(rects, r);
         }
 
-#if defined IGRAPHICS_GL //|| IGRAPHICS_D2D
+#if defined IGRAPHICS_GL || defined IGRAPHICS_VULKAN //|| IGRAPHICS_D2D
         PAINTSTRUCT ps;
         BeginPaint(hWnd, &ps);
 #endif
 
         {
+#if defined IGRAPHICS_GL
           ScopedGLContext scopedGLCtx {pGraphics};
           pGraphics->Draw(rects);
           SwapBuffers((HDC) pGraphics->GetPlatformContext());
+#elif defined IGRAPHICS_VULKAN
+          ScopedGLContext scopedGLCtx {pGraphics};
+          pGraphics->Draw(rects);
+          IGraphicsWin* pWin = static_cast<IGraphicsWin*>(pGraphics);
+          if (pWin->mVkDevice && pWin->mVkSwapchain)
+          {
+            uint32_t imageIndex = 0;
+            vkAcquireNextImageKHR(pWin->mVkDevice, pWin->mVkSwapchain, UINT64_MAX, pWin->mImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+            VkPresentInfoKHR presentInfo = {};
+            presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+            presentInfo.swapchainCount = 1;
+            presentInfo.pSwapchains = &pWin->mVkSwapchain;
+            presentInfo.pImageIndices = &imageIndex;
+            vkQueuePresentKHR(pWin->mPresentQueue, &presentInfo);
+          }
+#else
+          pGraphics->Draw(rects);
+#endif
         }
 
-#if defined IGRAPHICS_GL || IGRAPHICS_D2D
+#if defined IGRAPHICS_GL || defined IGRAPHICS_VULKAN || defined IGRAPHICS_D2D
         EndPaint(hWnd, &ps);
 #endif
       }
@@ -1003,21 +1022,91 @@ void IGraphicsWin::DestroyGLContext()
 }
 #endif
 
+#ifdef IGRAPHICS_VULKAN
+void IGraphicsWin::CreateVulkanContext()
+{
+  if (mVkInstance)
+    return;
+
+  VkApplicationInfo appInfo = {};
+  appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+  appInfo.pApplicationName = "iPlug2";
+  appInfo.apiVersion = VK_API_VERSION_1_0;
+
+  const char* extensions[] = { "VK_KHR_surface", "VK_KHR_win32_surface" };
+  VkInstanceCreateInfo instInfo = {};
+  instInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+  instInfo.pApplicationInfo = &appInfo;
+  instInfo.enabledExtensionCount = 2;
+  instInfo.ppEnabledExtensionNames = extensions;
+
+  if (vkCreateInstance(&instInfo, nullptr, &mVkInstance) != VK_SUCCESS)
+    return;
+
+  VkWin32SurfaceCreateInfoKHR surfInfo = {};
+  surfInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+  surfInfo.hinstance = mHInstance;
+  surfInfo.hwnd = mPlugWnd;
+  vkCreateWin32SurfaceKHR(mVkInstance, &surfInfo, nullptr, &mVkSurface);
+}
+
+void IGraphicsWin::DestroyVulkanContext()
+{
+  if (mVkDevice)
+    vkDeviceWaitIdle(mVkDevice);
+
+  if (mVkSwapchain)
+  {
+    vkDestroySwapchainKHR(mVkDevice, mVkSwapchain, nullptr);
+    mVkSwapchain = VK_NULL_HANDLE;
+  }
+  if (mVkSurface)
+  {
+    vkDestroySurfaceKHR(mVkInstance, mVkSurface, nullptr);
+    mVkSurface = VK_NULL_HANDLE;
+  }
+  if (mVkDevice)
+  {
+    vkDestroyDevice(mVkDevice, nullptr);
+    mVkDevice = VK_NULL_HANDLE;
+  }
+  if (mVkInstance)
+  {
+    vkDestroyInstance(mVkInstance, nullptr);
+    mVkInstance = VK_NULL_HANDLE;
+  }
+}
+
+void IGraphicsWin::ActivateVulkanContext()
+{
+  // Placeholder for Vulkan context activation
+}
+
+void IGraphicsWin::DeactivateVulkanContext()
+{
+  // Placeholder for Vulkan context deactivation
+}
+#endif
+
 void IGraphicsWin::ActivateGLContext()
 {
-#ifdef IGRAPHICS_GL
+#if defined IGRAPHICS_GL
   mStartHDC = wglGetCurrentDC();
   mStartHGLRC = wglGetCurrentContext();
   HDC dc = GetDC(mPlugWnd);
   wglMakeCurrent(dc, mHGLRC);
+#elif defined IGRAPHICS_VULKAN
+  ActivateVulkanContext();
 #endif
 }
 
 void IGraphicsWin::DeactivateGLContext()
 {
-#ifdef IGRAPHICS_GL
+#if defined IGRAPHICS_GL
   ReleaseDC(mPlugWnd, (HDC) GetPlatformContext());
   wglMakeCurrent(mStartHDC, mStartHGLRC); // return current ctxt to start
+#elif defined IGRAPHICS_VULKAN
+  DeactivateVulkanContext();
 #endif
 }
 
@@ -1058,16 +1147,19 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   }
 
   mPlugWnd = CreateWindowW(wndClassName, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
-
+#if defined IGRAPHICS_VULKAN
+  CreateVulkanContext();
+  SetPlatformContext((void*) mVkSurface);
+  OnViewInitialized((void*) mVkSurface);
+#else
   HDC dc = GetDC(mPlugWnd);
   SetPlatformContext(dc);
   ReleaseDC(mPlugWnd, dc);
-
 #ifdef IGRAPHICS_GL
   CreateGLContext();
 #endif
-
   OnViewInitialized((void*) dc);
+#endif
 
   SetScreenScale(screenScale); // resizes draw context
 
@@ -1207,7 +1299,7 @@ void IGraphicsWin::CloseWindow()
     else
       KillTimer(mPlugWnd, IPLUG_TIMER_ID);
 
-#ifdef IGRAPHICS_GL
+#if defined IGRAPHICS_GL
     HDC currentDC = wglGetCurrentDC();
     HGLRC currentContext = wglGetCurrentContext();
 
@@ -1215,15 +1307,23 @@ void IGraphicsWin::CloseWindow()
     {
       ActivateGLContext();
     }
+#elif defined IGRAPHICS_VULKAN
+    ActivateGLContext();
 #endif
 
     OnViewDestroyed();
 
-#ifdef IGRAPHICS_GL
+#if defined IGRAPHICS_GL
 
     DeactivateGLContext();
 
     DestroyGLContext();
+
+#elif defined IGRAPHICS_VULKAN
+
+    DeactivateGLContext();
+
+    DestroyVulkanContext();
 
 #endif
 

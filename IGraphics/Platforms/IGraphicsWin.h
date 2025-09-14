@@ -19,6 +19,12 @@
 #include <vector>
 #include <string>
 
+#ifdef IGRAPHICS_VULKAN
+#define VK_USE_PLATFORM_WIN32_KHR
+#include <vulkan/vulkan.h>
+#include <vulkan/vulkan_win32.h>
+#endif
+
 
 BEGIN_IPLUG_NAMESPACE
 BEGIN_IGRAPHICS_NAMESPACE
@@ -135,7 +141,21 @@ private:
 
   void ActivateGLContext() override;
   void DeactivateGLContext() override;
-  
+
+#ifdef IGRAPHICS_VULKAN
+  void CreateVulkanContext(); // Vulkan context management
+  void DestroyVulkanContext();
+  void ActivateVulkanContext();
+  void DeactivateVulkanContext();
+  VkInstance mVkInstance = VK_NULL_HANDLE;
+  VkDevice mVkDevice = VK_NULL_HANDLE;
+  VkSurfaceKHR mVkSurface = VK_NULL_HANDLE;
+  VkSwapchainKHR mVkSwapchain = VK_NULL_HANDLE;
+  VkQueue mPresentQueue = VK_NULL_HANDLE;
+  VkSemaphore mImageAvailableSemaphore = VK_NULL_HANDLE;
+  VkSemaphore mRenderFinishedSemaphore = VK_NULL_HANDLE;
+#endif
+
 #ifdef IGRAPHICS_GL
   void CreateGLContext(); // OpenGL context management - TODO: RAII instead ?
   void DestroyGLContext();

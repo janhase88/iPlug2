@@ -15,6 +15,8 @@ $ cd ~/Dev/iPlug2/Dependencies/IGraphics
 $ ./download-igraphics-libs.sh
 ```
 
+After running this script, the Skia checkout retains its `.git` directory and remains a git repository, allowing further git operations if needed.
+
 ## Mac
 The build script **build-igraphics-libs-mac.sh** will build freetype as a static library (only required if you are using IGRAPHICS_FREETYPE with IGRAPHICS_NANOVG) and will install it in a unix style hierarchy in the folder **iPlug2/Dependencies/Build/mac**. Build settings defined in **iPlug2/common-mac.xcconfig**  will allow your plug-in project to link to these libraries. The libraries are built as universal binaries with x86_64 and arm64 architectures.
 

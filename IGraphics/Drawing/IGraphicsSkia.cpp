@@ -55,9 +55,10 @@
   #include "include/ports/SkFontMgr_mac_ct.h"
 
 #elif defined OS_WIN
-  #include <windows.h>
-
-  #include "include/ports/SkTypeface_win.h"
+#ifndef LOGFONT
+#include "include/ports/SkTypeface_win.h"
+#endif
+#include <windows.h>
 
   #pragma comment(lib, "skia.lib")
 
@@ -88,6 +89,9 @@
   #include "include/gpu/ganesh/vk/GrVkDirectContext.h"
   #include "include/gpu/ganesh/vk/GrVkTypes.h"
   #include "include/gpu/vk/VulkanBackendContext.h"
+  #if defined(OS_WIN) && !defined(VK_USE_PLATFORM_WIN32_KHR)
+  #  define VK_USE_PLATFORM_WIN32_KHR
+  #endif
   #include <vulkan/vulkan.h>
   #if defined OS_WIN
     #include "../Platforms/IGraphicsWin.h"

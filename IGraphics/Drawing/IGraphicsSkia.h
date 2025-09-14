@@ -13,6 +13,9 @@
   #define SK_GL
 #elif defined IGRAPHICS_VULKAN
   #define SK_VULKAN
+  #if defined(OS_WIN) && !defined(VK_USE_PLATFORM_WIN32_KHR)
+  #  define VK_USE_PLATFORM_WIN32_KHR
+  #endif
   #include <vulkan/vulkan.h>
 
   struct VkSwapchainHolder

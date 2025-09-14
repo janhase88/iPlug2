@@ -1234,7 +1234,8 @@ bool IGraphicsWin::CreateVulkanContext()
   }
 
   mVkSwapchain.device = mVkDevice;
-  res = CreateOrResizeVulkanSwapchain(caps.currentExtent.width, caps.currentExtent.height, mVkSwapchain.handle, mVkSwapchainImages, mVkFormat);
+  bool submissionPending = false;
+  res = CreateOrResizeVulkanSwapchain(caps.currentExtent.width, caps.currentExtent.height, mVkSwapchain.handle, mVkSwapchainImages, mVkFormat, submissionPending);
   if (res != VK_SUCCESS)
   {
     DestroyVulkanContext();
@@ -1322,7 +1323,7 @@ bool IGraphicsWin::RecreateVulkanContext()
   return true;
 }
 
-VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format)
+VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format, bool& submissionPending)
 {
   if (!mVkDevice || !mVkPhysicalDevice || !mVkSurface)
     return VK_ERROR_INITIALIZATION_FAILED;
@@ -1338,6 +1339,7 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t he
     res = vkQueueSubmit(mPresentQueue, 0, nullptr, mInFlightFence.handle);
     if (res != VK_SUCCESS)
       return res;
+    submissionPending = false;
   }
 
   mVkSwapchain.Reset();

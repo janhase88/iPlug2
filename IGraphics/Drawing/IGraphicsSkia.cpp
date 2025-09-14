@@ -574,7 +574,7 @@ void IGraphicsSkia::DrawResize()
         VkSwapchainKHR swapchain = VK_NULL_HANDLE;
         std::vector<VkImage> images;
         VkFormat format = mVKSwapchainFormat;
-        VkResult res = pWin->CreateOrResizeVulkanSwapchain(w, h, swapchain, images, format);
+        VkResult res = pWin->CreateOrResizeVulkanSwapchain(w, h, swapchain, images, format, mVKSubmissionPending);
         if (res == VK_SUCCESS)
         {
           mVKSwapchain = swapchain;
@@ -679,16 +679,20 @@ void IGraphicsSkia::BeginFrame()
     mVKSkipFrame = false;
     int width = WindowWidth() * GetScreenScale();
     int height = WindowHeight() * GetScreenScale();
-    VkResult fenceRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, 1000000000); // 1s timeout
-    if (fenceRes != VK_SUCCESS)
+    if (mVKSubmissionPending)
     {
-      if (fenceRes == VK_TIMEOUT)
-        DBGMSG("vkWaitForFences timed out\n");
-      vkResetFences(mVKDevice, 1, &mVKInFlightFence);
-      vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // ensure fence becomes signaled
-      mVKSkipFrame = true;
-      mScreenSurface.reset();
-      return;
+      VkResult fenceRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, 1000000000); // 1s timeout
+      if (fenceRes != VK_SUCCESS)
+      {
+        if (fenceRes == VK_TIMEOUT)
+          DBGMSG("vkWaitForFences timed out\n");
+        vkResetFences(mVKDevice, 1, &mVKInFlightFence);
+        vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // ensure fence becomes signaled
+        mVKSkipFrame = true;
+        mScreenSurface.reset();
+        return;
+      }
+      mVKSubmissionPending = false;
     }
     uint32_t imageIndex = 0;
     VkResult res = vkAcquireNextImageKHR(mVKDevice, mVKSwapchain, UINT64_MAX, mVKImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
@@ -775,11 +779,13 @@ void IGraphicsSkia::EndFrame()
     if (dContext->flush(flushInfo) != GrSemaphoresSubmitted::kYes)
     {
       vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // signal fence
+      mVKSubmissionPending = true;
       return;
     }
     if (!dContext->submit())
     {
       vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // signal fence
+      mVKSubmissionPending = true;
       return;
     }
   }
@@ -793,9 +799,11 @@ void IGraphicsSkia::EndFrame()
   submitInfo.signalSemaphoreCount = 0;
 
   VkResult submitRes = vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
+  mVKSubmissionPending = (submitRes == VK_SUCCESS);
   if (submitRes != VK_SUCCESS)
   {
     vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // signal fence on failure
+    mVKSubmissionPending = true;
     mVKSkipFrame = true;
     return;
   }

@@ -132,7 +132,7 @@ if [ ! -d "$SRC_DIR/skia" ]; then
   (
     cd "$SRC_DIR/skia"
     python tools/git-sync-deps
-    rm -rf .git
+    # rm -rf .git  # Keep the Skia checkout as a git repository for easier updates
   )
 fi
 

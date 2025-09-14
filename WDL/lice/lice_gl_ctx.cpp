@@ -74,7 +74,6 @@ bool LICE_GL_ctx::Init()
 
 
 #if defined(GLAD_GL_H) || defined(IGRAPHICS_GL2) || defined(IGRAPHICS_GL3)
- _codex-plugin-instance-seperation
   if (!gladLoadGLLoader((GLADloadproc) wglGetProcAddress) ||
       !GLAD_GL_EXT_framebuffer_object ||
       !GLAD_GL_ARB_texture_rectangle)

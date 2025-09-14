@@ -45,6 +45,9 @@
 #endif
 
 #ifdef OS_WIN
+  #if !defined(NOGDI)
+    #define NOGDI          // prevent <windows.h> from defining LOGFONT
+  #endif
   #include "include/ports/SkTypeface_win.h"
   #pragma comment(lib, "skparagraph.lib")
 #endif

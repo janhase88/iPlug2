@@ -31,6 +31,7 @@
   #include "modules/skunicode/include/SkUnicode_icu.h"
 #endif
 #pragma warning(pop)
+#include "include/gpu/GrBackendSemaphore.h"
 #include "include/gpu/GrBackendSurface.h"
 #include "include/gpu/ganesh/SkSurfaceGanesh.h"
 
@@ -486,16 +487,9 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
       mVKSwapchainImages.push_back((void*)img);
   }
 
-  VkSemaphoreCreateInfo semInfo{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-  if (vkCreateSemaphore((VkDevice)mVKDevice, &semInfo, nullptr, (VkSemaphore*)&mVKImageAvailableSemaphore) != VK_SUCCESS)
-    return;
-  if (vkCreateSemaphore((VkDevice)mVKDevice, &semInfo, nullptr, (VkSemaphore*)&mVKRenderFinishedSemaphore) != VK_SUCCESS)
-    return;
-
-  VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-  fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-  if (vkCreateFence((VkDevice)mVKDevice, &fenceInfo, nullptr, (VkFence*)&mVKInFlightFence) != VK_SUCCESS)
-    return;
+  mVKImageAvailableSemaphore = ctx->imageAvailableSemaphore;
+  mVKRenderFinishedSemaphore = ctx->renderFinishedSemaphore;
+  mVKInFlightFence = ctx->inFlightFence;
 
   GrVkBackendContext backendContext = {};
   backendContext.fInstance = (VkInstance)mVKInstance;
@@ -526,21 +520,9 @@ void IGraphicsSkia::OnViewDestroyed()
 #elif defined IGRAPHICS_VULKAN
   vkDeviceWaitIdle((VkDevice)mVKDevice);
 
-  if (mVKImageAvailableSemaphore)
-  {
-    vkDestroySemaphore((VkDevice)mVKDevice, (VkSemaphore)mVKImageAvailableSemaphore, nullptr);
-    mVKImageAvailableSemaphore = nullptr;
-  }
-  if (mVKRenderFinishedSemaphore)
-  {
-    vkDestroySemaphore((VkDevice)mVKDevice, (VkSemaphore)mVKRenderFinishedSemaphore, nullptr);
-    mVKRenderFinishedSemaphore = nullptr;
-  }
-  if (mVKInFlightFence)
-  {
-    vkDestroyFence((VkDevice)mVKDevice, (VkFence)mVKInFlightFence, nullptr);
-    mVKInFlightFence = nullptr;
-  }
+  mVKImageAvailableSemaphore = nullptr;
+  mVKRenderFinishedSemaphore = nullptr;
+  mVKInFlightFence = nullptr;
 
   mVKInstance = nullptr;
   mVKPhysicalDevice = nullptr;
@@ -737,30 +719,20 @@ void IGraphicsSkia::EndFrame()
   #endif
   mSurface->draw(mScreenSurface->getCanvas(), 0.0, 0.0, nullptr);
 
+  #if defined IGRAPHICS_VULKAN
   if (auto dContext = GrAsDirectContext(mScreenSurface->getCanvas()->recordingContext()))
   {
-    dContext->flushAndSubmit();
+    GrBackendSemaphore waitSemaphore;
+    waitSemaphore.initVulkan((VkSemaphore)mVKImageAvailableSemaphore);
+    GrBackendSemaphore signalSemaphore;
+    signalSemaphore.initVulkan((VkSemaphore)mVKRenderFinishedSemaphore);
+    GrFlushInfo flushInfo{};
+    flushInfo.fNumSemaphores = 1;
+    flushInfo.fWaitSemaphores = &waitSemaphore;
+    flushInfo.fSignalSemaphores = &signalSemaphore;
+    if (dContext->flushAndSubmit(flushInfo) != GrSemaphoresSubmitted::kYes)
+      return;
   }
-
-  #ifdef IGRAPHICS_METAL
-  id<MTLCommandBuffer> commandBuffer = [(id<MTLCommandQueue>)mMTLCommandQueue commandBuffer];
-  commandBuffer.label = @"Present";
-
-  [commandBuffer presentDrawable:(id<CAMetalDrawable>)mMTLDrawable];
-  [commandBuffer commit];
-  #elif defined IGRAPHICS_VULKAN
-  VkSemaphore waitSemaphores[] = {(VkSemaphore)mVKImageAvailableSemaphore};
-  VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-  VkSubmitInfo submitInfo{};
-  submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-  submitInfo.waitSemaphoreCount = 1;
-  submitInfo.pWaitSemaphores = waitSemaphores;
-  submitInfo.pWaitDstStageMask = waitStages;
-  submitInfo.commandBufferCount = 0;
-  submitInfo.signalSemaphoreCount = 1;
-  submitInfo.pSignalSemaphores = (VkSemaphore*)&mVKRenderFinishedSemaphore;
-  if (vkQueueSubmit((VkQueue)mVKQueue, 1, &submitInfo, (VkFence)mVKInFlightFence) != VK_SUCCESS)
-    return;
 
   VkPresentInfoKHR presentInfo{};
   presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -780,6 +752,21 @@ void IGraphicsSkia::EndFrame()
   }
   else if (res != VK_SUCCESS)
     return;
+  #elif defined IGRAPHICS_METAL
+  if (auto dContext = GrAsDirectContext(mScreenSurface->getCanvas()->recordingContext()))
+  {
+    dContext->flushAndSubmit();
+  }
+  id<MTLCommandBuffer> commandBuffer = [(id<MTLCommandQueue>)mMTLCommandQueue commandBuffer];
+  commandBuffer.label = @"Present";
+
+  [commandBuffer presentDrawable:(id<CAMetalDrawable>)mMTLDrawable];
+  [commandBuffer commit];
+  #else
+  if (auto dContext = GrAsDirectContext(mScreenSurface->getCanvas()->recordingContext()))
+  {
+    dContext->flushAndSubmit();
+  }
   #endif
 #endif
 }

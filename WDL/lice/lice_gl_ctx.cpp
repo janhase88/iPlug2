@@ -73,13 +73,23 @@ bool LICE_GL_ctx::Init()
   }
 
   // check now for all the extension functions we will ever need
-  if (glewInit() != GLEW_OK ||
-    !glewIsSupported("GL_EXT_framebuffer_object") ||
-    !glewIsSupported("GL_ARB_texture_rectangle"))
+#ifdef GLAD_GL_H
+  if (!gladLoadGLLoader((GLADloadproc) wglGetProcAddress) ||
+      !GLAD_GL_EXT_framebuffer_object ||
+      !GLAD_GL_ARB_texture_rectangle)
   {
     Close();
     return false;
   }
+#else
+  if (glewInit() != GLEW_OK ||
+      !glewIsSupported("GL_EXT_framebuffer_object") ||
+      !glewIsSupported("GL_ARB_texture_rectangle"))
+  {
+    Close();
+    return false;
+  }
+#endif
 
   // any one-time initialization goes here
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -142,10 +152,10 @@ void LICE_GL_ctx::ClearTex()
   m_nCachedGlyphs = 0;
 }
 
-static int _glyphcmp(const void* p1, const void* p2)
+int LICE_GL_ctx::GlyphCacheCmp(const void* p1, const void* p2)
 {
-  LICE_GL_ctx::GlyphCache* gc1 = (LICE_GL_ctx::GlyphCache*) p1;
-  LICE_GL_ctx::GlyphCache* gc2 = (LICE_GL_ctx::GlyphCache*) p2;
+  const GlyphCache* gc1 = (const GlyphCache*) p1;
+  const GlyphCache* gc2 = (const GlyphCache*) p2;
 
   if (gc1->glyph_w < gc2->glyph_w) return -1;
   if (gc1->glyph_w > gc2->glyph_w) return 1;
@@ -164,7 +174,7 @@ int LICE_GL_ctx::GetTexFromGlyph(const unsigned char* glyph, int glyph_w, int gl
   gc.glyph_w = glyph_w;
   gc.glyph_h = glyph_h;
 
-  GlyphCache* p = (GlyphCache*) bsearch(&gc, m_glyphCache, m_nCachedGlyphs, sizeof(GlyphCache), _glyphcmp);
+  GlyphCache* p = (GlyphCache*) bsearch(&gc, m_glyphCache, m_nCachedGlyphs, sizeof(GlyphCache), GlyphCacheCmp);
   if (p) return p->tex;
 
   glGenTextures(1, &gc.tex);
@@ -178,7 +188,7 @@ int LICE_GL_ctx::GetTexFromGlyph(const unsigned char* glyph, int glyph_w, int gl
   gc.glyph = (unsigned char*) malloc(glyph_w*glyph_h);
   memcpy(gc.glyph, glyph, glyph_w*glyph_h);
   m_glyphCache[m_nCachedGlyphs++] = gc; // copy
-  qsort(m_glyphCache, m_nCachedGlyphs, sizeof(GlyphCache), _glyphcmp);
+  qsort(m_glyphCache, m_nCachedGlyphs, sizeof(GlyphCache), GlyphCacheCmp);
 
   return gc.tex;
 }

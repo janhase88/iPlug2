@@ -4,10 +4,15 @@
 #include "lice.h"
 #include "../../IPlug/InstanceSeparation.h"
 
+#ifdef GLAD_GL_H
+#include <glad/glad.h>
+#include <GL/glu.h>
+#else
 #define GLEW_STATIC
-#include "glew/include/gl/glew.h"
-#include "glew/include/gl/wglew.h"
-#include "glew/include/gl/wglext.h"
+#include "glew/include/GL/glew.h"
+#include "glew/include/GL/wglew.h"
+#include "glew/include/GL/wglext.h"
+#endif
 
 #define MAX_CACHED_GLYPHS 4096
 
@@ -46,6 +51,8 @@ private:
 
   GlyphCache m_glyphCache[MAX_CACHED_GLYPHS];
   int m_nCachedGlyphs;
+
+  static int GlyphCacheCmp(const void* p1, const void* p2);
 };
 
 // GL context functions

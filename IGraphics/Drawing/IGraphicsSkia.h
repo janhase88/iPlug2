@@ -2,6 +2,10 @@
 
 #include "IGraphics.h"
 #include "IPlugPlatform.h"
+#if defined IGRAPHICS_VULKAN
+  #include <vector>
+  #include <vulkan/vulkan.h>
+#endif
 
 // N.B. - this must be defined according to the skia build, not the iPlug build
 #if (defined OS_MAC || defined OS_IOS) && !defined IGRAPHICS_SKIA_NO_METAL
@@ -23,7 +27,7 @@
 
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
   #include "modules/skparagraph/include/FontCollection.h"
-  #include "modules/skparagraph/include/TypefaceFontProvider.h" // <-- ADD THIS LINE
+  #include "modules/skparagraph/include/TypefaceFontProvider.h"
 #endif
 
 namespace skia::textlayout
@@ -177,6 +181,16 @@ private:
   void* mMTLCommandQueue;
   void* mMTLDrawable;
   void* mMTLLayer;
+#endif
+
+#ifdef IGRAPHICS_VULKAN
+  VkDevice mVKDevice = VK_NULL_HANDLE;
+  VkQueue mVKQueue = VK_NULL_HANDLE;
+  VkSwapchainKHR mVKSwapchain = VK_NULL_HANDLE;
+  VkCommandBuffer mVKCmdBuffer = VK_NULL_HANDLE;
+  VkFormat mVKFormat = VK_FORMAT_UNDEFINED;
+  std::vector<VkImage> mVKImages;
+  uint32_t mVKImageIndex = 0;
 #endif
 
   static StaticStorage<Font> sFontCache;

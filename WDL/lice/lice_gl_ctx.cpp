@@ -73,7 +73,9 @@ bool LICE_GL_ctx::Init()
   }
 
   // check now for all the extension functions we will ever need
+
 #ifdef GLAD_GL_H
+
   if (!gladLoadGLLoader((GLADloadproc) wglGetProcAddress) ||
       !GLAD_GL_EXT_framebuffer_object ||
       !GLAD_GL_ARB_texture_rectangle)

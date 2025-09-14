@@ -113,8 +113,19 @@ fi
 #######################################################################
 # skia
 if [ -d "$SRC_DIR/skia" ]; then
-  echo "Found skia"
-else
+  if git -C "$SRC_DIR/skia" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "Found skia"
+  else
+    echo "Existing $SRC_DIR/skia is not a git repository."
+    read -p "Delete and re-clone Skia? [y/N] " yn
+    case $yn in
+      [Yy]* ) rm -rf "$SRC_DIR/skia";;
+      * ) echo "Cannot proceed without a clean Skia directory."; exit 1;;
+    esac
+  fi
+fi
+
+if [ ! -d "$SRC_DIR/skia" ]; then
   echo "Cloning Skia"
   git clone --depth 1 --branch $SKIA_VERSION $SKIA_URL "$SRC_DIR/skia"
   echo "Syncing Skia dependencies..."

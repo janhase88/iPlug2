@@ -480,11 +480,12 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   mVKSwapchain = ctx->swapchain;
   mVKQueue = ctx->queue;
   mVKQueueFamily = ctx->queueFamily;
+  mVKSwapchainFormat = ctx->format;
   mVKSwapchainImages.clear();
   if (ctx->swapchainImages)
   {
     for (auto img : *ctx->swapchainImages)
-      mVKSwapchainImages.push_back((void*)img);
+      mVKSwapchainImages.push_back(img);
   }
 
   mVKImageAvailableSemaphore = ctx->imageAvailableSemaphore;
@@ -492,10 +493,10 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   mVKInFlightFence = ctx->inFlightFence;
 
   GrVkBackendContext backendContext = {};
-  backendContext.fInstance = (VkInstance)mVKInstance;
-  backendContext.fPhysicalDevice = (VkPhysicalDevice)mVKPhysicalDevice;
-  backendContext.fDevice = (VkDevice)mVKDevice;
-  backendContext.fQueue = (VkQueue)mVKQueue;
+  backendContext.fInstance = mVKInstance;
+  backendContext.fPhysicalDevice = mVKPhysicalDevice;
+  backendContext.fDevice = mVKDevice;
+  backendContext.fQueue = mVKQueue;
   backendContext.fGraphicsQueueIndex = mVKQueueFamily;
   backendContext.fMaxAPIVersion = VK_API_VERSION_1_0;
   mGrContext = GrDirectContexts::MakeVulkan(backendContext);
@@ -518,19 +519,20 @@ void IGraphicsSkia::OnViewDestroyed()
   mMTLLayer = nullptr;
   mMTLDevice = nullptr;
 #elif defined IGRAPHICS_VULKAN
-  vkDeviceWaitIdle((VkDevice)mVKDevice);
+  vkDeviceWaitIdle(mVKDevice);
 
-  mVKImageAvailableSemaphore = nullptr;
-  mVKRenderFinishedSemaphore = nullptr;
-  mVKInFlightFence = nullptr;
+  mVKImageAvailableSemaphore = VK_NULL_HANDLE;
+  mVKRenderFinishedSemaphore = VK_NULL_HANDLE;
+  mVKInFlightFence = VK_NULL_HANDLE;
 
-  mVKInstance = nullptr;
-  mVKPhysicalDevice = nullptr;
-  mVKDevice = nullptr;
-  mVKSurface = nullptr;
-  mVKSwapchain = nullptr;
-  mVKQueue = nullptr;
+  mVKInstance = VK_NULL_HANDLE;
+  mVKPhysicalDevice = VK_NULL_HANDLE;
+  mVKDevice = VK_NULL_HANDLE;
+  mVKSurface = VK_NULL_HANDLE;
+  mVKSwapchain = VK_NULL_HANDLE;
+  mVKQueue = VK_NULL_HANDLE;
   mVKSwapchainImages.clear();
+  mVKSwapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
 
   // Release Skia references after Vulkan cleanup
   mSurface = nullptr;
@@ -553,18 +555,20 @@ void IGraphicsSkia::DrawResize()
   #if defined IGRAPHICS_VULKAN
     if (mVKDevice && mVKSurface)
     {
-      if (auto pWin = dynamic_cast<IGraphicsWin*>(this))
+      #if defined OS_WIN
+      if (auto* pWin = static_cast<IGraphicsWin*>(this))
       {
         VkSwapchainKHR swapchain = VK_NULL_HANDLE;
         std::vector<VkImage> images;
-        if (pWin->CreateOrResizeVulkanSwapchain(w, h, swapchain, images) == VK_SUCCESS)
+        VkFormat format = mVKSwapchainFormat;
+        if (pWin->CreateOrResizeVulkanSwapchain(w, h, swapchain, images, format) == VK_SUCCESS)
         {
           mVKSwapchain = swapchain;
-          mVKSwapchainImages.clear();
-          for (auto img : images)
-            mVKSwapchainImages.push_back((void*)img);
+          mVKSwapchainImages = images;
+          mVKSwapchainFormat = format;
         }
       }
+      #endif
     }
   #endif
   }
@@ -647,16 +651,24 @@ void IGraphicsSkia::BeginFrame()
     mVKSkipFrame = false;
     int width = WindowWidth() * GetScreenScale();
     int height = WindowHeight() * GetScreenScale();
-    if (vkWaitForFences((VkDevice)mVKDevice, 1, (VkFence*)&mVKInFlightFence, VK_TRUE, UINT64_MAX) != VK_SUCCESS)
+    if (vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX) != VK_SUCCESS)
+    {
+      mVKSkipFrame = true;
+      mScreenSurface.reset();
       return;
-    if (vkResetFences((VkDevice)mVKDevice, 1, (VkFence*)&mVKInFlightFence) != VK_SUCCESS)
+    }
+    if (vkResetFences(mVKDevice, 1, &mVKInFlightFence) != VK_SUCCESS)
+    {
+      mVKSkipFrame = true;
+      mScreenSurface.reset();
       return;
+    }
 
     uint32_t imageIndex = 0;
-    VkResult res = vkAcquireNextImageKHR((VkDevice)mVKDevice, (VkSwapchainKHR)mVKSwapchain, UINT64_MAX, (VkSemaphore)mVKImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+    VkResult res = vkAcquireNextImageKHR(mVKDevice, mVKSwapchain, UINT64_MAX, mVKImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
     if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
     {
-      vkDeviceWaitIdle((VkDevice)mVKDevice);
+      vkDeviceWaitIdle(mVKDevice);
       DrawResize();
       mVKSkipFrame = true;
       return;
@@ -669,11 +681,11 @@ void IGraphicsSkia::BeginFrame()
     mVKCurrentImage = imageIndex;
 
     GrVkImageInfo imageInfo{};
-    imageInfo.fImage = reinterpret_cast<VkImage>(mVKSwapchainImages[imageIndex]);
+    imageInfo.fImage = mVKSwapchainImages[imageIndex];
     imageInfo.fAlloc = {VK_NULL_HANDLE, 0, 0, 0};
     imageInfo.fImageLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
     imageInfo.fImageTiling = VK_IMAGE_TILING_OPTIMAL;
-    imageInfo.fFormat = VK_FORMAT_B8G8R8A8_UNORM;
+    imageInfo.fFormat = mVKSwapchainFormat;
     imageInfo.fLevelCount = 1;
     imageInfo.fCurrentQueueFamily = mVKQueueFamily;
 
@@ -723,9 +735,9 @@ void IGraphicsSkia::EndFrame()
   if (auto dContext = GrAsDirectContext(mScreenSurface->getCanvas()->recordingContext()))
   {
     GrBackendSemaphore waitSemaphore;
-    waitSemaphore.initVulkan((VkSemaphore)mVKImageAvailableSemaphore);
+    waitSemaphore.initVulkan(mVKImageAvailableSemaphore);
     GrBackendSemaphore signalSemaphore;
-    signalSemaphore.initVulkan((VkSemaphore)mVKRenderFinishedSemaphore);
+    signalSemaphore.initVulkan(mVKRenderFinishedSemaphore);
     GrFlushInfo flushInfo{};
     flushInfo.fNumSemaphores = 1;
     flushInfo.fWaitSemaphores = &waitSemaphore;
@@ -737,15 +749,14 @@ void IGraphicsSkia::EndFrame()
   VkPresentInfoKHR presentInfo{};
   presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
   presentInfo.waitSemaphoreCount = 1;
-  presentInfo.pWaitSemaphores = (VkSemaphore*)&mVKRenderFinishedSemaphore;
-  VkSwapchainKHR swapchain = (VkSwapchainKHR)mVKSwapchain;
+  presentInfo.pWaitSemaphores = &mVKRenderFinishedSemaphore;
   presentInfo.swapchainCount = 1;
-  presentInfo.pSwapchains = &swapchain;
+  presentInfo.pSwapchains = &mVKSwapchain;
   presentInfo.pImageIndices = &mVKCurrentImage;
-  VkResult res = vkQueuePresentKHR((VkQueue)mVKQueue, &presentInfo);
+  VkResult res = vkQueuePresentKHR(mVKQueue, &presentInfo);
   if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
   {
-    vkDeviceWaitIdle((VkDevice)mVKDevice);
+    vkDeviceWaitIdle(mVKDevice);
     DrawResize();
     mVKSkipFrame = true;
     return;

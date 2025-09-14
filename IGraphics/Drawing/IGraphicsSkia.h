@@ -13,6 +13,7 @@
   #define SK_GL
 #elif defined IGRAPHICS_VULKAN
   #define SK_VULKAN
+  #include <vulkan/vulkan.h>
 #endif
 
 #pragma warning(push)
@@ -183,18 +184,19 @@ private:
 #endif
 
 #ifdef IGRAPHICS_VULKAN
-  void* mVKInstance = nullptr;
-  void* mVKPhysicalDevice = nullptr;
-  void* mVKDevice = nullptr;
-  void* mVKSurface = nullptr;
-  void* mVKSwapchain = nullptr;
-  void* mVKQueue = nullptr;
+  VkInstance mVKInstance = VK_NULL_HANDLE;
+  VkPhysicalDevice mVKPhysicalDevice = VK_NULL_HANDLE;
+  VkDevice mVKDevice = VK_NULL_HANDLE;
+  VkSurfaceKHR mVKSurface = VK_NULL_HANDLE;
+  VkSwapchainKHR mVKSwapchain = VK_NULL_HANDLE;
+  VkQueue mVKQueue = VK_NULL_HANDLE;
   uint32_t mVKQueueFamily = 0;
-  std::vector<void*> mVKSwapchainImages;
+  std::vector<VkImage> mVKSwapchainImages;
   uint32_t mVKCurrentImage = 0;
-  void* mVKImageAvailableSemaphore = nullptr;
-  void* mVKRenderFinishedSemaphore = nullptr;
-  void* mVKInFlightFence = nullptr;
+  VkSemaphore mVKImageAvailableSemaphore = VK_NULL_HANDLE;
+  VkSemaphore mVKRenderFinishedSemaphore = VK_NULL_HANDLE;
+  VkFence mVKInFlightFence = VK_NULL_HANDLE;
+  VkFormat mVKSwapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
   bool mVKSkipFrame = false;
 #endif
 

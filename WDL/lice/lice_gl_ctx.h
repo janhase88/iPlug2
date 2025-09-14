@@ -4,10 +4,14 @@
 #include "lice.h"
 #include "../../IPlug/InstanceSeparation.h"
 
+#if defined(GLAD_GL_H) || defined(IGRAPHICS_GL2) || defined(IGRAPHICS_GL3)
+#include <glad/glad.h>
+#else
 #define GLEW_STATIC
 #include "glew/include/gl/glew.h"
 #include "glew/include/gl/wglew.h"
 #include "glew/include/gl/wglext.h"
+#endif
 
 #define MAX_CACHED_GLYPHS 4096
 

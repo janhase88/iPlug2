@@ -73,13 +73,23 @@ bool LICE_GL_ctx::Init()
   }
 
   // check now for all the extension functions we will ever need
-  if (glewInit() != GLEW_OK ||
-    !glewIsSupported("GL_EXT_framebuffer_object") ||
-    !glewIsSupported("GL_ARB_texture_rectangle"))
+#if defined(GLAD_GL_H) || defined(IGRAPHICS_GL2) || defined(IGRAPHICS_GL3)
+  if (!gladLoadGLLoader((GLADloadproc) wglGetProcAddress) ||
+      !GLAD_GL_EXT_framebuffer_object ||
+      !GLAD_GL_ARB_texture_rectangle)
   {
     Close();
     return false;
   }
+#else
+  if (glewInit() != GLEW_OK ||
+      !glewIsSupported("GL_EXT_framebuffer_object") ||
+      !glewIsSupported("GL_ARB_texture_rectangle"))
+  {
+    Close();
+    return false;
+  }
+#endif
 
   // any one-time initialization goes here
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);

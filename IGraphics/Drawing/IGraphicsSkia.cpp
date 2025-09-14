@@ -487,9 +487,7 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   mVKPhysicalDevice = ctx->physicalDevice;
   mVKDevice = ctx->device;
   mVKSurface = ctx->surface;
-  mVKSwapchain.Reset();
-  mVKSwapchain.device = mVKDevice;
-  mVKSwapchain.handle = ctx->swapchain;
+  mVKSwapchain = ctx->swapchain;
   mVKQueue = ctx->queue;
   mVKQueueFamily = ctx->queueFamily;
   mVKSwapchainFormat = ctx->format;
@@ -499,16 +497,9 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
     for (auto img : *ctx->swapchainImages)
       mVKSwapchainImages.push_back(img);
   }
-
-  mVKImageAvailableSemaphore.Reset();
-  mVKRenderFinishedSemaphore.Reset();
-  mVKInFlightFence.Reset();
-  mVKImageAvailableSemaphore.device = mVKDevice;
-  mVKRenderFinishedSemaphore.device = mVKDevice;
-  mVKInFlightFence.device = mVKDevice;
-  mVKImageAvailableSemaphore.handle = ctx->imageAvailableSemaphore;
-  mVKRenderFinishedSemaphore.handle = ctx->renderFinishedSemaphore;
-  mVKInFlightFence.handle = ctx->inFlightFence;
+  mVKImageAvailableSemaphore = ctx->imageAvailableSemaphore;
+  mVKRenderFinishedSemaphore = ctx->renderFinishedSemaphore;
+  mVKInFlightFence = ctx->inFlightFence;
 
   skgpu::VulkanBackendContext backendContext = {};
   backendContext.fGetProc = [](const char* name, VkInstance instance, VkDevice device) {
@@ -543,10 +534,10 @@ void IGraphicsSkia::OnViewDestroyed()
   mMTLDevice = nullptr;
 #elif defined IGRAPHICS_VULKAN
   vkDeviceWaitIdle(mVKDevice);
-  mVKImageAvailableSemaphore.Reset();
-  mVKRenderFinishedSemaphore.Reset();
-  mVKInFlightFence.Reset();
-  mVKSwapchain.Reset();
+  mVKImageAvailableSemaphore = VK_NULL_HANDLE;
+  mVKRenderFinishedSemaphore = VK_NULL_HANDLE;
+  mVKInFlightFence = VK_NULL_HANDLE;
+  mVKSwapchain = VK_NULL_HANDLE;
 
   mVKInstance = VK_NULL_HANDLE;
   mVKPhysicalDevice = VK_NULL_HANDLE;
@@ -586,18 +577,16 @@ void IGraphicsSkia::DrawResize()
         VkResult res = pWin->CreateOrResizeVulkanSwapchain(w, h, swapchain, images, format);
         if (res == VK_SUCCESS)
         {
-          mVKSwapchain.Reset();
-          mVKSwapchain.device = mVKDevice;
-          mVKSwapchain.handle = swapchain;
+          mVKSwapchain = swapchain;
           mVKSwapchainImages = images;
           mVKSwapchainFormat = format;
         }
         else
         {
           DBGMSG("CreateOrResizeVulkanSwapchain failed: %d\n", res);
-          vkWaitForFences(mVKDevice, 1, &mVKInFlightFence.handle, VK_TRUE, UINT64_MAX);
-          vkResetFences(mVKDevice, 1, &mVKInFlightFence.handle);
-          mVKSwapchain.Reset();
+          vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
+          vkResetFences(mVKDevice, 1, &mVKInFlightFence);
+          mVKSwapchain = VK_NULL_HANDLE;
           mVKSwapchainImages.clear();
           mSurface.reset();
           mScreenSurface.reset();
@@ -689,13 +678,13 @@ void IGraphicsSkia::BeginFrame()
     mVKSkipFrame = false;
     int width = WindowWidth() * GetScreenScale();
     int height = WindowHeight() * GetScreenScale();
-    if (vkWaitForFences(mVKDevice, 1, &mVKInFlightFence.handle, VK_TRUE, UINT64_MAX) != VK_SUCCESS)
+    if (vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX) != VK_SUCCESS)
     {
       mVKSkipFrame = true;
       mScreenSurface.reset();
       return;
     }
-    if (vkResetFences(mVKDevice, 1, &mVKInFlightFence.handle) != VK_SUCCESS)
+    if (vkResetFences(mVKDevice, 1, &mVKInFlightFence) != VK_SUCCESS)
     {
       mVKSkipFrame = true;
       mScreenSurface.reset();
@@ -703,11 +692,11 @@ void IGraphicsSkia::BeginFrame()
     }
 
     uint32_t imageIndex = 0;
-    VkResult res = vkAcquireNextImageKHR(mVKDevice, mVKSwapchain.handle, UINT64_MAX, mVKImageAvailableSemaphore.handle, VK_NULL_HANDLE, &imageIndex);
+    VkResult res = vkAcquireNextImageKHR(mVKDevice, mVKSwapchain, UINT64_MAX, mVKImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
     if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
     {
-      vkWaitForFences(mVKDevice, 1, &mVKInFlightFence.handle, VK_TRUE, UINT64_MAX);
-      vkResetFences(mVKDevice, 1, &mVKInFlightFence.handle);
+      vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
+      vkResetFences(mVKDevice, 1, &mVKInFlightFence);
       DrawResize();
       mVKSkipFrame = true;
       return;
@@ -774,8 +763,8 @@ void IGraphicsSkia::EndFrame()
   #if defined IGRAPHICS_VULKAN
   if (auto dContext = GrAsDirectContext(mScreenSurface->getCanvas()->recordingContext()))
   {
-    GrBackendSemaphore waitSemaphore = GrBackendSemaphores::MakeVk(mVKImageAvailableSemaphore.handle);
-    GrBackendSemaphore signalSemaphore = GrBackendSemaphores::MakeVk(mVKRenderFinishedSemaphore.handle);
+    GrBackendSemaphore waitSemaphore = GrBackendSemaphores::MakeVk(mVKImageAvailableSemaphore);
+    GrBackendSemaphore signalSemaphore = GrBackendSemaphores::MakeVk(mVKRenderFinishedSemaphore);
     dContext->wait(1, &waitSemaphore, false);
     GrFlushInfo flushInfo{};
     flushInfo.fNumSemaphores = 1;
@@ -789,25 +778,25 @@ void IGraphicsSkia::EndFrame()
   VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
   VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
   submitInfo.waitSemaphoreCount = 1;
-  submitInfo.pWaitSemaphores = &mVKRenderFinishedSemaphore.handle;
+  submitInfo.pWaitSemaphores = &mVKRenderFinishedSemaphore;
   submitInfo.pWaitDstStageMask = &waitStage;
   submitInfo.commandBufferCount = 0;
   submitInfo.signalSemaphoreCount = 0;
 
-  vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence.handle);
+  vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
 
   VkPresentInfoKHR presentInfo{};
   presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
   presentInfo.waitSemaphoreCount = 0;
   presentInfo.pWaitSemaphores = nullptr;
   presentInfo.swapchainCount = 1;
-  presentInfo.pSwapchains = &mVKSwapchain.handle;
+  presentInfo.pSwapchains = &mVKSwapchain;
   presentInfo.pImageIndices = &mVKCurrentImage;
   VkResult res = vkQueuePresentKHR(mVKQueue, &presentInfo);
   if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
   {
-    vkWaitForFences(mVKDevice, 1, &mVKInFlightFence.handle, VK_TRUE, UINT64_MAX);
-    vkResetFences(mVKDevice, 1, &mVKInFlightFence.handle);
+    vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
+    vkResetFences(mVKDevice, 1, &mVKInFlightFence);
     DrawResize();
     mVKSkipFrame = true;
     return;

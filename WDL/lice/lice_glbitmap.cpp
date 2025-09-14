@@ -3,16 +3,24 @@
 
 #include "../plush2/plush.h"
 
+#if IPLUG_SEPARATE_GL_CONTEXT
+LICE_GLBitmap::LICE_GLBitmap(LICE_GL_ctx* ctx)
+{
+  m_bmp = 0;
+  m_fbo = 0;
+  m_tex = 0;
+  m_bufloc = EMPTY;
+  m_ctx = ctx;
+}
+#else
 LICE_GLBitmap::LICE_GLBitmap()
 {
   m_bmp = 0;
   m_fbo = 0;
   m_tex = 0;
   m_bufloc = EMPTY;
-#if IPLUG_SEPARATE_GL_CONTEXT
-  m_ctx = nullptr;
-#endif
 }
+#endif
 
 // This is separate from the constructor for initialization order reasons
 #if IPLUG_SEPARATE_GL_CONTEXT

@@ -36,6 +36,8 @@ using namespace igraphics;
 #pragma warning(disable:4312) // Pointer size cast mismatch.
 #pragma warning(disable:4311) // Pointer size cast mismatch.
 
+#pragma comment(lib, "glu32.lib")
+
 #if IPLUG_SEPARATE_WIN_WINDOWING
 // Per-instance windowing variables are stored on the IGraphicsWin instance
 #else

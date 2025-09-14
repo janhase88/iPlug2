@@ -23,6 +23,7 @@
 
 #include <wininet.h>
 #include <VersionHelpers.h>
+#include <cstring>
 
 #if defined __clang__
 #undef CCSIZEOF_STRUCT
@@ -1013,102 +1014,185 @@ void IGraphicsWin::CreateVulkanContext()
   if (mVkInstance)
     return;
 
-  VkApplicationInfo appInfo = {};
+  VkApplicationInfo appInfo{};
   appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
   appInfo.pApplicationName = "iPlug2";
   appInfo.apiVersion = VK_API_VERSION_1_0;
 
   const char* extensions[] = { "VK_KHR_surface", "VK_KHR_win32_surface" };
-  VkInstanceCreateInfo instInfo = {};
+  VkInstanceCreateInfo instInfo{};
   instInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
   instInfo.pApplicationInfo = &appInfo;
   instInfo.enabledExtensionCount = 2;
   instInfo.ppEnabledExtensionNames = extensions;
 
-  if (vkCreateInstance(&instInfo, nullptr, &mVkInstance) != VK_SUCCESS)
+#if !defined(NDEBUG)
+  const char* layers[] = { "VK_LAYER_KHRONOS_validation" };
+  instInfo.enabledLayerCount = 1;
+  instInfo.ppEnabledLayerNames = layers;
+#else
+  instInfo.enabledLayerCount = 0;
+  instInfo.ppEnabledLayerNames = nullptr;
+#endif
+
+  VkResult res = vkCreateInstance(&instInfo, nullptr, &mVkInstance);
+  if (res != VK_SUCCESS)
     return;
 
-  VkWin32SurfaceCreateInfoKHR surfInfo = {};
+  VkWin32SurfaceCreateInfoKHR surfInfo{};
   surfInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
   surfInfo.hinstance = mHInstance;
   surfInfo.hwnd = mPlugWnd;
-  vkCreateWin32SurfaceKHR(mVkInstance, &surfInfo, nullptr, &mVkSurface);
+  res = vkCreateWin32SurfaceKHR(mVkInstance, &surfInfo, nullptr, &mVkSurface);
+  if (res != VK_SUCCESS)
+  {
+    DestroyVulkanContext();
+    return;
+  }
 
   uint32_t gpuCount = 0;
-  vkEnumeratePhysicalDevices(mVkInstance, &gpuCount, nullptr);
-  std::vector<VkPhysicalDevice> gpus(gpuCount);
-  vkEnumeratePhysicalDevices(mVkInstance, &gpuCount, gpus.data());
-  mVkPhysicalDevice = gpus[0];
-
-  uint32_t queueCount = 0;
-  vkGetPhysicalDeviceQueueFamilyProperties(mVkPhysicalDevice, &queueCount, nullptr);
-  std::vector<VkQueueFamilyProperties> queueProps(queueCount);
-  vkGetPhysicalDeviceQueueFamilyProperties(mVkPhysicalDevice, &queueCount, queueProps.data());
-  for (uint32_t i = 0; i < queueCount; ++i)
+  res = vkEnumeratePhysicalDevices(mVkInstance, &gpuCount, nullptr);
+  if (res != VK_SUCCESS || gpuCount == 0)
   {
-    VkBool32 presentSupport = VK_FALSE;
-    vkGetPhysicalDeviceSurfaceSupportKHR(mVkPhysicalDevice, i, mVkSurface, &presentSupport);
-    if ((queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) && presentSupport)
+    DestroyVulkanContext();
+    return;
+  }
+  std::vector<VkPhysicalDevice> gpus(gpuCount);
+  res = vkEnumeratePhysicalDevices(mVkInstance, &gpuCount, gpus.data());
+  if (res != VK_SUCCESS)
+  {
+    DestroyVulkanContext();
+    return;
+  }
+
+  VkPhysicalDevice selectedDevice = VK_NULL_HANDLE;
+  uint32_t selectedQueueFamily = 0;
+  for (auto dev : gpus)
+  {
+    uint32_t extCount = 0;
+    if (vkEnumerateDeviceExtensionProperties(dev, nullptr, &extCount, nullptr) != VK_SUCCESS)
+      continue;
+    std::vector<VkExtensionProperties> extProps(extCount);
+    if (vkEnumerateDeviceExtensionProperties(dev, nullptr, &extCount, extProps.data()) != VK_SUCCESS)
+      continue;
+    bool hasSwapchain = false;
+    for (auto& e : extProps)
     {
-      mVkQueueFamily = i;
-      break;
+      if (strcmp(e.extensionName, VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0)
+      {
+        hasSwapchain = true;
+        break;
+      }
+    }
+    if (!hasSwapchain)
+      continue;
+
+    uint32_t qCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(dev, &qCount, nullptr);
+    std::vector<VkQueueFamilyProperties> qProps(qCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(dev, &qCount, qProps.data());
+    uint32_t qIndex = UINT32_MAX;
+    for (uint32_t i = 0; i < qCount; ++i)
+    {
+      VkBool32 presentSupport = VK_FALSE;
+      res = vkGetPhysicalDeviceSurfaceSupportKHR(dev, i, mVkSurface, &presentSupport);
+      if (res == VK_SUCCESS && (qProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) && presentSupport)
+      {
+        qIndex = i;
+        break;
+      }
+    }
+    if (qIndex == UINT32_MAX)
+      continue;
+
+    VkPhysicalDeviceProperties props;
+    vkGetPhysicalDeviceProperties(dev, &props);
+    if (!selectedDevice || props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+    {
+      selectedDevice = dev;
+      selectedQueueFamily = qIndex;
+      if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+        break;
     }
   }
 
+  if (selectedDevice == VK_NULL_HANDLE)
+  {
+    DestroyVulkanContext();
+    return;
+  }
+
+  mVkPhysicalDevice = selectedDevice;
+  mVkQueueFamily = selectedQueueFamily;
+
   float priority = 1.f;
-  VkDeviceQueueCreateInfo queueInfo = {};
+  VkDeviceQueueCreateInfo queueInfo{};
   queueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
   queueInfo.queueFamilyIndex = mVkQueueFamily;
   queueInfo.queueCount = 1;
   queueInfo.pQueuePriorities = &priority;
 
   const char* devExt[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
-  VkDeviceCreateInfo devInfo = {};
+  VkDeviceCreateInfo devInfo{};
   devInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
   devInfo.queueCreateInfoCount = 1;
   devInfo.pQueueCreateInfos = &queueInfo;
   devInfo.enabledExtensionCount = 1;
   devInfo.ppEnabledExtensionNames = devExt;
+#if !defined(NDEBUG)
+  devInfo.enabledLayerCount = 1;
+  devInfo.ppEnabledLayerNames = layers;
+#else
+  devInfo.enabledLayerCount = 0;
+  devInfo.ppEnabledLayerNames = nullptr;
+#endif
 
-  if (vkCreateDevice(mVkPhysicalDevice, &devInfo, nullptr, &mVkDevice) != VK_SUCCESS)
+  res = vkCreateDevice(mVkPhysicalDevice, &devInfo, nullptr, &mVkDevice);
+  if (res != VK_SUCCESS)
+  {
+    DestroyVulkanContext();
     return;
+  }
 
   vkGetDeviceQueue(mVkDevice, mVkQueueFamily, 0, &mPresentQueue);
 
-  VkSurfaceCapabilitiesKHR caps = {};
-  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(mVkPhysicalDevice, mVkSurface, &caps);
+  VkSurfaceCapabilitiesKHR caps{};
+  res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(mVkPhysicalDevice, mVkSurface, &caps);
+  if (res != VK_SUCCESS)
+  {
+    DestroyVulkanContext();
+    return;
+  }
 
-  VkSwapchainCreateInfoKHR swapInfo = {};
-  swapInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-  swapInfo.surface = mVkSurface;
-  swapInfo.minImageCount = caps.minImageCount + 1;
-  if (caps.maxImageCount > 0 && swapInfo.minImageCount > caps.maxImageCount)
-    swapInfo.minImageCount = caps.maxImageCount;
-  swapInfo.imageFormat = VK_FORMAT_B8G8R8A8_UNORM;
-  swapInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
-  swapInfo.imageExtent = caps.currentExtent;
-  swapInfo.imageArrayLayers = 1;
-  swapInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-  swapInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  swapInfo.preTransform = caps.currentTransform;
-  swapInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-  swapInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
-  swapInfo.clipped = VK_TRUE;
-
-  vkCreateSwapchainKHR(mVkDevice, &swapInfo, nullptr, &mVkSwapchain);
-
-  uint32_t imageCount = 0;
-  vkGetSwapchainImagesKHR(mVkDevice, mVkSwapchain, &imageCount, nullptr);
-  mVkSwapchainImages.resize(imageCount);
-  vkGetSwapchainImagesKHR(mVkDevice, mVkSwapchain, &imageCount, mVkSwapchainImages.data());
+  res = CreateOrResizeVulkanSwapchain(caps.currentExtent.width, caps.currentExtent.height, mVkSwapchain, mVkSwapchainImages);
+  if (res != VK_SUCCESS)
+  {
+    DestroyVulkanContext();
+    return;
+  }
 
   VkSemaphoreCreateInfo semInfo{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
-  vkCreateSemaphore(mVkDevice, &semInfo, nullptr, &mImageAvailableSemaphore);
-  vkCreateSemaphore(mVkDevice, &semInfo, nullptr, &mRenderFinishedSemaphore);
+  res = vkCreateSemaphore(mVkDevice, &semInfo, nullptr, &mImageAvailableSemaphore);
+  if (res != VK_SUCCESS)
+  {
+    DestroyVulkanContext();
+    return;
+  }
+  res = vkCreateSemaphore(mVkDevice, &semInfo, nullptr, &mRenderFinishedSemaphore);
+  if (res != VK_SUCCESS)
+  {
+    DestroyVulkanContext();
+    return;
+  }
 
   VkFenceCreateInfo fenceInfo{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
   fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-  vkCreateFence(mVkDevice, &fenceInfo, nullptr, &mInFlightFence);
+  res = vkCreateFence(mVkDevice, &fenceInfo, nullptr, &mInFlightFence);
+  if (res != VK_SUCCESS)
+  {
+    DestroyVulkanContext();
+    return;
+  }
 }
 
 void IGraphicsWin::DestroyVulkanContext()
@@ -1158,6 +1242,59 @@ void IGraphicsWin::UpdateVulkanSwapchain(VkSwapchainKHR swapchain, const std::ve
 {
   mVkSwapchain = swapchain;
   mVkSwapchainImages = images;
+}
+
+VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images)
+{
+  if (!mVkDevice || !mVkPhysicalDevice || !mVkSurface)
+    return VK_ERROR_INITIALIZATION_FAILED;
+
+  VkResult res = vkDeviceWaitIdle(mVkDevice);
+  if (res != VK_SUCCESS)
+    return res;
+
+  if (mVkSwapchain)
+    vkDestroySwapchainKHR(mVkDevice, mVkSwapchain, nullptr);
+
+  VkSurfaceCapabilitiesKHR caps{};
+  res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(mVkPhysicalDevice, mVkSurface, &caps);
+  if (res != VK_SUCCESS)
+    return res;
+
+  VkSwapchainCreateInfoKHR swapInfo{};
+  swapInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+  swapInfo.surface = mVkSurface;
+  swapInfo.minImageCount = caps.minImageCount + 1;
+  if (caps.maxImageCount > 0 && swapInfo.minImageCount > caps.maxImageCount)
+    swapInfo.minImageCount = caps.maxImageCount;
+  swapInfo.imageFormat = VK_FORMAT_B8G8R8A8_UNORM;
+  swapInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+  swapInfo.imageExtent.width = width;
+  swapInfo.imageExtent.height = height;
+  swapInfo.imageArrayLayers = 1;
+  swapInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  swapInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  swapInfo.preTransform = caps.currentTransform;
+  swapInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+  swapInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+  swapInfo.clipped = VK_TRUE;
+
+  res = vkCreateSwapchainKHR(mVkDevice, &swapInfo, nullptr, &mVkSwapchain);
+  if (res != VK_SUCCESS)
+    return res;
+
+  uint32_t imageCount = 0;
+  res = vkGetSwapchainImagesKHR(mVkDevice, mVkSwapchain, &imageCount, nullptr);
+  if (res != VK_SUCCESS)
+    return res;
+  mVkSwapchainImages.resize(imageCount);
+  res = vkGetSwapchainImagesKHR(mVkDevice, mVkSwapchain, &imageCount, mVkSwapchainImages.data());
+  if (res != VK_SUCCESS)
+    return res;
+
+  swapchain = mVkSwapchain;
+  images = mVkSwapchainImages;
+  return VK_SUCCESS;
 }
 
 void IGraphicsWin::ActivateVulkanContext()

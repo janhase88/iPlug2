@@ -1,5 +1,6 @@
 #include <cmath>
 #include <map>
+#include <vector>
 
 #include "IGraphicsSkia.h"
 
@@ -542,45 +543,17 @@ void IGraphicsSkia::DrawResize()
 #if defined IGRAPHICS_VULKAN
     if (mVKDevice && mVKSurface)
     {
-      vkDeviceWaitIdle((VkDevice)mVKDevice);
-      if (mVKSwapchain)
-        vkDestroySwapchainKHR((VkDevice)mVKDevice, (VkSwapchainKHR)mVKSwapchain, nullptr);
-
-      VkSurfaceCapabilitiesKHR caps{};
-      vkGetPhysicalDeviceSurfaceCapabilitiesKHR((VkPhysicalDevice)mVKPhysicalDevice, (VkSurfaceKHR)mVKSurface, &caps);
-
-      VkSwapchainCreateInfoKHR swapInfo{};
-      swapInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-      swapInfo.surface = (VkSurfaceKHR)mVKSurface;
-      swapInfo.minImageCount = caps.minImageCount + 1;
-      if (caps.maxImageCount > 0 && swapInfo.minImageCount > caps.maxImageCount)
-        swapInfo.minImageCount = caps.maxImageCount;
-      swapInfo.imageFormat = VK_FORMAT_B8G8R8A8_UNORM;
-      swapInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
-      swapInfo.imageExtent.width = w;
-      swapInfo.imageExtent.height = h;
-      swapInfo.imageArrayLayers = 1;
-      swapInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-      swapInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-      swapInfo.preTransform = caps.currentTransform;
-      swapInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-      swapInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
-      swapInfo.clipped = VK_TRUE;
-
-      VkSwapchainKHR swapchain = VK_NULL_HANDLE;
-      vkCreateSwapchainKHR((VkDevice)mVKDevice, &swapInfo, nullptr, &swapchain);
-      mVKSwapchain = swapchain;
-      uint32_t imageCount = 0;
-      vkGetSwapchainImagesKHR((VkDevice)mVKDevice, swapchain, &imageCount, nullptr);
-      mVKSwapchainImages.resize(imageCount);
-      vkGetSwapchainImagesKHR((VkDevice)mVKDevice, swapchain, &imageCount, reinterpret_cast<VkImage*>(mVKSwapchainImages.data()));
       if (auto pWin = dynamic_cast<IGraphicsWin*>(this))
       {
-        std::vector<VkImage> imgs;
-        imgs.reserve(mVKSwapchainImages.size());
-        for (auto img : mVKSwapchainImages)
-          imgs.push_back((VkImage)img);
-        pWin->UpdateVulkanSwapchain(swapchain, imgs);
+        VkSwapchainKHR swapchain = VK_NULL_HANDLE;
+        std::vector<VkImage> images;
+        if (pWin->CreateOrResizeVulkanSwapchain(w, h, swapchain, images) == VK_SUCCESS)
+        {
+          mVKSwapchain = swapchain;
+          mVKSwapchainImages.clear();
+          for (auto img : images)
+            mVKSwapchainImages.push_back((void*)img);
+        }
       }
     }
 #endif
@@ -663,12 +636,22 @@ void IGraphicsSkia::BeginFrame()
   {
     int width = WindowWidth() * GetScreenScale();
     int height = WindowHeight() * GetScreenScale();
-
-    vkWaitForFences((VkDevice)mVKDevice, 1, (VkFence*)&mVKInFlightFence, VK_TRUE, UINT64_MAX);
-    vkResetFences((VkDevice)mVKDevice, 1, (VkFence*)&mVKInFlightFence);
+    if (vkWaitForFences((VkDevice)mVKDevice, 1, (VkFence*)&mVKInFlightFence, VK_TRUE, UINT64_MAX) != VK_SUCCESS)
+      return;
+    if (vkResetFences((VkDevice)mVKDevice, 1, (VkFence*)&mVKInFlightFence) != VK_SUCCESS)
+      return;
 
     uint32_t imageIndex = 0;
-    vkAcquireNextImageKHR((VkDevice)mVKDevice, (VkSwapchainKHR)mVKSwapchain, UINT64_MAX, (VkSemaphore)mVKImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+    VkResult res = vkAcquireNextImageKHR((VkDevice)mVKDevice, (VkSwapchainKHR)mVKSwapchain, UINT64_MAX, (VkSemaphore)mVKImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+    if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
+    {
+      DrawResize();
+      res = vkAcquireNextImageKHR((VkDevice)mVKDevice, (VkSwapchainKHR)mVKSwapchain, UINT64_MAX, (VkSemaphore)mVKImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+      if (res != VK_SUCCESS)
+        return;
+    }
+    else if (res != VK_SUCCESS)
+      return;
     mVKCurrentImage = imageIndex;
 
     GrVkImageInfo imageInfo{};
@@ -740,7 +723,8 @@ void IGraphicsSkia::EndFrame()
   submitInfo.commandBufferCount = 0;
   submitInfo.signalSemaphoreCount = 1;
   submitInfo.pSignalSemaphores = (VkSemaphore*)&mVKRenderFinishedSemaphore;
-  vkQueueSubmit((VkQueue)mVKQueue, 1, &submitInfo, (VkFence)mVKInFlightFence);
+  if (vkQueueSubmit((VkQueue)mVKQueue, 1, &submitInfo, (VkFence)mVKInFlightFence) != VK_SUCCESS)
+    return;
 
   VkPresentInfoKHR presentInfo{};
   presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -750,7 +734,11 @@ void IGraphicsSkia::EndFrame()
   presentInfo.swapchainCount = 1;
   presentInfo.pSwapchains = &swapchain;
   presentInfo.pImageIndices = &mVKCurrentImage;
-  vkQueuePresentKHR((VkQueue)mVKQueue, &presentInfo);
+  VkResult res = vkQueuePresentKHR((VkQueue)mVKQueue, &presentInfo);
+  if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
+    DrawResize();
+  else if (res != VK_SUCCESS)
+    return;
   #endif
 #endif
 }

@@ -1,14 +1,16 @@
 #ifndef _GL_CTX_
 #define _GL_CTX_
 
-#if defined(GLAD_GL_H) || defined(IGRAPHICS_GL2) || defined(IGRAPHICS_GL3)
+#if defined(USE_GLAD)
 #include <glad/glad.h>
 #include <GL/glu.h>
-#else
+#elif defined(USE_GLEW)
 #define GLEW_STATIC
 #include "glew/include/GL/glew.h"
 #include "glew/include/GL/wglew.h"
 #include "glew/include/GL/WGLEXT.H"
+#else
+#error Define USE_GLAD or USE_GLEW to select the OpenGL loader
 #endif
 
 #include "lice.h"

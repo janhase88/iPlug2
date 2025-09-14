@@ -34,7 +34,16 @@
   #elif defined IGRAPHICS_GL2 || defined IGRAPHICS_GL3
     #define IGRAPHICS_GL
     #if defined OS_WIN
-      #include <glad/glad.h>
+      #if defined(USE_GLAD)
+        #include <glad/glad.h>
+      #elif defined(USE_GLEW)
+        #define GLEW_STATIC
+        #include "../WDL/lice/glew/include/GL/glew.h"
+        #include "../WDL/lice/glew/include/GL/wglew.h"
+        #include "../WDL/lice/glew/include/GL/WGLEXT.H"
+      #else
+        #error Define USE_GLAD or USE_GLEW to select the OpenGL loader
+      #endif
     #elif defined OS_MAC
       #if defined IGRAPHICS_GL2
         #include <OpenGL/gl.h>

@@ -73,7 +73,7 @@ bool LICE_GL_ctx::Init()
   }
 
 
-#if defined(GLAD_GL_H) || defined(IGRAPHICS_GL2) || defined(IGRAPHICS_GL3)
+#if defined(USE_GLAD)
   if (!gladLoadGLLoader((GLADloadproc) wglGetProcAddress) ||
       !GLAD_GL_EXT_framebuffer_object ||
       !GLAD_GL_ARB_texture_rectangle)
@@ -81,7 +81,7 @@ bool LICE_GL_ctx::Init()
     Close();
     return false;
   }
-#else
+#elif defined(USE_GLEW)
   if (glewInit() != GLEW_OK ||
       !glewIsSupported("GL_EXT_framebuffer_object") ||
       !glewIsSupported("GL_ARB_texture_rectangle"))
@@ -89,6 +89,8 @@ bool LICE_GL_ctx::Init()
     Close();
     return false;
   }
+#else
+  #error Define USE_GLAD or USE_GLEW to select the OpenGL loader
 #endif
 
   // any one-time initialization goes here

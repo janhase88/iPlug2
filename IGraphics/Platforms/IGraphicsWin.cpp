@@ -1334,6 +1334,10 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t he
     res = vkResetFences(mVkDevice, 1, &mInFlightFence.handle);
     if (res != VK_SUCCESS)
       return res;
+    // ensure next BeginFrame sees the fence as signaled
+    res = vkQueueSubmit(mPresentQueue, 0, nullptr, mInFlightFence.handle);
+    if (res != VK_SUCCESS)
+      return res;
   }
 
   mVkSwapchain.Reset();

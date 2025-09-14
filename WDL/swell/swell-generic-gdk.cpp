@@ -53,8 +53,13 @@ extern "C" {
 
 #include <X11/Xatom.h>
 
-#include <GL/gl.h>
-#include <GL/glx.h>
+#if defined(USE_GLAD)
+  #include <glad/glad.h>
+  #include <GL/glx.h>   // still required for GLX functions
+#else
+  #include <GL/gl.h>
+  #include <GL/glx.h>
+#endif
 
 static void (*_gdk_drag_drop_done)(GdkDragContext *, gboolean); // may not always be available
 

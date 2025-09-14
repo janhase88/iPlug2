@@ -23,6 +23,7 @@
 
 #include <VersionHelpers.h>
 #include <cstring>
+#include <cstdlib>
 #include <wininet.h>
 
 #if defined __clang__
@@ -1097,8 +1098,13 @@ bool IGraphicsWin::CreateVulkanContext()
     return false;
   }
 
+  const char* pref = std::getenv("IGRAPHICS_VK_GPU");
+  bool preferIntegrated = pref && std::strcmp(pref, "integrated") == 0;
+  bool preferDiscrete = pref && std::strcmp(pref, "discrete") == 0;
+
   VkPhysicalDevice selectedDevice = VK_NULL_HANDLE;
   uint32_t selectedQueueFamily = 0;
+  uint32_t bestScore = 0;
   for (auto dev : gpus)
   {
     uint32_t extCount = 0;
@@ -1139,12 +1145,26 @@ bool IGraphicsWin::CreateVulkanContext()
 
     VkPhysicalDeviceProperties props;
     vkGetPhysicalDeviceProperties(dev, &props);
-    if (!selectedDevice || props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+    VkPhysicalDeviceFeatures features;
+    vkGetPhysicalDeviceFeatures(dev, &features);
+    if (!features.samplerAnisotropy)
+      continue;
+
+    uint32_t score = props.limits.maxImageDimension2D;
+    if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+      score += 1000;
+    else if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
+      score += 100;
+    if (preferDiscrete && props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+      score += 10000;
+    if (preferIntegrated && props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
+      score += 10000;
+
+    if (score > bestScore)
     {
+      bestScore = score;
       selectedDevice = dev;
       selectedQueueFamily = qIndex;
-      if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
-        break;
     }
   }
 
@@ -1161,22 +1181,9 @@ bool IGraphicsWin::CreateVulkanContext()
   vkGetPhysicalDeviceFeatures(mVkPhysicalDevice, &supportedFeatures);
 
   VkPhysicalDeviceFeatures enabledFeatures{};
-  if (!supportedFeatures.samplerAnisotropy)
-  {
-    DBGMSG("Required Vulkan device feature samplerAnisotropy not supported\n");
-    DestroyVulkanContext();
-    return false;
-  }
-
-  enabledFeatures.samplerAnisotropy = VK_TRUE;
+  enabledFeatures.samplerAnisotropy = supportedFeatures.samplerAnisotropy;
   if (supportedFeatures.textureCompressionBC)
-  {
     enabledFeatures.textureCompressionBC = VK_TRUE;
-  }
-  else
-  {
-    DBGMSG("Optional Vulkan feature textureCompressionBC not supported\n");
-  }
 
   float priority = 1.f;
   VkDeviceQueueCreateInfo queueInfo{};
@@ -1226,7 +1233,8 @@ bool IGraphicsWin::CreateVulkanContext()
     return false;
   }
 
-  res = CreateOrResizeVulkanSwapchain(caps.currentExtent.width, caps.currentExtent.height, mVkSwapchain, mVkSwapchainImages, mVkFormat);
+  mVkSwapchain.device = mVkDevice;
+  res = CreateOrResizeVulkanSwapchain(caps.currentExtent.width, caps.currentExtent.height, mVkSwapchain.handle, mVkSwapchainImages, mVkFormat);
   if (res != VK_SUCCESS)
   {
     DestroyVulkanContext();
@@ -1234,13 +1242,15 @@ bool IGraphicsWin::CreateVulkanContext()
   }
 
   VkSemaphoreCreateInfo semInfo{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-  res = vkCreateSemaphore(mVkDevice, &semInfo, nullptr, &mImageAvailableSemaphore);
+  mImageAvailableSemaphore.device = mVkDevice;
+  res = vkCreateSemaphore(mVkDevice, &semInfo, nullptr, &mImageAvailableSemaphore.handle);
   if (res != VK_SUCCESS)
   {
     DestroyVulkanContext();
     return false;
   }
-  res = vkCreateSemaphore(mVkDevice, &semInfo, nullptr, &mRenderFinishedSemaphore);
+  mRenderFinishedSemaphore.device = mVkDevice;
+  res = vkCreateSemaphore(mVkDevice, &semInfo, nullptr, &mRenderFinishedSemaphore.handle);
   if (res != VK_SUCCESS)
   {
     DestroyVulkanContext();
@@ -1249,7 +1259,8 @@ bool IGraphicsWin::CreateVulkanContext()
 
   VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
   fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-  res = vkCreateFence(mVkDevice, &fenceInfo, nullptr, &mInFlightFence);
+  mInFlightFence.device = mVkDevice;
+  res = vkCreateFence(mVkDevice, &fenceInfo, nullptr, &mInFlightFence.handle);
   if (res != VK_SUCCESS)
   {
     DestroyVulkanContext();
@@ -1264,27 +1275,11 @@ void IGraphicsWin::DestroyVulkanContext()
   if (mVkDevice)
     vkDeviceWaitIdle(mVkDevice);
 
-  if (mImageAvailableSemaphore)
-  {
-    vkDestroySemaphore(mVkDevice, mImageAvailableSemaphore, nullptr);
-    mImageAvailableSemaphore = VK_NULL_HANDLE;
-  }
-  if (mRenderFinishedSemaphore)
-  {
-    vkDestroySemaphore(mVkDevice, mRenderFinishedSemaphore, nullptr);
-    mRenderFinishedSemaphore = VK_NULL_HANDLE;
-  }
-  if (mInFlightFence)
-  {
-    vkDestroyFence(mVkDevice, mInFlightFence, nullptr);
-    mInFlightFence = VK_NULL_HANDLE;
-  }
-
-  if (mVkSwapchain)
-  {
-    vkDestroySwapchainKHR(mVkDevice, mVkSwapchain, nullptr);
-    mVkSwapchain = VK_NULL_HANDLE;
-  }
+  mImageAvailableSemaphore.Reset();
+  mRenderFinishedSemaphore.Reset();
+  mInFlightFence.Reset();
+  mVkSwapchain.Reset();
+  mVkSwapchain.device = mVkDevice;
   mVkSwapchainImages.clear();
   mVkFormat = VK_FORMAT_B8G8R8A8_UNORM;
   if (mVkSurface)
@@ -1304,6 +1299,29 @@ void IGraphicsWin::DestroyVulkanContext()
   }
 }
 
+bool IGraphicsWin::RecreateVulkanContext()
+{
+  OnViewDestroyed();
+  DestroyVulkanContext();
+  if (!CreateVulkanContext())
+    return false;
+  VulkanContext ctx;
+  ctx.instance = mVkInstance;
+  ctx.physicalDevice = mVkPhysicalDevice;
+  ctx.device = mVkDevice;
+  ctx.surface = mVkSurface;
+  ctx.swapchain = mVkSwapchain.handle;
+  ctx.queue = mPresentQueue;
+  ctx.queueFamily = mVkQueueFamily;
+  ctx.imageAvailableSemaphore = mImageAvailableSemaphore.handle;
+  ctx.renderFinishedSemaphore = mRenderFinishedSemaphore.handle;
+  ctx.inFlightFence = mInFlightFence.handle;
+  ctx.swapchainImages = &mVkSwapchainImages;
+  ctx.format = mVkFormat;
+  OnViewInitialized(&ctx);
+  return true;
+}
+
 VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format)
 {
   if (!mVkDevice || !mVkPhysicalDevice || !mVkSurface)
@@ -1313,8 +1331,8 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t he
   if (res != VK_SUCCESS)
     return res;
 
-  if (mVkSwapchain)
-    vkDestroySwapchainKHR(mVkDevice, mVkSwapchain, nullptr);
+  mVkSwapchain.Reset();
+  mVkSwapchain.device = mVkDevice;
 
   VkSurfaceCapabilitiesKHR caps{};
   res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(mVkPhysicalDevice, mVkSurface, &caps);
@@ -1375,22 +1393,22 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t he
   swapInfo.presentMode = presentMode;
   swapInfo.clipped = VK_TRUE;
 
-  res = vkCreateSwapchainKHR(mVkDevice, &swapInfo, nullptr, &mVkSwapchain);
+  res = vkCreateSwapchainKHR(mVkDevice, &swapInfo, nullptr, &mVkSwapchain.handle);
   if (res != VK_SUCCESS)
     return res;
 
   uint32_t imageCount = 0;
-  res = vkGetSwapchainImagesKHR(mVkDevice, mVkSwapchain, &imageCount, nullptr);
+  res = vkGetSwapchainImagesKHR(mVkDevice, mVkSwapchain.handle, &imageCount, nullptr);
   if (res != VK_SUCCESS)
     return res;
   mVkSwapchainImages.resize(imageCount);
-  res = vkGetSwapchainImagesKHR(mVkDevice, mVkSwapchain, &imageCount, mVkSwapchainImages.data());
+  res = vkGetSwapchainImagesKHR(mVkDevice, mVkSwapchain.handle, &imageCount, mVkSwapchainImages.data());
   if (res != VK_SUCCESS)
     return res;
 
   mVkFormat = surfaceFormat.format;
   format = mVkFormat;
-  swapchain = mVkSwapchain;
+  swapchain = mVkSwapchain.handle;
   images = mVkSwapchainImages;
   return VK_SUCCESS;
 }
@@ -1480,12 +1498,12 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   ctx.physicalDevice = mVkPhysicalDevice;
   ctx.device = mVkDevice;
   ctx.surface = mVkSurface;
-  ctx.swapchain = mVkSwapchain;
+  ctx.swapchain = mVkSwapchain.handle;
   ctx.queue = mPresentQueue;
   ctx.queueFamily = mVkQueueFamily;
-  ctx.imageAvailableSemaphore = mImageAvailableSemaphore;
-  ctx.renderFinishedSemaphore = mRenderFinishedSemaphore;
-  ctx.inFlightFence = mInFlightFence;
+  ctx.imageAvailableSemaphore = mImageAvailableSemaphore.handle;
+  ctx.renderFinishedSemaphore = mRenderFinishedSemaphore.handle;
+  ctx.inFlightFence = mInFlightFence.handle;
   ctx.swapchainImages = &mVkSwapchainImages;
   ctx.format = mVkFormat;
   OnViewInitialized(&ctx);

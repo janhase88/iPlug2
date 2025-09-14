@@ -55,8 +55,8 @@
   #include "include/ports/SkFontMgr_mac_ct.h"
 
 #elif defined OS_WIN
-  #include "include/ports/SkTypeface_win.h"
   #include <windows.h>
+  #include "include/ports/SkTypeface_win.h"
 
   #pragma comment(lib, "skia.lib")
 

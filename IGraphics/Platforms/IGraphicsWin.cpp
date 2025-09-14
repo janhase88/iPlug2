@@ -1112,11 +1112,10 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   }
 
 #if IPLUG_SEPARATE_WIN_WINDOWING
-  mPlugWnd = CreateWindowW(mWndClassName,
+  mPlugWnd = CreateWindowW(mWndClassName, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
 #else
-  mPlugWnd = CreateWindowW(sWndClassName,
+  mPlugWnd = CreateWindowW(sWndClassName, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
 #endif
-    L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
 
   HDC dc = GetDC(mPlugWnd);
   SetPlatformContext(dc);

@@ -970,30 +970,34 @@ public:
   /** Get the app group ID on macOS and iOS, returns emtpy string on other OSs */
   virtual const char* GetAppGroupID() const { return ""; }
 
-  // An RAII helper to manage the IGraphics GL context
-  class ScopedGLContext
+  // An RAII helper to manage activation of the current graphics API
+  class ScopedGraphicsContext
   {
   public:
-    ScopedGLContext(IGraphics* pGraphics)
-    : mIGraphics(*pGraphics) { mIGraphics.ActivateGLContext(); }
-    ~ScopedGLContext() { mIGraphics.DeactivateGLContext(); }
+    ScopedGraphicsContext(IGraphics* pGraphics)
+      : mIGraphics(*pGraphics)
+    {
+      mIGraphics.ActivateGLContext();
+    }
+    ~ScopedGraphicsContext() { mIGraphics.DeactivateGLContext(); }
+
   private:
     IGraphics& mIGraphics;
   };
-  
+
 protected:
-  /* Activate the context for the view (GL only) */
+  /* Activate the graphics API context for the view */
   virtual void ActivateGLContext() {};
 
-  /* Deactivate the context for the view (GL only) */
+  /* Deactivate the graphics API context for the view */
   virtual void DeactivateGLContext() {};
 
   /** Creates a platform native text entry field.
-  * @param paramIdx The index of the parameter associated with the text entry field.
-  * @param text The IText style for the text entry field text.
-  * @param bounds The rectangle that defines the size and position of the text entry field.
-  * @param length The maximum allowed length of the text in the text entry field.
-  * @param str The initial string to be displayed in the text entry field. */
+   * @param paramIdx The index of the parameter associated with the text entry field.
+   * @param text The IText style for the text entry field text.
+   * @param bounds The rectangle that defines the size and position of the text entry field.
+   * @param length The maximum allowed length of the text in the text entry field.
+   * @param str The initial string to be displayed in the text entry field. */
   virtual void CreatePlatformTextEntry(int paramIdx, const IText& text, const IRECT& bounds, int length, const char* str) = 0;
   
   /** Calls the platform backend to create the platform popup menu

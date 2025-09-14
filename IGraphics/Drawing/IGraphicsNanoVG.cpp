@@ -331,15 +331,15 @@ APIBitmap* IGraphicsNanoVG::LoadAPIBitmap(const char* fileNameOrResID, int scale
 
     if (pResData)
     {
-      ScopedGLContext scopedGLCtx {this};
-      idx = nvgCreateImageMem(mVG, nvgImageFlags, (unsigned char*) pResData, size);
+      ScopedGraphicsContext scopedGLCtx{this};
+      idx = nvgCreateImageMem(mVG, nvgImageFlags, (unsigned char*)pResData, size);
     }
   }
   else
 #endif
-  if (location == EResourceLocation::kAbsolutePath)
+    if (location == EResourceLocation::kAbsolutePath)
   {
-    ScopedGLContext scopedGLCtx {this};
+    ScopedGraphicsContext scopedGLCtx{this};
     idx = nvgCreateImage(mVG, fileNameOrResID, nvgImageFlags);
   }
 
@@ -357,10 +357,10 @@ APIBitmap* IGraphicsNanoVG::LoadAPIBitmap(const char* name, const void* pData, i
     int nvgImageFlags = 0;
 
     {
-      ScopedGLContext scopedGLCtx {this};
+      ScopedGraphicsContext scopedGLCtx{this};
       idx = nvgCreateImageMem(mVG, nvgImageFlags, (unsigned char*)pData, dataSize);
     }
-    
+
     pBitmap = new Bitmap(mVG, name, scale, idx, false);
 
     storage.Add(pBitmap, name, scale);
@@ -479,11 +479,11 @@ void IGraphicsNanoVG::OnViewDestroyed()
 
 void IGraphicsNanoVG::DrawResize()
 {
-  ScopedGLContext scopedGLCtx {this};
+  ScopedGraphicsContext scopedGLCtx{this};
 
   if (mMainFrameBuffer != nullptr)
     nvgDeleteFramebuffer(mMainFrameBuffer);
-  
+
   if (mVG)
   {
     mMainFrameBuffer = nvgCreateFramebuffer(mVG, WindowWidth() * GetScreenScale(), WindowHeight() * GetScreenScale(), 0);

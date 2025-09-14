@@ -550,7 +550,7 @@ void IGraphicsSkia::OnViewDestroyed()
 
 void IGraphicsSkia::DrawResize()
 {
-  ScopedGLContext scopedGLContext{this};
+  ScopedGraphicsContext scopedGLContext{this};
   auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * GetScreenScale()));
   auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * GetScreenScale()));
 
@@ -580,7 +580,8 @@ void IGraphicsSkia::DrawResize()
         else
         {
           DBGMSG("CreateOrResizeVulkanSwapchain failed: %d\n", res);
-          vkDeviceWaitIdle(mVKDevice);
+          vkWaitForFences(mVKDevice, 1, &mVKInFlightFence.handle, VK_TRUE, UINT64_MAX);
+          vkResetFences(mVKDevice, 1, &mVKInFlightFence.handle);
           mVKSwapchain.Reset();
           mVKSwapchainImages.clear();
           mSurface.reset();
@@ -690,7 +691,8 @@ void IGraphicsSkia::BeginFrame()
     VkResult res = vkAcquireNextImageKHR(mVKDevice, mVKSwapchain.handle, UINT64_MAX, mVKImageAvailableSemaphore.handle, VK_NULL_HANDLE, &imageIndex);
     if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
     {
-      vkDeviceWaitIdle(mVKDevice);
+      vkWaitForFences(mVKDevice, 1, &mVKInFlightFence.handle, VK_TRUE, UINT64_MAX);
+      vkResetFences(mVKDevice, 1, &mVKInFlightFence.handle);
       DrawResize();
       mVKSkipFrame = true;
       return;
@@ -778,7 +780,8 @@ void IGraphicsSkia::EndFrame()
   VkResult res = vkQueuePresentKHR(mVKQueue, &presentInfo);
   if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
   {
-    vkDeviceWaitIdle(mVKDevice);
+    vkWaitForFences(mVKDevice, 1, &mVKInFlightFence.handle, VK_TRUE, UINT64_MAX);
+    vkResetFences(mVKDevice, 1, &mVKInFlightFence.handle);
     DrawResize();
     mVKSkipFrame = true;
     return;

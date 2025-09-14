@@ -4,7 +4,8 @@
 #include "lice.h"
 #include "../../IPlug/InstanceSeparation.h"
 
-#if defined(GLAD_GL_H) || defined(IGRAPHICS_GL2) || defined(IGRAPHICS_GL3)
+
+#ifdef GLAD_GL_H
 #include <glad/glad.h>
 
 #include <GL/glu.h>

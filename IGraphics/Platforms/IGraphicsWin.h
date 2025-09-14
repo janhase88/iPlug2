@@ -123,7 +123,6 @@ public:
   DWORD OnVBlankRun();
 
 #ifdef IGRAPHICS_VULKAN
-  void UpdateVulkanSwapchain(VkSwapchainKHR swapchain, const std::vector<VkImage>& images);
   VkResult CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format);
 #endif
 

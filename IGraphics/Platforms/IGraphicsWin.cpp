@@ -1034,7 +1034,7 @@ bool IGraphicsWin::CreateVulkanContext()
   instInfo.enabledExtensionCount = 2;
   instInfo.ppEnabledExtensionNames = extensions;
 
-#if !defined(NDEBUG)
+  #if !defined(NDEBUG)
   const char* validationLayer = "VK_LAYER_KHRONOS_validation";
   bool enableValidation = false;
   uint32_t layerCount = 0;
@@ -1061,11 +1061,11 @@ bool IGraphicsWin::CreateVulkanContext()
     instInfo.enabledLayerCount = 0;
     instInfo.ppEnabledLayerNames = nullptr;
   }
-#else
+  #else
   bool enableValidation = false;
   instInfo.enabledLayerCount = 0;
   instInfo.ppEnabledLayerNames = nullptr;
-#endif
+  #endif
 
   VkResult res = vkCreateInstance(&instInfo, nullptr, &mVkInstance);
   if (res != VK_SUCCESS)
@@ -1157,6 +1157,20 @@ bool IGraphicsWin::CreateVulkanContext()
   mVkPhysicalDevice = selectedDevice;
   mVkQueueFamily = selectedQueueFamily;
 
+  VkPhysicalDeviceFeatures supportedFeatures;
+  vkGetPhysicalDeviceFeatures(mVkPhysicalDevice, &supportedFeatures);
+
+  VkPhysicalDeviceFeatures enabledFeatures{};
+  if (!supportedFeatures.samplerAnisotropy || !supportedFeatures.textureCompressionBC)
+  {
+    DBGMSG("Required Vulkan device features not supported\n");
+    DestroyVulkanContext();
+    return false;
+  }
+
+  enabledFeatures.samplerAnisotropy = VK_TRUE;
+  enabledFeatures.textureCompressionBC = VK_TRUE;
+
   float priority = 1.f;
   VkDeviceQueueCreateInfo queueInfo{};
   queueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -1171,7 +1185,8 @@ bool IGraphicsWin::CreateVulkanContext()
   devInfo.pQueueCreateInfos = &queueInfo;
   devInfo.enabledExtensionCount = 1;
   devInfo.ppEnabledExtensionNames = devExt;
-#if !defined(NDEBUG)
+  devInfo.pEnabledFeatures = &enabledFeatures;
+  #if !defined(NDEBUG)
   if (enableValidation)
   {
     devInfo.enabledLayerCount = 1;
@@ -1182,10 +1197,10 @@ bool IGraphicsWin::CreateVulkanContext()
     devInfo.enabledLayerCount = 0;
     devInfo.ppEnabledLayerNames = nullptr;
   }
-#else
+  #else
   devInfo.enabledLayerCount = 0;
   devInfo.ppEnabledLayerNames = nullptr;
-#endif
+  #endif
 
   res = vkCreateDevice(mVkPhysicalDevice, &devInfo, nullptr, &mVkDevice);
   if (res != VK_SUCCESS)
@@ -1280,12 +1295,6 @@ void IGraphicsWin::DestroyVulkanContext()
     vkDestroyInstance(mVkInstance, nullptr);
     mVkInstance = VK_NULL_HANDLE;
   }
-}
-
-void IGraphicsWin::UpdateVulkanSwapchain(VkSwapchainKHR swapchain, const std::vector<VkImage>& images)
-{
-  mVkSwapchain = swapchain;
-  mVkSwapchainImages = images;
 }
 
 VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format)

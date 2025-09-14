@@ -684,6 +684,8 @@ void IGraphicsSkia::BeginFrame()
     {
       if (fenceRes == VK_TIMEOUT)
         DBGMSG("vkWaitForFences timed out\n");
+      vkResetFences(mVKDevice, 1, &mVKInFlightFence);
+      vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // ensure fence becomes signaled
       mVKSkipFrame = true;
       mScreenSurface.reset();
       return;

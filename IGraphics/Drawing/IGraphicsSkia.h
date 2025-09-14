@@ -195,6 +195,7 @@ private:
   void* mVKImageAvailableSemaphore = nullptr;
   void* mVKRenderFinishedSemaphore = nullptr;
   void* mVKInFlightFence = nullptr;
+  bool mVKSkipFrame = false;
 #endif
 
   static StaticStorage<Font> sFontCache;

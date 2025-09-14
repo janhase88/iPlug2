@@ -376,17 +376,17 @@ IGraphicsSkia::IGraphicsSkia(IGEditorDelegate& dlg, int w, int h, int fps, float
   storage.Retain();
 
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
-   if (!mFontCollection)
+  if (!mFontCollection)
   {
-     mFontMgr = SParagraphFontMgr();
-     mTypefaceProvider = sk_make_sp<skia::textlayout::TypefaceFontProvider>();
-     mTypefaceProvider->ref();// <-- CHANGED THIS LINE
-     mFontCollection = sk_make_sp<skia::textlayout::FontCollection>();
-     mFontCollection->setAssetFontManager(mTypefaceProvider);
-     mFontCollection->setDefaultFontManager(mFontMgr);
-     mFontCollection->enableFontFallback();
-   }
-  #endif
+    mFontMgr = SParagraphFontMgr();
+    mTypefaceProvider = sk_make_sp<skia::textlayout::TypefaceFontProvider>();
+    mTypefaceProvider->ref(); // <-- CHANGED THIS LINE
+    mFontCollection = sk_make_sp<skia::textlayout::FontCollection>();
+    mFontCollection->setAssetFontManager(mTypefaceProvider);
+    mFontCollection->setDefaultFontManager(mFontMgr);
+    mFontCollection->enableFontFallback();
+  }
+#endif
 }
 
 IGraphicsSkia::~IGraphicsSkia()
@@ -486,13 +486,13 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
       mVKSwapchainImages.push_back((void*)img);
   }
 
-  VkSemaphoreCreateInfo semInfo{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
+  VkSemaphoreCreateInfo semInfo{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
   if (vkCreateSemaphore((VkDevice)mVKDevice, &semInfo, nullptr, (VkSemaphore*)&mVKImageAvailableSemaphore) != VK_SUCCESS)
     return;
   if (vkCreateSemaphore((VkDevice)mVKDevice, &semInfo, nullptr, (VkSemaphore*)&mVKRenderFinishedSemaphore) != VK_SUCCESS)
     return;
 
-  VkFenceCreateInfo fenceInfo{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
+  VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
   fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
   if (vkCreateFence((VkDevice)mVKDevice, &fenceInfo, nullptr, (VkFence*)&mVKInFlightFence) != VK_SUCCESS)
     return;
@@ -568,7 +568,7 @@ void IGraphicsSkia::DrawResize()
   {
     SkImageInfo info = SkImageInfo::MakeN32Premul(w, h);
     mSurface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info);
-#if defined IGRAPHICS_VULKAN
+  #if defined IGRAPHICS_VULKAN
     if (mVKDevice && mVKSurface)
     {
       if (auto pWin = dynamic_cast<IGraphicsWin*>(this))
@@ -584,7 +584,7 @@ void IGraphicsSkia::DrawResize()
         }
       }
     }
-#endif
+  #endif
   }
 #else
   #ifdef OS_WIN
@@ -662,6 +662,7 @@ void IGraphicsSkia::BeginFrame()
 #elif defined IGRAPHICS_VULKAN
   if (mGrContext.get())
   {
+    mVKSkipFrame = false;
     int width = WindowWidth() * GetScreenScale();
     int height = WindowHeight() * GetScreenScale();
     if (vkWaitForFences((VkDevice)mVKDevice, 1, (VkFence*)&mVKInFlightFence, VK_TRUE, UINT64_MAX) != VK_SUCCESS)
@@ -673,18 +674,21 @@ void IGraphicsSkia::BeginFrame()
     VkResult res = vkAcquireNextImageKHR((VkDevice)mVKDevice, (VkSwapchainKHR)mVKSwapchain, UINT64_MAX, (VkSemaphore)mVKImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
     if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
     {
+      vkDeviceWaitIdle((VkDevice)mVKDevice);
       DrawResize();
-      res = vkAcquireNextImageKHR((VkDevice)mVKDevice, (VkSwapchainKHR)mVKSwapchain, UINT64_MAX, (VkSemaphore)mVKImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
-      if (res != VK_SUCCESS)
-        return;
+      mVKSkipFrame = true;
+      return;
     }
     else if (res != VK_SUCCESS)
+    {
+      mVKSkipFrame = true;
       return;
+    }
     mVKCurrentImage = imageIndex;
 
     GrVkImageInfo imageInfo{};
     imageInfo.fImage = reinterpret_cast<VkImage>(mVKSwapchainImages[imageIndex]);
-    imageInfo.fAlloc = { VK_NULL_HANDLE, 0, 0, 0 };
+    imageInfo.fAlloc = {VK_NULL_HANDLE, 0, 0, 0};
     imageInfo.fImageLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
     imageInfo.fImageTiling = VK_IMAGE_TILING_OPTIMAL;
     imageInfo.fFormat = VK_FORMAT_B8G8R8A8_UNORM;
@@ -727,6 +731,10 @@ void IGraphicsSkia::EndFrame()
     #error NOT IMPLEMENTED
   #endif
 #else // GPU
+  #ifdef IGRAPHICS_VULKAN
+  if (mVKSkipFrame)
+    return;
+  #endif
   mSurface->draw(mScreenSurface->getCanvas(), 0.0, 0.0, nullptr);
 
   if (auto dContext = GrAsDirectContext(mScreenSurface->getCanvas()->recordingContext()))
@@ -741,8 +749,8 @@ void IGraphicsSkia::EndFrame()
   [commandBuffer presentDrawable:(id<CAMetalDrawable>)mMTLDrawable];
   [commandBuffer commit];
   #elif defined IGRAPHICS_VULKAN
-  VkSemaphore waitSemaphores[] = { (VkSemaphore)mVKImageAvailableSemaphore };
-  VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+  VkSemaphore waitSemaphores[] = {(VkSemaphore)mVKImageAvailableSemaphore};
+  VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
   VkSubmitInfo submitInfo{};
   submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
   submitInfo.waitSemaphoreCount = 1;
@@ -764,7 +772,12 @@ void IGraphicsSkia::EndFrame()
   presentInfo.pImageIndices = &mVKCurrentImage;
   VkResult res = vkQueuePresentKHR((VkQueue)mVKQueue, &presentInfo);
   if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
+  {
+    vkDeviceWaitIdle((VkDevice)mVKDevice);
     DrawResize();
+    mVKSkipFrame = true;
+    return;
+  }
   else if (res != VK_SUCCESS)
     return;
   #endif
@@ -866,16 +879,16 @@ bool IGraphicsSkia::LoadAPIFont(const char* fontID, const PlatformFontPtr& font)
 
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
 
-    //if (!mFontCollection)
+    // if (!mFontCollection)
     //{
-    //  mFontMgr = SParagraphFontMgr(); 
-    //  mTypefaceProvider = sk_make_sp<skia::textlayout::TypefaceFontProvider>();
-    //  mTypefaceProvider->ref();// <-- CHANGED THIS LINE
-    //  mFontCollection = sk_make_sp<skia::textlayout::FontCollection>();
-    //  mFontCollection->setAssetFontManager(mTypefaceProvider);
-    //  mFontCollection->setDefaultFontManager(mFontMgr);
-    //  mFontCollection->enableFontFallback();
-    //}
+    //   mFontMgr = SParagraphFontMgr();
+    //   mTypefaceProvider = sk_make_sp<skia::textlayout::TypefaceFontProvider>();
+    //   mTypefaceProvider->ref();// <-- CHANGED THIS LINE
+    //   mFontCollection = sk_make_sp<skia::textlayout::FontCollection>();
+    //   mFontCollection->setAssetFontManager(mTypefaceProvider);
+    //   mFontCollection->setDefaultFontManager(mFontMgr);
+    //   mFontCollection->enableFontFallback();
+    // }
 
     // Create the typeface using our private font manager instance.
     auto typeFace = mFontMgr->makeFromData(wrappedData);

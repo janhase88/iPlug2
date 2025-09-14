@@ -549,6 +549,11 @@ void IGraphicsSkia::OnViewDestroyed()
   mVKSwapchain = nullptr;
   mVKQueue = nullptr;
   mVKSwapchainImages.clear();
+
+  // Release Skia references after Vulkan cleanup
+  mSurface = nullptr;
+  mScreenSurface = nullptr;
+  mGrContext = nullptr;
 #endif
 }
 

@@ -45,13 +45,21 @@
         #error Define USE_GLAD or USE_GLEW to select the OpenGL loader
       #endif
     #elif defined OS_MAC
-      #if defined IGRAPHICS_GL2
-        #include <OpenGL/gl.h>
-      #elif defined IGRAPHICS_GL3
-        #include <OpenGL/gl3.h>
+      #if defined(USE_GLAD)
+        #include <glad/glad.h>
+      #else
+        #if defined IGRAPHICS_GL2
+          #include <OpenGL/gl.h>
+        #elif defined IGRAPHICS_GL3
+          #include <OpenGL/gl3.h>
+        #endif
       #endif
     #else
-      #include <OpenGL/gl.h>
+      #if defined(USE_GLAD)
+        #include <glad/glad.h>
+      #else
+        #include <OpenGL/gl.h>
+      #endif
     #endif
   #endif
 

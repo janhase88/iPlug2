@@ -736,7 +736,10 @@ void IGraphicsSkia::BeginFrame()
     imageInfo.fCurrentQueueFamily = mVKQueueFamily;
 
     auto backendRT = GrBackendRenderTargets::MakeVk(width, height, imageInfo);
-    mScreenSurface = SkSurfaces::WrapBackendRenderTarget(mGrContext.get(), backendRT, kTopLeft_GrSurfaceOrigin, kBGRA_8888_SkColorType, nullptr, nullptr);
+    SkColorType colorType = kRGBA_8888_SkColorType;
+    if (mVKSwapchainFormat == VK_FORMAT_B8G8R8A8_UNORM || mVKSwapchainFormat == VK_FORMAT_B8G8R8A8_SRGB)
+      colorType = kBGRA_8888_SkColorType;
+    mScreenSurface = SkSurfaces::WrapBackendRenderTarget(mGrContext.get(), backendRT, kTopLeft_GrSurfaceOrigin, colorType, nullptr, nullptr);
     assert(mScreenSurface);
   }
 #endif

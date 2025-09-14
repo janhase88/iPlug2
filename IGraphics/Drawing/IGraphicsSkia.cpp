@@ -491,6 +491,7 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   mVKQueue = ctx->queue;
   mVKQueueFamily = ctx->queueFamily;
   mVKSwapchainFormat = ctx->format;
+  mVKSwapchainUsageFlags = ctx->usageFlags;
   mVKSwapchainImages.clear();
   if (ctx->swapchainImages)
   {
@@ -574,7 +575,7 @@ void IGraphicsSkia::DrawResize()
         VkSwapchainKHR swapchain = VK_NULL_HANDLE;
         std::vector<VkImage> images;
         VkFormat format = mVKSwapchainFormat;
-        VkResult res = pWin->CreateOrResizeVulkanSwapchain(w, h, swapchain, images, format, mVKSubmissionPending);
+        VkResult res = pWin->CreateOrResizeVulkanSwapchain(w, h, swapchain, images, format, mVKSwapchainUsageFlags, mVKSubmissionPending);
         if (res == VK_SUCCESS)
         {
           mVKSwapchain = swapchain;
@@ -741,7 +742,7 @@ void IGraphicsSkia::BeginFrame()
     imageInfo.fImageLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
     imageInfo.fImageTiling = VK_IMAGE_TILING_OPTIMAL;
     imageInfo.fFormat = mVKSwapchainFormat;
-    imageInfo.fImageUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    imageInfo.fImageUsageFlags = mVKSwapchainUsageFlags;
     imageInfo.fSampleCount = 1;
     imageInfo.fLevelCount = 1;
     imageInfo.fCurrentQueueFamily = mVKQueueFamily;

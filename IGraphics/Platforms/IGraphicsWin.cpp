@@ -1235,7 +1235,7 @@ bool IGraphicsWin::CreateVulkanContext()
 
   mVkSwapchain.device = mVkDevice;
   bool submissionPending = false;
-  res = CreateOrResizeVulkanSwapchain(caps.currentExtent.width, caps.currentExtent.height, mVkSwapchain.handle, mVkSwapchainImages, mVkFormat, submissionPending);
+  res = CreateOrResizeVulkanSwapchain(caps.currentExtent.width, caps.currentExtent.height, mVkSwapchain.handle, mVkSwapchainImages, mVkFormat, mVkSwapchainUsageFlags, submissionPending);
   if (res != VK_SUCCESS)
   {
     DestroyVulkanContext();
@@ -1319,11 +1319,13 @@ bool IGraphicsWin::RecreateVulkanContext()
   ctx.inFlightFence = mInFlightFence.handle;
   ctx.swapchainImages = &mVkSwapchainImages;
   ctx.format = mVkFormat;
+  ctx.usageFlags = mVkSwapchainUsageFlags;
   OnViewInitialized(&ctx);
   return true;
 }
 
-VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format, bool& submissionPending)
+VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
+  uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format, VkImageUsageFlags& usage, bool& submissionPending)
 {
   if (!mVkDevice || !mVkPhysicalDevice || !mVkSurface)
     return VK_ERROR_INITIALIZATION_FAILED;
@@ -1397,7 +1399,12 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t he
   swapInfo.imageExtent.width = width;
   swapInfo.imageExtent.height = height;
   swapInfo.imageArrayLayers = 1;
-  swapInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+  VkImageUsageFlags usageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  if (caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
+    usageFlags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+  if (caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+    usageFlags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+  swapInfo.imageUsage = usageFlags;
   swapInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
   swapInfo.preTransform = caps.currentTransform;
   swapInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
@@ -1419,6 +1426,8 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t he
 
   mVkFormat = surfaceFormat.format;
   format = mVkFormat;
+  usage = usageFlags;
+  mVkSwapchainUsageFlags = usageFlags;
   swapchain = mVkSwapchain.handle;
   images = mVkSwapchainImages;
   return VK_SUCCESS;
@@ -1517,6 +1526,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   ctx.inFlightFence = mInFlightFence.handle;
   ctx.swapchainImages = &mVkSwapchainImages;
   ctx.format = mVkFormat;
+  ctx.usageFlags = mVkSwapchainUsageFlags;
   OnViewInitialized(&ctx);
 #else
   HDC dc = GetDC(mPlugWnd);

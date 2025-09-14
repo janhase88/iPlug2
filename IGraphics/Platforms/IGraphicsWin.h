@@ -44,6 +44,7 @@ struct VulkanContext
   VkFence inFlightFence = VK_NULL_HANDLE;
   std::vector<VkImage>* swapchainImages = nullptr;
   VkFormat format = VK_FORMAT_B8G8R8A8_UNORM;
+  VkImageUsageFlags usageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 };
 #endif
 
@@ -123,7 +124,7 @@ public:
   DWORD OnVBlankRun();
 
 #ifdef IGRAPHICS_VULKAN
-  VkResult CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format, bool& submissionPending);
+  VkResult CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format, VkImageUsageFlags& usage, bool& submissionPending);
   bool RecreateVulkanContext();
 #endif
 
@@ -184,6 +185,7 @@ private:
   VkFenceHolder mInFlightFence;
   std::vector<VkImage> mVkSwapchainImages;
   VkFormat mVkFormat = VK_FORMAT_B8G8R8A8_UNORM;
+  VkImageUsageFlags mVkSwapchainUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 #endif
 
 #ifdef IGRAPHICS_GL

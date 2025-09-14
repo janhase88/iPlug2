@@ -687,7 +687,17 @@ void IGraphicsSkia::BeginFrame()
         if (fenceRes == VK_TIMEOUT)
           DBGMSG("vkWaitForFences timed out\n");
         vkResetFences(mVKDevice, 1, &mVKInFlightFence);
-        vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // ensure fence becomes signaled
+        VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.waitSemaphoreCount = 1;
+        submitInfo.pWaitSemaphores = &mVKImageAvailableSemaphore;
+        submitInfo.pWaitDstStageMask = &waitStage;
+        VkResult submitRes = vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence); // ensure fence becomes signaled
+        if (submitRes == VK_SUCCESS)
+          mVKSubmissionPending = false;
+        else
+          DBGMSG("vkQueueSubmit failed: %d\n", submitRes);
         mVKSkipFrame = true;
         mScreenSurface.reset();
         return;

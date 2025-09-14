@@ -14,36 +14,60 @@
 #elif defined IGRAPHICS_VULKAN
   #define SK_VULKAN
   #if defined(OS_WIN) && !defined(VK_USE_PLATFORM_WIN32_KHR)
-  #  define VK_USE_PLATFORM_WIN32_KHR
+    #define VK_USE_PLATFORM_WIN32_KHR
   #endif
   #if defined(OS_WIN) && !defined(NOGDI)
-  #  define NOGDI          // prevent <windows.h> from defining LOGFONT
+    #define NOGDI // prevent <windows.h> from defining LOGFONT
   #endif
   #include <vulkan/vulkan.h>
 
-  struct VkSwapchainHolder
+struct VkSwapchainHolder
+{
+  VkDevice device = VK_NULL_HANDLE;
+  VkSwapchainKHR handle = VK_NULL_HANDLE;
+  ~VkSwapchainHolder() { Reset(); }
+  void Reset()
   {
-    VkDevice device = VK_NULL_HANDLE;
-    VkSwapchainKHR handle = VK_NULL_HANDLE;
-    ~VkSwapchainHolder() { Reset(); }
-    void Reset() { if (device && handle) { vkDestroySwapchainKHR(device, handle, nullptr); } handle = VK_NULL_HANDLE; device = VK_NULL_HANDLE; }
-  };
+    if (device && handle)
+    {
+      vkDestroySwapchainKHR(device, handle, nullptr);
+    }
+    handle = VK_NULL_HANDLE;
+    device = VK_NULL_HANDLE;
+  }
+};
 
-  struct VkSemaphoreHolder
+struct VkSemaphoreHolder
+{
+  VkDevice device = VK_NULL_HANDLE;
+  VkSemaphore handle = VK_NULL_HANDLE;
+  ~VkSemaphoreHolder() { Reset(); }
+  void Reset()
   {
-    VkDevice device = VK_NULL_HANDLE;
-    VkSemaphore handle = VK_NULL_HANDLE;
-    ~VkSemaphoreHolder() { Reset(); }
-    void Reset() { if (device && handle) { vkDestroySemaphore(device, handle, nullptr); } handle = VK_NULL_HANDLE; device = VK_NULL_HANDLE; }
-  };
+    if (device && handle)
+    {
+      vkDestroySemaphore(device, handle, nullptr);
+    }
+    handle = VK_NULL_HANDLE;
+    device = VK_NULL_HANDLE;
+  }
+};
 
-  struct VkFenceHolder
+struct VkFenceHolder
+{
+  VkDevice device = VK_NULL_HANDLE;
+  VkFence handle = VK_NULL_HANDLE;
+  ~VkFenceHolder() { Reset(); }
+  void Reset()
   {
-    VkDevice device = VK_NULL_HANDLE;
-    VkFence handle = VK_NULL_HANDLE;
-    ~VkFenceHolder() { Reset(); }
-    void Reset() { if (device && handle) { vkDestroyFence(device, handle, nullptr); } handle = VK_NULL_HANDLE; device = VK_NULL_HANDLE; }
-  };
+    if (device && handle)
+    {
+      vkDestroyFence(device, handle, nullptr);
+    }
+    handle = VK_NULL_HANDLE;
+    device = VK_NULL_HANDLE;
+  }
+};
 #endif
 
 #pragma warning(push)
@@ -218,14 +242,14 @@ private:
   VkPhysicalDevice mVKPhysicalDevice = VK_NULL_HANDLE;
   VkDevice mVKDevice = VK_NULL_HANDLE;
   VkSurfaceKHR mVKSurface = VK_NULL_HANDLE;
-  VkSwapchainHolder mVKSwapchain;
+  VkSwapchainKHR mVKSwapchain = VK_NULL_HANDLE;
   VkQueue mVKQueue = VK_NULL_HANDLE;
   uint32_t mVKQueueFamily = 0;
   std::vector<VkImage> mVKSwapchainImages;
   uint32_t mVKCurrentImage = 0;
-  VkSemaphoreHolder mVKImageAvailableSemaphore;
-  VkSemaphoreHolder mVKRenderFinishedSemaphore;
-  VkFenceHolder mVKInFlightFence;
+  VkSemaphore mVKImageAvailableSemaphore = VK_NULL_HANDLE;
+  VkSemaphore mVKRenderFinishedSemaphore = VK_NULL_HANDLE;
+  VkFence mVKInFlightFence = VK_NULL_HANDLE;
   VkFormat mVKSwapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
   bool mVKSkipFrame = false;
 #endif

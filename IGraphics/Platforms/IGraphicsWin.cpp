@@ -1034,14 +1034,38 @@ bool IGraphicsWin::CreateVulkanContext()
   instInfo.enabledExtensionCount = 2;
   instInfo.ppEnabledExtensionNames = extensions;
 
-  #if !defined(NDEBUG)
-  const char* layers[] = {"VK_LAYER_KHRONOS_validation"};
-  instInfo.enabledLayerCount = 1;
-  instInfo.ppEnabledLayerNames = layers;
-  #else
+#if !defined(NDEBUG)
+  const char* validationLayer = "VK_LAYER_KHRONOS_validation";
+  bool enableValidation = false;
+  uint32_t layerCount = 0;
+  if (vkEnumerateInstanceLayerProperties(&layerCount, nullptr) == VK_SUCCESS && layerCount > 0)
+  {
+    std::vector<VkLayerProperties> layerProps(layerCount);
+    vkEnumerateInstanceLayerProperties(&layerCount, layerProps.data());
+    for (auto& lp : layerProps)
+    {
+      if (strcmp(lp.layerName, validationLayer) == 0)
+      {
+        enableValidation = true;
+        break;
+      }
+    }
+  }
+  if (enableValidation)
+  {
+    instInfo.enabledLayerCount = 1;
+    instInfo.ppEnabledLayerNames = &validationLayer;
+  }
+  else
+  {
+    instInfo.enabledLayerCount = 0;
+    instInfo.ppEnabledLayerNames = nullptr;
+  }
+#else
+  bool enableValidation = false;
   instInfo.enabledLayerCount = 0;
   instInfo.ppEnabledLayerNames = nullptr;
-  #endif
+#endif
 
   VkResult res = vkCreateInstance(&instInfo, nullptr, &mVkInstance);
   if (res != VK_SUCCESS)
@@ -1147,13 +1171,21 @@ bool IGraphicsWin::CreateVulkanContext()
   devInfo.pQueueCreateInfos = &queueInfo;
   devInfo.enabledExtensionCount = 1;
   devInfo.ppEnabledExtensionNames = devExt;
-  #if !defined(NDEBUG)
-  devInfo.enabledLayerCount = 1;
-  devInfo.ppEnabledLayerNames = layers;
-  #else
+#if !defined(NDEBUG)
+  if (enableValidation)
+  {
+    devInfo.enabledLayerCount = 1;
+    devInfo.ppEnabledLayerNames = &validationLayer;
+  }
+  else
+  {
+    devInfo.enabledLayerCount = 0;
+    devInfo.ppEnabledLayerNames = nullptr;
+  }
+#else
   devInfo.enabledLayerCount = 0;
   devInfo.ppEnabledLayerNames = nullptr;
-  #endif
+#endif
 
   res = vkCreateDevice(mVkPhysicalDevice, &devInfo, nullptr, &mVkDevice);
   if (res != VK_SUCCESS)
@@ -1172,7 +1204,7 @@ bool IGraphicsWin::CreateVulkanContext()
     return false;
   }
 
-  res = CreateOrResizeVulkanSwapchain(caps.currentExtent.width, caps.currentExtent.height, mVkSwapchain, mVkSwapchainImages);
+  res = CreateOrResizeVulkanSwapchain(caps.currentExtent.width, caps.currentExtent.height, mVkSwapchain, mVkSwapchainImages, mVkFormat);
   if (res != VK_SUCCESS)
   {
     DestroyVulkanContext();
@@ -1231,6 +1263,8 @@ void IGraphicsWin::DestroyVulkanContext()
     vkDestroySwapchainKHR(mVkDevice, mVkSwapchain, nullptr);
     mVkSwapchain = VK_NULL_HANDLE;
   }
+  mVkSwapchainImages.clear();
+  mVkFormat = VK_FORMAT_B8G8R8A8_UNORM;
   if (mVkSurface)
   {
     vkDestroySurfaceKHR(mVkInstance, mVkSurface, nullptr);
@@ -1254,7 +1288,7 @@ void IGraphicsWin::UpdateVulkanSwapchain(VkSwapchainKHR swapchain, const std::ve
   mVkSwapchainImages = images;
 }
 
-VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images)
+VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format)
 {
   if (!mVkDevice || !mVkPhysicalDevice || !mVkSurface)
     return VK_ERROR_INITIALIZATION_FAILED;
@@ -1271,14 +1305,50 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t he
   if (res != VK_SUCCESS)
     return res;
 
+  uint32_t formatCount = 0;
+  res = vkGetPhysicalDeviceSurfaceFormatsKHR(mVkPhysicalDevice, mVkSurface, &formatCount, nullptr);
+  if (res != VK_SUCCESS || formatCount == 0)
+    return res;
+  std::vector<VkSurfaceFormatKHR> formats(formatCount);
+  res = vkGetPhysicalDeviceSurfaceFormatsKHR(mVkPhysicalDevice, mVkSurface, &formatCount, formats.data());
+  if (res != VK_SUCCESS)
+    return res;
+  VkSurfaceFormatKHR surfaceFormat = formats[0];
+  for (auto& f : formats)
+  {
+    if (f.format == VK_FORMAT_B8G8R8A8_UNORM && f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+    {
+      surfaceFormat = f;
+      break;
+    }
+  }
+
+  uint32_t presentCount = 0;
+  res = vkGetPhysicalDeviceSurfacePresentModesKHR(mVkPhysicalDevice, mVkSurface, &presentCount, nullptr);
+  if (res != VK_SUCCESS || presentCount == 0)
+    return res;
+  std::vector<VkPresentModeKHR> presentModes(presentCount);
+  res = vkGetPhysicalDeviceSurfacePresentModesKHR(mVkPhysicalDevice, mVkSurface, &presentCount, presentModes.data());
+  if (res != VK_SUCCESS)
+    return res;
+  VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
+  for (auto pm : presentModes)
+  {
+    if (pm == VK_PRESENT_MODE_FIFO_KHR)
+    {
+      presentMode = pm;
+      break;
+    }
+  }
+
   VkSwapchainCreateInfoKHR swapInfo{};
   swapInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
   swapInfo.surface = mVkSurface;
   swapInfo.minImageCount = caps.minImageCount + 1;
   if (caps.maxImageCount > 0 && swapInfo.minImageCount > caps.maxImageCount)
     swapInfo.minImageCount = caps.maxImageCount;
-  swapInfo.imageFormat = VK_FORMAT_B8G8R8A8_UNORM;
-  swapInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+  swapInfo.imageFormat = surfaceFormat.format;
+  swapInfo.imageColorSpace = surfaceFormat.colorSpace;
   swapInfo.imageExtent.width = width;
   swapInfo.imageExtent.height = height;
   swapInfo.imageArrayLayers = 1;
@@ -1286,7 +1356,7 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t he
   swapInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
   swapInfo.preTransform = caps.currentTransform;
   swapInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-  swapInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+  swapInfo.presentMode = presentMode;
   swapInfo.clipped = VK_TRUE;
 
   res = vkCreateSwapchainKHR(mVkDevice, &swapInfo, nullptr, &mVkSwapchain);
@@ -1302,6 +1372,8 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t he
   if (res != VK_SUCCESS)
     return res;
 
+  mVkFormat = surfaceFormat.format;
+  format = mVkFormat;
   swapchain = mVkSwapchain;
   images = mVkSwapchainImages;
   return VK_SUCCESS;
@@ -1398,6 +1470,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   ctx.renderFinishedSemaphore = mRenderFinishedSemaphore;
   ctx.inFlightFence = mInFlightFence;
   ctx.swapchainImages = &mVkSwapchainImages;
+  ctx.format = mVkFormat;
   OnViewInitialized(&ctx);
 #else
   HDC dc = GetDC(mPlugWnd);

@@ -43,6 +43,7 @@ struct VulkanContext
   VkSemaphore renderFinishedSemaphore = VK_NULL_HANDLE;
   VkFence inFlightFence = VK_NULL_HANDLE;
   std::vector<VkImage>* swapchainImages = nullptr;
+  VkFormat format = VK_FORMAT_B8G8R8A8_UNORM;
 };
 #endif
 
@@ -123,7 +124,7 @@ public:
 
 #ifdef IGRAPHICS_VULKAN
   void UpdateVulkanSwapchain(VkSwapchainKHR swapchain, const std::vector<VkImage>& images);
-  VkResult CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images);
+  VkResult CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format);
 #endif
 
 protected:
@@ -182,6 +183,7 @@ private:
   VkSemaphore mRenderFinishedSemaphore = VK_NULL_HANDLE;
   VkFence mInFlightFence = VK_NULL_HANDLE;
   std::vector<VkImage> mVkSwapchainImages;
+  VkFormat mVkFormat = VK_FORMAT_B8G8R8A8_UNORM;
 #endif
 
 #ifdef IGRAPHICS_GL

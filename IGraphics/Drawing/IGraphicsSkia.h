@@ -10,6 +10,8 @@
 
 #if defined IGRAPHICS_GL
   #define SK_GL
+#elif defined IGRAPHICS_VULKAN
+  #define SK_VULKAN
 #endif
 
 #pragma warning(push)

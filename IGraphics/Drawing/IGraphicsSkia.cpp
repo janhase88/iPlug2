@@ -586,6 +586,7 @@ void IGraphicsSkia::DrawResize()
           DBGMSG("CreateOrResizeVulkanSwapchain failed: %d\n", res);
           vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
           vkResetFences(mVKDevice, 1, &mVKInFlightFence);
+          vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // ensure fence signalled
           mVKSwapchain = VK_NULL_HANDLE;
           mVKSwapchainImages.clear();
           mSurface.reset();
@@ -678,8 +679,11 @@ void IGraphicsSkia::BeginFrame()
     mVKSkipFrame = false;
     int width = WindowWidth() * GetScreenScale();
     int height = WindowHeight() * GetScreenScale();
-    if (vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX) != VK_SUCCESS)
+    VkResult fenceRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, 1000000000); // 1s timeout
+    if (fenceRes != VK_SUCCESS)
     {
+      if (fenceRes == VK_TIMEOUT)
+        DBGMSG("vkWaitForFences timed out\n");
       mVKSkipFrame = true;
       mScreenSurface.reset();
       return;
@@ -786,7 +790,13 @@ void IGraphicsSkia::EndFrame()
   submitInfo.commandBufferCount = 0;
   submitInfo.signalSemaphoreCount = 0;
 
-  vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
+  VkResult submitRes = vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
+  if (submitRes != VK_SUCCESS)
+  {
+    vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // signal fence on failure
+    mVKSkipFrame = true;
+    return;
+  }
 
   VkPresentInfoKHR presentInfo{};
   presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;

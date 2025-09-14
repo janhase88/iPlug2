@@ -786,10 +786,20 @@ void IGraphicsSkia::EndFrame()
       return;
   }
 
+  VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+  VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+  submitInfo.waitSemaphoreCount = 1;
+  submitInfo.pWaitSemaphores = &mVKRenderFinishedSemaphore.handle;
+  submitInfo.pWaitDstStageMask = &waitStage;
+  submitInfo.commandBufferCount = 0;
+  submitInfo.signalSemaphoreCount = 0;
+
+  vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence.handle);
+
   VkPresentInfoKHR presentInfo{};
   presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-  presentInfo.waitSemaphoreCount = 1;
-  presentInfo.pWaitSemaphores = &mVKRenderFinishedSemaphore.handle;
+  presentInfo.waitSemaphoreCount = 0;
+  presentInfo.pWaitSemaphores = nullptr;
   presentInfo.swapchainCount = 1;
   presentInfo.pSwapchains = &mVKSwapchain.handle;
   presentInfo.pImageIndices = &mVKCurrentImage;

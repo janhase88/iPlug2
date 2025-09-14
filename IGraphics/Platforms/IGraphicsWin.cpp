@@ -1330,9 +1330,7 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t he
   VkResult res = VK_SUCCESS;
   if (mInFlightFence.handle)
   {
-    res = vkWaitForFences(mVkDevice, 1, &mInFlightFence.handle, VK_TRUE, UINT64_MAX);
-    if (res != VK_SUCCESS)
-      return res;
+    vkQueueWaitIdle(mPresentQueue);
     res = vkResetFences(mVkDevice, 1, &mInFlightFence.handle);
     if (res != VK_SUCCESS)
       return res;

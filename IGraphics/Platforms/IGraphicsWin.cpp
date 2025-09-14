@@ -1033,12 +1033,104 @@ void IGraphicsWin::CreateVulkanContext()
   surfInfo.hinstance = mHInstance;
   surfInfo.hwnd = mPlugWnd;
   vkCreateWin32SurfaceKHR(mVkInstance, &surfInfo, nullptr, &mVkSurface);
+
+  uint32_t gpuCount = 0;
+  vkEnumeratePhysicalDevices(mVkInstance, &gpuCount, nullptr);
+  std::vector<VkPhysicalDevice> gpus(gpuCount);
+  vkEnumeratePhysicalDevices(mVkInstance, &gpuCount, gpus.data());
+  mVkPhysicalDevice = gpus[0];
+
+  uint32_t queueCount = 0;
+  vkGetPhysicalDeviceQueueFamilyProperties(mVkPhysicalDevice, &queueCount, nullptr);
+  std::vector<VkQueueFamilyProperties> queueProps(queueCount);
+  vkGetPhysicalDeviceQueueFamilyProperties(mVkPhysicalDevice, &queueCount, queueProps.data());
+  for (uint32_t i = 0; i < queueCount; ++i)
+  {
+    VkBool32 presentSupport = VK_FALSE;
+    vkGetPhysicalDeviceSurfaceSupportKHR(mVkPhysicalDevice, i, mVkSurface, &presentSupport);
+    if ((queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) && presentSupport)
+    {
+      mVkQueueFamily = i;
+      break;
+    }
+  }
+
+  float priority = 1.f;
+  VkDeviceQueueCreateInfo queueInfo = {};
+  queueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+  queueInfo.queueFamilyIndex = mVkQueueFamily;
+  queueInfo.queueCount = 1;
+  queueInfo.pQueuePriorities = &priority;
+
+  const char* devExt[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+  VkDeviceCreateInfo devInfo = {};
+  devInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+  devInfo.queueCreateInfoCount = 1;
+  devInfo.pQueueCreateInfos = &queueInfo;
+  devInfo.enabledExtensionCount = 1;
+  devInfo.ppEnabledExtensionNames = devExt;
+
+  if (vkCreateDevice(mVkPhysicalDevice, &devInfo, nullptr, &mVkDevice) != VK_SUCCESS)
+    return;
+
+  vkGetDeviceQueue(mVkDevice, mVkQueueFamily, 0, &mPresentQueue);
+
+  VkSurfaceCapabilitiesKHR caps = {};
+  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(mVkPhysicalDevice, mVkSurface, &caps);
+
+  VkSwapchainCreateInfoKHR swapInfo = {};
+  swapInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+  swapInfo.surface = mVkSurface;
+  swapInfo.minImageCount = caps.minImageCount + 1;
+  if (caps.maxImageCount > 0 && swapInfo.minImageCount > caps.maxImageCount)
+    swapInfo.minImageCount = caps.maxImageCount;
+  swapInfo.imageFormat = VK_FORMAT_B8G8R8A8_UNORM;
+  swapInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+  swapInfo.imageExtent = caps.currentExtent;
+  swapInfo.imageArrayLayers = 1;
+  swapInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  swapInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  swapInfo.preTransform = caps.currentTransform;
+  swapInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+  swapInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+  swapInfo.clipped = VK_TRUE;
+
+  vkCreateSwapchainKHR(mVkDevice, &swapInfo, nullptr, &mVkSwapchain);
+
+  uint32_t imageCount = 0;
+  vkGetSwapchainImagesKHR(mVkDevice, mVkSwapchain, &imageCount, nullptr);
+  mVkSwapchainImages.resize(imageCount);
+  vkGetSwapchainImagesKHR(mVkDevice, mVkSwapchain, &imageCount, mVkSwapchainImages.data());
+
+  VkSemaphoreCreateInfo semInfo{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
+  vkCreateSemaphore(mVkDevice, &semInfo, nullptr, &mImageAvailableSemaphore);
+  vkCreateSemaphore(mVkDevice, &semInfo, nullptr, &mRenderFinishedSemaphore);
+
+  VkFenceCreateInfo fenceInfo{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
+  fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+  vkCreateFence(mVkDevice, &fenceInfo, nullptr, &mInFlightFence);
 }
 
 void IGraphicsWin::DestroyVulkanContext()
 {
   if (mVkDevice)
     vkDeviceWaitIdle(mVkDevice);
+
+  if (mImageAvailableSemaphore)
+  {
+    vkDestroySemaphore(mVkDevice, mImageAvailableSemaphore, nullptr);
+    mImageAvailableSemaphore = VK_NULL_HANDLE;
+  }
+  if (mRenderFinishedSemaphore)
+  {
+    vkDestroySemaphore(mVkDevice, mRenderFinishedSemaphore, nullptr);
+    mRenderFinishedSemaphore = VK_NULL_HANDLE;
+  }
+  if (mInFlightFence)
+  {
+    vkDestroyFence(mVkDevice, mInFlightFence, nullptr);
+    mInFlightFence = VK_NULL_HANDLE;
+  }
 
   if (mVkSwapchain)
   {
@@ -1062,14 +1154,21 @@ void IGraphicsWin::DestroyVulkanContext()
   }
 }
 
+void IGraphicsWin::UpdateVulkanSwapchain(VkSwapchainKHR swapchain, const std::vector<VkImage>& images)
+{
+  mVkSwapchain = swapchain;
+  mVkSwapchainImages = images;
+}
+
 void IGraphicsWin::ActivateVulkanContext()
 {
-  // Placeholder for Vulkan context activation
+  // Vulkan does not require explicit context activation
 }
 
 void IGraphicsWin::DeactivateVulkanContext()
 {
-  // Placeholder for Vulkan context deactivation
+  if (mPresentQueue)
+    vkQueueWaitIdle(mPresentQueue);
 }
 #endif
 
@@ -1134,7 +1233,20 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   mPlugWnd = CreateWindowW(wndClassName, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
 #if defined IGRAPHICS_VULKAN
   SetPlatformContext(mPlugWnd);
-  OnViewInitialized(mPlugWnd);
+  CreateVulkanContext();
+  VulkanContext ctx;
+  ctx.instance = mVkInstance;
+  ctx.physicalDevice = mVkPhysicalDevice;
+  ctx.device = mVkDevice;
+  ctx.surface = mVkSurface;
+  ctx.swapchain = mVkSwapchain;
+  ctx.queue = mPresentQueue;
+  ctx.queueFamily = mVkQueueFamily;
+  ctx.imageAvailableSemaphore = mImageAvailableSemaphore;
+  ctx.renderFinishedSemaphore = mRenderFinishedSemaphore;
+  ctx.inFlightFence = mInFlightFence;
+  ctx.swapchainImages = &mVkSwapchainImages;
+  OnViewInitialized(&ctx);
 #else
   HDC dc = GetDC(mPlugWnd);
   SetPlatformContext(dc);

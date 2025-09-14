@@ -1034,8 +1034,15 @@ void IGraphicsWin::CreateGLContext()
 #endif
 
   //TODO: return false if GL init fails?
+#if defined(USE_GLAD)
   if (!gladLoadGL())
     DBGMSG("Error initializing glad");
+#elif defined(USE_GLEW)
+  if (glewInit() != GLEW_OK)
+    DBGMSG("Error initializing glew");
+#else
+  #error Define USE_GLAD or USE_GLEW to select the OpenGL loader
+#endif
 
   glGetError();
 
@@ -2442,7 +2449,14 @@ void IGraphicsWin::VBlankNotify()
 #if defined IGRAPHICS_SKIA
   #include "IGraphicsSkia.cpp"
   #ifdef IGRAPHICS_GL
-    #include "glad.c"
+    #if defined(USE_GLAD)
+      #include "glad.c"
+    #elif defined(USE_GLEW)
+      #define GLEW_STATIC
+      #include "../../WDL/lice/glew/src/glew.c"
+    #else
+      #error Define USE_GLAD or USE_GLEW to select the OpenGL loader
+    #endif
   #endif
 #elif defined IGRAPHICS_NANOVG
   #include "IGraphicsNanoVG.cpp"
@@ -2451,7 +2465,14 @@ void IGraphicsWin::VBlankNotify()
   #pragma comment(lib, "freetype.lib")
 #endif
   #include "nanovg.c"
-  #include "glad.c"
+  #if defined(USE_GLAD)
+    #include "glad.c"
+  #elif defined(USE_GLEW)
+    #define GLEW_STATIC
+    #include "../../WDL/lice/glew/src/glew.c"
+  #else
+    #error Define USE_GLAD or USE_GLEW to select the OpenGL loader
+  #endif
 #else
   #error
 #endif

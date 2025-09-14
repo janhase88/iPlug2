@@ -22,8 +22,8 @@
 #include "IPopupMenuControl.h"
 
 #include <VersionHelpers.h>
-#include <cstring>
 #include <cstdlib>
+#include <cstring>
 #include <wininet.h>
 
 #if defined __clang__
@@ -555,7 +555,7 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
       {
 #if defined IGRAPHICS_GL
-        ScopedGLContext scopedGLCtx{pGraphics};
+        ScopedGraphicsContext scopedGLCtx{pGraphics};
         pGraphics->Draw(rects);
         SwapBuffers((HDC)pGraphics->GetPlatformContext());
 #else
@@ -1327,9 +1327,16 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t he
   if (!mVkDevice || !mVkPhysicalDevice || !mVkSurface)
     return VK_ERROR_INITIALIZATION_FAILED;
 
-  VkResult res = vkDeviceWaitIdle(mVkDevice);
-  if (res != VK_SUCCESS)
-    return res;
+  VkResult res = VK_SUCCESS;
+  if (mInFlightFence.handle)
+  {
+    res = vkWaitForFences(mVkDevice, 1, &mInFlightFence.handle, VK_TRUE, UINT64_MAX);
+    if (res != VK_SUCCESS)
+      return res;
+    res = vkResetFences(mVkDevice, 1, &mInFlightFence.handle);
+    if (res != VK_SUCCESS)
+      return res;
+  }
 
   mVkSwapchain.Reset();
   mVkSwapchain.device = mVkDevice;

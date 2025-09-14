@@ -658,16 +658,16 @@ static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink, const CVTimeSt
   if (mGraphics->IsDirty(mDirtyRects))
   {
     mGraphics->SetAllControlsClean();
-      
-    #if defined IGRAPHICS_CPU
-      for (int i = 0; i < mDirtyRects.Size(); i++)
-        [self setNeedsDisplayInRect:ToNSRect(mGraphics, mDirtyRects.Get(i))];
-    #else
-    IGraphics::ScopedGLContext scopedGLCtx {mGraphics};
-      // so just draw on each frame, if something is dirty
+
+#if defined IGRAPHICS_CPU
+    for (int i = 0; i < mDirtyRects.Size(); i++)
+      [self setNeedsDisplayInRect:ToNSRect(mGraphics, mDirtyRects.Get(i))];
+#else
+    IGraphics::ScopedGraphicsContext scopedGLCtx{mGraphics};
+    // so just draw on each frame, if something is dirty
     mGraphics->Draw(mDirtyRects);
     [self swapBuffers]; // No-op for Metal
-    #endif
+#endif
   }
 }
 

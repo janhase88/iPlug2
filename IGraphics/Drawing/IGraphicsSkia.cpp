@@ -717,11 +717,22 @@ void IGraphicsSkia::BeginFrame()
       mVKSkipFrame = true;
       return;
     }
-    if (vkResetFences(mVKDevice, 1, &mVKInFlightFence) != VK_SUCCESS)
+    VkResult fenceStatus = vkGetFenceStatus(mVKDevice, mVKInFlightFence);
+    if (fenceStatus == VK_SUCCESS)
     {
-      mVKSkipFrame = true;
-      mScreenSurface.reset();
-      return;
+      vkResetFences(mVKDevice, 1, &mVKInFlightFence);
+    }
+    else if (fenceStatus == VK_NOT_READY)
+    {
+      VkResult waitRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
+      if (waitRes == VK_SUCCESS)
+        vkResetFences(mVKDevice, 1, &mVKInFlightFence);
+      else
+        DBGMSG("vkWaitForFences failed: %d\n", waitRes);
+    }
+    else
+    {
+      DBGMSG("vkGetFenceStatus failed: %d\n", fenceStatus);
     }
     mVKCurrentImage = imageIndex;
 

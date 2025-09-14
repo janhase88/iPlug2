@@ -252,6 +252,7 @@ private:
   VkFence mVKInFlightFence = VK_NULL_HANDLE;
   VkFormat mVKSwapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
   bool mVKSkipFrame = false;
+  bool mVKSubmissionPending = false;
 #endif
 
   static StaticStorage<Font> sFontCache;

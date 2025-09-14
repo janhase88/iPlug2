@@ -18,7 +18,11 @@
     #if defined IGRAPHICS_GL2
       #define NANOVG_GL2_IMPLEMENTATION
     #elif defined IGRAPHICS_GL3
-      #include <OpenGL/gl3.h>
+      #if defined(USE_GLAD)
+        #include <glad/glad.h>
+      #else
+        #include <OpenGL/gl3.h>
+      #endif
       #define NANOVG_GL3_IMPLEMENTATION
     #else
       #error Define either IGRAPHICS_GL2 or IGRAPHICS_GL3 for IGRAPHICS_NANOVG with OS_MAC

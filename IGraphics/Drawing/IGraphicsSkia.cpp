@@ -38,7 +38,11 @@
   #if defined IGRAPHICS_GL2
     #error SKIA doesn't work correctly with IGRAPHICS_GL2
   #elif defined IGRAPHICS_GL3
-    #include <OpenGL/gl3.h>
+    #if defined(USE_GLAD)
+      #include <glad/glad.h>
+    #else
+      #include <OpenGL/gl3.h>
+    #endif
   #elif defined IGRAPHICS_METAL
     // even though this is a .cpp we are in an objc(pp) compilation unit
     #include "include/gpu/ganesh/mtl/GrMtlBackendContext.h"

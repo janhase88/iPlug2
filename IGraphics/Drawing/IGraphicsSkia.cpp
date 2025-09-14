@@ -80,14 +80,6 @@
 
 #endif
 
-#if defined IGRAPHICS_VULKAN
-  #include "include/gpu/ganesh/vk/GrVkBackendContext.h"
-  #include "include/gpu/ganesh/vk/GrVkBackendSurface.h"
-  #include "include/gpu/ganesh/vk/GrVkDirectContext.h"
-  #include "include/gpu/ganesh/vk/GrVkExtensions.h"
-  #include <vulkan/vulkan.h>
-#endif
-
 using namespace iplug;
 using namespace igraphics;
 
@@ -373,17 +365,17 @@ IGraphicsSkia::IGraphicsSkia(IGEditorDelegate& dlg, int w, int h, int fps, float
   storage.Retain();
 
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
-  if (!mFontCollection)
+   if (!mFontCollection)
   {
-    mFontMgr = SParagraphFontMgr();
-    mTypefaceProvider = sk_make_sp<skia::textlayout::TypefaceFontProvider>();
-    mTypefaceProvider->ref(); // <-- CHANGED THIS LINE
-    mFontCollection = sk_make_sp<skia::textlayout::FontCollection>();
-    mFontCollection->setAssetFontManager(mTypefaceProvider);
-    mFontCollection->setDefaultFontManager(mFontMgr);
-    mFontCollection->enableFontFallback();
-  }
-#endif
+     mFontMgr = SParagraphFontMgr();
+     mTypefaceProvider = sk_make_sp<skia::textlayout::TypefaceFontProvider>();
+     mTypefaceProvider->ref();// <-- CHANGED THIS LINE
+     mFontCollection = sk_make_sp<skia::textlayout::FontCollection>();
+     mFontCollection->setAssetFontManager(mTypefaceProvider);
+     mFontCollection->setDefaultFontManager(mFontMgr);
+     mFontCollection->enableFontFallback();
+   }
+  #endif
 }
 
 IGraphicsSkia::~IGraphicsSkia()
@@ -572,41 +564,6 @@ void IGraphicsSkia::BeginFrame()
     mMTLDrawable = (void*)drawable;
     assert(mScreenSurface);
   }
-#elif defined IGRAPHICS_VULKAN
-  if (mGrContext.get())
-  {
-    int width = WindowWidth() * GetScreenScale();
-    int height = WindowHeight() * GetScreenScale();
-
-    vkAcquireNextImageKHR(mVKDevice, mVKSwapchain, UINT64_MAX, VK_NULL_HANDLE, VK_NULL_HANDLE, &mVKImageIndex);
-    VkImage image = mVKImages[mVKImageIndex];
-
-    VkImageMemoryBarrier barrier{};
-    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.srcAccessMask = 0;
-    barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    barrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    barrier.image = image;
-    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    barrier.subresourceRange.levelCount = 1;
-    barrier.subresourceRange.layerCount = 1;
-
-    vkCmdPipelineBarrier(mVKCmdBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
-
-    GrVkImageInfo fbInfo{};
-    fbInfo.fImage = image;
-    fbInfo.fAlloc = {VK_NULL_HANDLE, 0, 0, 0};
-    fbInfo.fImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    fbInfo.fFormat = mVKFormat;
-    fbInfo.fLevelCount = 1;
-    fbInfo.fCurrentQueueFamily = VK_QUEUE_FAMILY_IGNORED;
-    fbInfo.fSampleCount = 1;
-
-    auto backendRT = GrBackendRenderTargets::MakeVk(width, height, fbInfo);
-    mScreenSurface = SkSurfaces::WrapBackendRenderTarget(mGrContext.get(), backendRT, kTopLeft_GrSurfaceOrigin, kBGRA_8888_SkColorType, nullptr, nullptr);
-    assert(mScreenSurface);
-  }
 #endif
 
   IGraphics::BeginFrame();
@@ -652,30 +609,6 @@ void IGraphicsSkia::EndFrame()
 
   [commandBuffer presentDrawable:(id<CAMetalDrawable>)mMTLDrawable];
   [commandBuffer commit];
-  #elif defined IGRAPHICS_VULKAN
-  auto backendRT = mScreenSurface->getBackendRenderTarget();
-  GrBackendRenderTargets::SetVkImageLayout(backendRT, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-
-  VkImage image = mVKImages[mVKImageIndex];
-  VkImageMemoryBarrier barrier{};
-  barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-  barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-  barrier.dstAccessMask = 0;
-  barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-  barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-  barrier.image = image;
-  barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-  barrier.subresourceRange.levelCount = 1;
-  barrier.subresourceRange.layerCount = 1;
-
-  vkCmdPipelineBarrier(mVKCmdBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
-
-  VkPresentInfoKHR presentInfo{};
-  presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-  presentInfo.swapchainCount = 1;
-  presentInfo.pSwapchains = &mVKSwapchain;
-  presentInfo.pImageIndices = &mVKImageIndex;
-  vkQueuePresentKHR(mVKQueue, &presentInfo);
   #endif
 #endif
 }
@@ -775,16 +708,16 @@ bool IGraphicsSkia::LoadAPIFont(const char* fontID, const PlatformFontPtr& font)
 
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
 
-    // if (!mFontCollection)
+    //if (!mFontCollection)
     //{
-    //   mFontMgr = SParagraphFontMgr();
-    //   mTypefaceProvider = sk_make_sp<skia::textlayout::TypefaceFontProvider>();
-    //   mTypefaceProvider->ref();// <-- CHANGED THIS LINE
-    //   mFontCollection = sk_make_sp<skia::textlayout::FontCollection>();
-    //   mFontCollection->setAssetFontManager(mTypefaceProvider);
-    //   mFontCollection->setDefaultFontManager(mFontMgr);
-    //   mFontCollection->enableFontFallback();
-    // }
+    //  mFontMgr = SParagraphFontMgr(); 
+    //  mTypefaceProvider = sk_make_sp<skia::textlayout::TypefaceFontProvider>();
+    //  mTypefaceProvider->ref();// <-- CHANGED THIS LINE
+    //  mFontCollection = sk_make_sp<skia::textlayout::FontCollection>();
+    //  mFontCollection->setAssetFontManager(mTypefaceProvider);
+    //  mFontCollection->setDefaultFontManager(mFontMgr);
+    //  mFontCollection->enableFontFallback();
+    //}
 
     // Create the typeface using our private font manager instance.
     auto typeFace = mFontMgr->makeFromData(wrappedData);

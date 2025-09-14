@@ -14,6 +14,30 @@
 #elif defined IGRAPHICS_VULKAN
   #define SK_VULKAN
   #include <vulkan/vulkan.h>
+
+  struct VkSwapchainHolder
+  {
+    VkDevice device = VK_NULL_HANDLE;
+    VkSwapchainKHR handle = VK_NULL_HANDLE;
+    ~VkSwapchainHolder() { Reset(); }
+    void Reset() { if (device && handle) { vkDestroySwapchainKHR(device, handle, nullptr); } handle = VK_NULL_HANDLE; device = VK_NULL_HANDLE; }
+  };
+
+  struct VkSemaphoreHolder
+  {
+    VkDevice device = VK_NULL_HANDLE;
+    VkSemaphore handle = VK_NULL_HANDLE;
+    ~VkSemaphoreHolder() { Reset(); }
+    void Reset() { if (device && handle) { vkDestroySemaphore(device, handle, nullptr); } handle = VK_NULL_HANDLE; device = VK_NULL_HANDLE; }
+  };
+
+  struct VkFenceHolder
+  {
+    VkDevice device = VK_NULL_HANDLE;
+    VkFence handle = VK_NULL_HANDLE;
+    ~VkFenceHolder() { Reset(); }
+    void Reset() { if (device && handle) { vkDestroyFence(device, handle, nullptr); } handle = VK_NULL_HANDLE; device = VK_NULL_HANDLE; }
+  };
 #endif
 
 #pragma warning(push)
@@ -27,7 +51,7 @@
 
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
   #include "modules/skparagraph/include/FontCollection.h"
-  #include "modules/skparagraph/include/TypefaceFontProvider.h" // <-- ADD THIS LINE
+  #include "modules/skparagraph/include/TypefaceFontProvider.h"
 #endif
 
 namespace skia::textlayout
@@ -188,14 +212,14 @@ private:
   VkPhysicalDevice mVKPhysicalDevice = VK_NULL_HANDLE;
   VkDevice mVKDevice = VK_NULL_HANDLE;
   VkSurfaceKHR mVKSurface = VK_NULL_HANDLE;
-  VkSwapchainKHR mVKSwapchain = VK_NULL_HANDLE;
+  VkSwapchainHolder mVKSwapchain;
   VkQueue mVKQueue = VK_NULL_HANDLE;
   uint32_t mVKQueueFamily = 0;
   std::vector<VkImage> mVKSwapchainImages;
   uint32_t mVKCurrentImage = 0;
-  VkSemaphore mVKImageAvailableSemaphore = VK_NULL_HANDLE;
-  VkSemaphore mVKRenderFinishedSemaphore = VK_NULL_HANDLE;
-  VkFence mVKInFlightFence = VK_NULL_HANDLE;
+  VkSemaphoreHolder mVKImageAvailableSemaphore;
+  VkSemaphoreHolder mVKRenderFinishedSemaphore;
+  VkFenceHolder mVKInFlightFence;
   VkFormat mVKSwapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
   bool mVKSkipFrame = false;
 #endif

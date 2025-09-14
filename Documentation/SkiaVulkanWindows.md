@@ -11,6 +11,8 @@ This guide explains how to enable the Skia renderer using Vulkan on Windows.
 - Define `IGRAPHICS_SKIA;IGRAPHICS_VULKAN` in your project settings or `.props` file.
 - When `VULKAN_SDK` is set, the shared property sheet `common-win.props` automatically adds the required include and library paths.
 
-## Notes
-- The Vulkan backend is experimental and may have limitations.
-- If swap-chain creation fails, verify that your GPU drivers support Vulkan and that the SDK is correctly installed.
+## Limitations and troubleshooting
+- Ensure that your GPU drivers support Vulkan 1.0 and are up to date.
+- To prefer an integrated GPU set the environment variable `IGRAPHICS_VK_GPU=integrated`; by default discrete devices are preferred.
+- Swap-chain or presentation failures are often driver related. Verify that no other application holds exclusive fullscreen access.
+- Device loss will trigger an internal context rebuild which may momentarily pause rendering.

@@ -124,6 +124,7 @@ public:
 
 #ifdef IGRAPHICS_VULKAN
   VkResult CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format);
+  bool RecreateVulkanContext();
 #endif
 
 protected:
@@ -175,12 +176,12 @@ private:
   VkPhysicalDevice mVkPhysicalDevice = VK_NULL_HANDLE;
   VkDevice mVkDevice = VK_NULL_HANDLE;
   VkSurfaceKHR mVkSurface = VK_NULL_HANDLE;
-  VkSwapchainKHR mVkSwapchain = VK_NULL_HANDLE;
+  VkSwapchainHolder mVkSwapchain;
   VkQueue mPresentQueue = VK_NULL_HANDLE;
   uint32_t mVkQueueFamily = 0;
-  VkSemaphore mImageAvailableSemaphore = VK_NULL_HANDLE;
-  VkSemaphore mRenderFinishedSemaphore = VK_NULL_HANDLE;
-  VkFence mInFlightFence = VK_NULL_HANDLE;
+  VkSemaphoreHolder mImageAvailableSemaphore;
+  VkSemaphoreHolder mRenderFinishedSemaphore;
+  VkFenceHolder mInFlightFence;
   std::vector<VkImage> mVkSwapchainImages;
   VkFormat mVkFormat = VK_FORMAT_B8G8R8A8_UNORM;
 #endif

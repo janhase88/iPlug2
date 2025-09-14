@@ -2,6 +2,7 @@
 
 #include "IGraphics.h"
 #include "IPlugPlatform.h"
+#include <vector>
 
 // N.B. - this must be defined according to the skia build, not the iPlug build
 #if (defined OS_MAC || defined OS_IOS) && !defined IGRAPHICS_SKIA_NO_METAL
@@ -179,6 +180,18 @@ private:
   void* mMTLCommandQueue;
   void* mMTLDrawable;
   void* mMTLLayer;
+#endif
+
+#ifdef IGRAPHICS_VULKAN
+  void* mVKInstance = nullptr;
+  void* mVKPhysicalDevice = nullptr;
+  void* mVKDevice = nullptr;
+  void* mVKSurface = nullptr;
+  void* mVKSwapchain = nullptr;
+  void* mVKQueue = nullptr;
+  uint32_t mVKQueueFamily = 0;
+  std::vector<void*> mVKSwapchainImages;
+  uint32_t mVKCurrentImage = 0;
 #endif
 
   static StaticStorage<Font> sFontCache;

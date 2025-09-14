@@ -32,7 +32,7 @@
 
 #include "IPlugConstants.h"
 #include "IPlugUtilities.h"
-#include "IPlug/InstanceSeparation.h"
+#include "InstanceSeparation.h"
 
 BEGIN_IPLUG_NAMESPACE
 

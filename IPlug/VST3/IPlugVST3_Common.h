@@ -11,8 +11,9 @@
 #pragma once
 
 #include "pluginterfaces/base/ibstream.h"
-#
+
 #include "IPlugAPIBase.h"
+#include "IPlugLogger.h"
 #include "IPlugVST3_Parameter.h"
 #include "IPlugVST3_ControllerBase.h"
 

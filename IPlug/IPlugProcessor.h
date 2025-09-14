@@ -25,6 +25,7 @@
 #include "IPlugPlatform.h"
 #include "IPlugConstants.h"
 #include "IPlugStructs.h"
+#include "IPlugLogger.h"
 #include "IPlugUtilities.h"
 #include "NChanDelay.h"
 

@@ -508,6 +508,9 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   mVKInFlightFence.handle = ctx->inFlightFence;
 
   skgpu::VulkanBackendContext backendContext = {};
+  backendContext.fGetProc = [](const char* name, VkInstance instance, VkDevice) {
+    return vkGetInstanceProcAddr(instance, name);
+  };
   backendContext.fInstance = mVKInstance;
   backendContext.fPhysicalDevice = mVKPhysicalDevice;
   backendContext.fDevice = mVKDevice;

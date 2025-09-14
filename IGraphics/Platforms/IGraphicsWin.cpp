@@ -570,21 +570,6 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
           ScopedGLContext scopedGLCtx {pGraphics};
           pGraphics->Draw(rects);
           SwapBuffers((HDC) pGraphics->GetPlatformContext());
-#elif defined IGRAPHICS_VULKAN
-          ScopedGLContext scopedGLCtx {pGraphics};
-          pGraphics->Draw(rects);
-          IGraphicsWin* pWin = static_cast<IGraphicsWin*>(pGraphics);
-          if (pWin->mVkDevice && pWin->mVkSwapchain)
-          {
-            uint32_t imageIndex = 0;
-            vkAcquireNextImageKHR(pWin->mVkDevice, pWin->mVkSwapchain, UINT64_MAX, pWin->mImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
-            VkPresentInfoKHR presentInfo = {};
-            presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-            presentInfo.swapchainCount = 1;
-            presentInfo.pSwapchains = &pWin->mVkSwapchain;
-            presentInfo.pImageIndices = &imageIndex;
-            vkQueuePresentKHR(pWin->mPresentQueue, &presentInfo);
-          }
 #else
           pGraphics->Draw(rects);
 #endif
@@ -1148,9 +1133,8 @@ void* IGraphicsWin::OpenWindow(void* pParent)
 
   mPlugWnd = CreateWindowW(wndClassName, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
 #if defined IGRAPHICS_VULKAN
-  CreateVulkanContext();
-  SetPlatformContext((void*) mVkSurface);
-  OnViewInitialized((void*) mVkSurface);
+  SetPlatformContext(mPlugWnd);
+  OnViewInitialized(mPlugWnd);
 #else
   HDC dc = GetDC(mPlugWnd);
   SetPlatformContext(dc);

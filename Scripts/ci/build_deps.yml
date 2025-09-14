@@ -52,10 +52,10 @@ jobs:
     inputs:
       versionSpec: '3.8'
 
-  - bash: |
-      cd ./Dependencies/IGraphics
-      ./build-skia-win.sh $(buildConfiguration) $(buildPlatform)
-    displayName: Build SKIA
+    - bash: |
+        cd ./Dependencies/IGraphics
+        ./build-skia-win.sh $(buildConfiguration) $(buildPlatform) --vulkan
+      displayName: Build SKIA
 
   - bash: |
       cd ./Dependencies/Build

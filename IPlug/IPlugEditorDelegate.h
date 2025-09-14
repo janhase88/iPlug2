@@ -24,6 +24,7 @@
 #include "IPlugParameter.h"
 #include "IPlugMidi.h"
 #include "IPlugStructs.h"
+#include "IPlugLogger.h"
 
 BEGIN_IPLUG_NAMESPACE
 

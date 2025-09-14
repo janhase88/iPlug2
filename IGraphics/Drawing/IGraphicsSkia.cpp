@@ -555,20 +555,25 @@ void IGraphicsSkia::DrawResize()
   #if defined IGRAPHICS_VULKAN
     if (mVKDevice && mVKSurface)
     {
-      #if defined OS_WIN
+    #if defined OS_WIN
       if (auto* pWin = static_cast<IGraphicsWin*>(this))
       {
         VkSwapchainKHR swapchain = VK_NULL_HANDLE;
         std::vector<VkImage> images;
         VkFormat format = mVKSwapchainFormat;
-        if (pWin->CreateOrResizeVulkanSwapchain(w, h, swapchain, images, format) == VK_SUCCESS)
+        VkResult res = pWin->CreateOrResizeVulkanSwapchain(w, h, swapchain, images, format);
+        if (res == VK_SUCCESS)
         {
           mVKSwapchain = swapchain;
           mVKSwapchainImages = images;
           mVKSwapchainFormat = format;
         }
+        else
+        {
+          DBGMSG("CreateOrResizeVulkanSwapchain failed: %d\n", res);
+        }
       }
-      #endif
+    #endif
     }
   #endif
   }

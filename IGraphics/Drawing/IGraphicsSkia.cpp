@@ -56,9 +56,11 @@
 
 #elif defined OS_WIN
 #include "include/ports/SkTypeface_win.h"
+
 #if !defined(NOGDI)
 #  define NOGDI          // prevent <windows.h> from defining LOGFONT
 #endif
+
 #include <windows.h>
 
   #pragma comment(lib, "skia.lib")

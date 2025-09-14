@@ -1161,15 +1161,22 @@ bool IGraphicsWin::CreateVulkanContext()
   vkGetPhysicalDeviceFeatures(mVkPhysicalDevice, &supportedFeatures);
 
   VkPhysicalDeviceFeatures enabledFeatures{};
-  if (!supportedFeatures.samplerAnisotropy || !supportedFeatures.textureCompressionBC)
+  if (!supportedFeatures.samplerAnisotropy)
   {
-    DBGMSG("Required Vulkan device features not supported\n");
+    DBGMSG("Required Vulkan device feature samplerAnisotropy not supported\n");
     DestroyVulkanContext();
     return false;
   }
 
   enabledFeatures.samplerAnisotropy = VK_TRUE;
-  enabledFeatures.textureCompressionBC = VK_TRUE;
+  if (supportedFeatures.textureCompressionBC)
+  {
+    enabledFeatures.textureCompressionBC = VK_TRUE;
+  }
+  else
+  {
+    DBGMSG("Optional Vulkan feature textureCompressionBC not supported\n");
+  }
 
   float priority = 1.f;
   VkDeviceQueueCreateInfo queueInfo{};
@@ -1395,8 +1402,9 @@ void IGraphicsWin::ActivateVulkanContext()
 
 void IGraphicsWin::DeactivateVulkanContext()
 {
-  if (mPresentQueue)
-    vkQueueWaitIdle(mPresentQueue);
+  // Vulkan does not require explicit context deactivation. Avoid
+  // blocking on the present queue here to prevent unnecessary stalls;
+  // required synchronization is handled via semaphores/fences.
 }
 #endif
 

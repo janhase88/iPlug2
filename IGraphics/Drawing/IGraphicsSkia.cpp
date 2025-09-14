@@ -82,7 +82,7 @@
   #endif
 
 #elif defined IGRAPHICS_VULKAN
-  #include "include/gpu/ganesh/vk/GrVkBackendContext.h"
+  #include "include/gpu/vk/VulkanBackendContext.h"
   #include "include/gpu/ganesh/vk/GrVkBackendSurface.h"
   #include "include/gpu/ganesh/vk/GrVkDirectContext.h"
   #include <vulkan/vulkan.h>
@@ -500,7 +500,7 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   mVKRenderFinishedSemaphore.handle = ctx->renderFinishedSemaphore;
   mVKInFlightFence.handle = ctx->inFlightFence;
 
-  GrVkBackendContext backendContext = {};
+  skgpu::VulkanBackendContext backendContext = {};
   backendContext.fInstance = mVKInstance;
   backendContext.fPhysicalDevice = mVKPhysicalDevice;
   backendContext.fDevice = mVKDevice;

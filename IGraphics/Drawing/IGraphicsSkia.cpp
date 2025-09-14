@@ -479,15 +479,23 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   mVKSwapchain = ctx->swapchain;
   mVKQueue = ctx->queue;
   mVKQueueFamily = ctx->queueFamily;
-  mVKImageAvailableSemaphore = ctx->imageAvailableSemaphore;
-  mVKRenderFinishedSemaphore = ctx->renderFinishedSemaphore;
-  mVKInFlightFence = ctx->inFlightFence;
   mVKSwapchainImages.clear();
   if (ctx->swapchainImages)
   {
     for (auto img : *ctx->swapchainImages)
       mVKSwapchainImages.push_back((void*)img);
   }
+
+  VkSemaphoreCreateInfo semInfo{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
+  if (vkCreateSemaphore((VkDevice)mVKDevice, &semInfo, nullptr, (VkSemaphore*)&mVKImageAvailableSemaphore) != VK_SUCCESS)
+    return;
+  if (vkCreateSemaphore((VkDevice)mVKDevice, &semInfo, nullptr, (VkSemaphore*)&mVKRenderFinishedSemaphore) != VK_SUCCESS)
+    return;
+
+  VkFenceCreateInfo fenceInfo{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
+  fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+  if (vkCreateFence((VkDevice)mVKDevice, &fenceInfo, nullptr, (VkFence*)&mVKInFlightFence) != VK_SUCCESS)
+    return;
 
   GrVkBackendContext backendContext = {};
   backendContext.fInstance = (VkInstance)mVKInstance;
@@ -516,15 +524,30 @@ void IGraphicsSkia::OnViewDestroyed()
   mMTLLayer = nullptr;
   mMTLDevice = nullptr;
 #elif defined IGRAPHICS_VULKAN
+  vkDeviceWaitIdle((VkDevice)mVKDevice);
+
+  if (mVKImageAvailableSemaphore)
+  {
+    vkDestroySemaphore((VkDevice)mVKDevice, (VkSemaphore)mVKImageAvailableSemaphore, nullptr);
+    mVKImageAvailableSemaphore = nullptr;
+  }
+  if (mVKRenderFinishedSemaphore)
+  {
+    vkDestroySemaphore((VkDevice)mVKDevice, (VkSemaphore)mVKRenderFinishedSemaphore, nullptr);
+    mVKRenderFinishedSemaphore = nullptr;
+  }
+  if (mVKInFlightFence)
+  {
+    vkDestroyFence((VkDevice)mVKDevice, (VkFence)mVKInFlightFence, nullptr);
+    mVKInFlightFence = nullptr;
+  }
+
   mVKInstance = nullptr;
   mVKPhysicalDevice = nullptr;
   mVKDevice = nullptr;
   mVKSurface = nullptr;
   mVKSwapchain = nullptr;
   mVKQueue = nullptr;
-  mVKImageAvailableSemaphore = nullptr;
-  mVKRenderFinishedSemaphore = nullptr;
-  mVKInFlightFence = nullptr;
   mVKSwapchainImages.clear();
 #endif
 }

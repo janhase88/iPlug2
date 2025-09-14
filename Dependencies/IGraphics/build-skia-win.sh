@@ -13,7 +13,7 @@ TMP_DIR="$BASE_DIR/tmp/skia"
 WIN_LIB_DIR="$BASE_DIR/win"
 WIN_BIN_DIR="$BASE_DIR/win/bin"
 
-ERROR_MSG="Error: Please provide 'Debug' or 'Release' as the first argument, and 'x64' or 'Win32' as the second argument."
+ERROR_MSG="Error: Please provide 'Debug' or 'Release' as the first argument, and 'x64' or 'Win32' as the second argument. Optionally pass --vulkan to enable Vulkan support."
 
 LIBS=(
   "skia.lib"
@@ -65,6 +65,12 @@ generate_build_files() {
   else
     extra_args="$extra_args
       target_cpu = \"x64\"
+    "
+  fi
+
+  if [ "$USE_VULKAN" = true ]; then
+    extra_args="$extra_args
+      skia_use_vulkan = true
     "
   fi
 
@@ -141,13 +147,19 @@ move_libs() {
 }
 
 main() {
-  if [ "$#" -ne 2 ]; then
+  if [ "$#" -lt 2 ]; then
     echo "$ERROR_MSG"
     exit 1
   fi
 
   local config=$1
   local arch=$2
+  local option=$3
+
+  USE_VULKAN=false
+  if [ "$option" = "--vulkan" ]; then
+    USE_VULKAN=true
+  fi
 
   case "$config" in
     "Debug"|"Release") ;;

@@ -56,7 +56,6 @@
 
 #elif defined OS_WIN
   #include <windows.h>
-  #include "include/ports/SkTypeface_win.h"
 
   #pragma comment(lib, "skia.lib")
 
@@ -82,9 +81,11 @@
   #endif
 
 #elif defined IGRAPHICS_VULKAN
-  #include "include/gpu/vk/VulkanBackendContext.h"
+  #include "include/gpu/ganesh/vk/GrVkBackendSemaphore.h"
   #include "include/gpu/ganesh/vk/GrVkBackendSurface.h"
   #include "include/gpu/ganesh/vk/GrVkDirectContext.h"
+  #include "include/gpu/ganesh/vk/GrVkTypes.h"
+  #include "include/gpu/vk/VulkanBackendContext.h"
   #include <vulkan/vulkan.h>
   #if defined OS_WIN
     #include "../Platforms/IGraphicsWin.h"
@@ -710,6 +711,8 @@ void IGraphicsSkia::BeginFrame()
     imageInfo.fImageLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
     imageInfo.fImageTiling = VK_IMAGE_TILING_OPTIMAL;
     imageInfo.fFormat = mVKSwapchainFormat;
+    imageInfo.fImageUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    imageInfo.fSampleCount = 1;
     imageInfo.fLevelCount = 1;
     imageInfo.fCurrentQueueFamily = mVKQueueFamily;
 
@@ -758,15 +761,15 @@ void IGraphicsSkia::EndFrame()
   #if defined IGRAPHICS_VULKAN
   if (auto dContext = GrAsDirectContext(mScreenSurface->getCanvas()->recordingContext()))
   {
-    GrBackendSemaphore waitSemaphore;
-    waitSemaphore.initVulkan(mVKImageAvailableSemaphore.handle);
-    GrBackendSemaphore signalSemaphore;
-    signalSemaphore.initVulkan(mVKRenderFinishedSemaphore.handle);
+    GrBackendSemaphore waitSemaphore = GrBackendSemaphores::MakeVk(mVKImageAvailableSemaphore.handle);
+    GrBackendSemaphore signalSemaphore = GrBackendSemaphores::MakeVk(mVKRenderFinishedSemaphore.handle);
+    dContext->wait(1, &waitSemaphore, false);
     GrFlushInfo flushInfo{};
     flushInfo.fNumSemaphores = 1;
-    flushInfo.fWaitSemaphores = &waitSemaphore;
     flushInfo.fSignalSemaphores = &signalSemaphore;
-    if (dContext->flushAndSubmit(flushInfo) != GrSemaphoresSubmitted::kYes)
+    if (dContext->flush(flushInfo) != GrSemaphoresSubmitted::kYes)
+      return;
+    if (!dContext->submit())
       return;
   }
 

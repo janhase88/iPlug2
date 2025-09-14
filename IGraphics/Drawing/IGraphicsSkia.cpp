@@ -741,7 +741,7 @@ void IGraphicsSkia::BeginFrame()
     imageInfo.fImageLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
     imageInfo.fImageTiling = VK_IMAGE_TILING_OPTIMAL;
     imageInfo.fFormat = mVKSwapchainFormat;
-    imageInfo.fImageUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    imageInfo.fImageUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     imageInfo.fSampleCount = 1;
     imageInfo.fLevelCount = 1;
     imageInfo.fCurrentQueueFamily = mVKQueueFamily;

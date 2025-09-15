@@ -598,6 +598,7 @@ bool IGraphicsSkia::AssertValidSwapchainImage(VkImage image, const char* context
         DBGMSG("  active[%zu]=%p\n", idx++, (void*)activeImage);
       }
     }
+
     if (!mVKSwapchainImages.empty())
     {
       DBGMSG("  swapchainImages (%zu entries):\n", mVKSwapchainImages.size());
@@ -609,6 +610,7 @@ bool IGraphicsSkia::AssertValidSwapchainImage(VkImage image, const char* context
                (i < mVKImageLayouts.size()) ? (int)mVKImageLayouts[i] : -1);
       }
     }
+
     return false;
   }
   return true;

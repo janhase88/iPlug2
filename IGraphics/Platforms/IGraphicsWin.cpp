@@ -1503,6 +1503,18 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
     DBGMSG("  swapImage[%u]=%p\n", i, (void*)mVkSwapchainImages[i]);
   }
 
+  DBGMSG("CreateOrResizeVulkanSwapchain: created swapchain %p extent %ux%u format %u usage 0x%X with %u images\n",
+         (void*)mVkSwapchain.handle,
+         swapInfo.imageExtent.width,
+         swapInfo.imageExtent.height,
+         surfaceFormat.format,
+         usageFlags,
+         imageCount);
+  for (uint32_t i = 0; i < imageCount; ++i)
+  {
+    DBGMSG("  swapImage[%u]=%p\n", i, (void*)mVkSwapchainImages[i]);
+  }
+
   mVkFormat = surfaceFormat.format;
   format = mVkFormat;
   usage = usageFlags;

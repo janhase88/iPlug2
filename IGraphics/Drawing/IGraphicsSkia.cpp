@@ -580,7 +580,20 @@ void IGraphicsSkia::DrawResize()
   mVKCurrentImage = kInvalidImageIndex;
   mVKSwapchainVersion++;
   if (mVKDevice != VK_NULL_HANDLE)
+  {
     vkDeviceWaitIdle(mVKDevice);
+    if (mVKCommandBuffer != VK_NULL_HANDLE)
+    {
+      vkFreeCommandBuffers(mVKDevice, mVKCommandPool, 1, &mVKCommandBuffer);
+      mVKCommandBuffer = VK_NULL_HANDLE;
+    }
+    if (mVKCommandPool != VK_NULL_HANDLE)
+    {
+      vkDestroyCommandPool(mVKDevice, mVKCommandPool, nullptr);
+      mVKCommandPool = VK_NULL_HANDLE;
+    }
+    mVKSubmissionPending = false;
+  }
   if (mVKPhysicalDevice != VK_NULL_HANDLE && mVKSurface != VK_NULL_HANDLE)
   {
     VkSurfaceCapabilitiesKHR caps{};
@@ -921,9 +934,16 @@ void IGraphicsSkia::EndFrame()
   #ifdef IGRAPHICS_VULKAN
 
   std::unique_lock<std::mutex> lock(mVKSwapchainMutex);
-
-  if (mVKSkipFrame || mVKFrameVersion != mVKSwapchainVersion || mVKSwapchainImages.empty() || mVKCurrentImage == kInvalidImageIndex || mVKCurrentImage >= mVKSwapchainImages.size())
+  if (mVKSkipFrame || mVKSwapchainImages.empty() || mVKCurrentImage == kInvalidImageIndex || mVKCurrentImage >= mVKSwapchainImages.size())
     return;
+
+  if (mVKFrameVersion != mVKSwapchainVersion)
+  {
+    DBGMSG("EndFrame: swapchain version mismatch (frame %llu, swapchain %llu)\n", (unsigned long long)mVKFrameVersion, (unsigned long long)mVKSwapchainVersion);
+    mVKSkipFrame = true;
+    mVKCurrentImage = kInvalidImageIndex;
+    return;
+  }
   #endif
   mSurface->draw(mScreenSurface->getCanvas(), 0.0, 0.0, nullptr);
 
@@ -990,6 +1010,14 @@ void IGraphicsSkia::EndFrame()
     return;
   }
 
+  if (mVKFrameVersion != mVKSwapchainVersion)
+  {
+    DBGMSG("EndFrame: swapchain changed before command buffer (frame %llu, swapchain %llu)\n", (unsigned long long)mVKFrameVersion, (unsigned long long)mVKSwapchainVersion);
+    mVKSkipFrame = true;
+    mVKCurrentImage = kInvalidImageIndex;
+    return;
+  }
+
   VkCommandBufferBeginInfo beginInfo{};
   beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -997,6 +1025,7 @@ void IGraphicsSkia::EndFrame()
 
   if (mVKFrameVersion != mVKSwapchainVersion || mVKSwapchain == VK_NULL_HANDLE)
   {
+    DBGMSG("EndFrame: swapchain version mismatch before barrier (frame %llu, swapchain %llu)\n", (unsigned long long)mVKFrameVersion, (unsigned long long)mVKSwapchainVersion);
     vkEndCommandBuffer(mVKCommandBuffer);
     mVKSkipFrame = true;
     mVKCurrentImage = kInvalidImageIndex;

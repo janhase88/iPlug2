@@ -260,6 +260,7 @@ private:
   VkImageUsageFlags mVKSwapchainUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
   bool mVKSkipFrame = false;
   bool mVKSubmissionPending = false;
+  bool mVKSwapchainRecreated = false;
 #endif
 
   static StaticStorage<Font> sFontCache;

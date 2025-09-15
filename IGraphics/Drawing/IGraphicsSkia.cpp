@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <map>
 #include <vector>
 
@@ -567,6 +568,22 @@ void IGraphicsSkia::OnViewDestroyed()
 
 #ifdef IGRAPHICS_VULKAN
 void IGraphicsSkia::SkipVKFrame() { mVKSkipFrame = true; }
+  #ifndef NDEBUG
+bool IGraphicsSkia::AssertValidSwapchainImage(VkImage image, const char* context)
+{
+  if (image == VK_NULL_HANDLE)
+  {
+    DBGMSG("%s: VK_NULL_HANDLE (frame %llu, swapchain %llu)\n", context, (unsigned long long)mVKFrameVersion, (unsigned long long)mVKSwapchainVersion);
+    return false;
+  }
+  if (mVKDebugImages.find(image) == mVKDebugImages.end())
+  {
+    DBGMSG("%s: image %p not in active set (frame %llu, swapchain %llu)\n", context, (void*)image, (unsigned long long)mVKFrameVersion, (unsigned long long)mVKSwapchainVersion);
+    return false;
+  }
+  return true;
+}
+  #endif
 #endif
 
 void IGraphicsSkia::DrawResize()
@@ -595,6 +612,11 @@ void IGraphicsSkia::DrawResize()
     mVKSubmissionPending = false;
     mVKImageLayouts.clear();
   }
+  for (auto& img : mVKSwapchainImages)
+    img = VK_NULL_HANDLE;
+  #ifndef NDEBUG
+  mVKDebugImages.clear();
+  #endif
   mVKSwapchainImages.clear();
   if (mVKPhysicalDevice != VK_NULL_HANDLE && mVKSurface != VK_NULL_HANDLE)
   {
@@ -642,6 +664,27 @@ void IGraphicsSkia::DrawResize()
           mVKSwapchainFormat = format;
           mVKCurrentImage = kInvalidImageIndex;
           mVKSkipFrame = true;
+      #ifndef NDEBUG
+          DBGMSG("DrawResize: swapchain version %llu with %zu images\n", (unsigned long long)mVKSwapchainVersion, mVKSwapchainImages.size());
+          PFN_vkSetDebugUtilsObjectNameEXT setName = reinterpret_cast<PFN_vkSetDebugUtilsObjectNameEXT>(vkGetDeviceProcAddr(mVKDevice, "vkSetDebugUtilsObjectNameEXT"));
+          for (size_t i = 0; i < mVKSwapchainImages.size(); ++i)
+          {
+            VkImage img = mVKSwapchainImages[i];
+            mVKDebugImages.insert(img);
+            DBGMSG("  image[%zu]=%p\n", i, (void*)img);
+            if (setName)
+            {
+              char name[64];
+              snprintf(name, sizeof(name), "SwapchainImage%zu_v%llu", i, (unsigned long long)mVKSwapchainVersion);
+              VkDebugUtilsObjectNameInfoEXT nameInfo{};
+              nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+              nameInfo.objectType = VK_OBJECT_TYPE_IMAGE;
+              nameInfo.objectHandle = (uint64_t)img;
+              nameInfo.pObjectName = name;
+              setName(mVKDevice, &nameInfo);
+            }
+          }
+      #endif
           if (mVKSwapchainImages.empty())
           {
             mVKSwapchain = VK_NULL_HANDLE;
@@ -849,6 +892,14 @@ void IGraphicsSkia::BeginFrame()
       mVKCurrentImage = kInvalidImageIndex;
       return;
     }
+  #ifndef NDEBUG
+    if (!AssertValidSwapchainImage(mVKSwapchainImages[imageIndex], "BeginFrame"))
+    {
+      mVKSkipFrame = true;
+      mVKCurrentImage = kInvalidImageIndex;
+      return;
+    }
+  #endif
     VkResult fenceStatus = vkGetFenceStatus(mVKDevice, mVKInFlightFence);
     if (fenceStatus == VK_SUCCESS)
     {
@@ -1098,6 +1149,14 @@ void IGraphicsSkia::EndFrame()
     mVKCurrentImage = kInvalidImageIndex;
     return;
   }
+    #ifndef NDEBUG
+  if (!AssertValidSwapchainImage(swapImage, "EndFrame pre-barrier"))
+  {
+    mVKSkipFrame = true;
+    mVKCurrentImage = kInvalidImageIndex;
+    return;
+  }
+    #endif
 
   VkCommandBufferBeginInfo beginInfo{};
   beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -1112,6 +1171,15 @@ void IGraphicsSkia::EndFrame()
     mVKCurrentImage = kInvalidImageIndex;
     return;
   }
+    #ifndef NDEBUG
+  if (!AssertValidSwapchainImage(swapImage, "EndFrame barrier"))
+  {
+    vkEndCommandBuffer(mVKCommandBuffer);
+    mVKSkipFrame = true;
+    mVKCurrentImage = kInvalidImageIndex;
+    return;
+  }
+    #endif
 
   VkImageMemoryBarrier barrier{};
   barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -1161,6 +1229,14 @@ void IGraphicsSkia::EndFrame()
   presentInfo.swapchainCount = 1;
   presentInfo.pSwapchains = &mVKSwapchain;
   presentInfo.pImageIndices = &mVKCurrentImage;
+    #ifndef NDEBUG
+  if (!AssertValidSwapchainImage(swapImage, "EndFrame present"))
+  {
+    mVKSkipFrame = true;
+    mVKCurrentImage = kInvalidImageIndex;
+    return;
+  }
+    #endif
   VkResult res = vkQueuePresentKHR(mVKQueue, &presentInfo);
   if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
   {

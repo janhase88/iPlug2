@@ -842,6 +842,13 @@ void IGraphicsSkia::BeginFrame()
       mVKCurrentImage = kInvalidImageIndex;
       return;
     }
+    if (imageIndex >= mVKSwapchainImages.size() || mVKSwapchainImages[imageIndex] == VK_NULL_HANDLE)
+    {
+      DBGMSG("vkAcquireNextImageKHR returned invalid image (index %u)\n", imageIndex);
+      mVKSkipFrame = true;
+      mVKCurrentImage = kInvalidImageIndex;
+      return;
+    }
     VkResult fenceStatus = vkGetFenceStatus(mVKDevice, mVKInFlightFence);
     if (fenceStatus == VK_SUCCESS)
     {

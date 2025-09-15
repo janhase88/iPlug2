@@ -4,6 +4,7 @@
 #include "IPlugPlatform.h"
 #include <vector>
 #include <cstdint>
+#include <limits>
 
 // N.B. - this must be defined according to the skia build, not the iPlug build
 #if (defined OS_MAC || defined OS_IOS) && !defined IGRAPHICS_SKIA_NO_METAL
@@ -243,6 +244,7 @@ private:
 #endif
 
 #ifdef IGRAPHICS_VULKAN
+  static constexpr uint32_t kInvalidImageIndex = std::numeric_limits<uint32_t>::max();
   VkInstance mVKInstance = VK_NULL_HANDLE;
   VkPhysicalDevice mVKPhysicalDevice = VK_NULL_HANDLE;
   VkDevice mVKDevice = VK_NULL_HANDLE;
@@ -253,7 +255,7 @@ private:
   VkCommandBuffer mVKCommandBuffer = VK_NULL_HANDLE;
   uint32_t mVKQueueFamily = 0;
   std::vector<VkImage> mVKSwapchainImages;
-  uint32_t mVKCurrentImage = 0;
+  uint32_t mVKCurrentImage = kInvalidImageIndex;
   VkSemaphore mVKImageAvailableSemaphore = VK_NULL_HANDLE;
   VkSemaphore mVKRenderFinishedSemaphore = VK_NULL_HANDLE;
   VkFence mVKInFlightFence = VK_NULL_HANDLE;

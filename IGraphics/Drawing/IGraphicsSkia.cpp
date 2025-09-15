@@ -568,7 +568,6 @@ void IGraphicsSkia::OnViewDestroyed()
 
 #ifdef IGRAPHICS_VULKAN
 void IGraphicsSkia::SkipVKFrame() { mVKSkipFrame = true; }
-  #ifndef NDEBUG
 bool IGraphicsSkia::AssertValidSwapchainImage(VkImage image, const char* context)
 {
   if (image == VK_NULL_HANDLE)
@@ -583,7 +582,6 @@ bool IGraphicsSkia::AssertValidSwapchainImage(VkImage image, const char* context
   }
   return true;
 }
-  #endif
 #endif
 
 void IGraphicsSkia::DrawResize()
@@ -614,9 +612,7 @@ void IGraphicsSkia::DrawResize()
   }
   for (auto& img : mVKSwapchainImages)
     img = VK_NULL_HANDLE;
-  #ifndef NDEBUG
   mVKDebugImages.clear();
-  #endif
   mVKSwapchainImages.clear();
   if (mVKPhysicalDevice != VK_NULL_HANDLE && mVKSurface != VK_NULL_HANDLE)
   {
@@ -667,10 +663,12 @@ void IGraphicsSkia::DrawResize()
       #ifndef NDEBUG
           DBGMSG("DrawResize: swapchain version %llu with %zu images\n", (unsigned long long)mVKSwapchainVersion, mVKSwapchainImages.size());
           PFN_vkSetDebugUtilsObjectNameEXT setName = reinterpret_cast<PFN_vkSetDebugUtilsObjectNameEXT>(vkGetDeviceProcAddr(mVKDevice, "vkSetDebugUtilsObjectNameEXT"));
+      #endif
           for (size_t i = 0; i < mVKSwapchainImages.size(); ++i)
           {
             VkImage img = mVKSwapchainImages[i];
             mVKDebugImages.insert(img);
+      #ifndef NDEBUG
             DBGMSG("  image[%zu]=%p\n", i, (void*)img);
             if (setName)
             {
@@ -683,8 +681,8 @@ void IGraphicsSkia::DrawResize()
               nameInfo.pObjectName = name;
               setName(mVKDevice, &nameInfo);
             }
-          }
       #endif
+          }
           if (mVKSwapchainImages.empty())
           {
             mVKSwapchain = VK_NULL_HANDLE;
@@ -802,7 +800,6 @@ void IGraphicsSkia::BeginFrame()
       return;
     }
 
-    mVKSkipFrame = false;
     int width = WindowWidth() * GetScreenScale();
     int height = WindowHeight() * GetScreenScale();
     if (mVKSubmissionPending)
@@ -866,17 +863,13 @@ void IGraphicsSkia::BeginFrame()
       mVKCurrentImage = kInvalidImageIndex;
     };
     VkResult res = vkAcquireNextImageKHR(mVKDevice, mVKSwapchain, UINT64_MAX, mVKImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
-    if (res == VK_ERROR_OUT_OF_DATE_KHR)
+    if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
     {
+      mVKSkipFrame = true;
+      mVKCurrentImage = kInvalidImageIndex;
       lock.unlock();
       DrawResize();
-      return;
-    }
-    else if (res == VK_SUBOPTIMAL_KHR)
-    {
-      releaseImage(imageIndex, true);
-      lock.unlock();
-      DrawResize();
+      BeginFrame();
       return;
     }
     else if (res != VK_SUCCESS)
@@ -892,14 +885,12 @@ void IGraphicsSkia::BeginFrame()
       mVKCurrentImage = kInvalidImageIndex;
       return;
     }
-  #ifndef NDEBUG
     if (!AssertValidSwapchainImage(mVKSwapchainImages[imageIndex], "BeginFrame"))
     {
       mVKSkipFrame = true;
       mVKCurrentImage = kInvalidImageIndex;
       return;
     }
-  #endif
     VkResult fenceStatus = vkGetFenceStatus(mVKDevice, mVKInFlightFence);
     if (fenceStatus == VK_SUCCESS)
     {
@@ -1032,6 +1023,7 @@ void IGraphicsSkia::BeginFrame()
       releaseImage(mVKCurrentImage, false);
       return;
     }
+    mVKSkipFrame = false;
   }
 #endif
 
@@ -1149,14 +1141,12 @@ void IGraphicsSkia::EndFrame()
     mVKCurrentImage = kInvalidImageIndex;
     return;
   }
-    #ifndef NDEBUG
   if (!AssertValidSwapchainImage(swapImage, "EndFrame pre-barrier"))
   {
     mVKSkipFrame = true;
     mVKCurrentImage = kInvalidImageIndex;
     return;
   }
-    #endif
 
   VkCommandBufferBeginInfo beginInfo{};
   beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -1171,7 +1161,6 @@ void IGraphicsSkia::EndFrame()
     mVKCurrentImage = kInvalidImageIndex;
     return;
   }
-    #ifndef NDEBUG
   if (!AssertValidSwapchainImage(swapImage, "EndFrame barrier"))
   {
     vkEndCommandBuffer(mVKCommandBuffer);
@@ -1179,7 +1168,6 @@ void IGraphicsSkia::EndFrame()
     mVKCurrentImage = kInvalidImageIndex;
     return;
   }
-    #endif
 
   VkImageMemoryBarrier barrier{};
   barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -1229,14 +1217,12 @@ void IGraphicsSkia::EndFrame()
   presentInfo.swapchainCount = 1;
   presentInfo.pSwapchains = &mVKSwapchain;
   presentInfo.pImageIndices = &mVKCurrentImage;
-    #ifndef NDEBUG
   if (!AssertValidSwapchainImage(swapImage, "EndFrame present"))
   {
     mVKSkipFrame = true;
     mVKCurrentImage = kInvalidImageIndex;
     return;
   }
-    #endif
   VkResult res = vkQueuePresentKHR(mVKQueue, &presentInfo);
   if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
   {

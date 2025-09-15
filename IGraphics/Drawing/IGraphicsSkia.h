@@ -269,10 +269,8 @@ private:
   uint64_t mVKSwapchainVersion = 0;
   uint64_t mVKFrameVersion = 0;
   std::mutex mVKSwapchainMutex;
-  #ifndef NDEBUG
   std::unordered_set<VkImage> mVKDebugImages;
   bool AssertValidSwapchainImage(VkImage image, const char* context);
-  #endif
 #endif
 
   static StaticStorage<Font> sFontCache;

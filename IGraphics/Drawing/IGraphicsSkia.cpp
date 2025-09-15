@@ -916,11 +916,10 @@ void IGraphicsSkia::EndFrame()
     #error NOT IMPLEMENTED
   #endif
 #else // GPU
-#ifdef IGRAPHICS_VULKAN
-  if (mVKSkipFrame || mVKFrameVersion != mVKSwapchainVersion || mVKSwapchainImages.empty() ||
-      mVKCurrentImage == kInvalidImageIndex || mVKCurrentImage >= mVKSwapchainImages.size())
+  #ifdef IGRAPHICS_VULKAN
+  if (mVKSkipFrame || mVKFrameVersion != mVKSwapchainVersion || mVKSwapchainImages.empty() || mVKCurrentImage == kInvalidImageIndex || mVKCurrentImage >= mVKSwapchainImages.size())
     return;
-#endif
+  #endif
   mSurface->draw(mScreenSurface->getCanvas(), 0.0, 0.0, nullptr);
 
   #if defined IGRAPHICS_VULKAN
@@ -974,8 +973,7 @@ void IGraphicsSkia::EndFrame()
   vkResetCommandBuffer(mVKCommandBuffer, 0);
 
   VkImage swapImage = VK_NULL_HANDLE;
-  if (mVKFrameVersion == mVKSwapchainVersion && mVKSwapchain != VK_NULL_HANDLE &&
-      mVKCurrentImage != kInvalidImageIndex && mVKCurrentImage < mVKSwapchainImages.size())
+  if (mVKFrameVersion == mVKSwapchainVersion && mVKSwapchain != VK_NULL_HANDLE && mVKCurrentImage != kInvalidImageIndex && mVKCurrentImage < mVKSwapchainImages.size())
   {
     swapImage = mVKSwapchainImages[mVKCurrentImage];
   }
@@ -991,6 +989,14 @@ void IGraphicsSkia::EndFrame()
   beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
   vkBeginCommandBuffer(mVKCommandBuffer, &beginInfo);
+
+  if (mVKFrameVersion != mVKSwapchainVersion || mVKSwapchain == VK_NULL_HANDLE)
+  {
+    vkEndCommandBuffer(mVKCommandBuffer);
+    mVKSkipFrame = true;
+    mVKCurrentImage = kInvalidImageIndex;
+    return;
+  }
 
   VkImageMemoryBarrier barrier{};
   barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;

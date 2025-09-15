@@ -572,12 +572,12 @@ bool IGraphicsSkia::AssertValidSwapchainImage(VkImage image, const char* context
 {
   if (image == VK_NULL_HANDLE)
   {
-    Trace(TRACELOC, "%s: VK_NULL_HANDLE (frame %llu, swapchain %llu)", context, (unsigned long long)mVKFrameVersion, (unsigned long long)mVKSwapchainVersion);
+    DBGMSG("%s: VK_NULL_HANDLE (frame %llu, swapchain %llu)\n", context, (unsigned long long)mVKFrameVersion, (unsigned long long)mVKSwapchainVersion);
     return false;
   }
   if (mVKDebugImages.find(image) == mVKDebugImages.end())
   {
-    Trace(TRACELOC, "%s: image %p not in active set (frame %llu, swapchain %llu)", context, (void*)image, (unsigned long long)mVKFrameVersion, (unsigned long long)mVKSwapchainVersion);
+    DBGMSG("%s: image %p not in active set (frame %llu, swapchain %llu)\n", context, (void*)image, (unsigned long long)mVKFrameVersion, (unsigned long long)mVKSwapchainVersion);
     return false;
   }
   return true;
@@ -880,7 +880,7 @@ void IGraphicsSkia::BeginFrame()
     }
     if (imageIndex >= mVKSwapchainImages.size() || mVKSwapchainImages[imageIndex] == VK_NULL_HANDLE)
     {
-      Trace(TRACELOC, "vkAcquireNextImageKHR returned invalid image (index %u)", imageIndex);
+      DBGMSG("vkAcquireNextImageKHR returned invalid image (index %u)\n", imageIndex);
       mVKSkipFrame = true;
       mVKCurrentImage = kInvalidImageIndex;
       return;

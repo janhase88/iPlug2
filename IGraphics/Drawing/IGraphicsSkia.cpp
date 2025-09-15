@@ -578,6 +578,18 @@ bool IGraphicsSkia::AssertValidSwapchainImage(VkImage image, const char* context
   if (mVKDebugImages.find(image) == mVKDebugImages.end())
   {
     DBGMSG("%s: image %p not in active set (frame %llu, swapchain %llu)\n", context, (void*)image, (unsigned long long)mVKFrameVersion, (unsigned long long)mVKSwapchainVersion);
+    if (mVKDebugImages.empty())
+    {
+      DBGMSG("  active set is empty\n");
+    }
+    else
+    {
+      size_t idx = 0;
+      for (auto activeImage : mVKDebugImages)
+      {
+        DBGMSG("  active[%zu]=%p\n", idx++, (void*)activeImage);
+      }
+    }
     return false;
   }
   return true;
@@ -878,6 +890,14 @@ void IGraphicsSkia::BeginFrame()
       mVKCurrentImage = kInvalidImageIndex;
       return;
     }
+    VkImage acquiredImage = (imageIndex < mVKSwapchainImages.size()) ? mVKSwapchainImages[imageIndex] : VK_NULL_HANDLE;
+    VkImageLayout acquiredLayout = (imageIndex < mVKImageLayouts.size()) ? mVKImageLayouts[imageIndex] : VK_IMAGE_LAYOUT_UNDEFINED;
+    DBGMSG("BeginFrame: acquired swapchain image index %u handle %p (layout %d) frame %llu swapchain %llu\n",
+           imageIndex,
+           (void*)acquiredImage,
+           (int)acquiredLayout,
+           (unsigned long long)mVKFrameVersion,
+           (unsigned long long)mVKSwapchainVersion);
     if (imageIndex >= mVKSwapchainImages.size() || mVKSwapchainImages[imageIndex] == VK_NULL_HANDLE)
     {
       DBGMSG("vkAcquireNextImageKHR returned invalid image (index %u)\n", imageIndex);
@@ -949,6 +969,13 @@ void IGraphicsSkia::BeginFrame()
     barrier.subresourceRange.baseArrayLayer = 0;
     barrier.subresourceRange.layerCount = 1;
 
+    DBGMSG("BeginFrame: pipeline barrier for image index %u handle %p layout %d -> %d (frame %llu swapchain %llu)\n",
+           imageIndex,
+           (void*)barrier.image,
+           (int)barrier.oldLayout,
+           (int)barrier.newLayout,
+           (unsigned long long)mVKFrameVersion,
+           (unsigned long long)mVKSwapchainVersion);
     vkCmdPipelineBarrier(mVKCommandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
     vkEndCommandBuffer(mVKCommandBuffer);
 
@@ -1184,6 +1211,15 @@ void IGraphicsSkia::EndFrame()
   barrier.subresourceRange.baseArrayLayer = 0;
   barrier.subresourceRange.layerCount = 1;
 
+  VkImageLayout trackedLayout = (mVKCurrentImage < mVKImageLayouts.size()) ? mVKImageLayouts[mVKCurrentImage] : VK_IMAGE_LAYOUT_UNDEFINED;
+  DBGMSG("EndFrame: pipeline barrier for image index %u handle %p layout %d -> %d (tracked %d) frame %llu swapchain %llu\n",
+         mVKCurrentImage,
+         (void*)barrier.image,
+         (int)barrier.oldLayout,
+         (int)barrier.newLayout,
+         (int)trackedLayout,
+         (unsigned long long)mVKFrameVersion,
+         (unsigned long long)mVKSwapchainVersion);
   vkCmdPipelineBarrier(mVKCommandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 
   vkEndCommandBuffer(mVKCommandBuffer);

@@ -1329,6 +1329,7 @@ bool IGraphicsWin::RecreateVulkanContext()
 VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
   uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format, VkImageUsageFlags& usage, bool& submissionPending)
 {
+  DBGMSG("CreateOrResizeVulkanSwapchain: requested %ux%u (previous swapchain %p)\n", width, height, (void*)mVkSwapchain.handle);
   if (!mVkDevice || !mVkPhysicalDevice || !mVkSurface)
     return VK_ERROR_INITIALIZATION_FAILED;
 
@@ -1437,6 +1438,18 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
   res = vkGetSwapchainImagesKHR(mVkDevice, mVkSwapchain.handle, &imageCount, mVkSwapchainImages.data());
   if (res != VK_SUCCESS)
     return res;
+
+  DBGMSG("CreateOrResizeVulkanSwapchain: created swapchain %p extent %ux%u format %u usage 0x%X with %u images\n",
+         (void*)mVkSwapchain.handle,
+         swapInfo.imageExtent.width,
+         swapInfo.imageExtent.height,
+         surfaceFormat.format,
+         usageFlags,
+         imageCount);
+  for (uint32_t i = 0; i < imageCount; ++i)
+  {
+    DBGMSG("  swapImage[%u]=%p\n", i, (void*)mVkSwapchainImages[i]);
+  }
 
   mVkFormat = surfaceFormat.format;
   format = mVkFormat;

@@ -244,6 +244,8 @@ private:
   VkSurfaceKHR mVKSurface = VK_NULL_HANDLE;
   VkSwapchainKHR mVKSwapchain = VK_NULL_HANDLE;
   VkQueue mVKQueue = VK_NULL_HANDLE;
+  VkCommandPool mVKCommandPool = VK_NULL_HANDLE;
+  VkCommandBuffer mVKCommandBuffer = VK_NULL_HANDLE;
   uint32_t mVKQueueFamily = 0;
   std::vector<VkImage> mVKSwapchainImages;
   uint32_t mVKCurrentImage = 0;

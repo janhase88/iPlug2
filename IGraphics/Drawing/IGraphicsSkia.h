@@ -3,6 +3,7 @@
 #include "IGraphics.h"
 #include "IPlugPlatform.h"
 #include <vector>
+#include <cstdint>
 
 // N.B. - this must be defined according to the skia build, not the iPlug build
 #if (defined OS_MAC || defined OS_IOS) && !defined IGRAPHICS_SKIA_NO_METAL
@@ -260,7 +261,8 @@ private:
   VkImageUsageFlags mVKSwapchainUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
   bool mVKSkipFrame = false;
   bool mVKSubmissionPending = false;
-  bool mVKSwapchainRecreated = false;
+  uint64_t mVKSwapchainVersion = 0;
+  uint64_t mVKFrameVersion = 0;
 #endif
 
   static StaticStorage<Font> sFontCache;

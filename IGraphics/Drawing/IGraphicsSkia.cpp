@@ -748,11 +748,36 @@ void IGraphicsSkia::BeginFrame()
     imageInfo.fCurrentQueueFamily = mVKQueueFamily;
 
     auto backendRT = GrBackendRenderTargets::MakeVk(width, height, imageInfo);
-    SkColorType colorType = kRGBA_8888_SkColorType;
-    if (mVKSwapchainFormat == VK_FORMAT_B8G8R8A8_UNORM || mVKSwapchainFormat == VK_FORMAT_B8G8R8A8_SRGB)
+
+    SkColorType colorType = kUnknown_SkColorType;
+    switch (mVKSwapchainFormat)
+    {
+    case VK_FORMAT_B8G8R8A8_UNORM:
+    case VK_FORMAT_B8G8R8A8_SRGB:
       colorType = kBGRA_8888_SkColorType;
+      break;
+    case VK_FORMAT_R8G8B8A8_UNORM:
+    case VK_FORMAT_R8G8B8A8_SRGB:
+      colorType = kRGBA_8888_SkColorType;
+      break;
+    default:
+      break;
+    }
+
+    if (!backendRT.isValid() || colorType == kUnknown_SkColorType || !mGrContext->colorTypeSupportedAsSurface(colorType))
+    {
+      DBGMSG("Unable to wrap swapchain image\n");
+      mVKSkipFrame = true;
+      return;
+    }
+
     mScreenSurface = SkSurfaces::WrapBackendRenderTarget(mGrContext.get(), backendRT, kTopLeft_GrSurfaceOrigin, colorType, nullptr, nullptr);
-    assert(mScreenSurface);
+    if (!mScreenSurface)
+    {
+      DBGMSG("SkSurfaces::WrapBackendRenderTarget failed\n");
+      mVKSkipFrame = true;
+      return;
+    }
   }
 #endif
 

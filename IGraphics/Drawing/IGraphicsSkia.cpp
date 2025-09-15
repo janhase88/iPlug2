@@ -904,8 +904,8 @@ void IGraphicsSkia::EndFrame()
   {
     auto backendRT = SkSurfaces::GetBackendRenderTarget(mScreenSurface.get(), SkSurfaces::BackendHandleAccess::kFlushRead);
     auto presentState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, mVKQueueFamily);
-    backendRT.setMutableState(presentState);
     mGrContext->setBackendRenderTargetState(backendRT, presentState, nullptr, nullptr, nullptr);
+    backendRT.setMutableState(presentState);
   }
 
   VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;

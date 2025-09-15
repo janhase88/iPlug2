@@ -575,7 +575,11 @@ void IGraphicsSkia::DrawResize()
   auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * GetScreenScale()));
   auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * GetScreenScale()));
 #if defined IGRAPHICS_VULKAN
+  mVKSkipFrame = true;
+  mVKCurrentImage = kInvalidImageIndex;
   mVKSwapchainVersion++;
+  if (mVKDevice != VK_NULL_HANDLE)
+    vkDeviceWaitIdle(mVKDevice);
   if (mVKPhysicalDevice != VK_NULL_HANDLE && mVKSurface != VK_NULL_HANDLE)
   {
     VkSurfaceCapabilitiesKHR caps{};
@@ -968,6 +972,21 @@ void IGraphicsSkia::EndFrame()
   }
 
   vkResetCommandBuffer(mVKCommandBuffer, 0);
+
+  VkImage swapImage = VK_NULL_HANDLE;
+  if (mVKFrameVersion == mVKSwapchainVersion && mVKSwapchain != VK_NULL_HANDLE &&
+      mVKCurrentImage != kInvalidImageIndex && mVKCurrentImage < mVKSwapchainImages.size())
+  {
+    swapImage = mVKSwapchainImages[mVKCurrentImage];
+  }
+
+  if (swapImage == VK_NULL_HANDLE)
+  {
+    mVKSkipFrame = true;
+    mVKCurrentImage = kInvalidImageIndex;
+    return;
+  }
+
   VkCommandBufferBeginInfo beginInfo{};
   beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -981,13 +1000,6 @@ void IGraphicsSkia::EndFrame()
   barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
   barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
   barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  VkImage swapImage = mVKSwapchainImages[mVKCurrentImage];
-  if (swapImage == VK_NULL_HANDLE)
-  {
-    mVKSkipFrame = true;
-    mVKCurrentImage = kInvalidImageIndex;
-    return;
-  }
   barrier.image = swapImage;
   barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
   barrier.subresourceRange.baseMipLevel = 0;

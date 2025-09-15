@@ -88,11 +88,13 @@
   #endif
 
 #elif defined IGRAPHICS_VULKAN
+  #include "include/gpu/MutableTextureState.h"
   #include "include/gpu/ganesh/vk/GrVkBackendSemaphore.h"
   #include "include/gpu/ganesh/vk/GrVkBackendSurface.h"
   #include "include/gpu/ganesh/vk/GrVkDirectContext.h"
   #include "include/gpu/ganesh/vk/GrVkTypes.h"
   #include "include/gpu/vk/VulkanBackendContext.h"
+  #include "include/gpu/vk/VulkanMutableTextureState.h"
   #if defined(OS_WIN) && !defined(VK_USE_PLATFORM_WIN32_KHR)
     #define VK_USE_PLATFORM_WIN32_KHR
   #endif
@@ -730,7 +732,7 @@ void IGraphicsSkia::BeginFrame()
       mVKSubmissionPending = false;
     }
     uint32_t imageIndex = 0;
-    auto releaseImage = [&](uint32_t idx) {
+    auto releaseImage = [&](uint32_t idx, bool present) {
       mVKCurrentImage = idx;
       VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
       VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
@@ -738,16 +740,19 @@ void IGraphicsSkia::BeginFrame()
       submitInfo.pWaitSemaphores = &mVKImageAvailableSemaphore;
       submitInfo.pWaitDstStageMask = &waitStage;
       submitInfo.commandBufferCount = 0;
-      submitInfo.signalSemaphoreCount = 1;
-      submitInfo.pSignalSemaphores = &mVKRenderFinishedSemaphore;
+      submitInfo.signalSemaphoreCount = present ? 1 : 0;
+      submitInfo.pSignalSemaphores = present ? &mVKRenderFinishedSemaphore : nullptr;
       vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
-      VkPresentInfoKHR presentInfo{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
-      presentInfo.waitSemaphoreCount = 1;
-      presentInfo.pWaitSemaphores = &mVKRenderFinishedSemaphore;
-      presentInfo.swapchainCount = 1;
-      presentInfo.pSwapchains = &mVKSwapchain;
-      presentInfo.pImageIndices = &mVKCurrentImage;
-      vkQueuePresentKHR(mVKQueue, &presentInfo);
+      if (present)
+      {
+        VkPresentInfoKHR presentInfo{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+        presentInfo.waitSemaphoreCount = 1;
+        presentInfo.pWaitSemaphores = &mVKRenderFinishedSemaphore;
+        presentInfo.swapchainCount = 1;
+        presentInfo.pSwapchains = &mVKSwapchain;
+        presentInfo.pImageIndices = &mVKCurrentImage;
+        vkQueuePresentKHR(mVKQueue, &presentInfo);
+      }
       mVKSubmissionPending = true;
       mVKSkipFrame = true;
       mScreenSurface.reset();
@@ -761,7 +766,7 @@ void IGraphicsSkia::BeginFrame()
     }
     else if (res == VK_SUBOPTIMAL_KHR)
     {
-      releaseImage(imageIndex);
+      releaseImage(imageIndex, true);
       DrawResize();
       return;
     }
@@ -791,7 +796,7 @@ void IGraphicsSkia::BeginFrame()
 
     GrVkImageInfo imageInfo{};
     imageInfo.fImage = mVKSwapchainImages[imageIndex];
-    imageInfo.fImageLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    imageInfo.fImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     imageInfo.fImageTiling = VK_IMAGE_TILING_OPTIMAL;
     imageInfo.fFormat = mVKSwapchainFormat;
     imageInfo.fImageUsageFlags = mVKSwapchainUsageFlags;
@@ -800,6 +805,10 @@ void IGraphicsSkia::BeginFrame()
     imageInfo.fCurrentQueueFamily = mVKQueueFamily;
 
     auto backendRT = GrBackendRenderTargets::MakeVk(width, height, imageInfo);
+
+    auto colorState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, mVKQueueFamily);
+    backendRT.setMutableState(colorState);
+    mGrContext->setBackendRenderTargetState(backendRT, colorState, nullptr, nullptr, nullptr);
 
     SkColorType colorType = kUnknown_SkColorType;
     switch (mVKSwapchainFormat)
@@ -819,7 +828,7 @@ void IGraphicsSkia::BeginFrame()
     if (!backendRT.isValid() || colorType == kUnknown_SkColorType || !mGrContext->colorTypeSupportedAsSurface(colorType))
     {
       DBGMSG("Unable to wrap swapchain image\n");
-      releaseImage(mVKCurrentImage);
+      releaseImage(mVKCurrentImage, false);
       return;
     }
 
@@ -827,7 +836,7 @@ void IGraphicsSkia::BeginFrame()
     if (!mScreenSurface)
     {
       DBGMSG("SkSurfaces::WrapBackendRenderTarget failed\n");
-      releaseImage(mVKCurrentImage);
+      releaseImage(mVKCurrentImage, false);
       return;
     }
   }
@@ -890,6 +899,13 @@ void IGraphicsSkia::EndFrame()
       mVKSubmissionPending = true;
       return;
     }
+  }
+
+  {
+    auto backendRT = SkSurfaces::GetBackendRenderTarget(mScreenSurface.get(), SkSurfaces::BackendHandleAccess::kFlushRead);
+    auto presentState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, mVKQueueFamily);
+    backendRT.setMutableState(presentState);
+    mGrContext->setBackendRenderTargetState(backendRT, presentState, nullptr, nullptr, nullptr);
   }
 
   VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;

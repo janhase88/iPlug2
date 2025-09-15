@@ -565,6 +565,13 @@ void IGraphicsSkia::OnViewDestroyed()
 #endif
 }
 
+#ifdef IGRAPHICS_VULKAN
+void IGraphicsSkia::SkipVKFrame()
+{
+  mVKSkipFrame = true;
+}
+#endif
+
 void IGraphicsSkia::DrawResize()
 {
   ScopedGraphicsContext scopedGLContext{this};

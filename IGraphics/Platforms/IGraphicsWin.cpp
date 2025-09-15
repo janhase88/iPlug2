@@ -1304,6 +1304,7 @@ void IGraphicsWin::DestroyVulkanContext()
 bool IGraphicsWin::RecreateVulkanContext()
 {
   OnViewDestroyed();
+  mVKSkipFrame = true;
   DestroyVulkanContext();
   if (!CreateVulkanContext())
     return false;

@@ -556,6 +556,7 @@ void IGraphicsSkia::OnViewDestroyed()
   mVKQueue = VK_NULL_HANDLE;
   mVKSwapchainImages.clear();
   mVKSwapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
+  mVKSkipFrame = true;
 
   // Release Skia references after Vulkan cleanup
   mSurface = nullptr;
@@ -613,6 +614,15 @@ void IGraphicsSkia::DrawResize()
           mVKSwapchain = swapchain;
           mVKSwapchainImages = images;
           mVKSwapchainFormat = format;
+          if (mVKSwapchainImages.empty())
+          {
+            mVKSwapchain = VK_NULL_HANDLE;
+            mSurface.reset();
+            mScreenSurface.reset();
+            mCanvas = nullptr;
+            mVKSkipFrame = true;
+            return;
+          }
         }
         else
         {
@@ -709,6 +719,13 @@ void IGraphicsSkia::BeginFrame()
 #elif defined IGRAPHICS_VULKAN
   if (mGrContext.get())
   {
+    if (mVKSwapchain == VK_NULL_HANDLE || mVKSwapchainImages.empty())
+    {
+      mVKSkipFrame = true;
+      mScreenSurface.reset();
+      return;
+    }
+
     mVKSkipFrame = false;
     int width = WindowWidth() * GetScreenScale();
     int height = WindowHeight() * GetScreenScale();

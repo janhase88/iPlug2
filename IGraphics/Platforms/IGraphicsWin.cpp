@@ -22,6 +22,7 @@
 #include "IPopupMenuControl.h"
 
 #include <VersionHelpers.h>
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <wininet.h>
@@ -1396,8 +1397,20 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
     swapInfo.minImageCount = caps.maxImageCount;
   swapInfo.imageFormat = surfaceFormat.format;
   swapInfo.imageColorSpace = surfaceFormat.colorSpace;
-  swapInfo.imageExtent.width = width;
-  swapInfo.imageExtent.height = height;
+  uint32_t swapWidth = width;
+  uint32_t swapHeight = height;
+  if (caps.currentExtent.width != UINT32_MAX)
+  {
+    swapWidth = caps.currentExtent.width;
+    swapHeight = caps.currentExtent.height;
+  }
+  else
+  {
+    swapWidth = std::max(caps.minImageExtent.width, std::min(width, caps.maxImageExtent.width));
+    swapHeight = std::max(caps.minImageExtent.height, std::min(height, caps.maxImageExtent.height));
+  }
+  swapInfo.imageExtent.width = swapWidth;
+  swapInfo.imageExtent.height = swapHeight;
   swapInfo.imageArrayLayers = 1;
   VkImageUsageFlags usageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
   if (caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)

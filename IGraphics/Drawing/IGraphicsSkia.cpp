@@ -2,6 +2,8 @@
 #include <cmath>
 #include <cstdio>
 #include <map>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "IGraphicsSkia.h"
@@ -110,6 +112,47 @@ using namespace iplug;
 using namespace igraphics;
 
 extern std::map<std::string, MTLTexturePtr> gTextureMap;
+
+#if defined IGRAPHICS_VULKAN
+namespace
+{
+template <typename T, typename = void>
+struct HasFreeGpuResources : std::false_type
+{
+};
+
+template <typename T>
+struct HasFreeGpuResources<T, std::void_t<decltype(std::declval<T&>().freeGpuResources())>> : std::true_type
+{
+};
+
+template <typename T, typename = void>
+struct HasPurgeUnlockedResources : std::false_type
+{
+};
+
+template <typename T>
+struct HasPurgeUnlockedResources<T, std::void_t<decltype(std::declval<T&>().purgeUnlockedResources(true))>> : std::true_type
+{
+};
+
+template <typename Context>
+void ReleaseSkiaGpuResources(Context* context)
+{
+  if (!context)
+    return;
+
+  if constexpr (HasFreeGpuResources<Context>::value)
+  {
+    context->freeGpuResources();
+  }
+  else if constexpr (HasPurgeUnlockedResources<Context>::value)
+  {
+    context->purgeUnlockedResources(true);
+  }
+}
+} // namespace
+#endif
 
 #pragma mark - Private Classes and Structs
 
@@ -642,6 +685,11 @@ void IGraphicsSkia::DrawResize()
   if (mVKDevice != VK_NULL_HANDLE)
   {
     vkDeviceWaitIdle(mVKDevice);
+    if (mGrContext)
+    {
+      mGrContext->flushAndSubmit();
+      ReleaseSkiaGpuResources(mGrContext.get());
+    }
     if (mVKCommandBuffer != VK_NULL_HANDLE)
     {
       vkFreeCommandBuffers(mVKDevice, mVKCommandPool, 1, &mVKCommandBuffer);
@@ -930,7 +978,19 @@ void IGraphicsSkia::BeginFrame()
       submitInfo.commandBufferCount = 0;
       submitInfo.signalSemaphoreCount = present ? 1 : 0;
       submitInfo.pSignalSemaphores = present ? &mVKRenderFinishedSemaphore : nullptr;
-      vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
+      VkResult submitRes = vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
+      if (submitRes != VK_SUCCESS)
+      {
+        DBGMSG("BeginFrame: releaseImage submit failed %d for index %u handle %p\n",
+               submitRes,
+               idx,
+               (void*)releaseHandle);
+        mVKSubmissionPending = false;
+        mVKSkipFrame = true;
+        mScreenSurface.reset();
+        mVKCurrentImage = kInvalidImageIndex;
+        return;
+      }
       if (present)
       {
         VkPresentInfoKHR presentInfo{};
@@ -945,6 +1005,29 @@ void IGraphicsSkia::BeginFrame()
                presentRes,
                idx,
                (void*)releaseHandle);
+        if (presentRes == VK_ERROR_OUT_OF_DATE_KHR || presentRes == VK_SUBOPTIMAL_KHR)
+        {
+          DBGMSG("BeginFrame: releaseImage detected out-of-date swapchain (result %d)\n", presentRes);
+          vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
+          mVKSubmissionPending = false;
+          mVKSkipFrame = true;
+          mScreenSurface.reset();
+          mVKCurrentImage = kInvalidImageIndex;
+          if (lock.owns_lock())
+            lock.unlock();
+          DrawResize();
+          return;
+        }
+        else if (presentRes == VK_ERROR_DEVICE_LOST || presentRes != VK_SUCCESS)
+        {
+          if (auto* pWin = static_cast<IGraphicsWin*>(this))
+            pWin->RecreateVulkanContext();
+          mVKSubmissionPending = false;
+          mVKSkipFrame = true;
+          mScreenSurface.reset();
+          mVKCurrentImage = kInvalidImageIndex;
+          return;
+        }
         mVKImageLayouts[idx] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
       }
       else

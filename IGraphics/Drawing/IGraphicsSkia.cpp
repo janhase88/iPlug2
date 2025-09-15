@@ -280,10 +280,8 @@ SkPaint SkiaPaint(const IPattern& pattern, const IBlend* pBlend)
 
     SkPoint points[2] = {SkPoint::Make(x1, y1), SkPoint::Make(x2, y2)};
 
-    SkColor colors[8];
-    SkScalar positions[8];
-
-    assert(numStops <= 8);
+    std::vector<SkColor> colors(numStops);
+    std::vector<SkScalar> positions(numStops);
 
     for (int i = 0; i < numStops; i++)
     {
@@ -295,21 +293,21 @@ SkPaint SkiaPaint(const IPattern& pattern, const IBlend* pBlend)
     switch (pattern.mType)
     {
     case EPatternType::Linear:
-      paint.setShader(SkGradientShader::MakeLinear(points, colors, positions, numStops, SkiaTileMode(pattern), 0, nullptr));
+      paint.setShader(SkGradientShader::MakeLinear(points, colors.data(), positions.data(), numStops, SkiaTileMode(pattern), 0, nullptr));
       break;
 
     case EPatternType::Radial: {
       float xd = points[0].x() - points[1].x();
       float yd = points[0].y() - points[1].y();
       float radius = std::sqrt(xd * xd + yd * yd);
-      paint.setShader(SkGradientShader::MakeRadial(points[0], radius, colors, positions, numStops, SkiaTileMode(pattern), 0, nullptr));
+      paint.setShader(SkGradientShader::MakeRadial(points[0], radius, colors.data(), positions.data(), numStops, SkiaTileMode(pattern), 0, nullptr));
       break;
     }
 
     case EPatternType::Sweep: {
       SkMatrix matrix = SkMatrix::MakeAll(m.mXX, m.mYX, 0, m.mXY, m.mYY, 0, 0, 0, 1);
 
-      paint.setShader(SkGradientShader::MakeSweep(x1, y1, colors, nullptr, numStops, SkTileMode::kDecal, 0, 360 * positions[numStops - 1], 0, &matrix));
+      paint.setShader(SkGradientShader::MakeSweep(x1, y1, colors.data(), nullptr, numStops, SkTileMode::kDecal, 0, 360 * positions[numStops - 1], 0, &matrix));
 
       break;
     }

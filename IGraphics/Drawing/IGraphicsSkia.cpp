@@ -575,7 +575,7 @@ void IGraphicsSkia::DrawResize()
   auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * GetScreenScale()));
   auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * GetScreenScale()));
 #if defined IGRAPHICS_VULKAN
-  mVKSwapchainRecreated = true;
+  mVKSwapchainVersion++;
   if (mVKPhysicalDevice != VK_NULL_HANDLE && mVKSurface != VK_NULL_HANDLE)
   {
     VkSurfaceCapabilitiesKHR caps{};
@@ -683,6 +683,9 @@ void IGraphicsSkia::DrawResize()
 
 void IGraphicsSkia::BeginFrame()
 {
+#if defined IGRAPHICS_VULKAN
+  mVKFrameVersion = mVKSwapchainVersion;
+#endif
 #if defined IGRAPHICS_GL
   if (mGrContext.get())
   {
@@ -880,9 +883,6 @@ void IGraphicsSkia::BeginFrame()
   }
 #endif
 
-#if defined IGRAPHICS_VULKAN
-  mVKSwapchainRecreated = false;
-#endif
   IGraphics::BeginFrame();
 }
 
@@ -913,10 +913,10 @@ void IGraphicsSkia::EndFrame()
     #error NOT IMPLEMENTED
   #endif
 #else // GPU
-  #ifdef IGRAPHICS_VULKAN
-  if (mVKSkipFrame || mVKSwapchainRecreated || mVKSwapchainImages.empty() || mVKCurrentImage >= mVKSwapchainImages.size())
+#ifdef IGRAPHICS_VULKAN
+  if (mVKSkipFrame || mVKFrameVersion != mVKSwapchainVersion || mVKSwapchainImages.empty() || mVKCurrentImage >= mVKSwapchainImages.size())
     return;
-  #endif
+#endif
   mSurface->draw(mScreenSurface->getCanvas(), 0.0, 0.0, nullptr);
 
   #if defined IGRAPHICS_VULKAN

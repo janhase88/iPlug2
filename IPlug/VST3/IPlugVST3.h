@@ -17,6 +17,8 @@
  * @copydoc IPlugVST3
  */
 
+#include "IPlugVST3_Defs.h"
+
 #include <vector>
 
 #undef stricmp

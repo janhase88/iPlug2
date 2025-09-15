@@ -16,6 +16,8 @@
  * @copydoc IPlugVST3Controller
  */
 
+#include "IPlugVST3_Defs.h"
+
 #undef stricmp
 #undef strnicmp
 #include "public.sdk/source/vst/vsteditcontroller.h"

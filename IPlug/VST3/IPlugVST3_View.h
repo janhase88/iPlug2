@@ -9,6 +9,9 @@
 */
 
 #pragma once
+
+#include "IPlugVST3_Defs.h"
+
 #include "base/source/fstring.h"
 #include "pluginterfaces/gui/iplugviewcontentscalesupport.h"
 #include "pluginterfaces/base/keycodes.h"

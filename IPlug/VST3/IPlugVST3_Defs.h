@@ -1,5 +1,11 @@
 #pragma once
 
+#include "IPlugPlatform.h"
+
+#if defined(OS_WIN) && !defined(NOGDI)
+  #define NOGDI
+#endif
+
 #ifndef VST3_NUM_MIDI_IN_CHANS
   #define VST3_NUM_MIDI_IN_CHANS 1
 #endif

@@ -11,6 +11,8 @@
 #ifndef _IPLUGAPI_
 #define _IPLUGAPI_
 
+#include "IPlugVST3_Defs.h"
+
 #undef stricmp
 #undef strnicmp
 #include "public.sdk/source/vst/vstaudioeffect.h"

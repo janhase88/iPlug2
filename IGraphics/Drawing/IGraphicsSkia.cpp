@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <map>
 #include <vector>
@@ -560,6 +561,29 @@ void IGraphicsSkia::DrawResize()
   ScopedGraphicsContext scopedGLContext{this};
   auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * GetScreenScale()));
   auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * GetScreenScale()));
+#if defined IGRAPHICS_VULKAN
+  if (mVKPhysicalDevice != VK_NULL_HANDLE && mVKSurface != VK_NULL_HANDLE)
+  {
+    VkSurfaceCapabilitiesKHR caps{};
+    if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(mVKPhysicalDevice, mVKSurface, &caps) == VK_SUCCESS)
+    {
+      uint32_t width = static_cast<uint32_t>(w);
+      uint32_t height = static_cast<uint32_t>(h);
+      if (caps.currentExtent.width != UINT32_MAX)
+      {
+        width = caps.currentExtent.width;
+        height = caps.currentExtent.height;
+      }
+      else
+      {
+        width = std::max(caps.minImageExtent.width, std::min(width, caps.maxImageExtent.width));
+        height = std::max(caps.minImageExtent.height, std::min(height, caps.maxImageExtent.height));
+      }
+      w = static_cast<int>(width);
+      h = static_cast<int>(height);
+    }
+  }
+#endif
 
 #if defined IGRAPHICS_GL || defined IGRAPHICS_METAL || defined IGRAPHICS_VULKAN
   if (mGrContext.get())
@@ -707,10 +731,24 @@ void IGraphicsSkia::BeginFrame()
     }
     uint32_t imageIndex = 0;
     VkResult res = vkAcquireNextImageKHR(mVKDevice, mVKSwapchain, UINT64_MAX, mVKImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
-    if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
+    if (res == VK_ERROR_OUT_OF_DATE_KHR)
     {
       DrawResize();
       mVKSkipFrame = true;
+      return;
+    }
+    else if (res == VK_SUBOPTIMAL_KHR)
+    {
+      DrawResize();
+      VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+      VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+      submitInfo.waitSemaphoreCount = 1;
+      submitInfo.pWaitSemaphores = &mVKImageAvailableSemaphore;
+      submitInfo.pWaitDstStageMask = &waitStage;
+      vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
+      mVKSubmissionPending = true;
+      mVKSkipFrame = true;
+      mScreenSurface.reset();
       return;
     }
     else if (res != VK_SUCCESS)
@@ -767,7 +805,15 @@ void IGraphicsSkia::BeginFrame()
     if (!backendRT.isValid() || colorType == kUnknown_SkColorType || !mGrContext->colorTypeSupportedAsSurface(colorType))
     {
       DBGMSG("Unable to wrap swapchain image\n");
+      VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+      VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+      submitInfo.waitSemaphoreCount = 1;
+      submitInfo.pWaitSemaphores = &mVKImageAvailableSemaphore;
+      submitInfo.pWaitDstStageMask = &waitStage;
+      vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
+      mVKSubmissionPending = true;
       mVKSkipFrame = true;
+      mScreenSurface.reset();
       return;
     }
 
@@ -775,6 +821,13 @@ void IGraphicsSkia::BeginFrame()
     if (!mScreenSurface)
     {
       DBGMSG("SkSurfaces::WrapBackendRenderTarget failed\n");
+      VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+      VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+      submitInfo.waitSemaphoreCount = 1;
+      submitInfo.pWaitSemaphores = &mVKImageAvailableSemaphore;
+      submitInfo.pWaitDstStageMask = &waitStage;
+      vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
+      mVKSubmissionPending = true;
       mVKSkipFrame = true;
       return;
     }

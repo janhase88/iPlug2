@@ -575,6 +575,7 @@ void IGraphicsSkia::DrawResize()
   auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * GetScreenScale()));
   auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * GetScreenScale()));
 #if defined IGRAPHICS_VULKAN
+  std::lock_guard<std::mutex> lock(mVKSwapchainMutex);
   mVKSkipFrame = true;
   mVKCurrentImage = kInvalidImageIndex;
   mVKSwapchainVersion++;
@@ -687,6 +688,7 @@ void IGraphicsSkia::DrawResize()
 void IGraphicsSkia::BeginFrame()
 {
 #if defined IGRAPHICS_VULKAN
+  std::unique_lock<std::mutex> lock(mVKSwapchainMutex);
   mVKFrameVersion = mVKSwapchainVersion;
 #endif
 #if defined IGRAPHICS_GL
@@ -802,14 +804,14 @@ void IGraphicsSkia::BeginFrame()
     VkResult res = vkAcquireNextImageKHR(mVKDevice, mVKSwapchain, UINT64_MAX, mVKImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
     if (res == VK_ERROR_OUT_OF_DATE_KHR)
     {
+      lock.unlock();
       DrawResize();
-      mVKSkipFrame = true;
-      mVKCurrentImage = kInvalidImageIndex;
       return;
     }
     else if (res == VK_SUBOPTIMAL_KHR)
     {
       releaseImage(imageIndex, true);
+      lock.unlock();
       DrawResize();
       return;
     }
@@ -917,6 +919,9 @@ void IGraphicsSkia::EndFrame()
   #endif
 #else // GPU
   #ifdef IGRAPHICS_VULKAN
+
+  std::unique_lock<std::mutex> lock(mVKSwapchainMutex);
+
   if (mVKSkipFrame || mVKFrameVersion != mVKSwapchainVersion || mVKSwapchainImages.empty() || mVKCurrentImage == kInvalidImageIndex || mVKCurrentImage >= mVKSwapchainImages.size())
     return;
   #endif
@@ -1049,9 +1054,8 @@ void IGraphicsSkia::EndFrame()
   if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
   {
     vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
+    lock.unlock();
     DrawResize();
-    mVKSkipFrame = true;
-    mVKCurrentImage = kInvalidImageIndex;
     return;
   }
   else if (res == VK_ERROR_DEVICE_LOST || res != VK_SUCCESS)

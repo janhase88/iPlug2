@@ -567,7 +567,15 @@ void IGraphicsSkia::OnViewDestroyed()
 }
 
 #ifdef IGRAPHICS_VULKAN
-void IGraphicsSkia::SkipVKFrame() { mVKSkipFrame = true; }
+void IGraphicsSkia::SkipVKFrame()
+{
+  DBGMSG("SkipVKFrame: frame %llu swapchain %llu currentImage %u submissionPending %d\n",
+         (unsigned long long)mVKFrameVersion,
+         (unsigned long long)mVKSwapchainVersion,
+         mVKCurrentImage,
+         (int)mVKSubmissionPending);
+  mVKSkipFrame = true;
+}
 bool IGraphicsSkia::AssertValidSwapchainImage(VkImage image, const char* context)
 {
   if (image == VK_NULL_HANDLE)
@@ -578,6 +586,29 @@ bool IGraphicsSkia::AssertValidSwapchainImage(VkImage image, const char* context
   if (mVKDebugImages.find(image) == mVKDebugImages.end())
   {
     DBGMSG("%s: image %p not in active set (frame %llu, swapchain %llu)\n", context, (void*)image, (unsigned long long)mVKFrameVersion, (unsigned long long)mVKSwapchainVersion);
+    if (mVKDebugImages.empty())
+    {
+      DBGMSG("  active set is empty\n");
+    }
+    else
+    {
+      size_t idx = 0;
+      for (auto activeImage : mVKDebugImages)
+      {
+        DBGMSG("  active[%zu]=%p\n", idx++, (void*)activeImage);
+      }
+    }
+    if (!mVKSwapchainImages.empty())
+    {
+      DBGMSG("  swapchainImages (%zu entries):\n", mVKSwapchainImages.size());
+      for (size_t i = 0; i < mVKSwapchainImages.size(); ++i)
+      {
+        DBGMSG("    swap[%zu]=%p layout=%d\n",
+               i,
+               (void*)mVKSwapchainImages[i],
+               (i < mVKImageLayouts.size()) ? (int)mVKImageLayouts[i] : -1);
+      }
+    }
     return false;
   }
   return true;
@@ -590,10 +621,19 @@ void IGraphicsSkia::DrawResize()
   auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * GetScreenScale()));
   auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * GetScreenScale()));
 #if defined IGRAPHICS_VULKAN
+  DBGMSG("DrawResize: begin frame %llu swapchain %llu submissionPending %d imageCount %zu\n",
+         (unsigned long long)mVKFrameVersion,
+         (unsigned long long)mVKSwapchainVersion,
+         (int)mVKSubmissionPending,
+         mVKSwapchainImages.size());
   std::lock_guard<std::mutex> lock(mVKSwapchainMutex);
   mVKSkipFrame = true;
   mVKCurrentImage = kInvalidImageIndex;
+  uint64_t previousSwapchainVersion = mVKSwapchainVersion;
   mVKSwapchainVersion++;
+  DBGMSG("DrawResize: swapchain version %llu -> %llu\n",
+         (unsigned long long)previousSwapchainVersion,
+         (unsigned long long)mVKSwapchainVersion);
   if (mVKDevice != VK_NULL_HANDLE)
   {
     vkDeviceWaitIdle(mVKDevice);
@@ -610,9 +650,18 @@ void IGraphicsSkia::DrawResize()
     mVKSubmissionPending = false;
     mVKImageLayouts.clear();
   }
+  if (!mVKSwapchainImages.empty())
+  {
+    DBGMSG("DrawResize: releasing %zu previous swapchain images\n", mVKSwapchainImages.size());
+    for (size_t i = 0; i < mVKSwapchainImages.size(); ++i)
+    {
+      DBGMSG("  oldImage[%zu]=%p\n", i, (void*)mVKSwapchainImages[i]);
+    }
+  }
   for (auto& img : mVKSwapchainImages)
     img = VK_NULL_HANDLE;
   mVKDebugImages.clear();
+  DBGMSG("DrawResize: cleared debug image set\n");
   mVKSwapchainImages.clear();
   if (mVKPhysicalDevice != VK_NULL_HANDLE && mVKSurface != VK_NULL_HANDLE)
   {
@@ -631,6 +680,15 @@ void IGraphicsSkia::DrawResize()
         width = std::max(caps.minImageExtent.width, std::min(width, caps.maxImageExtent.width));
         height = std::max(caps.minImageExtent.height, std::min(height, caps.maxImageExtent.height));
       }
+      DBGMSG("DrawResize: surface capabilities currentExtent %ux%u min %ux%u max %ux%u -> clamped %ux%u\n",
+             caps.currentExtent.width,
+             caps.currentExtent.height,
+             caps.minImageExtent.width,
+             caps.minImageExtent.height,
+             caps.maxImageExtent.width,
+             caps.maxImageExtent.height,
+             width,
+             height);
       w = static_cast<int>(width);
       h = static_cast<int>(height);
     }
@@ -651,6 +709,11 @@ void IGraphicsSkia::DrawResize()
         VkSwapchainKHR swapchain = VK_NULL_HANDLE;
         std::vector<VkImage> images;
         VkFormat format = mVKSwapchainFormat;
+        DBGMSG("DrawResize: requesting swapchain resize to %dx%d (frame %llu swapchain %llu)\n",
+               w,
+               h,
+               (unsigned long long)mVKFrameVersion,
+               (unsigned long long)mVKSwapchainVersion);
         VkResult res = pWin->CreateOrResizeVulkanSwapchain(w, h, swapchain, images, format, mVKSwapchainUsageFlags, mVKSubmissionPending);
         if (res == VK_SUCCESS)
         {
@@ -685,6 +748,7 @@ void IGraphicsSkia::DrawResize()
           }
           if (mVKSwapchainImages.empty())
           {
+            DBGMSG("DrawResize: CreateOrResize returned zero images\n");
             mVKSwapchain = VK_NULL_HANDLE;
             mSurface.reset();
             mScreenSurface.reset();
@@ -747,6 +811,14 @@ void IGraphicsSkia::BeginFrame()
 #if defined IGRAPHICS_VULKAN
   std::unique_lock<std::mutex> lock(mVKSwapchainMutex);
   mVKFrameVersion = mVKSwapchainVersion;
+  DBGMSG("BeginFrame: entry frame %llu swapchain %llu skipFrame %d submissionPending %d currentImage %u imageCount %zu layoutCount %zu\n",
+         (unsigned long long)mVKFrameVersion,
+         (unsigned long long)mVKSwapchainVersion,
+         (int)mVKSkipFrame,
+         (int)mVKSubmissionPending,
+         mVKCurrentImage,
+         mVKSwapchainImages.size(),
+         mVKImageLayouts.size());
 #endif
 #if defined IGRAPHICS_GL
   if (mGrContext.get())
@@ -794,6 +866,9 @@ void IGraphicsSkia::BeginFrame()
   {
     if (mVKSwapchain == VK_NULL_HANDLE || mVKSwapchainImages.empty())
     {
+      DBGMSG("BeginFrame: swapchain unavailable (handle %p imageCount %zu)\n",
+             (void*)mVKSwapchain,
+             mVKSwapchainImages.size());
       mVKSkipFrame = true;
       mVKCurrentImage = kInvalidImageIndex;
       mScreenSurface.reset();
@@ -804,6 +879,7 @@ void IGraphicsSkia::BeginFrame()
     int height = WindowHeight() * GetScreenScale();
     if (mVKSubmissionPending)
     {
+      DBGMSG("BeginFrame: waiting for in-flight fence (frame %llu)\n", (unsigned long long)mVKFrameVersion);
       VkResult fenceRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, 1000000000); // 1s timeout
       if (fenceRes != VK_SUCCESS)
       {
@@ -830,6 +906,15 @@ void IGraphicsSkia::BeginFrame()
     }
     uint32_t imageIndex = 0;
     auto releaseImage = [&](uint32_t idx, bool present) {
+      VkImage releaseHandle = (idx < mVKSwapchainImages.size()) ? mVKSwapchainImages[idx] : VK_NULL_HANDLE;
+      VkImageLayout tracked = (idx < mVKImageLayouts.size()) ? mVKImageLayouts[idx] : VK_IMAGE_LAYOUT_UNDEFINED;
+      DBGMSG("BeginFrame: releaseImage index %u present %d handle %p trackedLayout %d frame %llu swapchain %llu\n",
+             idx,
+             (int)present,
+             (void*)releaseHandle,
+             (int)tracked,
+             (unsigned long long)mVKFrameVersion,
+             (unsigned long long)mVKSwapchainVersion);
       mVKCurrentImage = idx;
       VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
       VkSubmitInfo submitInfo{};
@@ -850,14 +935,22 @@ void IGraphicsSkia::BeginFrame()
         presentInfo.swapchainCount = 1;
         presentInfo.pSwapchains = &mVKSwapchain;
         presentInfo.pImageIndices = &mVKCurrentImage;
-        vkQueuePresentKHR(mVKQueue, &presentInfo);
+        VkResult presentRes = vkQueuePresentKHR(mVKQueue, &presentInfo);
+        DBGMSG("BeginFrame: releaseImage present result %d for index %u handle %p\n",
+               presentRes,
+               idx,
+               (void*)releaseHandle);
         mVKImageLayouts[idx] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
       }
       else
       {
         mVKImageLayouts[idx] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        DBGMSG("BeginFrame: releaseImage marked index %u handle %p as present layout without submit\n",
+               idx,
+               (void*)releaseHandle);
       }
       mVKSubmissionPending = true;
+      DBGMSG("BeginFrame: releaseImage set submissionPending for index %u\n", idx);
       mVKSkipFrame = true;
       mScreenSurface.reset();
       mVKCurrentImage = kInvalidImageIndex;
@@ -865,6 +958,10 @@ void IGraphicsSkia::BeginFrame()
     VkResult res = vkAcquireNextImageKHR(mVKDevice, mVKSwapchain, UINT64_MAX, mVKImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
     if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
     {
+      DBGMSG("BeginFrame: acquire returned %d (out-of-date %d suboptimal %d)\n",
+             res,
+             VK_ERROR_OUT_OF_DATE_KHR,
+             VK_SUBOPTIMAL_KHR);
       mVKSkipFrame = true;
       mVKCurrentImage = kInvalidImageIndex;
       lock.unlock();
@@ -874,10 +971,19 @@ void IGraphicsSkia::BeginFrame()
     }
     else if (res != VK_SUCCESS)
     {
+      DBGMSG("BeginFrame: vkAcquireNextImageKHR failed with %d\n", res);
       mVKSkipFrame = true;
       mVKCurrentImage = kInvalidImageIndex;
       return;
     }
+    VkImage acquiredImage = (imageIndex < mVKSwapchainImages.size()) ? mVKSwapchainImages[imageIndex] : VK_NULL_HANDLE;
+    VkImageLayout acquiredLayout = (imageIndex < mVKImageLayouts.size()) ? mVKImageLayouts[imageIndex] : VK_IMAGE_LAYOUT_UNDEFINED;
+    DBGMSG("BeginFrame: acquired swapchain image index %u handle %p (layout %d) frame %llu swapchain %llu\n",
+           imageIndex,
+           (void*)acquiredImage,
+           (int)acquiredLayout,
+           (unsigned long long)mVKFrameVersion,
+           (unsigned long long)mVKSwapchainVersion);
     if (imageIndex >= mVKSwapchainImages.size() || mVKSwapchainImages[imageIndex] == VK_NULL_HANDLE)
     {
       DBGMSG("vkAcquireNextImageKHR returned invalid image (index %u)\n", imageIndex);
@@ -949,6 +1055,13 @@ void IGraphicsSkia::BeginFrame()
     barrier.subresourceRange.baseArrayLayer = 0;
     barrier.subresourceRange.layerCount = 1;
 
+    DBGMSG("BeginFrame: pipeline barrier for image index %u handle %p layout %d -> %d (frame %llu swapchain %llu)\n",
+           imageIndex,
+           (void*)barrier.image,
+           (int)barrier.oldLayout,
+           (int)barrier.newLayout,
+           (unsigned long long)mVKFrameVersion,
+           (unsigned long long)mVKSwapchainVersion);
     vkCmdPipelineBarrier(mVKCommandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
     vkEndCommandBuffer(mVKCommandBuffer);
 
@@ -977,6 +1090,10 @@ void IGraphicsSkia::BeginFrame()
       DBGMSG("vkWaitForFences failed: %d\n", waitRes);
 
     mVKImageLayouts[imageIndex] = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    DBGMSG("BeginFrame: image index %u handle %p layout now %d\n",
+           imageIndex,
+           (void*)mVKSwapchainImages[imageIndex],
+           (int)mVKImageLayouts[imageIndex]);
 
     GrVkImageInfo imageInfo{};
     imageInfo.fImage = mVKSwapchainImages[imageIndex];
@@ -988,6 +1105,13 @@ void IGraphicsSkia::BeginFrame()
     imageInfo.fLevelCount = 1;
     imageInfo.fCurrentQueueFamily = mVKQueueFamily;
 
+    DBGMSG("BeginFrame: wrapping VkImage %p with format %u usage 0x%X layout %d width %d height %d\n",
+           (void*)imageInfo.fImage,
+           imageInfo.fFormat,
+           imageInfo.fImageUsageFlags,
+           (int)imageInfo.fImageLayout,
+           width,
+           height);
     auto backendRT = GrBackendRenderTargets::MakeVk(width, height, imageInfo);
 
     auto colorState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, mVKQueueFamily);
@@ -1023,7 +1147,13 @@ void IGraphicsSkia::BeginFrame()
       releaseImage(mVKCurrentImage, false);
       return;
     }
+    DBGMSG("BeginFrame: created screen surface for image index %u handle %p\n",
+           mVKCurrentImage,
+           (void*)mVKSwapchainImages[mVKCurrentImage]);
     mVKSkipFrame = false;
+    DBGMSG("BeginFrame: ready to draw using image index %u handle %p\n",
+           mVKCurrentImage,
+           (void*)mVKSwapchainImages[mVKCurrentImage]);
   }
 #endif
 
@@ -1060,8 +1190,22 @@ void IGraphicsSkia::EndFrame()
   #ifdef IGRAPHICS_VULKAN
 
   std::unique_lock<std::mutex> lock(mVKSwapchainMutex);
+  DBGMSG("EndFrame: entry frame %llu swapchain %llu skipFrame %d currentImage %u imageCount %zu layoutCount %zu submissionPending %d\n",
+         (unsigned long long)mVKFrameVersion,
+         (unsigned long long)mVKSwapchainVersion,
+         (int)mVKSkipFrame,
+         mVKCurrentImage,
+         mVKSwapchainImages.size(),
+         mVKImageLayouts.size(),
+         (int)mVKSubmissionPending);
   if (mVKSkipFrame || mVKSwapchainImages.empty() || mVKCurrentImage == kInvalidImageIndex || mVKCurrentImage >= mVKSwapchainImages.size())
+  {
+    DBGMSG("EndFrame: skipping (skipFrame %d imageCount %zu currentImage %u)\n",
+           (int)mVKSkipFrame,
+           mVKSwapchainImages.size(),
+           mVKCurrentImage);
     return;
+  }
 
   if (mVKFrameVersion != mVKSwapchainVersion)
   {
@@ -1129,6 +1273,7 @@ void IGraphicsSkia::EndFrame()
 
   if (swapImage == VK_NULL_HANDLE)
   {
+    DBGMSG("EndFrame: swapImage null for current index %u\n", mVKCurrentImage);
     mVKSkipFrame = true;
     mVKCurrentImage = kInvalidImageIndex;
     return;
@@ -1184,6 +1329,15 @@ void IGraphicsSkia::EndFrame()
   barrier.subresourceRange.baseArrayLayer = 0;
   barrier.subresourceRange.layerCount = 1;
 
+  VkImageLayout trackedLayout = (mVKCurrentImage < mVKImageLayouts.size()) ? mVKImageLayouts[mVKCurrentImage] : VK_IMAGE_LAYOUT_UNDEFINED;
+  DBGMSG("EndFrame: pipeline barrier for image index %u handle %p layout %d -> %d (tracked %d) frame %llu swapchain %llu\n",
+         mVKCurrentImage,
+         (void*)barrier.image,
+         (int)barrier.oldLayout,
+         (int)barrier.newLayout,
+         (int)trackedLayout,
+         (unsigned long long)mVKFrameVersion,
+         (unsigned long long)mVKSwapchainVersion);
   vkCmdPipelineBarrier(mVKCommandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 
   vkEndCommandBuffer(mVKCommandBuffer);
@@ -1199,8 +1353,16 @@ void IGraphicsSkia::EndFrame()
   submitInfo.signalSemaphoreCount = 0;
 
   VkResult submitRes = vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
+  bool previousPending = mVKSubmissionPending;
   mVKImageLayouts[mVKCurrentImage] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-  mVKSubmissionPending = (submitRes == VK_SUCCESS);
+  bool newPending = (submitRes == VK_SUCCESS);
+  DBGMSG("EndFrame: image index %u handle %p layout now %d submissionPending %d -> %d\n",
+         mVKCurrentImage,
+         (void*)swapImage,
+         (int)mVKImageLayouts[mVKCurrentImage],
+         (int)previousPending,
+         (int)newPending);
+  mVKSubmissionPending = newPending;
   if (submitRes != VK_SUCCESS)
   {
     vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // signal fence on failure
@@ -1224,6 +1386,7 @@ void IGraphicsSkia::EndFrame()
     return;
   }
   VkResult res = vkQueuePresentKHR(mVKQueue, &presentInfo);
+  DBGMSG("EndFrame: vkQueuePresentKHR result %d for index %u handle %p\n", res, mVKCurrentImage, (void*)swapImage);
   if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
   {
     vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);

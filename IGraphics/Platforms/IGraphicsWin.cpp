@@ -1329,6 +1329,7 @@ bool IGraphicsWin::RecreateVulkanContext()
 VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
   uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format, VkImageUsageFlags& usage, bool& submissionPending)
 {
+  DBGMSG("CreateOrResizeVulkanSwapchain: requested %ux%u (previous swapchain %p)\n", width, height, (void*)mVkSwapchain.handle);
   if (!mVkDevice || !mVkPhysicalDevice || !mVkSurface)
     return VK_ERROR_INITIALIZATION_FAILED;
 
@@ -1338,30 +1339,55 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
     vkQueueWaitIdle(mPresentQueue);
     res = vkResetFences(mVkDevice, 1, &mInFlightFence.handle);
     if (res != VK_SUCCESS)
+    {
+      DBGMSG("CreateOrResizeVulkanSwapchain: vkResetFences failed %d\n", res);
       return res;
+    }
     // ensure next BeginFrame sees the fence as signaled
     res = vkQueueSubmit(mPresentQueue, 0, nullptr, mInFlightFence.handle);
     if (res != VK_SUCCESS)
+    {
+      DBGMSG("CreateOrResizeVulkanSwapchain: vkQueueSubmit failed %d\n", res);
       return res;
+    }
     submissionPending = false;
+    DBGMSG("CreateOrResizeVulkanSwapchain: reset in-flight fence\n");
   }
 
   mVkSwapchain.Reset();
   mVkSwapchain.device = mVkDevice;
+  DBGMSG("CreateOrResizeVulkanSwapchain: cleared previous swapchain handle\n");
 
   VkSurfaceCapabilitiesKHR caps{};
   res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(mVkPhysicalDevice, mVkSurface, &caps);
   if (res != VK_SUCCESS)
+  {
+    DBGMSG("CreateOrResizeVulkanSwapchain: vkGetPhysicalDeviceSurfaceCapabilitiesKHR failed %d\n", res);
     return res;
+  }
+  DBGMSG("CreateOrResizeVulkanSwapchain: caps currentExtent %ux%u min %ux%u max %ux%u usage 0x%X\n",
+         caps.currentExtent.width,
+         caps.currentExtent.height,
+         caps.minImageExtent.width,
+         caps.minImageExtent.height,
+         caps.maxImageExtent.width,
+         caps.maxImageExtent.height,
+         caps.supportedUsageFlags);
 
   uint32_t formatCount = 0;
   res = vkGetPhysicalDeviceSurfaceFormatsKHR(mVkPhysicalDevice, mVkSurface, &formatCount, nullptr);
   if (res != VK_SUCCESS || formatCount == 0)
+  {
+    DBGMSG("CreateOrResizeVulkanSwapchain: vkGetPhysicalDeviceSurfaceFormatsKHR failed %d count %u\n", res, formatCount);
     return res;
+  }
   std::vector<VkSurfaceFormatKHR> formats(formatCount);
   res = vkGetPhysicalDeviceSurfaceFormatsKHR(mVkPhysicalDevice, mVkSurface, &formatCount, formats.data());
   if (res != VK_SUCCESS)
+  {
+    DBGMSG("CreateOrResizeVulkanSwapchain: fetching surface formats failed %d\n", res);
     return res;
+  }
   VkSurfaceFormatKHR surfaceFormat = formats[0];
   for (auto& f : formats)
   {
@@ -1371,15 +1397,25 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
       break;
     }
   }
+  DBGMSG("CreateOrResizeVulkanSwapchain: selected surface format %u colorspace %u from %u options\n",
+         surfaceFormat.format,
+         surfaceFormat.colorSpace,
+         formatCount);
 
   uint32_t presentCount = 0;
   res = vkGetPhysicalDeviceSurfacePresentModesKHR(mVkPhysicalDevice, mVkSurface, &presentCount, nullptr);
   if (res != VK_SUCCESS || presentCount == 0)
+  {
+    DBGMSG("CreateOrResizeVulkanSwapchain: vkGetPhysicalDeviceSurfacePresentModesKHR failed %d count %u\n", res, presentCount);
     return res;
+  }
   std::vector<VkPresentModeKHR> presentModes(presentCount);
   res = vkGetPhysicalDeviceSurfacePresentModesKHR(mVkPhysicalDevice, mVkSurface, &presentCount, presentModes.data());
   if (res != VK_SUCCESS)
+  {
+    DBGMSG("CreateOrResizeVulkanSwapchain: fetching present modes failed %d\n", res);
     return res;
+  }
   VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
   for (auto pm : presentModes)
   {
@@ -1389,6 +1425,7 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
       break;
     }
   }
+  DBGMSG("CreateOrResizeVulkanSwapchain: selected present mode %u from %u options\n", presentMode, presentCount);
 
   VkSwapchainCreateInfoKHR swapInfo{};
   swapInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -1424,19 +1461,47 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
   swapInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
   swapInfo.presentMode = presentMode;
   swapInfo.clipped = VK_TRUE;
+  DBGMSG("CreateOrResizeVulkanSwapchain: create info extent %ux%u minImageCount %u usage 0x%X oldSwapchain %p\n",
+         swapInfo.imageExtent.width,
+         swapInfo.imageExtent.height,
+         swapInfo.minImageCount,
+         swapInfo.imageUsage,
+         (void*)mVkSwapchain.handle);
 
   res = vkCreateSwapchainKHR(mVkDevice, &swapInfo, nullptr, &mVkSwapchain.handle);
   if (res != VK_SUCCESS)
+  {
+    DBGMSG("CreateOrResizeVulkanSwapchain: vkCreateSwapchainKHR failed %d\n", res);
     return res;
+  }
 
   uint32_t imageCount = 0;
   res = vkGetSwapchainImagesKHR(mVkDevice, mVkSwapchain.handle, &imageCount, nullptr);
   if (res != VK_SUCCESS)
+  {
+    DBGMSG("CreateOrResizeVulkanSwapchain: vkGetSwapchainImagesKHR count failed %d\n", res);
     return res;
+  }
   mVkSwapchainImages.resize(imageCount);
   res = vkGetSwapchainImagesKHR(mVkDevice, mVkSwapchain.handle, &imageCount, mVkSwapchainImages.data());
   if (res != VK_SUCCESS)
+  {
+    DBGMSG("CreateOrResizeVulkanSwapchain: vkGetSwapchainImagesKHR data failed %d\n", res);
     return res;
+  }
+  DBGMSG("CreateOrResizeVulkanSwapchain: retrieved %u swapchain images\n", imageCount);
+
+  DBGMSG("CreateOrResizeVulkanSwapchain: created swapchain %p extent %ux%u format %u usage 0x%X with %u images\n",
+         (void*)mVkSwapchain.handle,
+         swapInfo.imageExtent.width,
+         swapInfo.imageExtent.height,
+         surfaceFormat.format,
+         usageFlags,
+         imageCount);
+  for (uint32_t i = 0; i < imageCount; ++i)
+  {
+    DBGMSG("  swapImage[%u]=%p\n", i, (void*)mVkSwapchainImages[i]);
+  }
 
   mVkFormat = surfaceFormat.format;
   format = mVkFormat;

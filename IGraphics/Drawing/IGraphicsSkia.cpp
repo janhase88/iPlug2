@@ -575,6 +575,7 @@ void IGraphicsSkia::DrawResize()
   auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * GetScreenScale()));
   auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * GetScreenScale()));
 #if defined IGRAPHICS_VULKAN
+  std::lock_guard<std::mutex> lock(mVKSwapchainMutex);
   mVKSkipFrame = true;
   mVKCurrentImage = kInvalidImageIndex;
   mVKSwapchainVersion++;
@@ -687,6 +688,7 @@ void IGraphicsSkia::DrawResize()
 void IGraphicsSkia::BeginFrame()
 {
 #if defined IGRAPHICS_VULKAN
+  std::unique_lock<std::mutex> lock(mVKSwapchainMutex);
   mVKFrameVersion = mVKSwapchainVersion;
 #endif
 #if defined IGRAPHICS_GL
@@ -802,14 +804,14 @@ void IGraphicsSkia::BeginFrame()
     VkResult res = vkAcquireNextImageKHR(mVKDevice, mVKSwapchain, UINT64_MAX, mVKImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
     if (res == VK_ERROR_OUT_OF_DATE_KHR)
     {
+      lock.unlock();
       DrawResize();
-      mVKSkipFrame = true;
-      mVKCurrentImage = kInvalidImageIndex;
       return;
     }
     else if (res == VK_SUBOPTIMAL_KHR)
     {
       releaseImage(imageIndex, true);
+      lock.unlock();
       DrawResize();
       return;
     }
@@ -916,11 +918,11 @@ void IGraphicsSkia::EndFrame()
     #error NOT IMPLEMENTED
   #endif
 #else // GPU
-#ifdef IGRAPHICS_VULKAN
-  if (mVKSkipFrame || mVKFrameVersion != mVKSwapchainVersion || mVKSwapchainImages.empty() ||
-      mVKCurrentImage == kInvalidImageIndex || mVKCurrentImage >= mVKSwapchainImages.size())
+  #ifdef IGRAPHICS_VULKAN
+  std::unique_lock<std::mutex> lock(mVKSwapchainMutex);
+  if (mVKSkipFrame || mVKFrameVersion != mVKSwapchainVersion || mVKSwapchainImages.empty() || mVKCurrentImage == kInvalidImageIndex || mVKCurrentImage >= mVKSwapchainImages.size())
     return;
-#endif
+  #endif
   mSurface->draw(mScreenSurface->getCanvas(), 0.0, 0.0, nullptr);
 
   #if defined IGRAPHICS_VULKAN
@@ -974,8 +976,7 @@ void IGraphicsSkia::EndFrame()
   vkResetCommandBuffer(mVKCommandBuffer, 0);
 
   VkImage swapImage = VK_NULL_HANDLE;
-  if (mVKFrameVersion == mVKSwapchainVersion && mVKSwapchain != VK_NULL_HANDLE &&
-      mVKCurrentImage != kInvalidImageIndex && mVKCurrentImage < mVKSwapchainImages.size())
+  if (mVKFrameVersion == mVKSwapchainVersion && mVKSwapchain != VK_NULL_HANDLE && mVKCurrentImage != kInvalidImageIndex && mVKCurrentImage < mVKSwapchainImages.size())
   {
     swapImage = mVKSwapchainImages[mVKCurrentImage];
   }
@@ -991,6 +992,14 @@ void IGraphicsSkia::EndFrame()
   beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
   vkBeginCommandBuffer(mVKCommandBuffer, &beginInfo);
+
+  if (mVKFrameVersion != mVKSwapchainVersion || mVKSwapchain == VK_NULL_HANDLE)
+  {
+    vkEndCommandBuffer(mVKCommandBuffer);
+    mVKSkipFrame = true;
+    mVKCurrentImage = kInvalidImageIndex;
+    return;
+  }
 
   VkImageMemoryBarrier barrier{};
   barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -1043,9 +1052,8 @@ void IGraphicsSkia::EndFrame()
   if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
   {
     vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
+    lock.unlock();
     DrawResize();
-    mVKSkipFrame = true;
-    mVKCurrentImage = kInvalidImageIndex;
     return;
   }
   else if (res == VK_ERROR_DEVICE_LOST || res != VK_SUCCESS)

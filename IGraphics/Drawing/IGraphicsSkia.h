@@ -2,9 +2,10 @@
 
 #include "IGraphics.h"
 #include "IPlugPlatform.h"
-#include <vector>
 #include <cstdint>
 #include <limits>
+#include <mutex>
+#include <vector>
 
 // N.B. - this must be defined according to the skia build, not the iPlug build
 #if (defined OS_MAC || defined OS_IOS) && !defined IGRAPHICS_SKIA_NO_METAL
@@ -265,6 +266,7 @@ private:
   bool mVKSubmissionPending = false;
   uint64_t mVKSwapchainVersion = 0;
   uint64_t mVKFrameVersion = 0;
+  std::mutex mVKSwapchainMutex;
 #endif
 
   static StaticStorage<Font> sFontCache;

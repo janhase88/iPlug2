@@ -10,8 +10,6 @@
 
 #pragma once
 
-#include "IPlugVST3_Defs.h"
-
 #include "pluginterfaces/base/ibstream.h"
 #
 #include "IPlugAPIBase.h"

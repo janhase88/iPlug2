@@ -10,13 +10,13 @@
 
 #include <cstdio>
 
-#include "IPlugVST3.h"
-
 #include "pluginterfaces/base/ustring.h"
 #include "pluginterfaces/base/ibstream.h"
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 #include "pluginterfaces/vst/ivstevents.h"
 #include "pluginterfaces/vst/ivstmidicontrollers.h"
+
+#include "IPlugVST3.h"
 
 using namespace iplug;
 using namespace Steinberg;

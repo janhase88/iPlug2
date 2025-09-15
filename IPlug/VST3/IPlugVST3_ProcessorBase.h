@@ -11,14 +11,13 @@
 
 #pragma once
 
-#include "IPlugVST3_Defs.h"
-
 #include "public.sdk/source/vst/vstbus.h"
 #include "pluginterfaces/base/ustring.h"
 #include "pluginterfaces/vst/ivstevents.h"
 
 #include "IPlugAPIBase.h"
 #include "IPlugProcessor.h"
+#include "IPlugVST3_Defs.h"
 
 // Custom bus type function (in global namespace)
 #ifdef CUSTOM_BUSTYPE_FUNC

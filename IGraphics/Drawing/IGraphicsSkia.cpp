@@ -507,6 +507,7 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
     for (auto img : *ctx->swapchainImages)
       mVKSwapchainImages.push_back(img);
   }
+  mVKCurrentImage = 0;
   mVKImageAvailableSemaphore = ctx->imageAvailableSemaphore;
   mVKRenderFinishedSemaphore = ctx->renderFinishedSemaphore;
   mVKInFlightFence = ctx->inFlightFence;
@@ -555,6 +556,7 @@ void IGraphicsSkia::OnViewDestroyed()
   mVKSurface = VK_NULL_HANDLE;
   mVKQueue = VK_NULL_HANDLE;
   mVKSwapchainImages.clear();
+  mVKCurrentImage = 0;
   mVKSwapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
   mVKSkipFrame = true;
 
@@ -566,10 +568,7 @@ void IGraphicsSkia::OnViewDestroyed()
 }
 
 #ifdef IGRAPHICS_VULKAN
-void IGraphicsSkia::SkipVKFrame()
-{
-  mVKSkipFrame = true;
-}
+void IGraphicsSkia::SkipVKFrame() { mVKSkipFrame = true; }
 #endif
 
 void IGraphicsSkia::DrawResize()
@@ -621,6 +620,7 @@ void IGraphicsSkia::DrawResize()
           mVKSwapchain = swapchain;
           mVKSwapchainImages = images;
           mVKSwapchainFormat = format;
+          mVKCurrentImage = 0;
           if (mVKSwapchainImages.empty())
           {
             mVKSwapchain = VK_NULL_HANDLE;
@@ -628,6 +628,7 @@ void IGraphicsSkia::DrawResize()
             mScreenSurface.reset();
             mCanvas = nullptr;
             mVKSkipFrame = true;
+            mVKCurrentImage = 0;
             return;
           }
         }
@@ -639,6 +640,7 @@ void IGraphicsSkia::DrawResize()
           vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // ensure fence signalled
           mVKSwapchain = VK_NULL_HANDLE;
           mVKSwapchainImages.clear();
+          mVKCurrentImage = 0;
           mSurface.reset();
           mScreenSurface.reset();
           mCanvas = nullptr;
@@ -729,6 +731,7 @@ void IGraphicsSkia::BeginFrame()
     if (mVKSwapchain == VK_NULL_HANDLE || mVKSwapchainImages.empty())
     {
       mVKSkipFrame = true;
+      mVKCurrentImage = 0;
       mScreenSurface.reset();
       return;
     }
@@ -757,6 +760,7 @@ void IGraphicsSkia::BeginFrame()
           DBGMSG("vkQueueSubmit failed: %d\n", submitRes);
         mVKSkipFrame = true;
         mScreenSurface.reset();
+        mVKCurrentImage = 0;
         return;
       }
       mVKSubmissionPending = false;
@@ -788,12 +792,14 @@ void IGraphicsSkia::BeginFrame()
       mVKSubmissionPending = true;
       mVKSkipFrame = true;
       mScreenSurface.reset();
+      mVKCurrentImage = 0;
     };
     VkResult res = vkAcquireNextImageKHR(mVKDevice, mVKSwapchain, UINT64_MAX, mVKImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
     if (res == VK_ERROR_OUT_OF_DATE_KHR)
     {
       DrawResize();
       mVKSkipFrame = true;
+      mVKCurrentImage = 0;
       return;
     }
     else if (res == VK_SUBOPTIMAL_KHR)
@@ -805,6 +811,7 @@ void IGraphicsSkia::BeginFrame()
     else if (res != VK_SUCCESS)
     {
       mVKSkipFrame = true;
+      mVKCurrentImage = 0;
       return;
     }
     VkResult fenceStatus = vkGetFenceStatus(mVKDevice, mVKInFlightFence);
@@ -905,7 +912,7 @@ void IGraphicsSkia::EndFrame()
   #endif
 #else // GPU
   #ifdef IGRAPHICS_VULKAN
-  if (mVKSkipFrame)
+  if (mVKSkipFrame || mVKSwapchainImages.empty() || mVKCurrentImage >= mVKSwapchainImages.size())
     return;
   #endif
   mSurface->draw(mScreenSurface->getCanvas(), 0.0, 0.0, nullptr);
@@ -972,20 +979,21 @@ void IGraphicsSkia::EndFrame()
   barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
   barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
   barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.image = mVKSwapchainImages[mVKCurrentImage];
+  VkImage swapImage = mVKSwapchainImages[mVKCurrentImage];
+  if (swapImage == VK_NULL_HANDLE)
+  {
+    mVKSkipFrame = true;
+    mVKCurrentImage = 0;
+    return;
+  }
+  barrier.image = swapImage;
   barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
   barrier.subresourceRange.baseMipLevel = 0;
   barrier.subresourceRange.levelCount = 1;
   barrier.subresourceRange.baseArrayLayer = 0;
   barrier.subresourceRange.layerCount = 1;
 
-  vkCmdPipelineBarrier(mVKCommandBuffer,
-                       VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                       VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                       0,
-                       0, nullptr,
-                       0, nullptr,
-                       1, &barrier);
+  vkCmdPipelineBarrier(mVKCommandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 
   vkEndCommandBuffer(mVKCommandBuffer);
 
@@ -1006,6 +1014,7 @@ void IGraphicsSkia::EndFrame()
     vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // signal fence on failure
     mVKSubmissionPending = true;
     mVKSkipFrame = true;
+    mVKCurrentImage = 0;
     return;
   }
 
@@ -1022,6 +1031,7 @@ void IGraphicsSkia::EndFrame()
     vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
     DrawResize();
     mVKSkipFrame = true;
+    mVKCurrentImage = 0;
     return;
   }
   else if (res == VK_ERROR_DEVICE_LOST || res != VK_SUCCESS)
@@ -1029,6 +1039,7 @@ void IGraphicsSkia::EndFrame()
     if (auto* pWin = static_cast<IGraphicsWin*>(this))
       pWin->RecreateVulkanContext();
     mVKSkipFrame = true;
+    mVKCurrentImage = 0;
     return;
   }
   #elif defined IGRAPHICS_METAL

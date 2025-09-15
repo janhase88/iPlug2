@@ -631,6 +631,9 @@ void IGraphicsSkia::DrawResize()
   std::lock_guard<std::mutex> lock(mVKSwapchainMutex);
   mVKSkipFrame = true;
   mVKCurrentImage = kInvalidImageIndex;
+  mScreenSurface.reset();
+  mSurface.reset();
+  mCanvas = nullptr;
   uint64_t previousSwapchainVersion = mVKSwapchainVersion;
   mVKSwapchainVersion++;
   DBGMSG("DrawResize: swapchain version %llu -> %llu\n",

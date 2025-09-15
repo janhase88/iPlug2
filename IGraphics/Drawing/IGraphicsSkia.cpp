@@ -595,6 +595,7 @@ void IGraphicsSkia::DrawResize()
     mVKSubmissionPending = false;
     mVKImageLayouts.clear();
   }
+  mVKSwapchainImages.clear();
   if (mVKPhysicalDevice != VK_NULL_HANDLE && mVKSurface != VK_NULL_HANDLE)
   {
     VkSurfaceCapabilitiesKHR caps{};

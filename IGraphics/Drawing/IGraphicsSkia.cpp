@@ -919,7 +919,9 @@ void IGraphicsSkia::EndFrame()
   #endif
 #else // GPU
   #ifdef IGRAPHICS_VULKAN
+
   std::unique_lock<std::mutex> lock(mVKSwapchainMutex);
+
   if (mVKSkipFrame || mVKFrameVersion != mVKSwapchainVersion || mVKSwapchainImages.empty() || mVKCurrentImage == kInvalidImageIndex || mVKCurrentImage >= mVKSwapchainImages.size())
     return;
   #endif

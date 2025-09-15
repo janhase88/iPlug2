@@ -730,6 +730,28 @@ void IGraphicsSkia::BeginFrame()
       mVKSubmissionPending = false;
     }
     uint32_t imageIndex = 0;
+    auto releaseImage = [&](uint32_t idx) {
+      mVKCurrentImage = idx;
+      VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+      VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+      submitInfo.waitSemaphoreCount = 1;
+      submitInfo.pWaitSemaphores = &mVKImageAvailableSemaphore;
+      submitInfo.pWaitDstStageMask = &waitStage;
+      submitInfo.commandBufferCount = 0;
+      submitInfo.signalSemaphoreCount = 1;
+      submitInfo.pSignalSemaphores = &mVKRenderFinishedSemaphore;
+      vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
+      VkPresentInfoKHR presentInfo{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+      presentInfo.waitSemaphoreCount = 1;
+      presentInfo.pWaitSemaphores = &mVKRenderFinishedSemaphore;
+      presentInfo.swapchainCount = 1;
+      presentInfo.pSwapchains = &mVKSwapchain;
+      presentInfo.pImageIndices = &mVKCurrentImage;
+      vkQueuePresentKHR(mVKQueue, &presentInfo);
+      mVKSubmissionPending = true;
+      mVKSkipFrame = true;
+      mScreenSurface.reset();
+    };
     VkResult res = vkAcquireNextImageKHR(mVKDevice, mVKSwapchain, UINT64_MAX, mVKImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
     if (res == VK_ERROR_OUT_OF_DATE_KHR)
     {
@@ -739,16 +761,8 @@ void IGraphicsSkia::BeginFrame()
     }
     else if (res == VK_SUBOPTIMAL_KHR)
     {
+      releaseImage(imageIndex);
       DrawResize();
-      VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-      VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-      submitInfo.waitSemaphoreCount = 1;
-      submitInfo.pWaitSemaphores = &mVKImageAvailableSemaphore;
-      submitInfo.pWaitDstStageMask = &waitStage;
-      vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
-      mVKSubmissionPending = true;
-      mVKSkipFrame = true;
-      mScreenSurface.reset();
       return;
     }
     else if (res != VK_SUCCESS)
@@ -805,15 +819,7 @@ void IGraphicsSkia::BeginFrame()
     if (!backendRT.isValid() || colorType == kUnknown_SkColorType || !mGrContext->colorTypeSupportedAsSurface(colorType))
     {
       DBGMSG("Unable to wrap swapchain image\n");
-      VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-      VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-      submitInfo.waitSemaphoreCount = 1;
-      submitInfo.pWaitSemaphores = &mVKImageAvailableSemaphore;
-      submitInfo.pWaitDstStageMask = &waitStage;
-      vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
-      mVKSubmissionPending = true;
-      mVKSkipFrame = true;
-      mScreenSurface.reset();
+      releaseImage(mVKCurrentImage);
       return;
     }
 
@@ -821,14 +827,7 @@ void IGraphicsSkia::BeginFrame()
     if (!mScreenSurface)
     {
       DBGMSG("SkSurfaces::WrapBackendRenderTarget failed\n");
-      VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-      VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-      submitInfo.waitSemaphoreCount = 1;
-      submitInfo.pWaitSemaphores = &mVKImageAvailableSemaphore;
-      submitInfo.pWaitDstStageMask = &waitStage;
-      vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
-      mVKSubmissionPending = true;
-      mVKSkipFrame = true;
+      releaseImage(mVKCurrentImage);
       return;
     }
   }

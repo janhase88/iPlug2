@@ -565,6 +565,13 @@ void IGraphicsSkia::OnViewDestroyed()
 #endif
 }
 
+#ifdef IGRAPHICS_VULKAN
+void IGraphicsSkia::SkipVKFrame()
+{
+  mVKSkipFrame = true;
+}
+#endif
+
 void IGraphicsSkia::DrawResize()
 {
   ScopedGraphicsContext scopedGLContext{this};
@@ -758,7 +765,8 @@ void IGraphicsSkia::BeginFrame()
     auto releaseImage = [&](uint32_t idx, bool present) {
       mVKCurrentImage = idx;
       VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-      VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+      VkSubmitInfo submitInfo{};
+      submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
       submitInfo.waitSemaphoreCount = 1;
       submitInfo.pWaitSemaphores = &mVKImageAvailableSemaphore;
       submitInfo.pWaitDstStageMask = &waitStage;
@@ -768,7 +776,8 @@ void IGraphicsSkia::BeginFrame()
       vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
       if (present)
       {
-        VkPresentInfoKHR presentInfo{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+        VkPresentInfoKHR presentInfo{};
+        presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
         presentInfo.waitSemaphoreCount = 1;
         presentInfo.pWaitSemaphores = &mVKRenderFinishedSemaphore;
         presentInfo.swapchainCount = 1;
@@ -933,14 +942,16 @@ void IGraphicsSkia::EndFrame()
 
   if (mVKCommandPool == VK_NULL_HANDLE)
   {
-    VkCommandPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+    VkCommandPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     poolInfo.queueFamilyIndex = mVKQueueFamily;
     poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     vkCreateCommandPool(mVKDevice, &poolInfo, nullptr, &mVKCommandPool);
   }
   if (mVKCommandBuffer == VK_NULL_HANDLE)
   {
-    VkCommandBufferAllocateInfo allocInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.commandPool = mVKCommandPool;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     allocInfo.commandBufferCount = 1;
@@ -948,11 +959,13 @@ void IGraphicsSkia::EndFrame()
   }
 
   vkResetCommandBuffer(mVKCommandBuffer, 0);
-  VkCommandBufferBeginInfo beginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+  VkCommandBufferBeginInfo beginInfo{};
+  beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
   vkBeginCommandBuffer(mVKCommandBuffer, &beginInfo);
 
-  VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+  VkImageMemoryBarrier barrier{};
+  barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
   barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
   barrier.dstAccessMask = 0;
   barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -977,7 +990,8 @@ void IGraphicsSkia::EndFrame()
   vkEndCommandBuffer(mVKCommandBuffer);
 
   VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-  VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+  VkSubmitInfo submitInfo{};
+  submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
   submitInfo.waitSemaphoreCount = 1;
   submitInfo.pWaitSemaphores = &mVKRenderFinishedSemaphore;
   submitInfo.pWaitDstStageMask = &waitStage;

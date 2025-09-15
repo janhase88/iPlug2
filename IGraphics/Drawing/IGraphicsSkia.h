@@ -200,7 +200,7 @@ protected:
   APIBitmap* LoadAPIBitmap(const char* name, const void* pData, int dataSize, int scale) override;
 
 #ifdef IGRAPHICS_VULKAN
-  void SkipVKFrame() { mVKSkipFrame = true; }
+  void SkipVKFrame();
 #endif
 
 private:

@@ -1052,10 +1052,11 @@ void IGraphicsSkia::BeginFrame()
       }
       else
       {
-        mVKImageLayouts[idx] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        DBGMSG("BeginFrame: releaseImage marked index %u handle %p as present layout without submit\n",
+        mVKImageLayouts[idx] = tracked;
+        DBGMSG("BeginFrame: releaseImage kept index %u handle %p in layout %d without submit\n",
                idx,
-               (void*)releaseHandle);
+               (void*)releaseHandle,
+               (int)tracked);
       }
       mVKSubmissionPending = true;
       DBGMSG("BeginFrame: releaseImage set submissionPending for index %u\n", idx);

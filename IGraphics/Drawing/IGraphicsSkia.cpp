@@ -575,11 +575,20 @@ void IGraphicsSkia::DrawResize()
   auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * GetScreenScale()));
   auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * GetScreenScale()));
 #if defined IGRAPHICS_VULKAN
+  WDL_MutexLock lock(&mVKSwapchainMutex);
   mVKSkipFrame = true;
   mVKCurrentImage = kInvalidImageIndex;
   mVKSwapchainVersion++;
-  if (mVKDevice != VK_NULL_HANDLE)
-    vkDeviceWaitIdle(mVKDevice);
+  if (mVKSubmissionPending && mVKInFlightFence != VK_NULL_HANDLE && mVKDevice != VK_NULL_HANDLE)
+  {
+    vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
+    vkResetFences(mVKDevice, 1, &mVKInFlightFence);
+    mVKSubmissionPending = false;
+  }
+  else if (mVKQueue != VK_NULL_HANDLE)
+  {
+    vkQueueWaitIdle(mVKQueue);
+  }
   if (mVKPhysicalDevice != VK_NULL_HANDLE && mVKSurface != VK_NULL_HANDLE)
   {
     VkSurfaceCapabilitiesKHR caps{};
@@ -686,9 +695,6 @@ void IGraphicsSkia::DrawResize()
 
 void IGraphicsSkia::BeginFrame()
 {
-#if defined IGRAPHICS_VULKAN
-  mVKFrameVersion = mVKSwapchainVersion;
-#endif
 #if defined IGRAPHICS_GL
   if (mGrContext.get())
   {
@@ -731,157 +737,161 @@ void IGraphicsSkia::BeginFrame()
     assert(mScreenSurface);
   }
 #elif defined IGRAPHICS_VULKAN
-  if (mGrContext.get())
   {
-    if (mVKSwapchain == VK_NULL_HANDLE || mVKSwapchainImages.empty())
+    WDL_MutexLock lock(&mVKSwapchainMutex);
+    mVKFrameVersion = mVKSwapchainVersion;
+    if (mGrContext.get())
     {
-      mVKSkipFrame = true;
-      mVKCurrentImage = kInvalidImageIndex;
-      mScreenSurface.reset();
-      return;
-    }
-
-    mVKSkipFrame = false;
-    int width = WindowWidth() * GetScreenScale();
-    int height = WindowHeight() * GetScreenScale();
-    if (mVKSubmissionPending)
-    {
-      VkResult fenceRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, 1000000000); // 1s timeout
-      if (fenceRes != VK_SUCCESS)
+      if (mVKSwapchain == VK_NULL_HANDLE || mVKSwapchainImages.empty())
       {
-        if (fenceRes == VK_TIMEOUT)
-          DBGMSG("vkWaitForFences timed out\n");
-        vkResetFences(mVKDevice, 1, &mVKInFlightFence);
+        mVKSkipFrame = true;
+        mVKCurrentImage = kInvalidImageIndex;
+        mScreenSurface.reset();
+        return;
+      }
+
+      mVKSkipFrame = false;
+      int width = WindowWidth() * GetScreenScale();
+      int height = WindowHeight() * GetScreenScale();
+      if (mVKSubmissionPending)
+      {
+        VkResult fenceRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, 1000000000); // 1s timeout
+        if (fenceRes != VK_SUCCESS)
+        {
+          if (fenceRes == VK_TIMEOUT)
+            DBGMSG("vkWaitForFences timed out\n");
+          vkResetFences(mVKDevice, 1, &mVKInFlightFence);
+          VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+          VkSubmitInfo submitInfo{};
+          submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+          submitInfo.waitSemaphoreCount = 1;
+          submitInfo.pWaitSemaphores = &mVKImageAvailableSemaphore;
+          submitInfo.pWaitDstStageMask = &waitStage;
+          VkResult submitRes = vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence); // ensure fence becomes signaled
+          if (submitRes == VK_SUCCESS)
+            mVKSubmissionPending = false;
+          else
+            DBGMSG("vkQueueSubmit failed: %d\n", submitRes);
+          mVKSkipFrame = true;
+          mScreenSurface.reset();
+          mVKCurrentImage = kInvalidImageIndex;
+          return;
+        }
+        mVKSubmissionPending = false;
+      }
+      uint32_t imageIndex = 0;
+      auto releaseImage = [&](uint32_t idx, bool present) {
+        mVKCurrentImage = idx;
         VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submitInfo.waitSemaphoreCount = 1;
         submitInfo.pWaitSemaphores = &mVKImageAvailableSemaphore;
         submitInfo.pWaitDstStageMask = &waitStage;
-        VkResult submitRes = vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence); // ensure fence becomes signaled
-        if (submitRes == VK_SUCCESS)
-          mVKSubmissionPending = false;
-        else
-          DBGMSG("vkQueueSubmit failed: %d\n", submitRes);
+        submitInfo.commandBufferCount = 0;
+        submitInfo.signalSemaphoreCount = present ? 1 : 0;
+        submitInfo.pSignalSemaphores = present ? &mVKRenderFinishedSemaphore : nullptr;
+        vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
+        if (present)
+        {
+          VkPresentInfoKHR presentInfo{};
+          presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+          presentInfo.waitSemaphoreCount = 1;
+          presentInfo.pWaitSemaphores = &mVKRenderFinishedSemaphore;
+          presentInfo.swapchainCount = 1;
+          presentInfo.pSwapchains = &mVKSwapchain;
+          presentInfo.pImageIndices = &mVKCurrentImage;
+          vkQueuePresentKHR(mVKQueue, &presentInfo);
+        }
+        mVKSubmissionPending = true;
         mVKSkipFrame = true;
         mScreenSurface.reset();
         mVKCurrentImage = kInvalidImageIndex;
+      };
+      VkResult res = vkAcquireNextImageKHR(mVKDevice, mVKSwapchain, UINT64_MAX, mVKImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+      if (res == VK_ERROR_OUT_OF_DATE_KHR)
+      {
+        DrawResize();
+        mVKSkipFrame = true;
+        mVKCurrentImage = kInvalidImageIndex;
         return;
       }
-      mVKSubmissionPending = false;
-    }
-    uint32_t imageIndex = 0;
-    auto releaseImage = [&](uint32_t idx, bool present) {
-      mVKCurrentImage = idx;
-      VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-      VkSubmitInfo submitInfo{};
-      submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-      submitInfo.waitSemaphoreCount = 1;
-      submitInfo.pWaitSemaphores = &mVKImageAvailableSemaphore;
-      submitInfo.pWaitDstStageMask = &waitStage;
-      submitInfo.commandBufferCount = 0;
-      submitInfo.signalSemaphoreCount = present ? 1 : 0;
-      submitInfo.pSignalSemaphores = present ? &mVKRenderFinishedSemaphore : nullptr;
-      vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
-      if (present)
+      else if (res == VK_SUBOPTIMAL_KHR)
       {
-        VkPresentInfoKHR presentInfo{};
-        presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-        presentInfo.waitSemaphoreCount = 1;
-        presentInfo.pWaitSemaphores = &mVKRenderFinishedSemaphore;
-        presentInfo.swapchainCount = 1;
-        presentInfo.pSwapchains = &mVKSwapchain;
-        presentInfo.pImageIndices = &mVKCurrentImage;
-        vkQueuePresentKHR(mVKQueue, &presentInfo);
+        releaseImage(imageIndex, true);
+        DrawResize();
+        return;
       }
-      mVKSubmissionPending = true;
-      mVKSkipFrame = true;
-      mScreenSurface.reset();
-      mVKCurrentImage = kInvalidImageIndex;
-    };
-    VkResult res = vkAcquireNextImageKHR(mVKDevice, mVKSwapchain, UINT64_MAX, mVKImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
-    if (res == VK_ERROR_OUT_OF_DATE_KHR)
-    {
-      DrawResize();
-      mVKSkipFrame = true;
-      mVKCurrentImage = kInvalidImageIndex;
-      return;
-    }
-    else if (res == VK_SUBOPTIMAL_KHR)
-    {
-      releaseImage(imageIndex, true);
-      DrawResize();
-      return;
-    }
-    else if (res != VK_SUCCESS)
-    {
-      mVKSkipFrame = true;
-      mVKCurrentImage = kInvalidImageIndex;
-      return;
-    }
-    VkResult fenceStatus = vkGetFenceStatus(mVKDevice, mVKInFlightFence);
-    if (fenceStatus == VK_SUCCESS)
-    {
-      vkResetFences(mVKDevice, 1, &mVKInFlightFence);
-    }
-    else if (fenceStatus == VK_NOT_READY)
-    {
-      VkResult waitRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
-      if (waitRes == VK_SUCCESS)
+      else if (res != VK_SUCCESS)
+      {
+        mVKSkipFrame = true;
+        mVKCurrentImage = kInvalidImageIndex;
+        return;
+      }
+      VkResult fenceStatus = vkGetFenceStatus(mVKDevice, mVKInFlightFence);
+      if (fenceStatus == VK_SUCCESS)
+      {
         vkResetFences(mVKDevice, 1, &mVKInFlightFence);
+      }
+      else if (fenceStatus == VK_NOT_READY)
+      {
+        VkResult waitRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
+        if (waitRes == VK_SUCCESS)
+          vkResetFences(mVKDevice, 1, &mVKInFlightFence);
+        else
+          DBGMSG("vkWaitForFences failed: %d\n", waitRes);
+      }
       else
-        DBGMSG("vkWaitForFences failed: %d\n", waitRes);
-    }
-    else
-    {
-      DBGMSG("vkGetFenceStatus failed: %d\n", fenceStatus);
-    }
-    mVKCurrentImage = imageIndex;
+      {
+        DBGMSG("vkGetFenceStatus failed: %d\n", fenceStatus);
+      }
+      mVKCurrentImage = imageIndex;
 
-    GrVkImageInfo imageInfo{};
-    imageInfo.fImage = mVKSwapchainImages[imageIndex];
-    imageInfo.fImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imageInfo.fImageTiling = VK_IMAGE_TILING_OPTIMAL;
-    imageInfo.fFormat = mVKSwapchainFormat;
-    imageInfo.fImageUsageFlags = mVKSwapchainUsageFlags;
-    imageInfo.fSampleCount = 1;
-    imageInfo.fLevelCount = 1;
-    imageInfo.fCurrentQueueFamily = mVKQueueFamily;
+      GrVkImageInfo imageInfo{};
+      imageInfo.fImage = mVKSwapchainImages[imageIndex];
+      imageInfo.fImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+      imageInfo.fImageTiling = VK_IMAGE_TILING_OPTIMAL;
+      imageInfo.fFormat = mVKSwapchainFormat;
+      imageInfo.fImageUsageFlags = mVKSwapchainUsageFlags;
+      imageInfo.fSampleCount = 1;
+      imageInfo.fLevelCount = 1;
+      imageInfo.fCurrentQueueFamily = mVKQueueFamily;
 
-    auto backendRT = GrBackendRenderTargets::MakeVk(width, height, imageInfo);
+      auto backendRT = GrBackendRenderTargets::MakeVk(width, height, imageInfo);
 
-    auto colorState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, mVKQueueFamily);
-    mGrContext->setBackendRenderTargetState(backendRT, colorState, nullptr, nullptr, nullptr);
-    backendRT.setMutableState(colorState);
+      auto colorState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, mVKQueueFamily);
+      mGrContext->setBackendRenderTargetState(backendRT, colorState, nullptr, nullptr, nullptr);
+      backendRT.setMutableState(colorState);
 
-    SkColorType colorType = kUnknown_SkColorType;
-    switch (mVKSwapchainFormat)
-    {
-    case VK_FORMAT_B8G8R8A8_UNORM:
-    case VK_FORMAT_B8G8R8A8_SRGB:
-      colorType = kBGRA_8888_SkColorType;
-      break;
-    case VK_FORMAT_R8G8B8A8_UNORM:
-    case VK_FORMAT_R8G8B8A8_SRGB:
-      colorType = kRGBA_8888_SkColorType;
-      break;
-    default:
-      break;
-    }
+      SkColorType colorType = kUnknown_SkColorType;
+      switch (mVKSwapchainFormat)
+      {
+      case VK_FORMAT_B8G8R8A8_UNORM:
+      case VK_FORMAT_B8G8R8A8_SRGB:
+        colorType = kBGRA_8888_SkColorType;
+        break;
+      case VK_FORMAT_R8G8B8A8_UNORM:
+      case VK_FORMAT_R8G8B8A8_SRGB:
+        colorType = kRGBA_8888_SkColorType;
+        break;
+      default:
+        break;
+      }
 
-    if (!backendRT.isValid() || colorType == kUnknown_SkColorType || !mGrContext->colorTypeSupportedAsSurface(colorType))
-    {
-      DBGMSG("Unable to wrap swapchain image\n");
-      releaseImage(mVKCurrentImage, false);
-      return;
-    }
+      if (!backendRT.isValid() || colorType == kUnknown_SkColorType || !mGrContext->colorTypeSupportedAsSurface(colorType))
+      {
+        DBGMSG("Unable to wrap swapchain image\n");
+        releaseImage(mVKCurrentImage, false);
+        return;
+      }
 
-    mScreenSurface = SkSurfaces::WrapBackendRenderTarget(mGrContext.get(), backendRT, kTopLeft_GrSurfaceOrigin, colorType, nullptr, nullptr);
-    if (!mScreenSurface)
-    {
-      DBGMSG("SkSurfaces::WrapBackendRenderTarget failed\n");
-      releaseImage(mVKCurrentImage, false);
-      return;
+      mScreenSurface = SkSurfaces::WrapBackendRenderTarget(mGrContext.get(), backendRT, kTopLeft_GrSurfaceOrigin, colorType, nullptr, nullptr);
+      if (!mScreenSurface)
+      {
+        DBGMSG("SkSurfaces::WrapBackendRenderTarget failed\n");
+        releaseImage(mVKCurrentImage, false);
+        return;
+      }
     }
   }
 #endif
@@ -917,130 +927,141 @@ void IGraphicsSkia::EndFrame()
   #endif
 #else // GPU
 #ifdef IGRAPHICS_VULKAN
-  if (mVKSkipFrame || mVKFrameVersion != mVKSwapchainVersion || mVKSwapchainImages.empty() ||
-      mVKCurrentImage == kInvalidImageIndex || mVKCurrentImage >= mVKSwapchainImages.size())
-    return;
-#endif
-  mSurface->draw(mScreenSurface->getCanvas(), 0.0, 0.0, nullptr);
-
-  #if defined IGRAPHICS_VULKAN
-  if (auto dContext = GrAsDirectContext(mScreenSurface->getCanvas()->recordingContext()))
+  VkResult presentRes = VK_SUCCESS;
   {
-    GrBackendSemaphore waitSemaphore = GrBackendSemaphores::MakeVk(mVKImageAvailableSemaphore);
-    GrBackendSemaphore signalSemaphore = GrBackendSemaphores::MakeVk(mVKRenderFinishedSemaphore);
-    dContext->wait(1, &waitSemaphore, false);
-    GrFlushInfo flushInfo{};
-    flushInfo.fNumSemaphores = 1;
-    flushInfo.fSignalSemaphores = &signalSemaphore;
-    if (dContext->flush(flushInfo) != GrSemaphoresSubmitted::kYes)
+    WDL_MutexLock lock(&mVKSwapchainMutex);
+    if (mVKSkipFrame || mVKFrameVersion != mVKSwapchainVersion || mVKSwapchainImages.empty() ||
+        mVKCurrentImage == kInvalidImageIndex || mVKCurrentImage >= mVKSwapchainImages.size())
+      return;
+
+    mSurface->draw(mScreenSurface->getCanvas(), 0.0, 0.0, nullptr);
+
+    if (auto dContext = GrAsDirectContext(mScreenSurface->getCanvas()->recordingContext()))
     {
-      vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // signal fence
-      mVKSubmissionPending = true;
+      GrBackendSemaphore waitSemaphore = GrBackendSemaphores::MakeVk(mVKImageAvailableSemaphore);
+      GrBackendSemaphore signalSemaphore = GrBackendSemaphores::MakeVk(mVKRenderFinishedSemaphore);
+      dContext->wait(1, &waitSemaphore, false);
+      GrFlushInfo flushInfo{};
+      flushInfo.fNumSemaphores = 1;
+      flushInfo.fSignalSemaphores = &signalSemaphore;
+      if (dContext->flush(flushInfo) != GrSemaphoresSubmitted::kYes)
+      {
+        vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // signal fence
+        mVKSubmissionPending = true;
+        return;
+      }
+      if (!dContext->submit())
+      {
+        vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // signal fence
+        mVKSubmissionPending = true;
+        return;
+      }
+    }
+
+    {
+      auto backendRT = SkSurfaces::GetBackendRenderTarget(mScreenSurface.get(), SkSurfaces::BackendHandleAccess::kFlushRead);
+      auto presentState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, mVKQueueFamily);
+      mGrContext->setBackendRenderTargetState(backendRT, presentState, nullptr, nullptr, nullptr);
+      backendRT.setMutableState(presentState);
+    }
+
+    if (mVKCommandPool == VK_NULL_HANDLE)
+    {
+      VkCommandPoolCreateInfo poolInfo{};
+      poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+      poolInfo.queueFamilyIndex = mVKQueueFamily;
+      poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+      vkCreateCommandPool(mVKDevice, &poolInfo, nullptr, &mVKCommandPool);
+    }
+    if (mVKCommandBuffer == VK_NULL_HANDLE)
+    {
+      VkCommandBufferAllocateInfo allocInfo{};
+      allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+      allocInfo.commandPool = mVKCommandPool;
+      allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+      allocInfo.commandBufferCount = 1;
+      vkAllocateCommandBuffers(mVKDevice, &allocInfo, &mVKCommandBuffer);
+    }
+
+    vkResetCommandBuffer(mVKCommandBuffer, 0);
+
+    VkImage swapImage = VK_NULL_HANDLE;
+    if (mVKFrameVersion == mVKSwapchainVersion && mVKSwapchain != VK_NULL_HANDLE &&
+        mVKCurrentImage != kInvalidImageIndex && mVKCurrentImage < mVKSwapchainImages.size())
+    {
+      swapImage = mVKSwapchainImages[mVKCurrentImage];
+    }
+
+    if (swapImage == VK_NULL_HANDLE)
+    {
+      mVKSkipFrame = true;
+      mVKCurrentImage = kInvalidImageIndex;
       return;
     }
-    if (!dContext->submit())
+
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(mVKCommandBuffer, &beginInfo);
+
+    if (mVKFrameVersion != mVKSwapchainVersion || mVKSwapchain == VK_NULL_HANDLE)
     {
-      vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // signal fence
-      mVKSubmissionPending = true;
+      vkEndCommandBuffer(mVKCommandBuffer);
+      mVKSkipFrame = true;
+      mVKCurrentImage = kInvalidImageIndex;
       return;
     }
+
+    VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    barrier.dstAccessMask = 0;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = swapImage;
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+
+    vkCmdPipelineBarrier(mVKCommandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+
+    vkEndCommandBuffer(mVKCommandBuffer);
+
+    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = &mVKRenderFinishedSemaphore;
+    submitInfo.pWaitDstStageMask = &waitStage;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &mVKCommandBuffer;
+    submitInfo.signalSemaphoreCount = 0;
+
+    VkResult submitRes = vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
+    mVKSubmissionPending = (submitRes == VK_SUCCESS);
+    if (submitRes != VK_SUCCESS)
+    {
+      vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // signal fence on failure
+      mVKSubmissionPending = true;
+      mVKSkipFrame = true;
+      mVKCurrentImage = kInvalidImageIndex;
+      return;
+    }
+
+    VkPresentInfoKHR presentInfo{};
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    presentInfo.waitSemaphoreCount = 0;
+    presentInfo.pWaitSemaphores = nullptr;
+    presentInfo.swapchainCount = 1;
+    presentInfo.pSwapchains = &mVKSwapchain;
+    presentInfo.pImageIndices = &mVKCurrentImage;
+    presentRes = vkQueuePresentKHR(mVKQueue, &presentInfo);
   }
-
-  {
-    auto backendRT = SkSurfaces::GetBackendRenderTarget(mScreenSurface.get(), SkSurfaces::BackendHandleAccess::kFlushRead);
-    auto presentState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, mVKQueueFamily);
-    mGrContext->setBackendRenderTargetState(backendRT, presentState, nullptr, nullptr, nullptr);
-    backendRT.setMutableState(presentState);
-  }
-
-  if (mVKCommandPool == VK_NULL_HANDLE)
-  {
-    VkCommandPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    poolInfo.queueFamilyIndex = mVKQueueFamily;
-    poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    vkCreateCommandPool(mVKDevice, &poolInfo, nullptr, &mVKCommandPool);
-  }
-  if (mVKCommandBuffer == VK_NULL_HANDLE)
-  {
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool = mVKCommandPool;
-    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = 1;
-    vkAllocateCommandBuffers(mVKDevice, &allocInfo, &mVKCommandBuffer);
-  }
-
-  vkResetCommandBuffer(mVKCommandBuffer, 0);
-
-  VkImage swapImage = VK_NULL_HANDLE;
-  if (mVKFrameVersion == mVKSwapchainVersion && mVKSwapchain != VK_NULL_HANDLE &&
-      mVKCurrentImage != kInvalidImageIndex && mVKCurrentImage < mVKSwapchainImages.size())
-  {
-    swapImage = mVKSwapchainImages[mVKCurrentImage];
-  }
-
-  if (swapImage == VK_NULL_HANDLE)
-  {
-    mVKSkipFrame = true;
-    mVKCurrentImage = kInvalidImageIndex;
-    return;
-  }
-
-  VkCommandBufferBeginInfo beginInfo{};
-  beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-  vkBeginCommandBuffer(mVKCommandBuffer, &beginInfo);
-
-  VkImageMemoryBarrier barrier{};
-  barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-  barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-  barrier.dstAccessMask = 0;
-  barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-  barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.image = swapImage;
-  barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-  barrier.subresourceRange.baseMipLevel = 0;
-  barrier.subresourceRange.levelCount = 1;
-  barrier.subresourceRange.baseArrayLayer = 0;
-  barrier.subresourceRange.layerCount = 1;
-
-  vkCmdPipelineBarrier(mVKCommandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
-
-  vkEndCommandBuffer(mVKCommandBuffer);
-
-  VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-  VkSubmitInfo submitInfo{};
-  submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-  submitInfo.waitSemaphoreCount = 1;
-  submitInfo.pWaitSemaphores = &mVKRenderFinishedSemaphore;
-  submitInfo.pWaitDstStageMask = &waitStage;
-  submitInfo.commandBufferCount = 1;
-  submitInfo.pCommandBuffers = &mVKCommandBuffer;
-  submitInfo.signalSemaphoreCount = 0;
-
-  VkResult submitRes = vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
-  mVKSubmissionPending = (submitRes == VK_SUCCESS);
-  if (submitRes != VK_SUCCESS)
-  {
-    vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // signal fence on failure
-    mVKSubmissionPending = true;
-    mVKSkipFrame = true;
-    mVKCurrentImage = kInvalidImageIndex;
-    return;
-  }
-
-  VkPresentInfoKHR presentInfo{};
-  presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-  presentInfo.waitSemaphoreCount = 0;
-  presentInfo.pWaitSemaphores = nullptr;
-  presentInfo.swapchainCount = 1;
-  presentInfo.pSwapchains = &mVKSwapchain;
-  presentInfo.pImageIndices = &mVKCurrentImage;
-  VkResult res = vkQueuePresentKHR(mVKQueue, &presentInfo);
-  if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
+  if (presentRes == VK_ERROR_OUT_OF_DATE_KHR || presentRes == VK_SUBOPTIMAL_KHR)
   {
     vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
     DrawResize();
@@ -1048,7 +1069,7 @@ void IGraphicsSkia::EndFrame()
     mVKCurrentImage = kInvalidImageIndex;
     return;
   }
-  else if (res == VK_ERROR_DEVICE_LOST || res != VK_SUCCESS)
+  else if (presentRes == VK_ERROR_DEVICE_LOST || presentRes != VK_SUCCESS)
   {
     if (auto* pWin = static_cast<IGraphicsWin*>(this))
       pWin->RecreateVulkanContext();
@@ -1056,7 +1077,7 @@ void IGraphicsSkia::EndFrame()
     mVKCurrentImage = kInvalidImageIndex;
     return;
   }
-  #elif defined IGRAPHICS_METAL
+#elif defined IGRAPHICS_METAL
   if (auto dContext = GrAsDirectContext(mScreenSurface->getCanvas()->recordingContext()))
   {
     dContext->flushAndSubmit();
@@ -1071,7 +1092,7 @@ void IGraphicsSkia::EndFrame()
   {
     dContext->flushAndSubmit();
   }
-  #endif
+#endif
 #endif
 }
 

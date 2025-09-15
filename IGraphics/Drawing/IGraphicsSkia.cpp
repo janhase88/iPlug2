@@ -1025,9 +1025,7 @@ void IGraphicsSkia::EndFrame()
   #if defined IGRAPHICS_VULKAN
   if (auto dContext = GrAsDirectContext(mScreenSurface->getCanvas()->recordingContext()))
   {
-    GrBackendSemaphore waitSemaphore = GrBackendSemaphores::MakeVk(mVKImageAvailableSemaphore);
     GrBackendSemaphore signalSemaphore = GrBackendSemaphores::MakeVk(mVKRenderFinishedSemaphore);
-    dContext->wait(1, &waitSemaphore, false);
     GrFlushInfo flushInfo{};
     flushInfo.fNumSemaphores = 1;
     flushInfo.fSignalSemaphores = &signalSemaphore;

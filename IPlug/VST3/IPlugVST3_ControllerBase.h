@@ -10,14 +10,13 @@
 
 #pragma once
 
-#include "IPlugVST3_Defs.h"
-
 #include "pluginterfaces/base/ibstream.h"
 #include "public.sdk/source/vst/vsteditcontroller.h"
 #include "pluginterfaces/vst/ivstchannelcontextinfo.h"
 
 #include "IPlugAPIBase.h"
 #include "IPlugVST3_Parameter.h"
+#include "IPlugVST3_Defs.h"
 
 #include "IPlugMidi.h"
 

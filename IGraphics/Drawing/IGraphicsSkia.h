@@ -256,6 +256,7 @@ private:
   VkCommandBuffer mVKCommandBuffer = VK_NULL_HANDLE;
   uint32_t mVKQueueFamily = 0;
   std::vector<VkImage> mVKSwapchainImages;
+  std::vector<VkImageLayout> mVKImageLayouts;
   uint32_t mVKCurrentImage = kInvalidImageIndex;
   VkSemaphore mVKImageAvailableSemaphore = VK_NULL_HANDLE;
   VkSemaphore mVKRenderFinishedSemaphore = VK_NULL_HANDLE;

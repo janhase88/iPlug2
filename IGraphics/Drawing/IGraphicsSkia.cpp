@@ -807,8 +807,8 @@ void IGraphicsSkia::BeginFrame()
     auto backendRT = GrBackendRenderTargets::MakeVk(width, height, imageInfo);
 
     auto colorState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, mVKQueueFamily);
-    backendRT.setMutableState(colorState);
     mGrContext->setBackendRenderTargetState(backendRT, colorState, nullptr, nullptr, nullptr);
+    backendRT.setMutableState(colorState);
 
     SkColorType colorType = kUnknown_SkColorType;
     switch (mVKSwapchainFormat)

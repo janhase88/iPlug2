@@ -704,7 +704,30 @@ void IGraphicsSkia::DrawResize()
          (unsigned long long)mVKSwapchainVersion);
   if (mVKDevice != VK_NULL_HANDLE)
   {
-    vkDeviceWaitIdle(mVKDevice);
+    bool fenceCompleted = !mVKSubmissionPending;
+    if (mVKSubmissionPending && mVKInFlightFence != VK_NULL_HANDLE)
+    {
+      VkResult waitRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
+      if (waitRes == VK_SUCCESS)
+      {
+        fenceCompleted = true;
+        vkResetFences(mVKDevice, 1, &mVKInFlightFence);
+        mVKSubmissionPending = false;
+      }
+      else
+      {
+        DBGMSG("DrawResize: vkWaitForFences failed (%d), falling back to vkDeviceWaitIdle\n", waitRes);
+      }
+    }
+    if (!fenceCompleted)
+    {
+      VkResult idleRes = vkDeviceWaitIdle(mVKDevice);
+      if (idleRes != VK_SUCCESS)
+        DBGMSG("DrawResize: vkDeviceWaitIdle failed with %d\n", idleRes);
+      if (mVKInFlightFence != VK_NULL_HANDLE)
+        vkResetFences(mVKDevice, 1, &mVKInFlightFence);
+      mVKSubmissionPending = false;
+    }
     if (mGrContext)
     {
       mGrContext->flushAndSubmit();
@@ -720,7 +743,6 @@ void IGraphicsSkia::DrawResize()
       vkDestroyCommandPool(mVKDevice, mVKCommandPool, nullptr);
       mVKCommandPool = VK_NULL_HANDLE;
     }
-    mVKSubmissionPending = false;
     mVKImageLayouts.clear();
   }
   if (!mVKSwapchainImages.empty())
@@ -1151,7 +1173,6 @@ void IGraphicsSkia::BeginFrame()
 
     VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.srcAccessMask = 0;
     barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
     barrier.oldLayout = mVKImageLayouts[imageIndex];
     barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -1164,6 +1185,24 @@ void IGraphicsSkia::BeginFrame()
     barrier.subresourceRange.baseArrayLayer = 0;
     barrier.subresourceRange.layerCount = 1;
 
+    VkPipelineStageFlags srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    switch (barrier.oldLayout)
+    {
+    case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
+      barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+      srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+      break;
+    case VK_IMAGE_LAYOUT_UNDEFINED:
+      barrier.srcAccessMask = 0;
+      srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+      break;
+    default:
+      barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+      srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+      break;
+    }
+    VkPipelineStageFlags dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+
     DBGMSG("BeginFrame: pipeline barrier for image index %u handle %p layout %d -> %d (frame %llu swapchain %llu)\n",
            imageIndex,
            (void*)barrier.image,
@@ -1171,7 +1210,7 @@ void IGraphicsSkia::BeginFrame()
            (int)barrier.newLayout,
            (unsigned long long)mVKFrameVersion,
            (unsigned long long)mVKSwapchainVersion);
-    vkCmdPipelineBarrier(mVKCommandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+    vkCmdPipelineBarrier(mVKCommandBuffer, srcStageMask, dstStageMask, 0, 0, nullptr, 0, nullptr, 1, &barrier);
     vkEndCommandBuffer(mVKCommandBuffer);
 
     VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;

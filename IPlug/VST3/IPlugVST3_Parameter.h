@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include "IPlugVST3_Defs.h"
+
 #include "pluginterfaces/base/ustring.h"
 #include "public.sdk/source/vst/vstparameters.h"
 #include "base/source/fstring.h"

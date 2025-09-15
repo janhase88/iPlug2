@@ -8,11 +8,12 @@
  ==============================================================================
  */
 
+#include "IPlugVST3_ProcessorBase.h"
+
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 #include "pluginterfaces/vst/vstspeaker.h"
 #include "pluginterfaces/vst/ivstmidicontrollers.h"
 #include "public.sdk/source/vst/vsteventshelper.h"
-#include "IPlugVST3_ProcessorBase.h"
 
 using namespace iplug;
 using namespace Steinberg;

@@ -586,7 +586,24 @@ void IGraphicsSkia::OnViewDestroyed()
   mMTLLayer = nullptr;
   mMTLDevice = nullptr;
 #elif defined IGRAPHICS_VULKAN
-  vkDeviceWaitIdle(mVKDevice);
+  if (mVKDevice != VK_NULL_HANDLE)
+  {
+    vkDeviceWaitIdle(mVKDevice);
+
+    if (mVKCommandBuffer != VK_NULL_HANDLE && mVKCommandPool != VK_NULL_HANDLE)
+    {
+      vkFreeCommandBuffers(mVKDevice, mVKCommandPool, 1, &mVKCommandBuffer);
+    }
+
+    if (mVKCommandPool != VK_NULL_HANDLE)
+    {
+      vkDestroyCommandPool(mVKDevice, mVKCommandPool, nullptr);
+    }
+  }
+
+  mVKCommandBuffer = VK_NULL_HANDLE;
+  mVKCommandPool = VK_NULL_HANDLE;
+
   mVKImageAvailableSemaphore = VK_NULL_HANDLE;
   mVKRenderFinishedSemaphore = VK_NULL_HANDLE;
   mVKInFlightFence = VK_NULL_HANDLE;
@@ -598,8 +615,11 @@ void IGraphicsSkia::OnViewDestroyed()
   mVKSurface = VK_NULL_HANDLE;
   mVKQueue = VK_NULL_HANDLE;
   mVKSwapchainImages.clear();
+  mVKImageLayouts.clear();
+  mVKDebugImages.clear();
   mVKCurrentImage = kInvalidImageIndex;
   mVKSwapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
+  mVKSubmissionPending = false;
   mVKSkipFrame = true;
 
   // Release Skia references after Vulkan cleanup

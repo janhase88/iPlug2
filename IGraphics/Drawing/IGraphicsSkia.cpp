@@ -593,6 +593,7 @@ void IGraphicsSkia::DrawResize()
       mVKCommandPool = VK_NULL_HANDLE;
     }
     mVKSubmissionPending = false;
+    mVKImageLayouts.clear();
   }
   if (mVKPhysicalDevice != VK_NULL_HANDLE && mVKSurface != VK_NULL_HANDLE)
   {
@@ -636,6 +637,7 @@ void IGraphicsSkia::DrawResize()
         {
           mVKSwapchain = swapchain;
           mVKSwapchainImages = images;
+          mVKImageLayouts.assign(mVKSwapchainImages.size(), VK_IMAGE_LAYOUT_UNDEFINED);
           mVKSwapchainFormat = format;
           mVKCurrentImage = kInvalidImageIndex;
           mVKSkipFrame = true;
@@ -791,9 +793,9 @@ void IGraphicsSkia::BeginFrame()
       VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
       VkSubmitInfo submitInfo{};
       submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-      submitInfo.waitSemaphoreCount = 1;
-      submitInfo.pWaitSemaphores = &mVKImageAvailableSemaphore;
-      submitInfo.pWaitDstStageMask = &waitStage;
+      submitInfo.waitSemaphoreCount = present ? 1 : 0;
+      submitInfo.pWaitSemaphores = present ? &mVKImageAvailableSemaphore : nullptr;
+      submitInfo.pWaitDstStageMask = present ? &waitStage : nullptr;
       submitInfo.commandBufferCount = 0;
       submitInfo.signalSemaphoreCount = present ? 1 : 0;
       submitInfo.pSignalSemaphores = present ? &mVKRenderFinishedSemaphore : nullptr;
@@ -808,6 +810,11 @@ void IGraphicsSkia::BeginFrame()
         presentInfo.pSwapchains = &mVKSwapchain;
         presentInfo.pImageIndices = &mVKCurrentImage;
         vkQueuePresentKHR(mVKQueue, &presentInfo);
+        mVKImageLayouts[idx] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+      }
+      else
+      {
+        mVKImageLayouts[idx] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
       }
       mVKSubmissionPending = true;
       mVKSkipFrame = true;
@@ -881,7 +888,7 @@ void IGraphicsSkia::BeginFrame()
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     barrier.srcAccessMask = 0;
     barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    barrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    barrier.oldLayout = mVKImageLayouts[imageIndex];
     barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -918,6 +925,8 @@ void IGraphicsSkia::BeginFrame()
       vkResetFences(mVKDevice, 1, &mVKInFlightFence);
     else
       DBGMSG("vkWaitForFences failed: %d\n", waitRes);
+
+    mVKImageLayouts[imageIndex] = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     GrVkImageInfo imageInfo{};
     imageInfo.fImage = mVKSwapchainImages[imageIndex];
@@ -1128,6 +1137,7 @@ void IGraphicsSkia::EndFrame()
   submitInfo.signalSemaphoreCount = 0;
 
   VkResult submitRes = vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
+  mVKImageLayouts[mVKCurrentImage] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
   mVKSubmissionPending = (submitRes == VK_SUCCESS);
   if (submitRes != VK_SUCCESS)
   {

@@ -222,14 +222,16 @@ IGraphicsSkia::Bitmap::Bitmap(sk_sp<SkImage> image, double sourceScale)
 
 struct IGraphicsSkia::Font
 {
-  Font(IFontDataPtr&& data, sk_sp<SkTypeface> typeFace)
+  Font(IFontDataPtr&& data, sk_sp<SkTypeface> typeFace, SkString family)
     : mData(std::move(data))
     , mTypeface(typeFace)
+    , mFamily(std::move(family))
   {
   }
 
   IFontDataPtr mData;
   sk_sp<SkTypeface> mTypeface;
+  SkString mFamily;
 };
 
 // Fonts
@@ -1683,10 +1685,14 @@ bool IGraphicsSkia::LoadAPIFont(const char* fontID, const PlatformFontPtr& font)
 
     if (typeFace)
     {
-      storage.Add(new Font(std::move(data), typeFace), fontID);
+      SkString family;
+      typeFace->getFamilyName(&family);
+
+      Font* newFont = new Font(std::move(data), typeFace, family);
+      storage.Add(newFont, fontID);
 
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
-      mTypefaceProvider->registerTypeface(typeFace, SkString(fontID));
+      mTypefaceProvider->registerTypeface(typeFace, newFont->mFamily);
 #endif
       return true;
     }
@@ -1710,7 +1716,7 @@ void IGraphicsSkia::PrepareAndMeasureText(const IText& text, const char* str, IR
   txtStyle.setTypeface(pFont->mTypeface); // This tells the builder to prefer this font.
   txtStyle.setColor(SK_ColorBLACK);
 
-  txtStyle.setFontFamilies({SkString(text.mFont)});
+  txtStyle.setFontFamilies({pFont->mFamily});
 
   // Build the paragraph using the stable, pre-configured member font collection.
   auto builder = ParagraphBuilder::make(paraStyle, mFontCollection);
@@ -1785,7 +1791,7 @@ void IGraphicsSkia::DoDrawText(const IText& text, const char* str, const IRECT& 
   txtStyle.setFontSize(text.mSize);
   txtStyle.setTypeface(pFont->mTypeface);
 
-  txtStyle.setFontFamilies({SkString(text.mFont)});
+  txtStyle.setFontFamilies({pFont->mFamily});
 
   // Build the paragraph for drawing, again using the stable member collection.
   auto builder = ParagraphBuilder::make(paraStyle, mFontCollection);

@@ -111,6 +111,26 @@ void IGraphicsWin::DestroyEditWindow()
   }
 }
 
+void IGraphicsWin::UpdateTextEntryBounds()
+{
+#if defined IGRAPHICS_VULKAN
+  if (mParamEditWnd)
+  {
+    const float scale = GetTotalScale();
+    IRECT scaledBounds = mEditRECT.GetScaled(scale);
+    scaledBounds.PixelAlign();
+
+    POINT screenPos = {static_cast<int>(scaledBounds.L), static_cast<int>(scaledBounds.T)};
+    ::ClientToScreen(mPlugWnd, &screenPos);
+
+    const int width = static_cast<int>(scaledBounds.W()) + 1;
+    const int height = static_cast<int>(scaledBounds.H()) + 1;
+
+    SetWindowPos(mParamEditWnd, HWND_TOP, screenPos.x, screenPos.y, width, height, SWP_NOOWNERZORDER | SWP_SHOWWINDOW | SWP_NOACTIVATE);
+  }
+#endif
+}
+
 void IGraphicsWin::OnDisplayTimer(int vBlankCount)
 {
   // Check the message vblank with the current one to see if we are way behind. If so, then throw these away.
@@ -149,6 +169,9 @@ void IGraphicsWin::OnDisplayTimer(int vBlankCount)
     case kCancel:
       DestroyEditWindow();
       ClearInTextEntryControl();
+      break;
+    case kUpdate:
+      UpdateTextEntryBounds();
       break;
     }
 
@@ -280,6 +303,14 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
   case WM_ERASEBKGND:
     return 0;
+
+  case WM_WINDOWPOSCHANGED:
+  case WM_MOVE:
+  case WM_SIZE: {
+    if (pGraphics->mParamEditWnd)
+      pGraphics->UpdateTextEntryBounds();
+    break;
+  }
 
   case WM_RBUTTONDOWN:
   case WM_LBUTTONDOWN:
@@ -639,7 +670,17 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 // static
 LRESULT CALLBACK IGraphicsWin::ParamEditProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-  IGraphicsWin* pGraphics = (IGraphicsWin*)GetWindowLongPtrW(GetParent(hWnd), GWLP_USERDATA);
+  IGraphicsWin* pGraphics = (IGraphicsWin*)GetWindowLongPtrW(hWnd, GWLP_USERDATA);
+
+  if (!pGraphics)
+  {
+    HWND parent = GetParent(hWnd);
+    if (!parent)
+      parent = ::GetWindow(hWnd, GW_OWNER);
+
+    if (parent)
+      pGraphics = (IGraphicsWin*)GetWindowLongPtrW(parent, GWLP_USERDATA);
+  }
 
   if (pGraphics && pGraphics->mParamEditWnd && pGraphics->mParamEditWnd == hWnd)
   {
@@ -2071,14 +2112,54 @@ void IGraphicsWin::CreatePlatformTextEntry(int paramIdx, const IText& text, cons
 
   const float scale = GetTotalScale();
   IRECT scaledBounds = bounds.GetScaled(scale);
+  scaledBounds.PixelAlign();
 
-  mParamEditWnd = CreateWindowW(L"EDIT", UTF8AsUTF16(str).Get(), ES_AUTOHSCROLL | WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_VISIBLE | editStyle, scaledBounds.L, scaledBounds.T,
-                                scaledBounds.W() + 1, scaledBounds.H() + 1, mPlugWnd, (HMENU)PARAM_EDIT_ID, mHInstance, 0);
+  const int left = static_cast<int>(scaledBounds.L);
+  const int top = static_cast<int>(scaledBounds.T);
+  const int width = static_cast<int>(scaledBounds.W()) + 1;
+  const int height = static_cast<int>(scaledBounds.H()) + 1;
+
+  const DWORD baseStyle = ES_AUTOHSCROLL | editStyle;
+
+#if defined IGRAPHICS_VULKAN
+  POINT screenPos = {left, top};
+  ::ClientToScreen(mPlugWnd, &screenPos);
+  HWND owner = GetMainWnd();
+  if (!owner)
+    owner = mPlugWnd;
+
+  mParamEditWnd = CreateWindowExW(0,
+                                  L"EDIT",
+                                  UTF8AsUTF16(str).Get(),
+                                  baseStyle | WS_POPUP | WS_VISIBLE,
+                                  screenPos.x,
+                                  screenPos.y,
+                                  width,
+                                  height,
+                                  owner,
+                                  (HMENU)PARAM_EDIT_ID,
+                                  mHInstance,
+                                  0);
+#else
+  mParamEditWnd = CreateWindowW(L"EDIT",
+                                UTF8AsUTF16(str).Get(),
+                                baseStyle | WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_VISIBLE,
+                                left,
+                                top,
+                                width,
+                                height,
+                                mPlugWnd,
+                                (HMENU)PARAM_EDIT_ID,
+                                mHInstance,
+                                0);
+#endif
 
   if (!mParamEditWnd)
   {
     return;
   }
+
+  SetWindowLongPtrW(mParamEditWnd, GWLP_USERDATA, (LONG_PTR)this);
 
   StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
 
@@ -2118,10 +2199,12 @@ void IGraphicsWin::CreatePlatformTextEntry(int paramIdx, const IText& text, cons
     SendMessageW(mParamEditWnd, EM_SETRECT, 0, (LPARAM)&marginsRect);
   }
 
+  UpdateTextEntryBounds();
+
   SetFocus(mParamEditWnd);
 
   mDefEditProc = (WNDPROC)SetWindowLongPtrW(mParamEditWnd, GWLP_WNDPROC, (LONG_PTR)ParamEditProc);
-  SetWindowLongPtrW(mParamEditWnd, GWLP_USERDATA, 0xdeadf00b);
+  SetWindowLongPtrW(mParamEditWnd, GWLP_USERDATA, (LONG_PTR)this);
 }
 
 bool IGraphicsWin::RevealPathInExplorerOrFinder(WDL_String& path, bool select)

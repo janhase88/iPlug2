@@ -80,6 +80,7 @@ public:
 
   void CheckTabletInput(UINT msg);
   void DestroyEditWindow();
+  void UpdateTextEntryBounds();
 
   void HideMouseCursor(bool hide, bool lock) override;
   void MoveMouseCursor(float x, float y) override;

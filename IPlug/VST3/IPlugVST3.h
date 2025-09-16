@@ -12,10 +12,6 @@
 #define _IPLUGAPI_
 // Only load one API class!
 
-#if defined(_WIN32) && !defined(NOGDI)
-  #define NOGDI // stop <windows.h> from declaring LOGFONT
-#endif
-
 /**
  * @file
  * @copydoc IPlugVST3

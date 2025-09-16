@@ -27,6 +27,7 @@
   #define VK_USE_PLATFORM_WIN32_KHR
   #include <vulkan/vulkan.h>
   #include <vulkan/vulkan_win32.h>
+  #include "WinVulkanDeviceCoordinator.h"
 #endif
 
 
@@ -177,6 +178,7 @@ private:
   void DestroyVulkanContext();
   void ActivateVulkanContext();
   void DeactivateVulkanContext();
+  WinVulkanDeviceCoordinator mVulkanDeviceCoordinator;
   VkInstance mVkInstance = VK_NULL_HANDLE;
   VkPhysicalDevice mVkPhysicalDevice = VK_NULL_HANDLE;
   VkDevice mVkDevice = VK_NULL_HANDLE;

@@ -8,6 +8,11 @@
  ==============================================================================
 */
 
+#if defined(_WIN32) && !defined(NOGDI)
+  #define NOGDI
+  #define IPLUG_VST3_TEMP_NOGDI
+#endif
+
 #ifndef _IPLUGAPI_
 #define _IPLUGAPI_
 // Only load one API class!
@@ -27,6 +32,12 @@
 #include "pluginterfaces/vst/vsttypes.h"
 #include "pluginterfaces/vst/ivstcontextmenu.h"
 #include "pluginterfaces/vst/ivstchannelcontextinfo.h"
+
+#ifdef IPLUG_VST3_TEMP_NOGDI
+  #undef NOGDI          // allow GDI again
+  #include <wingdi.h>   // pull in AddFontMemResourceEx, LOGFONTW, etc.
+  #undef IPLUG_VST3_TEMP_NOGDI
+#endif
 
 #include "IPlugAPIBase.h"
 #include "IPlugProcessor.h"

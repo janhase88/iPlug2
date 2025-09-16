@@ -14,6 +14,16 @@ In the meantime, you can read two academic papers that we wrote about the projec
 
 See [Skia Vulkan on Windows](SkiaVulkanWindows.md) for instructions on enabling the Skia renderer with Vulkan on Windows.
 
+## Windows and Skia header interoperability
+
+When working on the Windows build with the Skia backend, always include
+`IGraphics/Skia/SkTypefaceWinWrapper.h` instead of including Skia's
+`SkTypeface_win.h` directly. The wrapper guarantees that `<windows.h>` is
+included in a safe order and temporarily remaps the `LOGFONT` typedefs so the
+Skia declarations cannot collide with the Windows definitions. Avoid
+reintroducing ad-hoc `NOGDI` or `LOGFONT` macro workarounds elsewhere—use the
+wrapper instead to keep translation units consistent.
+
 <!--
 ## Introduction
 

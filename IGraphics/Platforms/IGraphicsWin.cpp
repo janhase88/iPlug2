@@ -1024,212 +1024,46 @@ bool IGraphicsWin::CreateVulkanContext()
   if (mVkInstance)
     return true;
 
-  VkApplicationInfo appInfo{};
-  appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-  appInfo.pApplicationName = "iPlug2";
-  appInfo.apiVersion = VK_API_VERSION_1_1;
-
-  const char* extensions[] = {"VK_KHR_surface", "VK_KHR_win32_surface"};
-  VkInstanceCreateInfo instInfo{};
-  instInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-  instInfo.pApplicationInfo = &appInfo;
-  instInfo.enabledExtensionCount = 2;
-  instInfo.ppEnabledExtensionNames = extensions;
-
-  #if !defined(NDEBUG)
-  const char* validationLayer = "VK_LAYER_KHRONOS_validation";
-  bool enableValidation = false;
-  uint32_t layerCount = 0;
-  if (vkEnumerateInstanceLayerProperties(&layerCount, nullptr) == VK_SUCCESS && layerCount > 0)
+  WinVulkanPreferredAdapter preferredAdapter = WinVulkanPreferredAdapter::kAny;
+  if (const char* pref = std::getenv("IGRAPHICS_VK_GPU"))
   {
-    std::vector<VkLayerProperties> layerProps(layerCount);
-    vkEnumerateInstanceLayerProperties(&layerCount, layerProps.data());
-    for (auto& lp : layerProps)
-    {
-      if (strcmp(lp.layerName, validationLayer) == 0)
-      {
-        enableValidation = true;
-        break;
-      }
-    }
+    if (std::strcmp(pref, "integrated") == 0)
+      preferredAdapter = WinVulkanPreferredAdapter::kIntegrated;
+    else if (std::strcmp(pref, "discrete") == 0)
+      preferredAdapter = WinVulkanPreferredAdapter::kDiscrete;
   }
-  if (enableValidation)
-  {
-    instInfo.enabledLayerCount = 1;
-    instInfo.ppEnabledLayerNames = &validationLayer;
-  }
-  else
-  {
-    instInfo.enabledLayerCount = 0;
-    instInfo.ppEnabledLayerNames = nullptr;
-  }
-  #else
-  bool enableValidation = false;
-  instInfo.enabledLayerCount = 0;
-  instInfo.ppEnabledLayerNames = nullptr;
-  #endif
 
-  VkResult res = vkCreateInstance(&instInfo, nullptr, &mVkInstance);
-  if (res != VK_SUCCESS)
-    return false;
+  WinVulkanDeviceRequest request{};
+  request.instanceHandle = mHInstance;
+  request.windowHandle = mPlugWnd;
+  request.preferredAdapter = preferredAdapter;
+#if !defined(NDEBUG)
+  request.enableValidationLayer = true;
+#else
+  request.enableValidationLayer = false;
+#endif
 
-  VkWin32SurfaceCreateInfoKHR surfInfo{};
-  surfInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-  surfInfo.hinstance = mHInstance;
-  surfInfo.hwnd = mPlugWnd;
-  res = vkCreateWin32SurfaceKHR(mVkInstance, &surfInfo, nullptr, &mVkSurface);
+  WinVulkanDeviceSnapshot snapshot{};
+  VkResult res = mVulkanDeviceCoordinator.Initialize(request, snapshot);
   if (res != VK_SUCCESS)
   {
-    DestroyVulkanContext();
+    DBGMSG("{\"event\":\"CreateVulkanContext\",\"stage\":\"deviceCoordinator\",\"severity\":\"error\",\"vkResult\":%d}\n", res);
+    mVulkanDeviceCoordinator.Teardown();
     return false;
   }
 
-  uint32_t gpuCount = 0;
-  res = vkEnumeratePhysicalDevices(mVkInstance, &gpuCount, nullptr);
-  if (res != VK_SUCCESS || gpuCount == 0)
-  {
-    DestroyVulkanContext();
-    return false;
-  }
-  std::vector<VkPhysicalDevice> gpus(gpuCount);
-  res = vkEnumeratePhysicalDevices(mVkInstance, &gpuCount, gpus.data());
-  if (res != VK_SUCCESS)
-  {
-    DestroyVulkanContext();
-    return false;
-  }
-
-  const char* pref = std::getenv("IGRAPHICS_VK_GPU");
-  bool preferIntegrated = pref && std::strcmp(pref, "integrated") == 0;
-  bool preferDiscrete = pref && std::strcmp(pref, "discrete") == 0;
-
-  VkPhysicalDevice selectedDevice = VK_NULL_HANDLE;
-  uint32_t selectedQueueFamily = 0;
-  uint32_t bestScore = 0;
-  for (auto dev : gpus)
-  {
-    uint32_t extCount = 0;
-    if (vkEnumerateDeviceExtensionProperties(dev, nullptr, &extCount, nullptr) != VK_SUCCESS)
-      continue;
-    std::vector<VkExtensionProperties> extProps(extCount);
-    if (vkEnumerateDeviceExtensionProperties(dev, nullptr, &extCount, extProps.data()) != VK_SUCCESS)
-      continue;
-    bool hasSwapchain = false;
-    for (auto& e : extProps)
-    {
-      if (strcmp(e.extensionName, VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0)
-      {
-        hasSwapchain = true;
-        break;
-      }
-    }
-    if (!hasSwapchain)
-      continue;
-
-    uint32_t qCount = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(dev, &qCount, nullptr);
-    std::vector<VkQueueFamilyProperties> qProps(qCount);
-    vkGetPhysicalDeviceQueueFamilyProperties(dev, &qCount, qProps.data());
-    uint32_t qIndex = UINT32_MAX;
-    for (uint32_t i = 0; i < qCount; ++i)
-    {
-      VkBool32 presentSupport = VK_FALSE;
-      res = vkGetPhysicalDeviceSurfaceSupportKHR(dev, i, mVkSurface, &presentSupport);
-      if (res == VK_SUCCESS && (qProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) && presentSupport)
-      {
-        qIndex = i;
-        break;
-      }
-    }
-    if (qIndex == UINT32_MAX)
-      continue;
-
-    VkPhysicalDeviceProperties props;
-    vkGetPhysicalDeviceProperties(dev, &props);
-    VkPhysicalDeviceFeatures features;
-    vkGetPhysicalDeviceFeatures(dev, &features);
-    if (!features.samplerAnisotropy)
-      continue;
-
-    uint32_t score = props.limits.maxImageDimension2D;
-    if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
-      score += 1000;
-    else if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
-      score += 100;
-    if (preferDiscrete && props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
-      score += 10000;
-    if (preferIntegrated && props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
-      score += 10000;
-
-    if (score > bestScore)
-    {
-      bestScore = score;
-      selectedDevice = dev;
-      selectedQueueFamily = qIndex;
-    }
-  }
-
-  if (selectedDevice == VK_NULL_HANDLE)
-  {
-    DestroyVulkanContext();
-    return false;
-  }
-
-  mVkPhysicalDevice = selectedDevice;
-  mVkQueueFamily = selectedQueueFamily;
-
-  VkPhysicalDeviceFeatures supportedFeatures;
-  vkGetPhysicalDeviceFeatures(mVkPhysicalDevice, &supportedFeatures);
-
-  VkPhysicalDeviceFeatures enabledFeatures{};
-  enabledFeatures.samplerAnisotropy = supportedFeatures.samplerAnisotropy;
-  if (supportedFeatures.textureCompressionBC)
-    enabledFeatures.textureCompressionBC = VK_TRUE;
-
-  float priority = 1.f;
-  VkDeviceQueueCreateInfo queueInfo{};
-  queueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-  queueInfo.queueFamilyIndex = mVkQueueFamily;
-  queueInfo.queueCount = 1;
-  queueInfo.pQueuePriorities = &priority;
-
-  const char* devExt[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
-  VkDeviceCreateInfo devInfo{};
-  devInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-  devInfo.queueCreateInfoCount = 1;
-  devInfo.pQueueCreateInfos = &queueInfo;
-  devInfo.enabledExtensionCount = 1;
-  devInfo.ppEnabledExtensionNames = devExt;
-  devInfo.pEnabledFeatures = &enabledFeatures;
-  #if !defined(NDEBUG)
-  if (enableValidation)
-  {
-    devInfo.enabledLayerCount = 1;
-    devInfo.ppEnabledLayerNames = &validationLayer;
-  }
-  else
-  {
-    devInfo.enabledLayerCount = 0;
-    devInfo.ppEnabledLayerNames = nullptr;
-  }
-  #else
-  devInfo.enabledLayerCount = 0;
-  devInfo.ppEnabledLayerNames = nullptr;
-  #endif
-
-  res = vkCreateDevice(mVkPhysicalDevice, &devInfo, nullptr, &mVkDevice);
-  if (res != VK_SUCCESS)
-  {
-    DestroyVulkanContext();
-    return false;
-  }
-
-  vkGetDeviceQueue(mVkDevice, mVkQueueFamily, 0, &mPresentQueue);
+  mVkInstance = snapshot.instance;
+  mVkPhysicalDevice = snapshot.physicalDevice;
+  mVkDevice = snapshot.device;
+  mVkSurface = snapshot.surface;
+  mPresentQueue = snapshot.presentQueue;
+  mVkQueueFamily = snapshot.queueFamily;
 
   VkSurfaceCapabilitiesKHR caps{};
   res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(mVkPhysicalDevice, mVkSurface, &caps);
   if (res != VK_SUCCESS)
   {
+    DBGMSG("{\"event\":\"CreateVulkanContext\",\"stage\":\"vkGetPhysicalDeviceSurfaceCapabilitiesKHR\",\"severity\":\"error\",\"vkResult\":%d}\n", res);
     DestroyVulkanContext();
     return false;
   }
@@ -1239,6 +1073,7 @@ bool IGraphicsWin::CreateVulkanContext()
   res = CreateOrResizeVulkanSwapchain(caps.currentExtent.width, caps.currentExtent.height, mVkSwapchain.handle, mVkSwapchainImages, mVkFormat, mVkSwapchainUsageFlags, submissionPending);
   if (res != VK_SUCCESS)
   {
+    DBGMSG("{\"event\":\"CreateVulkanContext\",\"stage\":\"createOrResizeSwapchain\",\"severity\":\"error\",\"vkResult\":%d}\n", res);
     DestroyVulkanContext();
     return false;
   }
@@ -1248,6 +1083,7 @@ bool IGraphicsWin::CreateVulkanContext()
   res = vkCreateSemaphore(mVkDevice, &semInfo, nullptr, &mImageAvailableSemaphore.handle);
   if (res != VK_SUCCESS)
   {
+    DBGMSG("{\"event\":\"CreateVulkanContext\",\"stage\":\"vkCreateSemaphore\",\"semaphore\":\"imageAvailable\",\"severity\":\"error\",\"vkResult\":%d}\n", res);
     DestroyVulkanContext();
     return false;
   }
@@ -1255,6 +1091,7 @@ bool IGraphicsWin::CreateVulkanContext()
   res = vkCreateSemaphore(mVkDevice, &semInfo, nullptr, &mRenderFinishedSemaphore.handle);
   if (res != VK_SUCCESS)
   {
+    DBGMSG("{\"event\":\"CreateVulkanContext\",\"stage\":\"vkCreateSemaphore\",\"semaphore\":\"renderFinished\",\"severity\":\"error\",\"vkResult\":%d}\n", res);
     DestroyVulkanContext();
     return false;
   }
@@ -1265,6 +1102,7 @@ bool IGraphicsWin::CreateVulkanContext()
   res = vkCreateFence(mVkDevice, &fenceInfo, nullptr, &mInFlightFence.handle);
   if (res != VK_SUCCESS)
   {
+    DBGMSG("{\"event\":\"CreateVulkanContext\",\"stage\":\"vkCreateFence\",\"severity\":\"error\",\"vkResult\":%d}\n", res);
     DestroyVulkanContext();
     return false;
   }
@@ -1284,21 +1122,17 @@ void IGraphicsWin::DestroyVulkanContext()
   mVkSwapchain.device = mVkDevice;
   mVkSwapchainImages.clear();
   mVkFormat = VK_FORMAT_B8G8R8A8_UNORM;
-  if (mVkSurface)
-  {
-    vkDestroySurfaceKHR(mVkInstance, mVkSurface, nullptr);
-    mVkSurface = VK_NULL_HANDLE;
-  }
-  if (mVkDevice)
-  {
-    vkDestroyDevice(mVkDevice, nullptr);
-    mVkDevice = VK_NULL_HANDLE;
-  }
-  if (mVkInstance)
-  {
-    vkDestroyInstance(mVkInstance, nullptr);
-    mVkInstance = VK_NULL_HANDLE;
-  }
+  mVkSwapchainUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+  mVulkanDeviceCoordinator.Teardown();
+
+  mVkInstance = VK_NULL_HANDLE;
+  mVkPhysicalDevice = VK_NULL_HANDLE;
+  mVkDevice = VK_NULL_HANDLE;
+  mVkSurface = VK_NULL_HANDLE;
+  mPresentQueue = VK_NULL_HANDLE;
+  mVkQueueFamily = 0;
+  mVkSwapchain.device = VK_NULL_HANDLE;
 }
 
 bool IGraphicsWin::RecreateVulkanContext()

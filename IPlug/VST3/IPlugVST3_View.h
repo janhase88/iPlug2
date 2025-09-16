@@ -29,6 +29,9 @@ public:
   
   ~IPlugVST3View()
   {
+    if (mOwner.HasUI())
+      mOwner.CloseWindow();
+
     mOwner.release();
   }
   

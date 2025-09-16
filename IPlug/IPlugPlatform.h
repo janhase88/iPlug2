@@ -17,6 +17,12 @@
 
 #ifdef _WIN32
   #define OS_WIN
+  #if !defined(UNICODE)
+    #define UNICODE
+  #endif
+  #if !defined(_UNICODE)
+    #define _UNICODE
+  #endif
 #elif defined __APPLE__
   #include <TargetConditionals.h>
   #if TARGET_OS_IPHONE

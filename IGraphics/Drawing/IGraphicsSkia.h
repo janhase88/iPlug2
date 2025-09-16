@@ -20,9 +20,6 @@
   #if defined(OS_WIN) && !defined(VK_USE_PLATFORM_WIN32_KHR)
     #define VK_USE_PLATFORM_WIN32_KHR
   #endif
-  #if defined(OS_WIN) && !defined(NOGDI)
-    #define NOGDI // prevent <windows.h> from defining LOGFONT
-  #endif
   #include <vulkan/vulkan.h>
 
 struct VkSwapchainHolder

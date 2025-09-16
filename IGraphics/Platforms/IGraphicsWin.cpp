@@ -121,7 +121,9 @@ void IGraphicsWin::UpdateTextEntryBounds()
     scaledBounds.PixelAlign();
 
     POINT screenPos = {static_cast<int>(scaledBounds.L), static_cast<int>(scaledBounds.T)};
+    
     ::ClientToScreen(mPlugWnd, &screenPos);
+
 
     const int width = static_cast<int>(scaledBounds.W()) + 1;
     const int height = static_cast<int>(scaledBounds.H()) + 1;
@@ -677,6 +679,7 @@ LRESULT CALLBACK IGraphicsWin::ParamEditProc(HWND hWnd, UINT msg, WPARAM wParam,
     HWND parent = GetParent(hWnd);
     if (!parent)
       parent = ::GetWindow(hWnd, GW_OWNER);
+
 
     if (parent)
       pGraphics = (IGraphicsWin*)GetWindowLongPtrW(parent, GWLP_USERDATA);
@@ -2123,7 +2126,9 @@ void IGraphicsWin::CreatePlatformTextEntry(int paramIdx, const IText& text, cons
 
 #if defined IGRAPHICS_VULKAN
   POINT screenPos = {left, top};
+  
   ::ClientToScreen(mPlugWnd, &screenPos);
+
   HWND owner = GetMainWnd();
   if (!owner)
     owner = mPlugWnd;

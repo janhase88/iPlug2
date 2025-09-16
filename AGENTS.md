@@ -100,6 +100,44 @@ Edit mode exit conditions
 
 ---
 
+### /save-plan
+Persist the current plan to the repo (and optionally export curcialInfo and open a PR).
+
+Usage
+- Minimal: /save-plan path:docs/plans/windows-skia-vulkan.plan.xml
+- With artifacts + PR:
+  /save-plan path:docs/plans/windows-skia-vulkan.plan.xml artifacts:both curcialinfo_path:docs/plans/windows-skia-vulkan.curcialinfo.xml format:xml commit:true branch:plan/windows-skia-vulkan pr:true pr_title:"chore(plan): add Windows Skia–Vulkan plan" pr_body:"Initial plan + curcialInfo export"
+
+Agent behavior
+1. Require a current plan; if none, ask for /new-plan first.
+2. Write the plan exactly as stored (XML). Create parent folders as needed.
+3. If artifacts:curcialinfo or artifacts:both → export every <curcialInfo> node into a single file:
+   - Default filename: <plan path basename>.curcialinfo.xml if curcialinfo_path is not provided.
+   - XML structure:
+     <curcialInfoBundle>
+       <item task="t1_name"><![CDATA[...]]></item>
+       ...
+     </curcialInfoBundle>
+   - Note: tag is spelled “curcial”, not “crucial”.
+4. If commit:true and git is available:
+   - Create or switch to branch (default branch: plan/<kebab-goal> if branch not provided).
+   - git add written files → git commit -m "<message or default>"
+5. If pr:true:
+   - Push branch to origin and open a pull request.
+   - PR title/body from pr_title/pr_body or sensible defaults.
+6. Append the saved paths, branch name, and PR URL (if created) into a top-level audit note in the plan’s first <curcialInfo> block.
+
+Options
+- path:<file>                — where to save the plan (required)
+- artifacts:none|curcialinfo|both (default:none)
+- curcialinfo_path:<file>    — explicit output path for curcialinfo export
+- format:xml|md              — format for plan file (default:xml)
+- commit:true|false          — commit the files (default:false)
+- branch:<name>              — git branch to use/create
+- message:"…"                — commit message (default: chore(plan): update plan)
+- pr:true|false              — open a PR (default:false)
+- pr_title:"…" / pr_body:"…" — PR metadata
+
 ### /set-style
 Define or update the coding style for the current plan. The style is stored inside the plan at <codingStyle> and influences how tasks are created and executed.
 

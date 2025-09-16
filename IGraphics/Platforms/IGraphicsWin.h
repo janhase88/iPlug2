@@ -17,7 +17,21 @@
 #include <winuser.h>
 
 #include "IGraphicsWinFonts.h"
+
+#if defined(OS_WIN) && defined(IGRAPHICS_SKIA)
+  // Skia's SkTypeface_win.h unconditionally typedefs LOGFONT, which clashes with the
+  // definition provided by the Windows headers. Rename the symbol while Skia headers
+  // are included to avoid the redefinition.
+  #define LOGFONT IGRAPHICS_SKIA_WIN_LOGFONT
+  #define IGRAPHICS_REMAP_LOGFONT
+#endif
+
 #include "IGraphics_select.h"
+
+#ifdef IGRAPHICS_REMAP_LOGFONT
+  #undef LOGFONT
+  #undef IGRAPHICS_REMAP_LOGFONT
+#endif
 #include <string>
 #include <vector>
 

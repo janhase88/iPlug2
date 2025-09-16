@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include "IPlugPlatform.h"
+
 #include <windows.h>
 #include <windowsx.h>
 #include <winuser.h>

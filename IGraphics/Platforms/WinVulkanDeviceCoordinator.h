@@ -12,7 +12,7 @@
 #include <cstring>
 #include <vector>
 
-#include "IPlugNamespace.h"
+#include "IPlugPlatform.h"
 #include "IPlug/IPlugLogger.h"
 #include "VulkanLogging.h"
 

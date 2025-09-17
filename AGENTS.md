@@ -38,7 +38,7 @@
 If an echo can’t be fully computed, emit a minimal echo with the reason. If omitted, send it immediately in a follow-up before any further work.
 
 ## Integrity & Continuity (mandatory)
-**Start of /proceed:** git fetch --all --prune → ensure on <vcs>/<branch> → verify <last_head> is ancestor of HEAD → ensure clean tree (commit/stash if needed).  
+**Start of /proceed:** git fetch --all --prune → ensure on <vcs>/<branch> → verify <last_head> is ancestor of HEAD → ensure clean tree (commit/stash if needed).
 **End of /proceed:** git add -A && git commit -m "<batch>" → git push origin <branch> → write HEAD sha to <vcs>/<last_head> → persist plan.
 
 ## Decomposition (short rules)
@@ -50,7 +50,7 @@ If an echo can’t be fully computed, emit a minimal echo with the reason. If om
 - Single plan → single branch. Reuse the same sandbox; do not re-init or squash by default. One PR per branch, only via /open-pr.
 
 ## Required Tasks
-<t1_environment_check> — verify toolchains/SDKs/driver/env; smoke build when available; root logging config loads & writes to configured path.  
+<t1_environment_check> — verify toolchains/SDKs/driver/env; smoke build when available; root logging config loads & writes to configured path.
 <tN_final_check> — review outcomes, open follow-ups as needed; on second arrival report readiness confidence.
 
 ## Timebox

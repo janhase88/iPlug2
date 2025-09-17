@@ -21,6 +21,7 @@
     #define VK_USE_PLATFORM_WIN32_KHR
   #endif
   #include <vulkan/vulkan.h>
+  #include "include/gpu/vk/GrVkTypes.h"
 
 struct VkSwapchainHolder
 {

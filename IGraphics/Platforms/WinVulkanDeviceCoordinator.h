@@ -12,8 +12,8 @@
 #include <cstring>
 #include <vector>
 
-#include "IPlugNamespace.h"
-#include "IPlug/IPlugLogger.h"
+#include "IPlugPlatform.h"
+#include "IPlugLogger.h"
 #include "VulkanLogging.h"
 
 BEGIN_IPLUG_NAMESPACE

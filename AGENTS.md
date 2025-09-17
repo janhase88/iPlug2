@@ -1,4 +1,4 @@
-# Agents.md — Minimal Plan Protocol
+# Agents.md — Plan Protocol
 
 ## Principles (always on)
 - SOTA quality; SSOT; SoC; DRY; TDD bias; fail-fast; structured telemetry; deterministic builds.

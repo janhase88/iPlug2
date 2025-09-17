@@ -1,4 +1,3 @@
-```
 # Agents.md — Plan Protocol
 
 ## Principles (always on)
@@ -7,16 +6,16 @@
 - If build/SDK tools are missing, do not block: operate in Code-Only Mode and deliver the best possible code changes.
 
 ## Commands
-- /new-plan — Create/overwrite the plan in the workspace (no plan echo). Always add an environment check first and a final check last. Persist immediately to plan_path; set/keep the working branch; reply with a short confirmation (path + branch).
-- /proceed — Execute next safe leaf tasks. If confidence < 0.90 or heuristics trigger, split first; parent waits. Batch work, update statuses/<curcialInfo>/<tryCount>, persist, and reply with a brief summary (not the full plan).
-- /revise — Restructure the plan (split/merge/rename/reorder; add acceptance/PROOF gates); keep history; persist.
-- /edit-plan — Conversationally evolve the plan (no execution); apply edits; persist after each change.
-- /set-style — Update <codingStyle> (tests/CI/perf/security posture, decomposition knobs, plan_path, auto_save, branch_name/lock, module logging map). Style can tighten rules but not disable Principles. If logging_config_path is omitted, use the repo’s language-standard root config.
-- /save-plan — Persist plan (and optional curcialInfo bundle) to repo; commit/PR only if policy allows (see PR & Commit Policy).
-- /checkpoint — Create a local commit in the sandbox; by policy it also pushes (see PR & Commit Policy). Options: message:"…", allow_empty:true|false (default:false).
-- /open-pr — Open or update one PR from the working branch to <vcs>/<base>. Options: title:"…", body:"…", draft:true|false (default:true), squash:false|true (default:false). Use only when you want the PR.
-- /delete-plan — Remove plan (and style).
-- /ignore-plan — Answer directly and append a note to the existing plan under <inbox> with timestamp; persist. Use “/ignore-plan no-log” to skip capture.
+- /new-plan — Create/overwrite the plan in the workspace (no plan echo). Always add an environment check first and a final check last. Persist immediately to plan_path; set/keep the working branch; reply with a short confirmation (path + branch) plus a **Pre-Proceed Confidence Echo**.
+- /proceed — Execute next safe leaf tasks. If confidence < 0.90 or heuristics trigger, split first; parent waits. Batch work, update statuses/<curcialInfo>/<tryCount>, persist, and reply with a **Post-Proceed Confidence Echo** (not the full plan).
+- /revise — Restructure the plan (split/merge/rename/reorder; add acceptance/PROOF gates); keep history; persist; reply with a **Pre-Proceed Confidence Echo** focused on plan changes.
+- /edit-plan — Conversationally evolve the plan (no execution); apply edits; persist after each change; reply with a **Pre-Proceed Confidence Echo**.
+- /set-style — Update <codingStyle> (tests/CI/perf/security posture, decomposition knobs, plan_path, auto_save, branch_name/lock, module logging map). Style can tighten rules but not disable Principles. If logging_config_path is omitted, use the repo’s language-standard root config. Reply with a **Pre-Proceed Confidence Echo**.
+- /save-plan — Persist plan (and optional curcialInfo bundle) to repo; commit/PR only if policy allows (see PR & Commit Policy). Reply with a **Pre-Proceed Confidence Echo**.
+- /checkpoint — Create a local commit in the sandbox; by policy it also pushes (see PR & Commit Policy). Options: message:"…", allow_empty:true|false (default:false). Reply with a **Post-Proceed Confidence Echo**.
+- /open-pr — Open or update one PR from the working branch to <vcs>/<base>. Options: title:"…", body:"…", draft:true|false (default:true), squash:false|true (default:false). Reply with a **Pre-Proceed Confidence Echo** (PR status).
+- /delete-plan — Remove plan (and style). Reply with a short confirmation.
+- /ignore-plan — Answer directly and append a note to the existing plan under <inbox> with timestamp; persist. Reply with a **Pre-Proceed Confidence Echo** summarizing the note capture.
 
 ## PR & Commit Policy (defaults)
 - pr_mode: hold            → never open PRs during /proceed; only via /open-pr
@@ -28,17 +27,41 @@
 
 ## Start-of-Run Integrity Check (mandatory)
 At the beginning of every /proceed:
-1) git fetch --all --prune  
-2) Ensure branch equals <vcs>/<branch>; if not, git checkout -B <branch> origin/<branch> (or create if missing).  
-3) Verify <vcs>/<last_head> is an ancestor of HEAD (git merge-base --is-ancestor). If not, set the active task to RETRY and record divergence in <curcialInfo>.  
+1) git fetch --all --prune
+2) Ensure branch equals <vcs>/<branch>; if not, git checkout -B <branch> origin/<branch> (or create if missing).
+3) Verify <vcs>/<last_head> is an ancestor of HEAD (git merge-base --is-ancestor). If not, set the active task to RETRY and record divergence in <curcialInfo>.
 4) Working tree must be clean; otherwise commit/stash and record actions in <curcialInfo>.
 
 ## End-of-Run Continuity (mandatory)
 After each batch inside /proceed:
-1) git add -A && git commit -m "<concise batch message>"  
-2) git push --no-verify --follow-tags origin <branch>  
-3) Write HEAD sha to <vcs>/<last_head> and persist the plan (auto if auto_save:true).  
+1) git add -A && git commit -m "<concise batch message>"
+2) git push --no-verify --follow-tags origin <branch>
+3) Write HEAD sha to <vcs>/<last_head> and persist the plan (auto if auto_save:true).
 PRs are never opened here; only via /open-pr.
+
+## Operator Confidence Echo (required summaries in chat)
+**Echoes appear in chat, not inside the plan.** They are concise (≤ 15 bullets) and prove continuity across workers so the operator knows prior commits are preserved.
+
+### Pre-Proceed Confidence Echo (after any command except /proceed)
+- Branch: <vcs>/<branch>; Local HEAD: <sha>; Remote HEAD: <remote/branch sha>; Plan last_head: <sha> (ancestor: yes/no)
+- Workspace: clean/dirty; unpushed commits: N (should be 0)
+- Plan status: total tasks M; transitions since last proceed; first UNFINISHED/OPEN: <task>
+- Plan edits this turn (if any): added/updated/removed tasks, codingStyle changes
+- Environment mode: Code-Only or Full Build; logging config path (if set)
+- Next ready leaf: <task name> with 1–3 concrete next steps
+- PR status: none | existing PR #id (updated) | ready-to-open suggestion
+- Confidence to proceed: high/medium/low (reason)
+
+### Post-Proceed Confidence Echo (after /proceed or /checkpoint)
+- Lineage: <previous <last_head>…> → <new HEAD>; commits this batch: N
+- Files changed: X (+A/−D); top files (up to 10): path (+a/−d)
+- Task results this batch: {OPEN→SUCCESS:x, OPEN→RETRY:y, …}; any new UNFINISHED with <continue-info>
+- Integrity check: pass/fail (rebases/stashes/conflicts noted)
+- Tests: run/skip summary (Code-Only if tools missing)
+- Timeboxed: yes/no; if yes, which task marked UNFINISHED
+- PR status: none | existing PR #id (updated) | ready-to-open suggestion
+- Next steps: the concrete next leaf and 1–3 actions
+- Confidence going forward: high/medium/low (reason)
 
 ## Schema (authoritative)
 - <plan> → <Goal> | <context>? | <codingStyle>? | <vcs>? | <inbox>? | <task>+
@@ -91,10 +114,9 @@ PRs are never opened here; only via /open-pr.
 - On timebox hit:
   - Mark the active leaf UNFINISHED.
   - Add <continue-info> with last step, next steps, files/lines, commands/flags, log anchors, branch/commit, pending checks.
-  - Persist to plan_path; run /checkpoint message:"timebox: tX …"; reply with a brief summary.
+  - Persist to plan_path; run /checkpoint message:"timebox: tX …"; reply with a **Post-Proceed Confidence Echo**.
 - Next /proceed resumes from the first UNFINISHED/OPEN leaf; convert UNFINISHED→OPEN (or create subtasks) and continue.
 
 ## Reporting & Persistence
 - Keep a live plan. /new-plan always writes to plan_path (create/overwrite). /proceed, /revise, and /edit-plan persist after each mutation.
-- Responses are concise; the plan file is the source of truth for resume and auditing.
-```
+- Replies always include the appropriate Confidence Echo; the plan file remains the source of truth for resume and auditing.

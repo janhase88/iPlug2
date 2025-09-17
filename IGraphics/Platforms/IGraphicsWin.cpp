@@ -1191,7 +1191,7 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
                       vulkanlog::Severity::kInfo,
                       {vulkanlog::MakeField("width", static_cast<uint32_t>(width)),
                        vulkanlog::MakeField("height", static_cast<uint32_t>(height)),
-                       vulkanlog::MakeHandleField("previousSwapchain", static_cast<uint64_t>(reinterpret_cast<uintptr_t>(mVkSwapchain.handle)))});
+                       vulkanlog::MakeHandleField("previousSwapchain", vulkanlog::HandleToUint64(reinterpret_cast<uintptr_t>(mVkSwapchain.handle)))});
   if (!mVkDevice || !mVkPhysicalDevice || !mVkSurface)
     return VK_ERROR_INITIALIZATION_FAILED;
 
@@ -1367,7 +1367,7 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
                        vulkanlog::MakeField("height", static_cast<uint32_t>(swapInfo.imageExtent.height)),
                        vulkanlog::MakeField("minImageCount", static_cast<uint32_t>(swapInfo.minImageCount)),
                        vulkanlog::MakeField("usage", static_cast<uint32_t>(swapInfo.imageUsage)),
-                       vulkanlog::MakeHandleField("oldSwapchain", static_cast<uint64_t>(reinterpret_cast<uintptr_t>(mVkSwapchain.handle)))});
+                       vulkanlog::MakeHandleField("oldSwapchain", vulkanlog::HandleToUint64(reinterpret_cast<uintptr_t>(mVkSwapchain.handle)))});
 
   res = vkCreateSwapchainKHR(mVkDevice, &swapInfo, nullptr, &mVkSwapchain.handle);
   if (res != VK_SUCCESS)
@@ -1407,7 +1407,7 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
   IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
                       "creationResult",
                       vulkanlog::Severity::kDebug,
-                      {vulkanlog::MakeHandleField("swapchain", static_cast<uint64_t>(reinterpret_cast<uintptr_t>(mVkSwapchain.handle))),
+                      {vulkanlog::MakeHandleField("swapchain", vulkanlog::HandleToUint64(reinterpret_cast<uintptr_t>(mVkSwapchain.handle))),
                        vulkanlog::MakeField("width", static_cast<uint32_t>(swapInfo.imageExtent.width)),
                        vulkanlog::MakeField("height", static_cast<uint32_t>(swapInfo.imageExtent.height)),
                        vulkanlog::MakeField("format", static_cast<int>(surfaceFormat.format)),
@@ -1419,7 +1419,7 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
                         "swapchainImage",
                         vulkanlog::Severity::kDebug,
                         {vulkanlog::MakeField("index", static_cast<uint32_t>(i)),
-                         vulkanlog::MakeHandleField("image", static_cast<uint64_t>(mVkSwapchainImages[i]))});
+                         vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(mVkSwapchainImages[i]))});
   }
 
   mVkFormat = surfaceFormat.format;

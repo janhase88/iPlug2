@@ -223,7 +223,7 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
   {
     IGRAPHICS_VK_LOG("EnsureSwapchainSurface", "validation", vulkanlog::Severity::kError,
                          {vulkanlog::MakeField("imageIndex", imageIndex),
-                          vulkanlog::MakeHandleField("image", static_cast<uint64_t>(imageInfo.fImage)),
+                          vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(imageInfo.fImage)),
                           vulkanlog::MakeField("width", width),
                           vulkanlog::MakeField("height", height)});
     return nullptr;
@@ -238,13 +238,13 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
   {
     IGRAPHICS_VK_LOG("EnsureSwapchainSurface", "WrapBackendRenderTarget", vulkanlog::Severity::kError,
                          {vulkanlog::MakeField("imageIndex", imageIndex),
-                          vulkanlog::MakeHandleField("image", static_cast<uint64_t>(imageInfo.fImage))});
+                          vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(imageInfo.fImage))});
     return nullptr;
   }
 
   IGRAPHICS_VK_LOG("EnsureSwapchainSurface", "created", vulkanlog::Severity::kDebug,
                        {vulkanlog::MakeField("imageIndex", imageIndex),
-                        vulkanlog::MakeHandleField("image", static_cast<uint64_t>(imageInfo.fImage)),
+                        vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(imageInfo.fImage)),
                         vulkanlog::MakeField("width", width),
                         vulkanlog::MakeField("height", height)});
   return cachedSurface;
@@ -804,7 +804,7 @@ bool IGraphicsSkia::AssertValidSwapchainImage(VkImage image, const char* context
     IGRAPHICS_VK_LOG("AssertValidSwapchainImage",
                         context ? context : "unknown",
                         vulkanlog::Severity::kError,
-                        {vulkanlog::MakeHandleField("image", static_cast<uint64_t>(image)),
+                        {vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(image)),
                          vulkanlog::MakeField("issue", "not_in_active_set"),
                          vulkanlog::MakeField("frameVersion", static_cast<uint64_t>(mVKFrameVersion)),
                          vulkanlog::MakeField("swapchainVersion", static_cast<uint64_t>(mVKSwapchainVersion))});
@@ -824,7 +824,7 @@ bool IGraphicsSkia::AssertValidSwapchainImage(VkImage image, const char* context
                             "activeSetEntry",
                             vulkanlog::Severity::kDebug,
                             {vulkanlog::MakeField("index", static_cast<uint64_t>(idx++)),
-                             vulkanlog::MakeHandleField("image", static_cast<uint64_t>(activeImage))});
+                             vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(activeImage))});
       }
     }
 
@@ -840,7 +840,7 @@ bool IGraphicsSkia::AssertValidSwapchainImage(VkImage image, const char* context
                             "swapchainImageEntry",
                             vulkanlog::Severity::kDebug,
                             {vulkanlog::MakeField("index", static_cast<uint64_t>(i)),
-                             vulkanlog::MakeHandleField("image", static_cast<uint64_t>(mVKSwapchainImages[i])),
+                             vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(mVKSwapchainImages[i])),
                              vulkanlog::MakeField("layout", (i < mVKImageLayouts.size()) ? static_cast<int>(mVKImageLayouts[i]) : -1)});
       }
     }
@@ -1022,7 +1022,7 @@ void IGraphicsSkia::DrawResize()
                             "swapchainImage",
                             vulkanlog::Severity::kDebug,
                             {vulkanlog::MakeField("imageIndex", static_cast<uint64_t>(i)),
-                             vulkanlog::MakeHandleField("image", static_cast<uint64_t>(img))});
+                             vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(img))});
         if (setName)
         {
           char name[64];
@@ -1167,7 +1167,7 @@ void IGraphicsSkia::BeginFrame()
     IGRAPHICS_VK_LOG("BeginFrame",
                         "swapchainUnavailable",
                         vulkanlog::Severity::kInfo,
-                        {vulkanlog::MakeHandleField("swapchain", static_cast<uint64_t>(mVKSwapchain)),
+                        {vulkanlog::MakeHandleField("swapchain", vulkanlog::HandleToUint64(mVKSwapchain)),
                          vulkanlog::MakeField("imageCount", static_cast<uint64_t>(mVKSwapchainImages.size()))});
       mVKSkipFrame = true;
       mVKCurrentImage = kInvalidImageIndex;
@@ -1224,7 +1224,7 @@ void IGraphicsSkia::BeginFrame()
                           vulkanlog::Severity::kDebug,
                           {vulkanlog::MakeField("imageIndex", idx),
                            vulkanlog::MakeField("present", present),
-                           vulkanlog::MakeHandleField("image", static_cast<uint64_t>(releaseHandle)),
+                           vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(releaseHandle)),
                            vulkanlog::MakeField("trackedLayout", static_cast<int>(tracked)),
                            vulkanlog::MakeField("frameVersion", static_cast<uint64_t>(mVKFrameVersion)),
                            vulkanlog::MakeField("swapchainVersion", static_cast<uint64_t>(mVKSwapchainVersion))});
@@ -1246,7 +1246,7 @@ void IGraphicsSkia::BeginFrame()
                             vulkanlog::Severity::kError,
                             {vulkanlog::MakeField("vkResult", static_cast<int>(submitRes)),
                              vulkanlog::MakeField("imageIndex", idx),
-                             vulkanlog::MakeHandleField("image", static_cast<uint64_t>(releaseHandle))});
+                             vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(releaseHandle))});
         mVKSubmissionPending = false;
         mVKSkipFrame = true;
         mScreenSurface.reset();
@@ -1268,7 +1268,7 @@ void IGraphicsSkia::BeginFrame()
                             vulkanlog::Severity::kDebug,
                             {vulkanlog::MakeField("vkResult", static_cast<int>(presentRes)),
                              vulkanlog::MakeField("imageIndex", idx),
-                             vulkanlog::MakeHandleField("image", static_cast<uint64_t>(releaseHandle))});
+                             vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(releaseHandle))});
         if (presentRes == VK_ERROR_OUT_OF_DATE_KHR || presentRes == VK_SUBOPTIMAL_KHR)
         {
           IGRAPHICS_VK_LOG("BeginFrame",
@@ -1304,7 +1304,7 @@ void IGraphicsSkia::BeginFrame()
                             "releaseImageSkippedSubmit",
                             vulkanlog::Severity::kDebug,
                             {vulkanlog::MakeField("imageIndex", idx),
-                             vulkanlog::MakeHandleField("image", static_cast<uint64_t>(releaseHandle)),
+                             vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(releaseHandle)),
                              vulkanlog::MakeField("layout", static_cast<int>(tracked))});
       }
       mVKSubmissionPending = true;
@@ -1346,7 +1346,7 @@ void IGraphicsSkia::BeginFrame()
                         "acquiredImage",
                         vulkanlog::Severity::kDebug,
                         {vulkanlog::MakeField("imageIndex", imageIndex),
-                         vulkanlog::MakeHandleField("image", static_cast<uint64_t>(acquiredImage)),
+                         vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(acquiredImage)),
                          vulkanlog::MakeField("layout", static_cast<int>(acquiredLayout)),
                          vulkanlog::MakeField("frameVersion", static_cast<uint64_t>(mVKFrameVersion)),
                          vulkanlog::MakeField("swapchainVersion", static_cast<uint64_t>(mVKSwapchainVersion))});
@@ -1443,7 +1443,7 @@ void IGraphicsSkia::BeginFrame()
                         "imageBarrier",
                         vulkanlog::Severity::kDebug,
                         {vulkanlog::MakeField("imageIndex", imageIndex),
-                         vulkanlog::MakeHandleField("image", static_cast<uint64_t>(barrier.image)),
+                         vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(barrier.image)),
                          vulkanlog::MakeField("oldLayout", static_cast<int>(barrier.oldLayout)),
                          vulkanlog::MakeField("newLayout", static_cast<int>(barrier.newLayout)),
                          vulkanlog::MakeField("frameVersion", static_cast<uint64_t>(mVKFrameVersion)),
@@ -1486,7 +1486,7 @@ void IGraphicsSkia::BeginFrame()
                         "imageLayoutUpdated",
                         vulkanlog::Severity::kDebug,
                         {vulkanlog::MakeField("imageIndex", imageIndex),
-                         vulkanlog::MakeHandleField("image", static_cast<uint64_t>(mVKSwapchainImages[imageIndex])),
+                         vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(mVKSwapchainImages[imageIndex])),
                          vulkanlog::MakeField("layout", static_cast<int>(mVKImageLayouts[imageIndex]))});
 
     GrVkImageInfo imageInfo{};
@@ -1502,7 +1502,7 @@ void IGraphicsSkia::BeginFrame()
     IGRAPHICS_VK_LOG("BeginFrame",
                         "wrapImage",
                         vulkanlog::Severity::kDebug,
-                        {vulkanlog::MakeHandleField("image", static_cast<uint64_t>(imageInfo.fImage)),
+                        {vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(imageInfo.fImage)),
                          vulkanlog::MakeField("format", static_cast<int>(imageInfo.fFormat)),
                          vulkanlog::MakeField("usage", static_cast<uint32_t>(imageInfo.fImageUsageFlags)),
                          vulkanlog::MakeField("layout", static_cast<int>(imageInfo.fImageLayout)),
@@ -1524,7 +1524,7 @@ void IGraphicsSkia::BeginFrame()
                         "readyToDraw",
                         vulkanlog::Severity::kDebug,
                         {vulkanlog::MakeField("imageIndex", mVKCurrentImage),
-                         vulkanlog::MakeHandleField("image", static_cast<uint64_t>(mVKSwapchainImages[mVKCurrentImage]))});
+                         vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(mVKSwapchainImages[mVKCurrentImage]))});
   }
 #endif
 
@@ -1713,7 +1713,7 @@ void IGraphicsSkia::EndFrame()
                       "imageBarrier",
                       vulkanlog::Severity::kDebug,
                       {vulkanlog::MakeField("imageIndex", static_cast<uint32_t>(mVKCurrentImage)),
-                       vulkanlog::MakeHandleField("image", static_cast<uint64_t>(barrier.image)),
+                       vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(barrier.image)),
                        vulkanlog::MakeField("oldLayout", static_cast<int>(barrier.oldLayout)),
                        vulkanlog::MakeField("newLayout", static_cast<int>(barrier.newLayout)),
                        vulkanlog::MakeField("trackedLayout", static_cast<int>(trackedLayout)),
@@ -1741,7 +1741,7 @@ void IGraphicsSkia::EndFrame()
                       "layoutUpdated",
                       vulkanlog::Severity::kDebug,
                       {vulkanlog::MakeField("imageIndex", static_cast<uint32_t>(mVKCurrentImage)),
-                       vulkanlog::MakeHandleField("image", static_cast<uint64_t>(swapImage)),
+                       vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(swapImage)),
                        vulkanlog::MakeField("layout", static_cast<int>(mVKImageLayouts[mVKCurrentImage])),
                        vulkanlog::MakeField("previousPending", previousPending),
                        vulkanlog::MakeField("newPending", newPending)});
@@ -1774,7 +1774,7 @@ void IGraphicsSkia::EndFrame()
                       vulkanlog::Severity::kDebug,
                       {vulkanlog::MakeField("vkResult", static_cast<int>(res)),
                        vulkanlog::MakeField("imageIndex", static_cast<uint32_t>(mVKCurrentImage)),
-                       vulkanlog::MakeHandleField("image", static_cast<uint64_t>(swapImage))});
+                       vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(swapImage))});
   if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
   {
     vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);

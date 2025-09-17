@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <initializer_list>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 #include "IPlugLogger.h"
@@ -247,9 +248,23 @@ inline Field MakeHexField(const char* key, uint64_t value)
   return Field(key, std::string(buffer), true);
 }
 
+template <typename Integral,
+          typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0>
+inline uint64_t HandleToUint64(Integral value)
+{
+  return static_cast<uint64_t>(value);
+}
+
+template <typename Pointer,
+          typename std::enable_if<std::is_pointer<Pointer>::value, int>::type = 0>
+inline uint64_t HandleToUint64(Pointer value)
+{
+  return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(value));
+}
+
 inline Field MakeHandleField(const char* key, const void* value)
 {
-  return MakeHexField(key, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(value)));
+  return MakeHexField(key, HandleToUint64(value));
 }
 
 inline Field MakeHandleField(const char* key, uint64_t value)

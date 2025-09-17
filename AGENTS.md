@@ -1,56 +1,100 @@
+```
 # Agents.md — Plan Protocol
 
 ## Principles (always on)
 - SOTA quality; SSOT; SoC; DRY; TDD bias; fail-fast; structured telemetry; deterministic builds.
-- Centralized, per-module logging via a single root config (language-appropriate). That config defines module levels and log sinks/paths. All code logs through the central logger; no inline constants.
+- Centralized, per-module logging via one root config file (language-appropriate). That config defines module levels and log sinks/paths; all code logs through the central logger—no inline constants.
+- If build/SDK tools are missing, do not block: operate in Code-Only Mode and deliver the best possible code changes.
 
 ## Commands
-- /new-plan — Create/overwrite the plan **in the workspace** (no plan echo). Always add an environment check as the first task and a final check as the last. Persist immediately to plan_path, set/keep the working branch, then return a short confirmation (path + branch).
-- /proceed — **Execute next safe leaf tasks**. If confidence < 0.90 or heuristics trigger, first split into subtasks; parent waits (AWAIT-CHILDREN-TASK-SUCCESS). Batch work, update statuses/curcialInfo/tryCount, persist the plan, and reply with a brief summary (not the full plan).
+- /new-plan — Create/overwrite the plan in the workspace (no plan echo). Always add an environment check first and a final check last. Persist immediately to plan_path; set/keep the working branch; reply with a short confirmation (path + branch).
+- /proceed — Execute next safe leaf tasks. If confidence < 0.90 or heuristics trigger, split first; parent waits. Batch work, update statuses/<curcialInfo>/<tryCount>, persist, and reply with a brief summary (not the full plan).
 - /revise — Restructure the plan (split/merge/rename/reorder; add acceptance/PROOF gates); keep history; persist.
 - /edit-plan — Conversationally evolve the plan (no execution); apply edits; persist after each change.
-- /set-style — Update <codingStyle> (tests/CI/perf/security posture, decomposition knobs, plan_path, auto_save, branch_name/lock, module logging map). Style can tighten rules but may not disable principles. If logging_config_path is omitted, use the repo’s language-standard root config.
-- /save-plan — Persist plan (and optional curcialInfo bundle) to repo; commit/PR if requested.
+- /set-style — Update <codingStyle> (tests/CI/perf/security posture, decomposition knobs, plan_path, auto_save, branch_name/lock, module logging map). Style can tighten rules but not disable Principles. If logging_config_path is omitted, use the repo’s language-standard root config.
+- /save-plan — Persist plan (and optional curcialInfo bundle) to repo; commit/PR only if policy allows (see PR & Commit Policy).
+- /checkpoint — Create a local commit in the sandbox; by policy it also pushes (see PR & Commit Policy). Options: message:"…", allow_empty:true|false (default:false).
+- /open-pr — Open or update one PR from the working branch to <vcs>/<base>. Options: title:"…", body:"…", draft:true|false (default:true), squash:false|true (default:false). Use only when you want the PR.
 - /delete-plan — Remove plan (and style).
-- /ignore-plan — Answer directly; no plan changes.
+- /ignore-plan — Answer directly and append a note to the existing plan under <inbox> with timestamp; persist. Use “/ignore-plan no-log” to skip capture.
+
+## PR & Commit Policy (defaults)
+- pr_mode: hold            → never open PRs during /proceed; only via /open-pr
+- commit_policy: checkpoint-local+push  → after each /proceed batch, make a local commit then push
+- checkpoint_cadence: per-proceed
+- remote: origin
+- push_remote: true
+- squash_commits: false
+
+## Start-of-Run Integrity Check (mandatory)
+At the beginning of every /proceed:
+1) git fetch --all --prune  
+2) Ensure branch equals <vcs>/<branch>; if not, git checkout -B <branch> origin/<branch> (or create if missing).  
+3) Verify <vcs>/<last_head> is an ancestor of HEAD (git merge-base --is-ancestor). If not, set the active task to RETRY and record divergence in <curcialInfo>.  
+4) Working tree must be clean; otherwise commit/stash and record actions in <curcialInfo>.
+
+## End-of-Run Continuity (mandatory)
+After each batch inside /proceed:
+1) git add -A && git commit -m "<concise batch message>"  
+2) git push --no-verify --follow-tags origin <branch>  
+3) Write HEAD sha to <vcs>/<last_head> and persist the plan (auto if auto_save:true).  
+PRs are never opened here; only via /open-pr.
 
 ## Schema (authoritative)
-- <plan> → <Goal> | <context>? | <codingStyle>? | <vcs>? | <task>+
-- <task> → <name> | <status> | <tryCount> | <curcialInfo> | <tasks>?
-- Status: OPEN | RETRY | AWAIT-CHILDREN-TASK-SUCCESS | PROOF | SUCCESS
-- Note: tag name is <curcialInfo> (intentional).
+- <plan> → <Goal> | <context>? | <codingStyle>? | <vcs>? | <inbox>? | <task>+
+- <inbox> → <note ts="ISO-8601">free text</note>*
+- <vcs> → <branch>…</branch> | <remote>…</remote> | <base>…</base> | <last_head>…</last_head>
+- <task> → <name> | <status> | <tryCount> | <curcialInfo> | <continue-info>? | <tasks>?
+- Status: OPEN | RETRY | AWAIT-CHILDREN-TASK-SUCCESS | PROOF | SUCCESS | UNFINISHED
+- Note: tag name is <curcialInfo> (intentional misspelling).
 
-## Decomposition (short rules)
-- Single-shot confidence threshold: 0.90. If below, split into subtasks before execution.
-- Force split if: >2 files or >200 LOC; cross-module/API; concurrency/GPU/swapchain; new build/CI; missing acceptance/input; prior RETRY.
-- Subtasks are first-class; parent waits. Limit nesting to 2 unless still below threshold.
+## Task Decomposition (short rules)
+- Single-shot confidence threshold = 0.90. If confidence < threshold → split into subtasks before execution.
+- Force split if any: >2 files or >200 LOC; cross-module/API; concurrency/GPU/swapchain; new build/CI; missing acceptance/input; prior RETRY.
+- Subtasks are first-class; parent waits (AWAIT-CHILDREN-TASK-SUCCESS). Limit nesting to 2 unless still below threshold.
 
 ## Branch & Workspace (one plan → one branch)
-- Store once in <vcs>: <branch>plan/<kebab-goal></branch>, <remote>origin</remote>, <base>main</base>.
-- Work ONLY on this branch. branch_lock defaults to true. One PR per branch→base.
+- Store in <vcs>: <branch>plan/<kebab-goal></branch>, <remote>origin</remote>, <base>main</base>, <last_head>UNKNOWN</last_head>.
+- Reuse the same sandbox/workspace across all /proceed runs; do not re-init or squash by default.
+- Work ONLY on this branch. branch_lock defaults to true. One PR per branch→base, opened only via /open-pr.
 
-## Required tasks
-### Environment & Toolchain Check (first)
+## Environment & Toolchain Check (required first task)
 <task>
   <name>t1_environment_check</name>
   <status>OPEN</status>
   <tryCount>0</tryCount>
   <curcialInfo>
-    Action: Verify toolchains/SDKs/drivers/env, run a smoke build, ensure the root logging config loads and writes to the configured file path.
-    Acceptance: clean build; smoke render without validation errors; module-level switches respected; log file created at configured path.
+    Action: Verify toolchains/SDKs/drivers/env; run a smoke build (when available); ensure the root logging config loads and writes to the configured file path.
+    Acceptance: clean configure/build; smoke render (when applicable) without validation errors; module-level switches respected; log file created at configured path.
   </curcialInfo>
 </task>
 
-### Finalization (last)
+## Code-Only Mode (when build tools are missing)
+- Keep moving: implement changes with strong interfaces/RAII, SoC, and inline docs.
+- Write/adjust tests; mark skipped/pending with TODOs to enable later.
+- Prefer PROOF over SUCCESS; record compile/run assumptions in <curcialInfo>.
+- Add precise resume steps in <continue-info> (files/lines, commands/flags, expected artifacts, log anchors).
+
+## Finalization (required last)
 <task>
   <name>tN_final_check</name>
   <status>OPEN</status>
   <tryCount>0</tryCount>
   <curcialInfo>
-    Action: Review each prior task; open follow-ups; on second arrival, report readiness confidence.
+    Action: Review each prior task; reopen/add subtasks for issues so next /proceed resumes at the first open item. On second arrival, report readiness confidence.
     Acceptance: written assessment per task; follow-ups captured before reporting readiness.
   </curcialInfo>
 </task>
 
+## Timebox & Graceful Stop
+- Each /proceed session is timeboxed to 15 minutes.
+- On timebox hit:
+  - Mark the active leaf UNFINISHED.
+  - Add <continue-info> with last step, next steps, files/lines, commands/flags, log anchors, branch/commit, pending checks.
+  - Persist to plan_path; run /checkpoint message:"timebox: tX …"; reply with a brief summary.
+- Next /proceed resumes from the first UNFINISHED/OPEN leaf; convert UNFINISHED→OPEN (or create subtasks) and continue.
+
 ## Reporting & Persistence
-- Keep a live plan. **/new-plan always writes to plan_path** (create/overwrite). /proceed, /revise, and /edit-plan persist after each mutation. Responses are concise summaries; the plan file is the source of truth for resume.
+- Keep a live plan. /new-plan always writes to plan_path (create/overwrite). /proceed, /revise, and /edit-plan persist after each mutation.
+- Responses are concise; the plan file is the source of truth for resume and auditing.
+```

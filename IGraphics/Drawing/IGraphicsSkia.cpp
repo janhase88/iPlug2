@@ -1,7 +1,14 @@
 #include <algorithm>
+#include <array>
+#include <cctype>
 #include <cmath>
+#include <cstdarg>
 #include <cstdio>
 #include <map>
+#include <mutex>
+#include <optional>
+#include <sstream>
+#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -145,7 +152,555 @@ void ReleaseSkiaGpuResources(Context* context)
     context->purgeUnlockedResources(true);
   }
 }
+
+#if defined OS_WIN
+constexpr size_t kWinVulkanLogBufferSize = 2048;
+constexpr const char kWinVulkanModuleName[] = "windows_skia_vulkan";
+constexpr const char kJsonModuleKey[] = "module";
+constexpr const char kJsonSeverityKey[] = "severity";
+constexpr const char kJsonPhaseKey[] = "phase";
+constexpr const char kJsonFrameKey[] = "frameId";
+constexpr const char kJsonSwapchainKey[] = "swapchainId";
+constexpr const char kJsonImageIndexKey[] = "imageIndex";
+constexpr const char kJsonImageCountKey[] = "imageCount";
+constexpr const char kJsonLayoutCountKey[] = "layoutCount";
+constexpr const char kJsonSkipFrameKey[] = "skipFrame";
+constexpr const char kJsonSubmissionPendingKey[] = "submissionPending";
+constexpr const char kJsonResultKey[] = "result";
+constexpr const char kJsonMessageKey[] = "message";
+constexpr const char kJsonDefaultPhase[] = "WinVulkan";
+
+std::mutex gWinVulkanLogMutex;
+IGraphicsSkia::WinVulkanLogConfig gWinVulkanLogConfig{};
+thread_local const IGraphicsSkia* gCurrentWinVulkanLogger = nullptr;
+
+class WinVulkanLogScope
+{
+public:
+  explicit WinVulkanLogScope(const IGraphicsSkia& instance)
+    : mPrevious(gCurrentWinVulkanLogger)
+  {
+    gCurrentWinVulkanLogger = &instance;
+  }
+
+  WinVulkanLogScope(const WinVulkanLogScope&) = delete;
+  WinVulkanLogScope& operator=(const WinVulkanLogScope&) = delete;
+
+  ~WinVulkanLogScope()
+  {
+    gCurrentWinVulkanLogger = mPrevious;
+  }
+
+private:
+  const IGraphicsSkia* mPrevious = nullptr;
+};
+
+std::string TrimLeadingWhitespace(const std::string& value)
+{
+  const size_t start = value.find_first_not_of(" \t");
+  if (start == std::string::npos)
+  {
+    return std::string{};
+  }
+  return value.substr(start);
+}
+
+std::string EscapeJson(const std::string& value)
+{
+  std::string escaped;
+  escaped.reserve(value.size() + 8);
+  for (char c : value)
+  {
+    switch (c)
+    {
+    case '\\':
+      escaped.append("\\\\");
+      break;
+    case '"':
+      escaped.append("\\\"");
+      break;
+    case '\b':
+      escaped.append("\\b");
+      break;
+    case '\f':
+      escaped.append("\\f");
+      break;
+    case '\n':
+      escaped.append("\\n");
+      break;
+    case '\r':
+      escaped.append("\\r");
+      break;
+    case '\t':
+      escaped.append("\\t");
+      break;
+    default:
+      if (static_cast<unsigned char>(c) < 0x20)
+      {
+        char buffer[7];
+        std::snprintf(buffer, sizeof(buffer), "\\u%04x", static_cast<unsigned char>(c));
+        escaped.append(buffer);
+      }
+      else
+      {
+        escaped.push_back(c);
+      }
+      break;
+    }
+  }
+  return escaped;
+}
+
+const char* SeverityToString(IGraphicsSkia::WinVulkanLogConfig::Severity severity)
+{
+  switch (severity)
+  {
+  case IGraphicsSkia::WinVulkanLogConfig::Severity::kError:
+    return "error";
+  case IGraphicsSkia::WinVulkanLogConfig::Severity::kWarning:
+    return "warning";
+  case IGraphicsSkia::WinVulkanLogConfig::Severity::kInfo:
+    return "info";
+  case IGraphicsSkia::WinVulkanLogConfig::Severity::kVerbose:
+    return "verbose";
+  }
+
+  return "info";
+}
+
+std::string ToLower(std::string value)
+{
+  for (char& c : value)
+  {
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  }
+  return value;
+}
+
+IGraphicsSkia::WinVulkanLogConfig::Severity ClassifySeverity(const std::string& phase, const std::string& detail)
+{
+  const std::string lowerDetail = ToLower(detail);
+  if (lowerDetail.find("fail") != std::string::npos || lowerDetail.find("error") != std::string::npos ||
+      lowerDetail.find("invalid") != std::string::npos)
+  {
+    return IGraphicsSkia::WinVulkanLogConfig::Severity::kError;
+  }
+
+  if (lowerDetail.find("timeout") != std::string::npos || lowerDetail.find("skipping") != std::string::npos ||
+      lowerDetail.find("out-of-date") != std::string::npos)
+  {
+    return IGraphicsSkia::WinVulkanLogConfig::Severity::kWarning;
+  }
+
+  if (lowerDetail.find("pipeline barrier") != std::string::npos || lowerDetail.find("acquired") != std::string::npos ||
+      lowerDetail.find("wrapping") != std::string::npos || lowerDetail.find("present") != std::string::npos)
+  {
+    return IGraphicsSkia::WinVulkanLogConfig::Severity::kVerbose;
+  }
+
+  if (phase == "DrawResize" || phase == "BeginFrame" || phase == "EndFrame" || phase == "SkipVKFrame" ||
+      phase.find("AssertValidSwapchainImage") != std::string::npos)
+  {
+    return IGraphicsSkia::WinVulkanLogConfig::Severity::kInfo;
+  }
+
+  return IGraphicsSkia::WinVulkanLogConfig::Severity::kVerbose;
+}
+
+std::optional<uint32_t> ExtractImageIndex(const std::string& detail)
+{
+  const std::array<std::string, 3> tokens = {"image index ", "index ", "image "};
+  for (const auto& token : tokens)
+  {
+    const size_t pos = detail.rfind(token);
+    if (pos != std::string::npos)
+    {
+      size_t cursor = pos + token.size();
+      while (cursor < detail.size() && detail[cursor] == ' ')
+      {
+        ++cursor;
+      }
+
+      uint64_t value = 0;
+      size_t start = cursor;
+      while (cursor < detail.size() && std::isdigit(static_cast<unsigned char>(detail[cursor])))
+      {
+        value = (value * 10ull) + static_cast<uint64_t>(detail[cursor] - '0');
+        ++cursor;
+      }
+
+      if (cursor > start)
+      {
+        return static_cast<uint32_t>(value);
+      }
+    }
+  }
+
+  return std::nullopt;
+}
+
+std::optional<int64_t> ExtractResultCode(const std::string& detail)
+{
+  const std::array<std::string, 3> tokens = {" result ", " failed ", " failure "};
+  for (const auto& token : tokens)
+  {
+    const size_t pos = detail.rfind(token);
+    if (pos != std::string::npos)
+    {
+      size_t cursor = pos + token.size();
+      while (cursor < detail.size() && detail[cursor] == ' ')
+      {
+        ++cursor;
+      }
+
+      bool negative = false;
+      if (cursor < detail.size() && detail[cursor] == '-')
+      {
+        negative = true;
+        ++cursor;
+      }
+
+      int64_t value = 0;
+      size_t start = cursor;
+      while (cursor < detail.size() && std::isdigit(static_cast<unsigned char>(detail[cursor])))
+      {
+        value = (value * 10ll) + static_cast<int64_t>(detail[cursor] - '0');
+        ++cursor;
+      }
+
+      if (cursor > start)
+      {
+        return negative ? -value : value;
+      }
+    }
+  }
+
+  return std::nullopt;
+}
+
+void AppendStringField(std::string& json, const char* key, const std::string& value)
+{
+  json.push_back(',');
+  json.push_back('"');
+  json.append(key);
+  json.append("\":\"");
+  json.append(EscapeJson(value));
+  json.push_back('"');
+}
+
+void AppendUnsignedField(std::string& json, const char* key, uint64_t value)
+{
+  json.push_back(',');
+  json.push_back('"');
+  json.append(key);
+  json.append("\":");
+  json.append(std::to_string(value));
+}
+
+void AppendSignedField(std::string& json, const char* key, int64_t value)
+{
+  json.push_back(',');
+  json.push_back('"');
+  json.append(key);
+  json.append("\":");
+  json.append(std::to_string(value));
+}
+
+void AppendBooleanField(std::string& json, const char* key, bool value)
+{
+  json.push_back(',');
+  json.push_back('"');
+  json.append(key);
+  json.append("\":");
+  json.append(value ? "true" : "false");
+}
+
+std::string BuildJsonPayload(const std::string& phase,
+                             IGraphicsSkia::WinVulkanLogConfig::Severity severity,
+                             const std::string& detail,
+                             const IGraphicsSkia::WinVulkanLogSnapshot& snapshot,
+                             const std::optional<uint32_t>& imageIndex,
+                             const std::optional<int64_t>& resultCode)
+{
+  std::string json;
+  json.reserve(256);
+  json.push_back('{');
+  AppendStringField(json, kJsonModuleKey, kWinVulkanModuleName);
+  AppendStringField(json, kJsonSeverityKey, SeverityToString(severity));
+  AppendStringField(json, kJsonPhaseKey, phase);
+  AppendUnsignedField(json, kJsonFrameKey, snapshot.frameVersion);
+  AppendUnsignedField(json, kJsonSwapchainKey, snapshot.swapchainVersion);
+
+  if (imageIndex.has_value())
+  {
+    AppendUnsignedField(json, kJsonImageIndexKey, imageIndex.value());
+  }
+  else if (snapshot.currentImage != IGraphicsSkia::kInvalidImageIndex)
+  {
+    AppendUnsignedField(json, kJsonImageIndexKey, snapshot.currentImage);
+  }
+
+  AppendUnsignedField(json, kJsonImageCountKey, snapshot.swapchainImageCount);
+  AppendUnsignedField(json, kJsonLayoutCountKey, snapshot.layoutCount);
+  AppendBooleanField(json, kJsonSkipFrameKey, snapshot.skipFrame);
+  AppendBooleanField(json, kJsonSubmissionPendingKey, snapshot.submissionPending);
+
+  if (resultCode.has_value())
+  {
+    AppendSignedField(json, kJsonResultKey, resultCode.value());
+  }
+
+  AppendStringField(json, kJsonMessageKey, detail);
+  json.push_back('}');
+  return json;
+}
+
+bool ShouldEmit(IGraphicsSkia::WinVulkanLogConfig::Severity severity, const IGraphicsSkia::WinVulkanLogConfig& config)
+{
+  return config.enabled && static_cast<uint8_t>(severity) <= static_cast<uint8_t>(config.minSeverity);
+}
+
+void EmitLegacyLine(const std::string& line)
+{
+  std::fputs(line.c_str(), stdout);
+  std::fputc('\n', stdout);
+}
+
+void EmitJsonLine(const std::string& line)
+{
+  std::fputs(line.c_str(), stdout);
+  std::fputc('\n', stdout);
+}
+
+void WinVulkanLogShim(const char* fmt, ...)
+{
+  char buffer[kWinVulkanLogBufferSize];
+  va_list args;
+  va_start(args, fmt);
+  std::vsnprintf(buffer, sizeof(buffer), fmt, args);
+  va_end(args);
+
+  std::string message(buffer);
+  while (!message.empty() && (message.back() == '\n' || message.back() == '\r'))
+  {
+    message.pop_back();
+  }
+
+  std::string phase = kJsonDefaultPhase;
+  std::string detail = message;
+  const size_t colonPos = message.find(':');
+  if (colonPos != std::string::npos)
+  {
+    phase = message.substr(0, colonPos);
+    detail = TrimLeadingWhitespace(message.substr(colonPos + 1));
+  }
+
+  const IGraphicsSkia* context = gCurrentWinVulkanLogger;
+  IGraphicsSkia::WinVulkanLogSnapshot snapshot{};
+  const bool hasContext = (context != nullptr);
+  if (hasContext)
+  {
+    snapshot = IGraphicsSkia::MakeWinVulkanLogSnapshot(*context);
+  }
+
+  IGraphicsSkia::WinVulkanLogConfig configCopy;
+  {
+    std::lock_guard<std::mutex> lock(gWinVulkanLogMutex);
+    configCopy = gWinVulkanLogConfig;
+  }
+
+  if (configCopy.echoLegacyTrace)
+  {
+    EmitLegacyLine(message);
+  }
+
+  if (!hasContext)
+  {
+    return;
+  }
+
+  const auto severity = ClassifySeverity(phase, detail);
+  if (!ShouldEmit(severity, configCopy))
+  {
+    return;
+  }
+
+  const auto imageIndex = ExtractImageIndex(detail);
+  const auto resultCode = ExtractResultCode(detail);
+  const std::string jsonLine = BuildJsonPayload(phase, severity, detail, snapshot, imageIndex, resultCode);
+  EmitJsonLine(jsonLine);
+}
+#endif // defined OS_WIN
 } // namespace
+#endif
+
+#if defined IGRAPHICS_VULKAN && defined OS_WIN
+  #undef DBGMSG
+  #define DBGMSG(...) WinVulkanLogShim(__VA_ARGS__)
+#endif
+
+#if defined IGRAPHICS_VULKAN && defined OS_WIN
+IGraphicsSkia::WinVulkanLogSnapshot IGraphicsSkia::MakeWinVulkanLogSnapshot(const IGraphicsSkia& instance)
+{
+  WinVulkanLogSnapshot snapshot;
+  snapshot.frameVersion = instance.mVKFrameVersion;
+  snapshot.swapchainVersion = instance.mVKSwapchainVersion;
+  snapshot.currentImage = instance.mVKCurrentImage;
+  snapshot.swapchainImageCount = instance.mVKSwapchainImages.size();
+  snapshot.layoutCount = instance.mVKImageLayouts.size();
+  snapshot.skipFrame = instance.mVKSkipFrame;
+  snapshot.submissionPending = instance.mVKSubmissionPending;
+  return snapshot;
+}
+
+void IGraphicsSkia::SetWinVulkanLogConfig(const WinVulkanLogConfig& config)
+{
+  std::lock_guard<std::mutex> lock(gWinVulkanLogMutex);
+  gWinVulkanLogConfig = config;
+}
+
+IGraphicsSkia::WinVulkanLogConfig IGraphicsSkia::GetWinVulkanLogConfig()
+{
+  std::lock_guard<std::mutex> lock(gWinVulkanLogMutex);
+  return gWinVulkanLogConfig;
+}
+#endif
+
+#if defined IGRAPHICS_VULKAN
+
+IGraphicsSkia::VulkanCommandResource::VulkanCommandResource(VulkanCommandResource&& other) noexcept
+{
+  mDevice = other.mDevice;
+  mCommandPool = other.mCommandPool;
+  mCommandBuffer = other.mCommandBuffer;
+  mQueueFamily = other.mQueueFamily;
+
+  other.mDevice = VK_NULL_HANDLE;
+  other.mCommandPool = VK_NULL_HANDLE;
+  other.mCommandBuffer = VK_NULL_HANDLE;
+  other.mQueueFamily = std::numeric_limits<uint32_t>::max();
+}
+
+IGraphicsSkia::VulkanCommandResource& IGraphicsSkia::VulkanCommandResource::operator=(VulkanCommandResource&& other) noexcept
+{
+  if (this != &other)
+  {
+    Reset();
+
+    mDevice = other.mDevice;
+    mCommandPool = other.mCommandPool;
+    mCommandBuffer = other.mCommandBuffer;
+    mQueueFamily = other.mQueueFamily;
+
+    other.mDevice = VK_NULL_HANDLE;
+    other.mCommandPool = VK_NULL_HANDLE;
+    other.mCommandBuffer = VK_NULL_HANDLE;
+    other.mQueueFamily = std::numeric_limits<uint32_t>::max();
+  }
+
+  return *this;
+}
+
+void IGraphicsSkia::VulkanCommandResource::Reset()
+{
+  if (mDevice != VK_NULL_HANDLE)
+  {
+    if (mCommandBuffer != VK_NULL_HANDLE && mCommandPool != VK_NULL_HANDLE)
+    {
+      vkFreeCommandBuffers(mDevice, mCommandPool, 1, &mCommandBuffer);
+    }
+
+    if (mCommandPool != VK_NULL_HANDLE)
+    {
+      vkDestroyCommandPool(mDevice, mCommandPool, nullptr);
+    }
+  }
+
+  mCommandBuffer = VK_NULL_HANDLE;
+  mCommandPool = VK_NULL_HANDLE;
+  mDevice = VK_NULL_HANDLE;
+  mQueueFamily = std::numeric_limits<uint32_t>::max();
+}
+
+VkResult IGraphicsSkia::VulkanCommandResource::Ensure(VkDevice device, uint32_t queueFamily)
+{
+  if (device == VK_NULL_HANDLE)
+  {
+    return VK_ERROR_INITIALIZATION_FAILED;
+  }
+
+  if (mDevice != device || mQueueFamily != queueFamily)
+  {
+    Reset();
+    mDevice = device;
+    mQueueFamily = queueFamily;
+  }
+
+  bool requireReset = (mCommandBuffer != VK_NULL_HANDLE);
+
+  auto prepareResources = [this, device]() -> VkResult {
+    if (mCommandPool == VK_NULL_HANDLE)
+    {
+      VkCommandPoolCreateInfo poolInfo = {};
+      poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+      poolInfo.queueFamilyIndex = mQueueFamily;
+      poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT | VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+
+      VkResult poolRes = vkCreateCommandPool(device, &poolInfo, nullptr, &mCommandPool);
+      if (poolRes != VK_SUCCESS)
+      {
+        return poolRes;
+      }
+    }
+
+    if (mCommandBuffer == VK_NULL_HANDLE)
+    {
+      VkCommandBufferAllocateInfo allocInfo = {};
+      allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+      allocInfo.commandPool = mCommandPool;
+      allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+      allocInfo.commandBufferCount = 1;
+
+      VkResult allocRes = vkAllocateCommandBuffers(device, &allocInfo, &mCommandBuffer);
+      if (allocRes != VK_SUCCESS)
+      {
+        return allocRes;
+      }
+    }
+
+    return VK_SUCCESS;
+  };
+
+  VkResult ensureResult = prepareResources();
+  if (ensureResult != VK_SUCCESS)
+  {
+    Reset();
+    return ensureResult;
+  }
+
+  if (requireReset && mCommandBuffer != VK_NULL_HANDLE)
+  {
+    VkResult resetRes = vkResetCommandBuffer(mCommandBuffer, 0);
+    if (resetRes == VK_SUCCESS)
+    {
+      return VK_SUCCESS;
+    }
+
+    Reset();
+    mDevice = device;
+    mQueueFamily = queueFamily;
+
+    ensureResult = prepareResources();
+    if (ensureResult != VK_SUCCESS)
+    {
+      Reset();
+      return ensureResult;
+    }
+  }
+
+  return VK_SUCCESS;
+}
+
 #endif
 
 #pragma mark - Private Classes and Structs
@@ -460,10 +1015,7 @@ IGraphicsSkia::~IGraphicsSkia()
   mFontMgr.reset();
 #endif
 #ifdef IGRAPHICS_VULKAN
-  if (mVKCommandBuffer != VK_NULL_HANDLE)
-    vkFreeCommandBuffers(mVKDevice, mVKCommandPool, 1, &mVKCommandBuffer);
-  if (mVKCommandPool != VK_NULL_HANDLE)
-    vkDestroyCommandPool(mVKDevice, mVKCommandPool, nullptr);
+  ResetVulkanCommandResources();
 #endif
 }
 
@@ -530,6 +1082,8 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
 #elif defined IGRAPHICS_VULKAN
   VulkanContext* ctx = static_cast<VulkanContext*>(pContext);
 
+  ResetVulkanCommandResources();
+
   mVKInstance = ctx->instance;
   mVKPhysicalDevice = ctx->physicalDevice;
   mVKDevice = ctx->device;
@@ -585,20 +1139,9 @@ void IGraphicsSkia::OnViewDestroyed()
   if (mVKDevice != VK_NULL_HANDLE)
   {
     vkDeviceWaitIdle(mVKDevice);
-
-    if (mVKCommandBuffer != VK_NULL_HANDLE && mVKCommandPool != VK_NULL_HANDLE)
-    {
-      vkFreeCommandBuffers(mVKDevice, mVKCommandPool, 1, &mVKCommandBuffer);
-    }
-
-    if (mVKCommandPool != VK_NULL_HANDLE)
-    {
-      vkDestroyCommandPool(mVKDevice, mVKCommandPool, nullptr);
-    }
   }
 
-  mVKCommandBuffer = VK_NULL_HANDLE;
-  mVKCommandPool = VK_NULL_HANDLE;
+  ResetVulkanCommandResources();
 
   mVKImageAvailableSemaphore = VK_NULL_HANDLE;
   mVKRenderFinishedSemaphore = VK_NULL_HANDLE;
@@ -628,15 +1171,83 @@ void IGraphicsSkia::OnViewDestroyed()
 #ifdef IGRAPHICS_VULKAN
 void IGraphicsSkia::SkipVKFrame()
 {
+#if defined OS_WIN
+  WinVulkanLogScope logScope(*this);
+#endif
   DBGMSG("SkipVKFrame: frame %llu swapchain %llu currentImage %u submissionPending %d\n",
          (unsigned long long)mVKFrameVersion,
          (unsigned long long)mVKSwapchainVersion,
          mVKCurrentImage,
          (int)mVKSubmissionPending);
   mVKSkipFrame = true;
+  ClearActiveCommandResource();
 }
+
+void IGraphicsSkia::ResetVulkanCommandResources()
+{
+  for (auto& resource : mVKCommandResources)
+  {
+    resource.Reset();
+  }
+  mVKCommandResources.clear();
+  ClearActiveCommandResource();
+}
+
+IGraphicsSkia::VulkanCommandResource* IGraphicsSkia::CommandResourceForImage(uint32_t imageIndex)
+{
+  if (imageIndex >= mVKCommandResources.size())
+  {
+    if (!mVKSwapchainImages.empty())
+    {
+      mVKCommandResources.resize(mVKSwapchainImages.size());
+    }
+
+    if (imageIndex >= mVKCommandResources.size())
+    {
+      ClearActiveCommandResource();
+      return nullptr;
+    }
+  }
+
+  return &mVKCommandResources[imageIndex];
+}
+
+IGraphicsSkia::VulkanCommandResource* IGraphicsSkia::ActiveCommandResource()
+{
+  if (mVKActiveCommandResourceIndex == kInvalidImageIndex)
+  {
+    return nullptr;
+  }
+
+  if (mVKActiveCommandResourceIndex >= mVKCommandResources.size())
+  {
+    return nullptr;
+  }
+
+  return &mVKCommandResources[mVKActiveCommandResourceIndex];
+}
+
+void IGraphicsSkia::ClearActiveCommandResource()
+{
+  mVKActiveCommandResourceIndex = kInvalidImageIndex;
+}
+
+void IGraphicsSkia::SetActiveCommandResource(uint32_t imageIndex)
+{
+  if (imageIndex >= mVKCommandResources.size())
+  {
+    ClearActiveCommandResource();
+    return;
+  }
+
+  mVKActiveCommandResourceIndex = imageIndex;
+}
+
 bool IGraphicsSkia::AssertValidSwapchainImage(VkImage image, const char* context)
 {
+#if defined OS_WIN
+  WinVulkanLogScope logScope(*this);
+#endif
   if (image == VK_NULL_HANDLE)
   {
     DBGMSG("%s: VK_NULL_HANDLE (frame %llu, swapchain %llu)\n", context, (unsigned long long)mVKFrameVersion, (unsigned long long)mVKSwapchainVersion);
@@ -682,6 +1293,9 @@ void IGraphicsSkia::DrawResize()
   auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * GetScreenScale()));
   auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * GetScreenScale()));
 #if defined IGRAPHICS_VULKAN
+#if defined OS_WIN
+  WinVulkanLogScope logScope(*this);
+#endif
   DBGMSG("DrawResize: begin frame %llu swapchain %llu submissionPending %d imageCount %zu\n",
          (unsigned long long)mVKFrameVersion,
          (unsigned long long)mVKSwapchainVersion,
@@ -729,18 +1343,10 @@ void IGraphicsSkia::DrawResize()
       mGrContext->flushAndSubmit();
       ReleaseSkiaGpuResources(mGrContext.get());
     }
-    if (mVKCommandBuffer != VK_NULL_HANDLE)
-    {
-      vkFreeCommandBuffers(mVKDevice, mVKCommandPool, 1, &mVKCommandBuffer);
-      mVKCommandBuffer = VK_NULL_HANDLE;
-    }
-    if (mVKCommandPool != VK_NULL_HANDLE)
-    {
-      vkDestroyCommandPool(mVKDevice, mVKCommandPool, nullptr);
-      mVKCommandPool = VK_NULL_HANDLE;
-    }
-    mVKImageLayouts.clear();
   }
+
+  ResetVulkanCommandResources();
+  mVKImageLayouts.clear();
   if (!mVKSwapchainImages.empty())
   {
     DBGMSG("DrawResize: releasing %zu previous swapchain images\n", mVKSwapchainImages.size());
@@ -814,6 +1420,8 @@ void IGraphicsSkia::DrawResize()
           mVKSwapchainFormat = format;
           mVKCurrentImage = kInvalidImageIndex;
           mVKSkipFrame = true;
+          mVKCommandResources.resize(mVKSwapchainImages.size());
+          ClearActiveCommandResource();
       #ifndef NDEBUG
           DBGMSG("DrawResize: swapchain version %llu with %zu images\n", (unsigned long long)mVKSwapchainVersion, mVKSwapchainImages.size());
           PFN_vkSetDebugUtilsObjectNameEXT setName = reinterpret_cast<PFN_vkSetDebugUtilsObjectNameEXT>(vkGetDeviceProcAddr(mVKDevice, "vkSetDebugUtilsObjectNameEXT"));
@@ -900,8 +1508,12 @@ void IGraphicsSkia::DrawResize()
 void IGraphicsSkia::BeginFrame()
 {
 #if defined IGRAPHICS_VULKAN
+#if defined OS_WIN
+  WinVulkanLogScope logScope(*this);
+#endif
   std::unique_lock<std::mutex> lock(mVKSwapchainMutex);
   mVKFrameVersion = mVKSwapchainVersion;
+  ClearActiveCommandResource();
   DBGMSG("BeginFrame: entry frame %llu swapchain %llu skipFrame %d submissionPending %d currentImage %u imageCount %zu layoutCount %zu\n",
          (unsigned long long)mVKFrameVersion,
          (unsigned long long)mVKSwapchainVersion,
@@ -1143,29 +1755,42 @@ void IGraphicsSkia::BeginFrame()
     }
     mVKCurrentImage = imageIndex;
 
-    if (mVKCommandPool == VK_NULL_HANDLE)
+    VulkanCommandResource* commandResource = CommandResourceForImage(imageIndex);
+    if (!commandResource)
     {
-      VkCommandPoolCreateInfo poolInfo{};
-      poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-      poolInfo.queueFamilyIndex = mVKQueueFamily;
-      poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-      vkCreateCommandPool(mVKDevice, &poolInfo, nullptr, &mVKCommandPool);
+      DBGMSG("BeginFrame: command resource cache missing entry for image %u\n", imageIndex);
+      mVKSkipFrame = true;
+      mVKCurrentImage = kInvalidImageIndex;
+      return;
     }
-    if (mVKCommandBuffer == VK_NULL_HANDLE)
+
+    VkResult commandReady = commandResource->Ensure(mVKDevice, mVKQueueFamily);
+    if (commandReady != VK_SUCCESS)
     {
-      VkCommandBufferAllocateInfo allocInfo{};
-      allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-      allocInfo.commandPool = mVKCommandPool;
-      allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-      allocInfo.commandBufferCount = 1;
-      vkAllocateCommandBuffers(mVKDevice, &allocInfo, &mVKCommandBuffer);
+      DBGMSG("BeginFrame: failed to prepare command buffer for image %u (result %d)\n", imageIndex, commandReady);
+      ResetVulkanCommandResources();
+      mVKSkipFrame = true;
+      mVKCurrentImage = kInvalidImageIndex;
+      ClearActiveCommandResource();
+      return;
     }
-    vkResetCommandBuffer(mVKCommandBuffer, 0);
+
+    VkCommandBuffer commandBuffer = commandResource->Get();
+    if (commandBuffer == VK_NULL_HANDLE)
+    {
+      DBGMSG("BeginFrame: command buffer unavailable for image %u\n", imageIndex);
+      mVKSkipFrame = true;
+      mVKCurrentImage = kInvalidImageIndex;
+      ClearActiveCommandResource();
+      return;
+    }
+
+    SetActiveCommandResource(imageIndex);
 
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(mVKCommandBuffer, &beginInfo);
+    vkBeginCommandBuffer(commandBuffer, &beginInfo);
 
     VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -1206,8 +1831,8 @@ void IGraphicsSkia::BeginFrame()
            (int)barrier.newLayout,
            (unsigned long long)mVKFrameVersion,
            (unsigned long long)mVKSwapchainVersion);
-    vkCmdPipelineBarrier(mVKCommandBuffer, srcStageMask, dstStageMask, 0, 0, nullptr, 0, nullptr, 1, &barrier);
-    vkEndCommandBuffer(mVKCommandBuffer);
+    vkCmdPipelineBarrier(commandBuffer, srcStageMask, dstStageMask, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+    vkEndCommandBuffer(commandBuffer);
 
     VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
     VkSubmitInfo submitInfo{};
@@ -1216,7 +1841,7 @@ void IGraphicsSkia::BeginFrame()
     submitInfo.pWaitSemaphores = &mVKImageAvailableSemaphore;
     submitInfo.pWaitDstStageMask = &waitStage;
     submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &mVKCommandBuffer;
+    submitInfo.pCommandBuffers = &commandBuffer;
     submitInfo.signalSemaphoreCount = 0;
 
     VkResult submitRes = vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
@@ -1333,6 +1958,9 @@ void IGraphicsSkia::EndFrame()
 #else // GPU
   #ifdef IGRAPHICS_VULKAN
 
+#if defined OS_WIN
+  WinVulkanLogScope logScope(*this);
+#endif
   std::unique_lock<std::mutex> lock(mVKSwapchainMutex);
   DBGMSG("EndFrame: entry frame %llu swapchain %llu skipFrame %d currentImage %u imageCount %zu layoutCount %zu submissionPending %d\n",
          (unsigned long long)mVKFrameVersion,
@@ -1348,6 +1976,7 @@ void IGraphicsSkia::EndFrame()
            (int)mVKSkipFrame,
            mVKSwapchainImages.size(),
            mVKCurrentImage);
+    ClearActiveCommandResource();
     return;
   }
 
@@ -1356,6 +1985,7 @@ void IGraphicsSkia::EndFrame()
     DBGMSG("EndFrame: swapchain version mismatch (frame %llu, swapchain %llu)\n", (unsigned long long)mVKFrameVersion, (unsigned long long)mVKSwapchainVersion);
     mVKSkipFrame = true;
     mVKCurrentImage = kInvalidImageIndex;
+    ClearActiveCommandResource();
     return;
   }
   #endif
@@ -1389,25 +2019,48 @@ void IGraphicsSkia::EndFrame()
     backendRT.setMutableState(presentState);
   }
 
-  if (mVKCommandPool == VK_NULL_HANDLE)
+  VulkanCommandResource* commandResource = ActiveCommandResource();
+  if (commandResource && mVKActiveCommandResourceIndex != mVKCurrentImage)
   {
-    VkCommandPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    poolInfo.queueFamilyIndex = mVKQueueFamily;
-    poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    vkCreateCommandPool(mVKDevice, &poolInfo, nullptr, &mVKCommandPool);
-  }
-  if (mVKCommandBuffer == VK_NULL_HANDLE)
-  {
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool = mVKCommandPool;
-    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = 1;
-    vkAllocateCommandBuffers(mVKDevice, &allocInfo, &mVKCommandBuffer);
+    commandResource = nullptr;
   }
 
-  vkResetCommandBuffer(mVKCommandBuffer, 0);
+  if (!commandResource)
+  {
+    commandResource = CommandResourceForImage(mVKCurrentImage);
+  }
+
+  if (!commandResource)
+  {
+    DBGMSG("EndFrame: command resource unavailable for image %u\n", mVKCurrentImage);
+    mVKSkipFrame = true;
+    mVKCurrentImage = kInvalidImageIndex;
+    ClearActiveCommandResource();
+    return;
+  }
+
+  VkResult ensureResult = commandResource->Ensure(mVKDevice, mVKQueueFamily);
+  if (ensureResult != VK_SUCCESS)
+  {
+    DBGMSG("EndFrame: failed to prepare command buffer for image %u (result %d)\n", mVKCurrentImage, ensureResult);
+    ResetVulkanCommandResources();
+    mVKSkipFrame = true;
+    mVKCurrentImage = kInvalidImageIndex;
+    ClearActiveCommandResource();
+    return;
+  }
+
+  VkCommandBuffer commandBuffer = commandResource->Get();
+  if (commandBuffer == VK_NULL_HANDLE)
+  {
+    DBGMSG("EndFrame: command buffer unavailable for image %u\n", mVKCurrentImage);
+    mVKSkipFrame = true;
+    mVKCurrentImage = kInvalidImageIndex;
+    ClearActiveCommandResource();
+    return;
+  }
+
+  SetActiveCommandResource(mVKCurrentImage);
 
   VkImage swapImage = VK_NULL_HANDLE;
   if (mVKFrameVersion == mVKSwapchainVersion && mVKSwapchain != VK_NULL_HANDLE && mVKCurrentImage != kInvalidImageIndex && mVKCurrentImage < mVKSwapchainImages.size())
@@ -1440,21 +2093,23 @@ void IGraphicsSkia::EndFrame()
   VkCommandBufferBeginInfo beginInfo{};
   beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-  vkBeginCommandBuffer(mVKCommandBuffer, &beginInfo);
+  vkBeginCommandBuffer(commandBuffer, &beginInfo);
 
   if (mVKFrameVersion != mVKSwapchainVersion || mVKSwapchain == VK_NULL_HANDLE)
   {
     DBGMSG("EndFrame: swapchain version mismatch before barrier (frame %llu, swapchain %llu)\n", (unsigned long long)mVKFrameVersion, (unsigned long long)mVKSwapchainVersion);
-    vkEndCommandBuffer(mVKCommandBuffer);
+    vkEndCommandBuffer(commandBuffer);
     mVKSkipFrame = true;
     mVKCurrentImage = kInvalidImageIndex;
+    ClearActiveCommandResource();
     return;
   }
   if (!AssertValidSwapchainImage(swapImage, "EndFrame barrier"))
   {
-    vkEndCommandBuffer(mVKCommandBuffer);
+    vkEndCommandBuffer(commandBuffer);
     mVKSkipFrame = true;
     mVKCurrentImage = kInvalidImageIndex;
+    ClearActiveCommandResource();
     return;
   }
 
@@ -1482,9 +2137,9 @@ void IGraphicsSkia::EndFrame()
          (int)trackedLayout,
          (unsigned long long)mVKFrameVersion,
          (unsigned long long)mVKSwapchainVersion);
-  vkCmdPipelineBarrier(mVKCommandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+  vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 
-  vkEndCommandBuffer(mVKCommandBuffer);
+  vkEndCommandBuffer(commandBuffer);
 
   VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
   VkSubmitInfo submitInfo{};
@@ -1493,7 +2148,7 @@ void IGraphicsSkia::EndFrame()
   submitInfo.pWaitSemaphores = &mVKRenderFinishedSemaphore;
   submitInfo.pWaitDstStageMask = &waitStage;
   submitInfo.commandBufferCount = 1;
-  submitInfo.pCommandBuffers = &mVKCommandBuffer;
+  submitInfo.pCommandBuffers = &commandBuffer;
   submitInfo.signalSemaphoreCount = 0;
 
   VkResult submitRes = vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
@@ -1513,6 +2168,7 @@ void IGraphicsSkia::EndFrame()
     mVKSubmissionPending = true;
     mVKSkipFrame = true;
     mVKCurrentImage = kInvalidImageIndex;
+    ClearActiveCommandResource();
     return;
   }
 
@@ -1527,6 +2183,7 @@ void IGraphicsSkia::EndFrame()
   {
     mVKSkipFrame = true;
     mVKCurrentImage = kInvalidImageIndex;
+    ClearActiveCommandResource();
     return;
   }
   VkResult res = vkQueuePresentKHR(mVKQueue, &presentInfo);
@@ -1536,6 +2193,7 @@ void IGraphicsSkia::EndFrame()
     vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
     lock.unlock();
     DrawResize();
+    ClearActiveCommandResource();
     return;
   }
   else if (res == VK_ERROR_DEVICE_LOST || res != VK_SUCCESS)
@@ -1544,8 +2202,10 @@ void IGraphicsSkia::EndFrame()
       pWin->RecreateVulkanContext();
     mVKSkipFrame = true;
     mVKCurrentImage = kInvalidImageIndex;
+    ClearActiveCommandResource();
     return;
   }
+  ClearActiveCommandResource();
   #elif defined IGRAPHICS_METAL
   if (auto dContext = GrAsDirectContext(mScreenSurface->getCanvas()->recordingContext()))
   {

@@ -4,6 +4,7 @@
     Environment: Ubuntu-based container without Windows toolchain or Vulkan GPU access; can run cross-platform unit tests and static analysis that target extracted platform-agnostic logic only.
     Key areas: IGraphics/Platforms/IGraphicsWin.cpp, IGraphics/Drawing/IGraphicsSkia.cpp, Skia Win wrappers, any Vulkan swapchain helpers, Windows build scripts.
     Constraints: Do not attempt Windows compilation or runtime GPU tests; rely on code review, modularization, and host-agnostic tests/perf instrumentation.
+    Code-only emphasis: When required tooling or runtimes are unavailable, drive each task to the highest achievable quality via static analysis, rigorous refactoring, and documentation without attempting the missing steps.
   </context>
   <codingStyle>
     principles: SOTA, SSOT, SoC, DRY
@@ -116,6 +117,7 @@
       Action: Apply code changes per design: extract modules, enforce SoC, add structured-json logging hooks, ensure per-module debug toggles, and clean up redundant state.
       Acceptance criteria: Updated source files compile (where possible), new modules are integrated without breaking existing interfaces, and logging/debug pathways match design.
       Progress 2025-02-15: Vulkan resource extraction complete via WinVulkanDeviceCoordinator; pending follow-up for Skia surface management, logging controls, and build config cleanup.
+      Progress 2025-02-18: Hardened command-resource recovery so failed Ensure() calls now trigger a full cache reset before skipping the frame, preventing stale VkCommandBuffer handles from persisting across retries.
     </curcialInfo>
     <tasks>
       <task>
@@ -130,20 +132,24 @@
       </task>
       <task>
         <name>t4_sub2_streamline_skia_surface_management</name>
-        <status>OPEN</status>
-        <tryCount>0</tryCount>
+        <status>SUCCESS</status>
+        <tryCount>1</tryCount>
         <curcialInfo>
           Action: Refactor Skia surface/swapchain interaction to reduce redundant allocations, reuse framebuffers, and clarify ownership semantics.
           Acceptance criteria: Reduced redundant resource churn, deterministic cleanup, and improved clarity via inline documentation.
+          Result 2025-02-15: Introduced a move-only VulkanCommandResource cache that preallocates per-image command pools/buffers, clears stale leases on resize/teardown, and wires BeginFrame/EndFrame to reuse the cached handles while resetting active leases on every bailout.
+          Update 2025-02-16: Reset the cache when new Vulkan contexts arrive and auto-expand it on demand so swapchain image counts stay in sync without manual intervention.
+          Update 2025-02-19: Replaced the cached active-resource raw pointer with an image index and helper accessors so vector reallocations cannot leave stale pointers behind during BeginFrame/EndFrame, ensuring cache resets and image-count changes remain safe.
         </curcialInfo>
       </task>
       <task>
         <name>t4_sub3_integrate_debug_and_logging_controls</name>
-        <status>OPEN</status>
-        <tryCount>0</tryCount>
+        <status>SUCCESS</status>
+        <tryCount>1</tryCount>
         <curcialInfo>
           Action: Implement structured-json logging, verbose debug switches per module, and ensure they are toggleable from single configuration headers or compile-time flags.
           Acceptance criteria: Logging statements cover critical paths, toggles documented, and defaults respect strict CI.
+          Result 2025-02-21: Added a centralized WinVulkan logging configuration with severity gating, thread-safe JSON emission, and scoped context capture so DrawResize/BeginFrame/EndFrame telemetry now flows through structured payloads while preserving legacy DBGMSG output when configured.
         </curcialInfo>
       </task>
       <task>

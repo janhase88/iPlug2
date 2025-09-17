@@ -36,7 +36,7 @@ struct VkSwapchainHolder
     handle = VK_NULL_HANDLE;
     device = VK_NULL_HANDLE;
   }
-};
+}; 
 
 struct VkSemaphoreHolder
 {
@@ -244,17 +244,79 @@ private:
 
 #ifdef IGRAPHICS_VULKAN
   static constexpr uint32_t kInvalidImageIndex = std::numeric_limits<uint32_t>::max();
+
+#if defined OS_WIN
+  struct WinVulkanLogConfig
+  {
+    enum class Severity : uint8_t
+    {
+      kError = 0,
+      kWarning = 1,
+      kInfo = 2,
+      kVerbose = 3
+    };
+
+    bool enabled = true;
+    Severity minSeverity = Severity::kVerbose;
+    bool echoLegacyTrace = true;
+  };
+
+  struct WinVulkanLogSnapshot
+  {
+    uint64_t frameVersion = 0;
+    uint64_t swapchainVersion = 0;
+    uint32_t currentImage = kInvalidImageIndex;
+    size_t swapchainImageCount = 0;
+    size_t layoutCount = 0;
+    bool skipFrame = false;
+    bool submissionPending = false;
+  };
+
+  static WinVulkanLogSnapshot MakeWinVulkanLogSnapshot(const IGraphicsSkia& instance);
+  static void SetWinVulkanLogConfig(const WinVulkanLogConfig& config);
+  static WinVulkanLogConfig GetWinVulkanLogConfig();
+#endif
+
+  struct VulkanCommandResource
+  {
+    // Move-only RAII cache for per-image command pools/buffers used during frame layout transitions.
+    VulkanCommandResource() = default;
+    ~VulkanCommandResource() { Reset(); }
+
+    VulkanCommandResource(const VulkanCommandResource&) = delete;
+    VulkanCommandResource& operator=(const VulkanCommandResource&) = delete;
+
+    VulkanCommandResource(VulkanCommandResource&& other) noexcept;
+    VulkanCommandResource& operator=(VulkanCommandResource&& other) noexcept;
+
+    VkResult Ensure(VkDevice device, uint32_t queueFamily);
+    void Reset();
+    VkCommandBuffer Get() const { return mCommandBuffer; }
+
+  private:
+    VkDevice mDevice = VK_NULL_HANDLE;
+    VkCommandPool mCommandPool = VK_NULL_HANDLE;
+    VkCommandBuffer mCommandBuffer = VK_NULL_HANDLE;
+    uint32_t mQueueFamily = std::numeric_limits<uint32_t>::max();
+  };
+
+  void ResetVulkanCommandResources();
+  VulkanCommandResource* CommandResourceForImage(uint32_t imageIndex);
+  VulkanCommandResource* ActiveCommandResource();
+  void ClearActiveCommandResource();
+  void SetActiveCommandResource(uint32_t imageIndex);
+
   VkInstance mVKInstance = VK_NULL_HANDLE;
   VkPhysicalDevice mVKPhysicalDevice = VK_NULL_HANDLE;
   VkDevice mVKDevice = VK_NULL_HANDLE;
   VkSurfaceKHR mVKSurface = VK_NULL_HANDLE;
   VkSwapchainKHR mVKSwapchain = VK_NULL_HANDLE;
   VkQueue mVKQueue = VK_NULL_HANDLE;
-  VkCommandPool mVKCommandPool = VK_NULL_HANDLE;
-  VkCommandBuffer mVKCommandBuffer = VK_NULL_HANDLE;
   uint32_t mVKQueueFamily = 0;
   std::vector<VkImage> mVKSwapchainImages;
   std::vector<VkImageLayout> mVKImageLayouts;
+  std::vector<VulkanCommandResource> mVKCommandResources;
+  uint32_t mVKActiveCommandResourceIndex = kInvalidImageIndex;
   uint32_t mVKCurrentImage = kInvalidImageIndex;
   VkSemaphore mVKImageAvailableSemaphore = VK_NULL_HANDLE;
   VkSemaphore mVKRenderFinishedSemaphore = VK_NULL_HANDLE;

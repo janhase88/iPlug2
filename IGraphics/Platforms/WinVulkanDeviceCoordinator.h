@@ -13,7 +13,9 @@
 #include <vector>
 
 #include "IPlugPlatform.h"
-#include "IPlug/IPlugLogger.h"
+
+#include "IPlugLogger.h"
+
 #include "VulkanLogging.h"
 
 BEGIN_IPLUG_NAMESPACE

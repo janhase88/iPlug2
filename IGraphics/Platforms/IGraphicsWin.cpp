@@ -20,6 +20,9 @@
 #include "IPlugParameter.h"
 #include "IPlugPaths.h"
 #include "IPopupMenuControl.h"
+#if defined IGRAPHICS_VULKAN
+  #include "VulkanLogging.h"
+#endif
 
 #include <VersionHelpers.h>
 #include <algorithm>
@@ -1047,7 +1050,10 @@ bool IGraphicsWin::CreateVulkanContext()
   VkResult res = mVulkanDeviceCoordinator.Initialize(request, snapshot);
   if (res != VK_SUCCESS)
   {
-    DBGMSG("{\"event\":\"CreateVulkanContext\",\"stage\":\"deviceCoordinator\",\"severity\":\"error\",\"vkResult\":%d}\n", res);
+    IGRAPHICS_VK_LOG("CreateVulkanContext",
+                        "deviceCoordinator",
+                        vulkanlog::Severity::kError,
+                        {vulkanlog::MakeField("vkResult", static_cast<int>(res))});
     mVulkanDeviceCoordinator.Teardown();
     return false;
   }
@@ -1063,7 +1069,10 @@ bool IGraphicsWin::CreateVulkanContext()
   res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(mVkPhysicalDevice, mVkSurface, &caps);
   if (res != VK_SUCCESS)
   {
-    DBGMSG("{\"event\":\"CreateVulkanContext\",\"stage\":\"vkGetPhysicalDeviceSurfaceCapabilitiesKHR\",\"severity\":\"error\",\"vkResult\":%d}\n", res);
+    IGRAPHICS_VK_LOG("CreateVulkanContext",
+                        "vkGetPhysicalDeviceSurfaceCapabilitiesKHR",
+                        vulkanlog::Severity::kError,
+                        {vulkanlog::MakeField("vkResult", static_cast<int>(res))});
     DestroyVulkanContext();
     return false;
   }
@@ -1073,7 +1082,10 @@ bool IGraphicsWin::CreateVulkanContext()
   res = CreateOrResizeVulkanSwapchain(caps.currentExtent.width, caps.currentExtent.height, mVkSwapchain.handle, mVkSwapchainImages, mVkFormat, mVkSwapchainUsageFlags, submissionPending);
   if (res != VK_SUCCESS)
   {
-    DBGMSG("{\"event\":\"CreateVulkanContext\",\"stage\":\"createOrResizeSwapchain\",\"severity\":\"error\",\"vkResult\":%d}\n", res);
+    IGRAPHICS_VK_LOG("CreateVulkanContext",
+                        "createOrResizeSwapchain",
+                        vulkanlog::Severity::kError,
+                        {vulkanlog::MakeField("vkResult", static_cast<int>(res))});
     DestroyVulkanContext();
     return false;
   }
@@ -1083,7 +1095,11 @@ bool IGraphicsWin::CreateVulkanContext()
   res = vkCreateSemaphore(mVkDevice, &semInfo, nullptr, &mImageAvailableSemaphore.handle);
   if (res != VK_SUCCESS)
   {
-    DBGMSG("{\"event\":\"CreateVulkanContext\",\"stage\":\"vkCreateSemaphore\",\"semaphore\":\"imageAvailable\",\"severity\":\"error\",\"vkResult\":%d}\n", res);
+    IGRAPHICS_VK_LOG("CreateVulkanContext",
+                        "vkCreateSemaphore",
+                        vulkanlog::Severity::kError,
+                        {vulkanlog::MakeField("vkResult", static_cast<int>(res)),
+                         vulkanlog::MakeField("semaphore", "imageAvailable")});
     DestroyVulkanContext();
     return false;
   }
@@ -1091,7 +1107,11 @@ bool IGraphicsWin::CreateVulkanContext()
   res = vkCreateSemaphore(mVkDevice, &semInfo, nullptr, &mRenderFinishedSemaphore.handle);
   if (res != VK_SUCCESS)
   {
-    DBGMSG("{\"event\":\"CreateVulkanContext\",\"stage\":\"vkCreateSemaphore\",\"semaphore\":\"renderFinished\",\"severity\":\"error\",\"vkResult\":%d}\n", res);
+    IGRAPHICS_VK_LOG("CreateVulkanContext",
+                        "vkCreateSemaphore",
+                        vulkanlog::Severity::kError,
+                        {vulkanlog::MakeField("vkResult", static_cast<int>(res)),
+                         vulkanlog::MakeField("semaphore", "renderFinished")});
     DestroyVulkanContext();
     return false;
   }
@@ -1102,7 +1122,10 @@ bool IGraphicsWin::CreateVulkanContext()
   res = vkCreateFence(mVkDevice, &fenceInfo, nullptr, &mInFlightFence.handle);
   if (res != VK_SUCCESS)
   {
-    DBGMSG("{\"event\":\"CreateVulkanContext\",\"stage\":\"vkCreateFence\",\"severity\":\"error\",\"vkResult\":%d}\n", res);
+    IGRAPHICS_VK_LOG("CreateVulkanContext",
+                        "vkCreateFence",
+                        vulkanlog::Severity::kError,
+                        {vulkanlog::MakeField("vkResult", static_cast<int>(res))});
     DestroyVulkanContext();
     return false;
   }
@@ -1163,7 +1186,12 @@ bool IGraphicsWin::RecreateVulkanContext()
 VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
   uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format, VkImageUsageFlags& usage, bool& submissionPending)
 {
-  DBGMSG("CreateOrResizeVulkanSwapchain: requested %ux%u (previous swapchain %p)\n", width, height, (void*)mVkSwapchain.handle);
+  IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                      "request",
+                      vulkanlog::Severity::kInfo,
+                      {vulkanlog::MakeField("width", static_cast<uint32_t>(width)),
+                       vulkanlog::MakeField("height", static_cast<uint32_t>(height)),
+                       vulkanlog::MakeHandleField("previousSwapchain", static_cast<uint64_t>(reinterpret_cast<uintptr_t>(mVkSwapchain.handle)))});
   if (!mVkDevice || !mVkPhysicalDevice || !mVkSurface)
     return VK_ERROR_INITIALIZATION_FAILED;
 
@@ -1174,52 +1202,76 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
     res = vkResetFences(mVkDevice, 1, &mInFlightFence.handle);
     if (res != VK_SUCCESS)
     {
-      DBGMSG("CreateOrResizeVulkanSwapchain: vkResetFences failed %d\n", res);
+      IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                          "vkResetFences",
+                          vulkanlog::Severity::kError,
+                          {vulkanlog::MakeField("vkResult", static_cast<int>(res))});
       return res;
     }
     // ensure next BeginFrame sees the fence as signaled
     res = vkQueueSubmit(mPresentQueue, 0, nullptr, mInFlightFence.handle);
     if (res != VK_SUCCESS)
     {
-      DBGMSG("CreateOrResizeVulkanSwapchain: vkQueueSubmit failed %d\n", res);
+      IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                          "vkQueueSubmit",
+                          vulkanlog::Severity::kError,
+                          {vulkanlog::MakeField("vkResult", static_cast<int>(res))});
       return res;
     }
     submissionPending = false;
-    DBGMSG("CreateOrResizeVulkanSwapchain: reset in-flight fence\n");
+    IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                        "resetInFlightFence",
+                        vulkanlog::Severity::kDebug,
+                        {});
   }
 
   mVkSwapchain.Reset();
   mVkSwapchain.device = mVkDevice;
-  DBGMSG("CreateOrResizeVulkanSwapchain: cleared previous swapchain handle\n");
+  IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                      "clearedPreviousSwapchain",
+                      vulkanlog::Severity::kDebug,
+                      {});
 
   VkSurfaceCapabilitiesKHR caps{};
   res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(mVkPhysicalDevice, mVkSurface, &caps);
   if (res != VK_SUCCESS)
   {
-    DBGMSG("CreateOrResizeVulkanSwapchain: vkGetPhysicalDeviceSurfaceCapabilitiesKHR failed %d\n", res);
+    IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                        "vkGetPhysicalDeviceSurfaceCapabilitiesKHR",
+                        vulkanlog::Severity::kError,
+                        {vulkanlog::MakeField("vkResult", static_cast<int>(res))});
     return res;
   }
-  DBGMSG("CreateOrResizeVulkanSwapchain: caps currentExtent %ux%u min %ux%u max %ux%u usage 0x%X\n",
-         caps.currentExtent.width,
-         caps.currentExtent.height,
-         caps.minImageExtent.width,
-         caps.minImageExtent.height,
-         caps.maxImageExtent.width,
-         caps.maxImageExtent.height,
-         caps.supportedUsageFlags);
+  IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                      "surfaceCapabilities",
+                      vulkanlog::Severity::kDebug,
+                      {vulkanlog::MakeField("currentWidth", caps.currentExtent.width),
+                       vulkanlog::MakeField("currentHeight", caps.currentExtent.height),
+                       vulkanlog::MakeField("minWidth", caps.minImageExtent.width),
+                       vulkanlog::MakeField("minHeight", caps.minImageExtent.height),
+                       vulkanlog::MakeField("maxWidth", caps.maxImageExtent.width),
+                       vulkanlog::MakeField("maxHeight", caps.maxImageExtent.height),
+                       vulkanlog::MakeField("usage", static_cast<uint32_t>(caps.supportedUsageFlags))});
 
   uint32_t formatCount = 0;
   res = vkGetPhysicalDeviceSurfaceFormatsKHR(mVkPhysicalDevice, mVkSurface, &formatCount, nullptr);
   if (res != VK_SUCCESS || formatCount == 0)
   {
-    DBGMSG("CreateOrResizeVulkanSwapchain: vkGetPhysicalDeviceSurfaceFormatsKHR failed %d count %u\n", res, formatCount);
+    IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                        "vkGetPhysicalDeviceSurfaceFormatsKHR",
+                        vulkanlog::Severity::kError,
+                        {vulkanlog::MakeField("vkResult", static_cast<int>(res)),
+                         vulkanlog::MakeField("count", static_cast<uint32_t>(formatCount))});
     return res;
   }
   std::vector<VkSurfaceFormatKHR> formats(formatCount);
   res = vkGetPhysicalDeviceSurfaceFormatsKHR(mVkPhysicalDevice, mVkSurface, &formatCount, formats.data());
   if (res != VK_SUCCESS)
   {
-    DBGMSG("CreateOrResizeVulkanSwapchain: fetching surface formats failed %d\n", res);
+    IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                        "fetchSurfaceFormats",
+                        vulkanlog::Severity::kError,
+                        {vulkanlog::MakeField("vkResult", static_cast<int>(res))});
     return res;
   }
   VkSurfaceFormatKHR surfaceFormat = formats[0];
@@ -1231,23 +1283,32 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
       break;
     }
   }
-  DBGMSG("CreateOrResizeVulkanSwapchain: selected surface format %u colorspace %u from %u options\n",
-         surfaceFormat.format,
-         surfaceFormat.colorSpace,
-         formatCount);
+  IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                      "selectSurfaceFormat",
+                      vulkanlog::Severity::kDebug,
+                      {vulkanlog::MakeField("format", static_cast<int>(surfaceFormat.format)),
+                       vulkanlog::MakeField("colorSpace", static_cast<int>(surfaceFormat.colorSpace)),
+                       vulkanlog::MakeField("options", static_cast<uint32_t>(formatCount))});
 
   uint32_t presentCount = 0;
   res = vkGetPhysicalDeviceSurfacePresentModesKHR(mVkPhysicalDevice, mVkSurface, &presentCount, nullptr);
   if (res != VK_SUCCESS || presentCount == 0)
   {
-    DBGMSG("CreateOrResizeVulkanSwapchain: vkGetPhysicalDeviceSurfacePresentModesKHR failed %d count %u\n", res, presentCount);
+    IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                        "vkGetPhysicalDeviceSurfacePresentModesKHR",
+                        vulkanlog::Severity::kError,
+                        {vulkanlog::MakeField("vkResult", static_cast<int>(res)),
+                         vulkanlog::MakeField("count", static_cast<uint32_t>(presentCount))});
     return res;
   }
   std::vector<VkPresentModeKHR> presentModes(presentCount);
   res = vkGetPhysicalDeviceSurfacePresentModesKHR(mVkPhysicalDevice, mVkSurface, &presentCount, presentModes.data());
   if (res != VK_SUCCESS)
   {
-    DBGMSG("CreateOrResizeVulkanSwapchain: fetching present modes failed %d\n", res);
+    IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                        "fetchPresentModes",
+                        vulkanlog::Severity::kError,
+                        {vulkanlog::MakeField("vkResult", static_cast<int>(res))});
     return res;
   }
   VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
@@ -1259,7 +1320,11 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
       break;
     }
   }
-  DBGMSG("CreateOrResizeVulkanSwapchain: selected present mode %u from %u options\n", presentMode, presentCount);
+  IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                      "selectPresentMode",
+                      vulkanlog::Severity::kDebug,
+                      {vulkanlog::MakeField("presentMode", static_cast<int>(presentMode)),
+                       vulkanlog::MakeField("options", static_cast<uint32_t>(presentCount))});
 
   VkSwapchainCreateInfoKHR swapInfo{};
   swapInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -1295,17 +1360,22 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
   swapInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
   swapInfo.presentMode = presentMode;
   swapInfo.clipped = VK_TRUE;
-  DBGMSG("CreateOrResizeVulkanSwapchain: create info extent %ux%u minImageCount %u usage 0x%X oldSwapchain %p\n",
-         swapInfo.imageExtent.width,
-         swapInfo.imageExtent.height,
-         swapInfo.minImageCount,
-         swapInfo.imageUsage,
-         (void*)mVkSwapchain.handle);
+  IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                      "createInfo",
+                      vulkanlog::Severity::kDebug,
+                      {vulkanlog::MakeField("width", static_cast<uint32_t>(swapInfo.imageExtent.width)),
+                       vulkanlog::MakeField("height", static_cast<uint32_t>(swapInfo.imageExtent.height)),
+                       vulkanlog::MakeField("minImageCount", static_cast<uint32_t>(swapInfo.minImageCount)),
+                       vulkanlog::MakeField("usage", static_cast<uint32_t>(swapInfo.imageUsage)),
+                       vulkanlog::MakeHandleField("oldSwapchain", static_cast<uint64_t>(reinterpret_cast<uintptr_t>(mVkSwapchain.handle)))});
 
   res = vkCreateSwapchainKHR(mVkDevice, &swapInfo, nullptr, &mVkSwapchain.handle);
   if (res != VK_SUCCESS)
   {
-    DBGMSG("CreateOrResizeVulkanSwapchain: vkCreateSwapchainKHR failed %d\n", res);
+    IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                        "vkCreateSwapchainKHR",
+                        vulkanlog::Severity::kError,
+                        {vulkanlog::MakeField("vkResult", static_cast<int>(res))});
     return res;
   }
 
@@ -1313,40 +1383,43 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
   res = vkGetSwapchainImagesKHR(mVkDevice, mVkSwapchain.handle, &imageCount, nullptr);
   if (res != VK_SUCCESS)
   {
-    DBGMSG("CreateOrResizeVulkanSwapchain: vkGetSwapchainImagesKHR count failed %d\n", res);
+    IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                        "vkGetSwapchainImagesKHR_count",
+                        vulkanlog::Severity::kError,
+                        {vulkanlog::MakeField("vkResult", static_cast<int>(res))});
     return res;
   }
   mVkSwapchainImages.resize(imageCount);
   res = vkGetSwapchainImagesKHR(mVkDevice, mVkSwapchain.handle, &imageCount, mVkSwapchainImages.data());
   if (res != VK_SUCCESS)
   {
-    DBGMSG("CreateOrResizeVulkanSwapchain: vkGetSwapchainImagesKHR data failed %d\n", res);
+    IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                        "vkGetSwapchainImagesKHR_data",
+                        vulkanlog::Severity::kError,
+                        {vulkanlog::MakeField("vkResult", static_cast<int>(res))});
     return res;
   }
-  DBGMSG("CreateOrResizeVulkanSwapchain: retrieved %u swapchain images\n", imageCount);
+  IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                      "retrievedImages",
+                      vulkanlog::Severity::kDebug,
+                      {vulkanlog::MakeField("count", static_cast<uint32_t>(imageCount))});
 
-  DBGMSG("CreateOrResizeVulkanSwapchain: created swapchain %p extent %ux%u format %u usage 0x%X with %u images\n",
-         (void*)mVkSwapchain.handle,
-         swapInfo.imageExtent.width,
-         swapInfo.imageExtent.height,
-         surfaceFormat.format,
-         usageFlags,
-         imageCount);
+  IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                      "creationResult",
+                      vulkanlog::Severity::kDebug,
+                      {vulkanlog::MakeHandleField("swapchain", static_cast<uint64_t>(reinterpret_cast<uintptr_t>(mVkSwapchain.handle))),
+                       vulkanlog::MakeField("width", static_cast<uint32_t>(swapInfo.imageExtent.width)),
+                       vulkanlog::MakeField("height", static_cast<uint32_t>(swapInfo.imageExtent.height)),
+                       vulkanlog::MakeField("format", static_cast<int>(surfaceFormat.format)),
+                       vulkanlog::MakeField("usage", static_cast<uint32_t>(usageFlags)),
+                       vulkanlog::MakeField("images", static_cast<uint32_t>(imageCount))});
   for (uint32_t i = 0; i < imageCount; ++i)
   {
-    DBGMSG("  swapImage[%u]=%p\n", i, (void*)mVkSwapchainImages[i]);
-  }
-
-  DBGMSG("CreateOrResizeVulkanSwapchain: created swapchain %p extent %ux%u format %u usage 0x%X with %u images\n",
-         (void*)mVkSwapchain.handle,
-         swapInfo.imageExtent.width,
-         swapInfo.imageExtent.height,
-         surfaceFormat.format,
-         usageFlags,
-         imageCount);
-  for (uint32_t i = 0; i < imageCount; ++i)
-  {
-    DBGMSG("  swapImage[%u]=%p\n", i, (void*)mVkSwapchainImages[i]);
+    IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                        "swapchainImage",
+                        vulkanlog::Severity::kDebug,
+                        {vulkanlog::MakeField("index", static_cast<uint32_t>(i)),
+                         vulkanlog::MakeHandleField("image", static_cast<uint64_t>(mVkSwapchainImages[i]))});
   }
 
   mVkFormat = surfaceFormat.format;

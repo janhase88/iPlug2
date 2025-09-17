@@ -255,6 +255,7 @@ private:
   uint32_t mVKQueueFamily = 0;
   std::vector<VkImage> mVKSwapchainImages;
   std::vector<VkImageLayout> mVKImageLayouts;
+  std::vector<sk_sp<SkSurface>> mVKSwapchainSurfaces;
   uint32_t mVKCurrentImage = kInvalidImageIndex;
   VkSemaphore mVKImageAvailableSemaphore = VK_NULL_HANDLE;
   VkSemaphore mVKRenderFinishedSemaphore = VK_NULL_HANDLE;
@@ -267,6 +268,9 @@ private:
   uint64_t mVKFrameVersion = 0;
   std::mutex mVKSwapchainMutex;
   std::unordered_set<VkImage> mVKDebugImages;
+  void ResetVulkanSwapchainCaches();
+  VkCommandBuffer EnsureVulkanCommandBuffer();
+  sk_sp<SkSurface> EnsureSwapchainSurface(uint32_t imageIndex, int width, int height, const GrVkImageInfo& imageInfo);
   bool AssertValidSwapchainImage(VkImage image, const char* context);
 #endif
 

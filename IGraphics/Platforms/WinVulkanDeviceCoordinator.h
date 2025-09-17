@@ -14,6 +14,7 @@
 
 #include "IPlugNamespace.h"
 #include "IPlug/IPlugLogger.h"
+#include "VulkanLogging.h"
 
 BEGIN_IPLUG_NAMESPACE
 BEGIN_IGRAPHICS_NAMESPACE
@@ -71,9 +72,9 @@ private:
 
 namespace winvk
 {
-inline constexpr const char* kValidationLayerName = "VK_LAYER_KHRONOS_validation";
-inline constexpr std::array<const char*, 2> kRequiredInstanceExtensions{"VK_KHR_surface", "VK_KHR_win32_surface"};
-inline constexpr std::array<const char*, 1> kRequiredDeviceExtensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+static const char* const kValidationLayerName = "VK_LAYER_KHRONOS_validation";
+static const std::array<const char*, 2> kRequiredInstanceExtensions{{"VK_KHR_surface", "VK_KHR_win32_surface"}};
+static const std::array<const char*, 1> kRequiredDeviceExtensions{{VK_KHR_SWAPCHAIN_EXTENSION_NAME}};
 }
 
 inline WinVulkanDeviceCoordinator::~WinVulkanDeviceCoordinator()
@@ -94,7 +95,10 @@ inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequ
   VkResult res = CreateInstance(request);
   if (res != VK_SUCCESS)
   {
-    DBGMSG("{\"event\":\"WinVulkanDeviceCoordinator.Initialize\",\"stage\":\"vkCreateInstance\",\"severity\":\"error\",\"vkResult\":%d}\n", res);
+    IGRAPHICS_VK_LOG("WinVulkanDeviceCoordinator.Initialize",
+                        "vkCreateInstance",
+                        vulkanlog::Severity::kError,
+                        {vulkanlog::MakeField("vkResult", static_cast<int>(res))});
     Teardown();
     return res;
   }
@@ -102,7 +106,10 @@ inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequ
   res = CreateSurface(request);
   if (res != VK_SUCCESS)
   {
-    DBGMSG("{\"event\":\"WinVulkanDeviceCoordinator.Initialize\",\"stage\":\"vkCreateWin32SurfaceKHR\",\"severity\":\"error\",\"vkResult\":%d}\n", res);
+    IGRAPHICS_VK_LOG("WinVulkanDeviceCoordinator.Initialize",
+                        "vkCreateWin32SurfaceKHR",
+                        vulkanlog::Severity::kError,
+                        {vulkanlog::MakeField("vkResult", static_cast<int>(res))});
     Teardown();
     return res;
   }
@@ -110,7 +117,10 @@ inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequ
   res = SelectPhysicalDevice(request);
   if (res != VK_SUCCESS)
   {
-    DBGMSG("{\"event\":\"WinVulkanDeviceCoordinator.Initialize\",\"stage\":\"selectPhysicalDevice\",\"severity\":\"error\",\"vkResult\":%d}\n", res);
+    IGRAPHICS_VK_LOG("WinVulkanDeviceCoordinator.Initialize",
+                        "selectPhysicalDevice",
+                        vulkanlog::Severity::kError,
+                        {vulkanlog::MakeField("vkResult", static_cast<int>(res))});
     Teardown();
     return res;
   }
@@ -118,7 +128,10 @@ inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequ
   res = CreateLogicalDevice();
   if (res != VK_SUCCESS)
   {
-    DBGMSG("{\"event\":\"WinVulkanDeviceCoordinator.Initialize\",\"stage\":\"vkCreateDevice\",\"severity\":\"error\",\"vkResult\":%d}\n", res);
+    IGRAPHICS_VK_LOG("WinVulkanDeviceCoordinator.Initialize",
+                        "vkCreateDevice",
+                        vulkanlog::Severity::kError,
+                        {vulkanlog::MakeField("vkResult", static_cast<int>(res))});
     Teardown();
     return res;
   }

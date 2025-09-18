@@ -45,7 +45,8 @@
     #define SK_MILESTONE 0
   #endif
 
-  #if SK_MILESTONE >= 114
+
+  #if !defined(__has_include) && (SK_MILESTONE >= 114)
     #include "include/core/SkImages.h"
     #define IGRAPHICS_HAS_SKIMAGES 1
   #else

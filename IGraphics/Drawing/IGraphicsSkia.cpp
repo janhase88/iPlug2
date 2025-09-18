@@ -319,6 +319,7 @@ bool IGraphicsSkia::PrepareCurrentSwapchainImageForFlush()
   if (mVKInFlightFence == VK_NULL_HANDLE)
     return false;
 
+
   if (mVKSubmissionPending)
   {
     VkResult waitRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);

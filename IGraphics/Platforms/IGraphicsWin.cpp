@@ -995,7 +995,10 @@ void IGraphicsWin::CreateGLContext()
                                0,
                                0};
 
-  HDC dc = GetDC(mPlugWnd);
+  HDC dc = mWindowDC;
+  if (!dc)
+    dc = GetDC(mPlugWnd);
+
   int fmt = ChoosePixelFormat(dc, &pfd);
   SetPixelFormat(dc, fmt, &pfd);
   mHGLRC = wglCreateContext(dc);
@@ -1024,7 +1027,8 @@ void IGraphicsWin::CreateGLContext()
 
   glGetError();
 
-  ReleaseDC(mPlugWnd, dc);
+  if (!mWindowDC)
+    ReleaseDC(mPlugWnd, dc);
 }
 
 void IGraphicsWin::DestroyGLContext()
@@ -1460,8 +1464,11 @@ void IGraphicsWin::ActivateGLContext()
 #if defined IGRAPHICS_GL
   mStartHDC = wglGetCurrentDC();
   mStartHGLRC = wglGetCurrentContext();
-  HDC dc = GetDC(mPlugWnd);
-  wglMakeCurrent(dc, mHGLRC);
+  if (mWindowDC && mHGLRC)
+  {
+    if (mStartHDC != mWindowDC || mStartHGLRC != mHGLRC)
+      wglMakeCurrent(mWindowDC, mHGLRC);
+  }
 #elif defined IGRAPHICS_VULKAN
   ActivateVulkanContext();
 #endif
@@ -1470,8 +1477,8 @@ void IGraphicsWin::ActivateGLContext()
 void IGraphicsWin::DeactivateGLContext()
 {
 #if defined IGRAPHICS_GL
-  ReleaseDC(mPlugWnd, (HDC)GetPlatformContext());
-  wglMakeCurrent(mStartHDC, mStartHGLRC); // return current ctxt to start
+  if (mStartHDC != mWindowDC || mStartHGLRC != mHGLRC)
+    wglMakeCurrent(mStartHDC, mStartHGLRC); // return current ctxt to start
 #elif defined IGRAPHICS_VULKAN
   DeactivateVulkanContext();
 #endif
@@ -1539,12 +1546,16 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   OnViewInitialized(&ctx);
 #else
   HDC dc = GetDC(mPlugWnd);
+  #ifdef IGRAPHICS_GL
+  mWindowDC = dc;
+  SetPlatformContext(mWindowDC);
+  CreateGLContext();
+  OnViewInitialized((void*)mWindowDC);
+  #else
   SetPlatformContext(dc);
   ReleaseDC(mPlugWnd, dc);
-  #ifdef IGRAPHICS_GL
-  CreateGLContext();
-  #endif
   OnViewInitialized((void*)dc);
+  #endif
 #endif
 
   SetScreenScale(screenScale); // resizes draw context
@@ -1704,6 +1715,12 @@ void IGraphicsWin::CloseWindow()
     DeactivateGLContext();
 
     DestroyGLContext();
+
+    if (mWindowDC)
+    {
+      ReleaseDC(mPlugWnd, mWindowDC);
+      mWindowDC = nullptr;
+    }
 
 #elif defined IGRAPHICS_VULKAN
 

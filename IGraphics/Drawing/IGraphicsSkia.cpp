@@ -207,13 +207,16 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
   auto& cachedSurface = mVKSwapchainSurfaces[imageIndex];
   if (cachedSurface)
   {
-    auto backendRT = SkSurfaces::GetBackendRenderTarget(cachedSurface.get(), SkSurfaces::BackendHandleAccess::kFlushRead);
-    if (backendRT.isValid() && backendRT.dimensions() == SkISize::Make(width, height))
+    if (cachedSurface->width() == width && cachedSurface->height() == height)
     {
-      auto colorState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, mVKQueueFamily);
-      mGrContext->setBackendRenderTargetState(backendRT, colorState, nullptr, nullptr, nullptr);
-      backendRT.setMutableState(colorState);
-      return cachedSurface;
+      auto backendRT = GrBackendRenderTargets::MakeVk(width, height, imageInfo);
+      if (backendRT.isValid())
+      {
+        auto colorState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, mVKQueueFamily);
+        mGrContext->setBackendRenderTargetState(backendRT, colorState, nullptr, nullptr, nullptr);
+        backendRT.setMutableState(colorState);
+        return cachedSurface;
+      }
     }
     cachedSurface.reset();
   }
@@ -428,7 +431,19 @@ bool IGraphicsSkia::PrepareCurrentSwapchainImageForFlush()
 
   if (mGrContext && mScreenSurface)
   {
-    auto backendRT = SkSurfaces::GetBackendRenderTarget(mScreenSurface.get(), SkSurfaces::BackendHandleAccess::kFlushRead);
+    GrVkImageInfo imageInfo{};
+    imageInfo.fImage = swapImage;
+    imageInfo.fImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    imageInfo.fImageTiling = VK_IMAGE_TILING_OPTIMAL;
+    imageInfo.fFormat = mVKSwapchainFormat;
+    imageInfo.fImageUsageFlags = mVKSwapchainUsageFlags;
+    imageInfo.fSampleCount = 1;
+    imageInfo.fLevelCount = 1;
+    imageInfo.fCurrentQueueFamily = mVKQueueFamily;
+
+    const int width = mScreenSurface->width();
+    const int height = mScreenSurface->height();
+    auto backendRT = GrBackendRenderTargets::MakeVk(width, height, imageInfo);
     if (backendRT.isValid())
     {
       auto colorState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, mVKQueueFamily);
@@ -1812,13 +1827,6 @@ void IGraphicsSkia::EndFrame()
     }
   }
 
-  {
-    auto backendRT = SkSurfaces::GetBackendRenderTarget(mScreenSurface.get(), SkSurfaces::BackendHandleAccess::kFlushRead);
-    auto presentState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, mVKQueueFamily);
-    mGrContext->setBackendRenderTargetState(backendRT, presentState, nullptr, nullptr, nullptr);
-    backendRT.setMutableState(presentState);
-  }
-
   if (EnsureVulkanCommandBuffer() == VK_NULL_HANDLE)
   {
     mVKSkipFrame = true;
@@ -1861,6 +1869,29 @@ void IGraphicsSkia::EndFrame()
     mVKSkipFrame = true;
     mVKCurrentImage = kInvalidImageIndex;
     return;
+  }
+
+  if (mGrContext && mScreenSurface)
+  {
+    GrVkImageInfo imageInfo{};
+    imageInfo.fImage = swapImage;
+    imageInfo.fImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    imageInfo.fImageTiling = VK_IMAGE_TILING_OPTIMAL;
+    imageInfo.fFormat = mVKSwapchainFormat;
+    imageInfo.fImageUsageFlags = mVKSwapchainUsageFlags;
+    imageInfo.fSampleCount = 1;
+    imageInfo.fLevelCount = 1;
+    imageInfo.fCurrentQueueFamily = mVKQueueFamily;
+
+    const int width = mScreenSurface->width();
+    const int height = mScreenSurface->height();
+    auto backendRT = GrBackendRenderTargets::MakeVk(width, height, imageInfo);
+    if (backendRT.isValid())
+    {
+      auto presentState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, mVKQueueFamily);
+      mGrContext->setBackendRenderTargetState(backendRT, presentState, nullptr, nullptr, nullptr);
+      backendRT.setMutableState(presentState);
+    }
   }
 
   VkCommandBufferBeginInfo beginInfo{};

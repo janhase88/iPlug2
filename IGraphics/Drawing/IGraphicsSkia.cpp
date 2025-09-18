@@ -732,6 +732,17 @@ void IGraphicsSkia::OnViewDestroyed()
   mMTLLayer = nullptr;
   mMTLDevice = nullptr;
 #elif defined IGRAPHICS_VULKAN
+  if (mGrContext)
+  {
+    mGrContext->flushAndSubmit();
+    ReleaseSkiaGpuResources(mGrContext.get());
+    mGrContext->releaseResourcesAndAbandonContext();
+  }
+
+  ResetVulkanSwapchainCaches();
+  mSurface = nullptr;
+  mScreenSurface = nullptr;
+
   if (mVKDevice != VK_NULL_HANDLE)
   {
     vkDeviceWaitIdle(mVKDevice);
@@ -768,9 +779,6 @@ void IGraphicsSkia::OnViewDestroyed()
   mVKSubmissionPending = false;
   mVKSkipFrame = true;
 
-  // Release Skia references after Vulkan cleanup
-  mSurface = nullptr;
-  mScreenSurface = nullptr;
   mGrContext = nullptr;
 #endif
 }
@@ -1421,8 +1429,8 @@ void IGraphicsSkia::BeginFrame()
     switch (barrier.oldLayout)
     {
     case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
-      barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-      srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+      barrier.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+      srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
       break;
     case VK_IMAGE_LAYOUT_UNDEFINED:
       barrier.srcAccessMask = 0;

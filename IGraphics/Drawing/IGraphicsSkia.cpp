@@ -290,6 +290,151 @@ VkCommandBuffer IGraphicsSkia::EnsureVulkanCommandBuffer()
   return mVKCommandBuffer;
 }
 
+bool IGraphicsSkia::PrepareCurrentSwapchainImageForFlush()
+{
+  if (mVKDevice == VK_NULL_HANDLE || mVKQueue == VK_NULL_HANDLE)
+    return false;
+
+  if (mVKCurrentImage == kInvalidImageIndex ||
+      mVKCurrentImage >= mVKSwapchainImages.size() ||
+      mVKCurrentImage >= mVKImageLayouts.size())
+  {
+    return false;
+  }
+
+  VkImage swapImage = mVKSwapchainImages[mVKCurrentImage];
+  VkImageLayout trackedLayout = mVKImageLayouts[mVKCurrentImage];
+
+  if (trackedLayout != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
+  {
+    IGRAPHICS_VK_LOG("PrepareCurrentSwapchainImageForFlush",
+                        "skip",
+                        vulkanlog::Severity::kDebug,
+                        vulkanlog::MakeField("imageIndex", static_cast<uint32_t>(mVKCurrentImage)),
+                         vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(swapImage)),
+                         vulkanlog::MakeField("layout", static_cast<int>(trackedLayout)));
+    return trackedLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  }
+
+  if (mVKInFlightFence == VK_NULL_HANDLE)
+    return false;
+
+  if (mVKSubmissionPending)
+  {
+    VkResult waitRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
+    if (waitRes != VK_SUCCESS)
+    {
+      IGRAPHICS_VK_LOG("PrepareCurrentSwapchainImageForFlush",
+                          "waitForFencesFailed",
+                          vulkanlog::Severity::kError,
+                          vulkanlog::MakeField("vkResult", static_cast<int>(waitRes)));
+      return false;
+    }
+  }
+
+  VkResult resetRes = vkResetFences(mVKDevice, 1, &mVKInFlightFence);
+  if (resetRes != VK_SUCCESS)
+  {
+    IGRAPHICS_VK_LOG("PrepareCurrentSwapchainImageForFlush",
+                        "resetFenceFailed",
+                        vulkanlog::Severity::kError,
+                        vulkanlog::MakeField("vkResult", static_cast<int>(resetRes)));
+    return false;
+  }
+
+  mVKSubmissionPending = false;
+
+  VkCommandBuffer commandBuffer = EnsureVulkanCommandBuffer();
+  if (commandBuffer == VK_NULL_HANDLE)
+  {
+    IGRAPHICS_VK_LOG_SIMPLE("PrepareCurrentSwapchainImageForFlush",
+                        "ensureCommandBufferFailed",
+                        vulkanlog::Severity::kError);
+    return false;
+  }
+
+  vkResetCommandBuffer(commandBuffer, 0);
+
+  VkCommandBufferBeginInfo beginInfo{};
+  beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+  vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+  VkImageMemoryBarrier barrier{};
+  barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  barrier.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+  barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+  barrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+  barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.image = swapImage;
+  barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  barrier.subresourceRange.baseMipLevel = 0;
+  barrier.subresourceRange.levelCount = 1;
+  barrier.subresourceRange.baseArrayLayer = 0;
+  barrier.subresourceRange.layerCount = 1;
+
+  IGRAPHICS_VK_LOG("PrepareCurrentSwapchainImageForFlush",
+                      "imageBarrier",
+                      vulkanlog::Severity::kDebug,
+                      vulkanlog::MakeField("imageIndex", static_cast<uint32_t>(mVKCurrentImage)),
+                       vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(swapImage)),
+                       vulkanlog::MakeField("oldLayout", static_cast<int>(barrier.oldLayout)),
+                       vulkanlog::MakeField("newLayout", static_cast<int>(barrier.newLayout)));
+
+  vkCmdPipelineBarrier(commandBuffer,
+                       VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                       VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                       0,
+                       0,
+                       nullptr,
+                       0,
+                       nullptr,
+                       1,
+                       &barrier);
+
+  vkEndCommandBuffer(commandBuffer);
+
+  VkSubmitInfo submitInfo{};
+  submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+  submitInfo.commandBufferCount = 1;
+  submitInfo.pCommandBuffers = &commandBuffer;
+
+  VkResult submitRes = vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
+  if (submitRes != VK_SUCCESS)
+  {
+    IGRAPHICS_VK_LOG("PrepareCurrentSwapchainImageForFlush",
+                        "queueSubmitFailed",
+                        vulkanlog::Severity::kError,
+                        vulkanlog::MakeField("vkResult", static_cast<int>(submitRes)));
+    return false;
+  }
+
+  VkResult fenceRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
+  if (fenceRes != VK_SUCCESS)
+  {
+    IGRAPHICS_VK_LOG("PrepareCurrentSwapchainImageForFlush",
+                        "waitForFencesPostSubmitFailed",
+                        vulkanlog::Severity::kError,
+                        vulkanlog::MakeField("vkResult", static_cast<int>(fenceRes)));
+    return false;
+  }
+
+  vkResetFences(mVKDevice, 1, &mVKInFlightFence);
+  mVKImageLayouts[mVKCurrentImage] = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  mVKSubmissionPending = false;
+
+  IGRAPHICS_VK_LOG("PrepareCurrentSwapchainImageForFlush",
+                      "imageLayoutUpdated",
+                      vulkanlog::Severity::kDebug,
+                      vulkanlog::MakeField("imageIndex", static_cast<uint32_t>(mVKCurrentImage)),
+                       vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(swapImage)),
+                       vulkanlog::MakeField("layout", static_cast<int>(mVKImageLayouts[mVKCurrentImage])));
+
+  return true;
+}
+
 void IGraphicsSkia::ResetVulkanSwapchainCaches()
 {
   mVKSwapchainSurfaces.clear();
@@ -734,6 +879,7 @@ void IGraphicsSkia::OnViewDestroyed()
 #elif defined IGRAPHICS_VULKAN
   if (mGrContext)
   {
+    PrepareCurrentSwapchainImageForFlush();
     mGrContext->flushAndSubmit();
     ReleaseSkiaGpuResources(mGrContext.get());
     mGrContext->releaseResourcesAndAbandonContext();
@@ -873,7 +1019,6 @@ void IGraphicsSkia::DrawResize()
                        vulkanlog::MakeField("imageCount", static_cast<uint64_t>(mVKSwapchainImages.size())));
   std::lock_guard<std::mutex> lock(mVKSwapchainMutex);
   mVKSkipFrame = true;
-  mVKCurrentImage = kInvalidImageIndex;
   ResetVulkanSwapchainCaches();
   mSurface.reset();
   mCanvas = nullptr;
@@ -920,6 +1065,7 @@ void IGraphicsSkia::DrawResize()
     }
     if (mGrContext)
     {
+      PrepareCurrentSwapchainImageForFlush();
       mGrContext->flushAndSubmit();
       ReleaseSkiaGpuResources(mGrContext.get());
     }
@@ -935,6 +1081,7 @@ void IGraphicsSkia::DrawResize()
     }
     mVKImageLayouts.clear();
   }
+  mVKCurrentImage = kInvalidImageIndex;
   if (!mVKSwapchainImages.empty())
   {
     IGRAPHICS_VK_LOG("DrawResize",

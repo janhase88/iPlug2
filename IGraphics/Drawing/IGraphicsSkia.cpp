@@ -1353,7 +1353,7 @@ void IGraphicsSkia::BeginFrame()
     {
       IGRAPHICS_VK_LOG("BeginFrame",
                           "acquiredImageUnexpectedLayout",
-                          vulkanlog::Severity::kWarning,
+                          vulkanlog::Severity::kInfo,
                           vulkanlog::MakeField("imageIndex", imageIndex),
                            vulkanlog::MakeField("trackedLayout", static_cast<int>(acquiredLayout)),
                            vulkanlog::MakeField("frameVersion", static_cast<uint64_t>(mVKFrameVersion)),

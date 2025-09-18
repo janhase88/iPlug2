@@ -27,6 +27,7 @@
 #include "include/codec/SkCodec.h"
 
 #if defined(__has_include)
+
   #if __has_include("include/core/SkImages.h")
     #include "include/core/SkImages.h"
     #define IGRAPHICS_HAS_SKIMAGES 1

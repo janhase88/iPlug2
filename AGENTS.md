@@ -2,100 +2,101 @@
 
 -------------------------------------------------------------------------------
 
-## Commands
+IF NONE OF ABOVE COMMANDS WAS GIVEN IGNORE THIS AGENTS.md FILE - RETURN.
 
-- /new-plan — Perform <Environment-Check> first, then create or overwrite the Current-Plan.xml in the workspace/`Repo-Name`/Plan/ Folder and create BASE-Snapshot
-- /proceed — Execute next safe leaf tasks. If confidence < 0.90 or heuristics trigger, split first; parent waits. Batch work, update status/curcialInfo/tryCount, persist
+-------------------------------------------------------------------------------
+
+## Commands
+- /new-plan — Perform <Environment-Check> first, then create or overwrite the Current-Plan.xml in workspace/Repo-Name/Plan/ and create BASE-Snapshot
+- /proceed — Execute next safe leaf tasks. If confidence < 0.90 or heuristics trigger, split first; parent waits. Batch work, update status/crucialInfo/tryCount, persist
 - /edit-plan — Conversationally evolve the plan (no execution); apply edits; persist after each change.
 - /delete-plan — Remove plan.
-
-IF NONE OF ABOVE COMMANDS WAS GIVEN IGNORE THIS AGENTS.md FILE - RETURN.
 
 ## Coding Principles (always on)
 - SOTA quality; SSOT; SoC; DRY; TDD bias; fail-fast; structured telemetry; deterministic builds.
 - Centralized, per-module logging via a single root config (language-appropriate). That config defines module levels and log sinks/paths. All code logs through the central logger; no inline constants.
 
-## Envrioment
+## Environment
+- plan_path: workspace/Repo-Name/Plan/Current-Plan.xml
+- snapshot_path: workspace/Repo-Name/Plan/Snapshots/
 
-- `plan_path`: workspace/`Repo-Name`/Plan/Current-Plan.xml
-- `snapshot_path`:  workspace/`Repo-Name`/Plan/Snapshots/
-
-
-## Environment Initialize
-
- - if `plan_path` && / || `snapshot_path` not present, create.
+### Environment Initialize
+- If plan_path or snapshot_path is not present, create the missing directories/files.
 
 -------------------------------------------------------------------------------
 
 ## Plan Structure
 
 <plan>
-  <Goal>`Main-Goal`</Goal>
+  <Goal>Main-Goal</Goal>
+
   <Environment-Check>
-     Action: check what environment the repo needs to run build tests and if your environment does support these. you environment is ubuntu so all windows based and ui based system by default are not buildable in your env.
-      Acceptance: Environment supports building the repo.
-      Rejection: Environment does not support building the repo.
-
-     Set <Build-Test-Compatible> TRUE or FALSE.
+    Action: check what environment the repo needs to run build tests and if your environment supports these. Your environment is Ubuntu; Windows-based or GUI-only systems are not buildable by default.
+    Acceptance: Environment supports building the repo.
+    Rejection: Environment does not support building the repo.
+    Build-Test-Compatible: TRUE or FALSE   ← SINGLE SOURCE OF TRUTH
   </Environment-Check>
-  <Build-Test-Compatible>`TRUE` / `FALSE`</Build-Test-Compatible>
-  <context>
-    `Main-Goal Context`
-  </context>
-  <Tasks>
-    <task>
-      <name>`first task`</name>
-      <status>OPEN | RETRY | UNFINISHED | AWAIT-CHILDREN-TASK-SUCCESS | PROOF | SUCCESS | AWAITS REVIEW | REVIEW PASSED</status>
-      <tryCount>0</tryCount>
-      <curcialInfo>
-        `important information gathered`     
-      </curcialInfo>
-      <continue-info>
-       'important information for the next agent to continue a interrupted task
-      </continue-info>
-      <sub-tasks>
-        <task>
-          [...]
-        </task>
-      </subtasks>
-    </task>
-        <task>
-      <name>`n task`</name>
-      <status>OPEN | RETRY | UNFINISHED | AWAIT-CHILDREN-TASK-SUCCESS | PROOF | SUCCESS | AWAITS REVIEW | REVIEW PASSED</status>
-      <tryCount>0</tryCount>
-      <curcialInfo>
-        `important information gathered`     
-      </curcialInfo>
-      <continue-info>
-         `precise resume data`: last completed step; next step(s); paths/files/lines; commands/flags; log anchors; snapshot_id (and commit hash if Git present); pending checks.
-      </continue-info>
-      <sub-tasks>
-        <task>
-          [...]
-        </task>
-      </subtasks>
-    </task>
-    [...]
-  </Tasks>
-</plan>
 
-## Finalization (required last; two-pass “second arrival” defined)
+  <context>
+    Main-Goal Context
+  </context>
+
+  <Tasks>
+
+    <task>
+      <name>first task</name>
+      <status>OPEN | RETRY | UNFINISHED | AWAIT-CHILDREN-TASK-SUCCESS | PROOF | SUCCESS | AWAITS REVIEW | REVIEW PASSED</status>
+      <tryCount>0</tryCount>
+      <crucialInfo>
+        important information gathered
+      </crucialInfo>
+      <continue-info>
+        important information for the next agent to continue an interrupted task
+      </continue-info>
+      <subtasks>
+        <task>
+          [...]
+        </task>
+      </subtasks>
+    </task>
+
+    <task>
+      <name>n task</name>
+      <status>OPEN | RETRY | UNFINISHED | AWAIT-CHILDREN-TASK-SUCCESS | PROOF | SUCCESS | AWAITS REVIEW | REVIEW PASSED</status>
+      <tryCount>0</tryCount>
+      <crucialInfo>
+        important information gathered
+      </crucialInfo>
+      <continue-info>
+        precise resume data: last completed step; next step(s); paths/files/lines; commands/flags; log anchors; snapshot_id (and commit hash if Git present); pending checks.
+      </continue-info>
+      <subtasks>
+        <task>
+          [...]
+        </task>
+      </subtasks>
+    </task>
+
+  </Tasks>
+
+  <Finalization>
     <task>
       <name>FINAL CHECK</name>
       <status>OPEN</status>
       <tryCount>0</tryCount>
-      <curcialInfo>
-        Action: Mark all tasks as AWAITS REVIEW. Mark this task as `FINAL-REVIEW-STARTED`. Go through all tasks and review with build-tests OR code-only-perspective-review 
-        depending on  <Build-Test-Compatible>: TRUE OR FALSE. Set task to REVIEW PASSED if passed, OR Reopen tasks (+subtasks) that don't pass the review, then work on these until you can set their status AWAITS REVIEW again. this Action loops until all Tasks are marked REVIEW PASSED. 
-        If all tasks are marked REVIEW PASSED mark this task as SUCCESS: Plan has succefully finished - Goal Achieved - Create Final PullRequest based on the whole Plan.
+      <crucialInfo>
+        Action: Mark all tasks as AWAITS REVIEW. Mark this task as FINAL-REVIEW-STARTED. Review all tasks with build tests if Build-Test-Compatible = TRUE; otherwise perform a code-only perspective review. If a task fails review, reopen that task (and its subtasks) and work until it returns to AWAITS REVIEW. Loop until all tasks are REVIEW PASSED. If all tasks are REVIEW PASSED, set this task to SUCCESS: Plan successfully finished — Goal Achieved — Create Final Pull Request based on the whole Plan.
+      </crucialInfo>
     </task>
+  </Finalization>
+
+</plan>
 
 -------------------------------------------------------------------------------
 
 ## Build Tests for code changes (NOT SANDBOX WORK ENVIRONMENT)
-
-  if <Environment-Check> TRUE: Obtain PROOF task status via build tests.
-  else if <Environment-Check> FALSE: Obtain PROOF task status from code-viewing only (no build tests, code-only-perspective)
+- If Build-Test-Compatible = TRUE: obtain PROOF task status via build tests.
+- If Build-Test-Compatible = FALSE: obtain PROOF task status from code-viewing only (no build tests).
 
 -------------------------------------------------------------------------------
 
@@ -107,47 +108,39 @@ IF NONE OF ABOVE COMMANDS WAS GIVEN IGNORE THIS AGENTS.md FILE - RETURN.
 -------------------------------------------------------------------------------
 
 ## Evolving the Plan
-If a Task in the Plan becomes outdated or wrong, then update the plan.
-You are allowed to change and evolve / trim the plan based on the latest needs - if task(s) doesnt appear valid anymore based on new revelations edit the plan, so it stays valid.
+If a Task in the Plan becomes outdated or wrong, update or trim it so the plan stays valid.
 
 -------------------------------------------------------------------------------
 
-## Plan Summary  
+## Plan Summary
+(Before doing this always update plan — MANDATORY)
+Create/overwrite workspace/Repo-Name/Plan/Plan-Summary.md with:
 
-(Before doing this always update plan - MANDATORY):
-- create/overwrite `plan_path/Plan-Summary.md` with this: 
+[x] Continued From Previous Snapshot: YES / NO — relevant 1–3 lines
+-----------------
+[x] File Overview:
+- Num files Changed: N
+- Num files Created: N
+- Num lines Modified: N
 
-      ```
-      [x] Continued From Previous Snapshot: `YES / NO` - `relevant 1-3 Lines Info` 
-      -----------------
-      [x] File Overview:
-      - Num files Changed: N
-      - Num Files created: N
-      - Num Lines Modified: N
+[x] List of Files changed/created:
+- Path/Filename
+- Path/Filename
+- [...]
 
-      [x]List of Files changed/created:
-          - `<Path/Filename>`
-          - `<Path/Filename>?`
-          - `[...]`
-      -----------------
-      [x] Current plan:
-      - <`Taskname` - PREVIOUS STATUS: `STATUS` / CURRENT STATUS: `STATUS`>
-      - <`Taskname` - PREVIOUS STATUS: `STATUS` / CURRENT STATUS: `STATUS`>
-      - <`Taskname` - PREVIOUS STATUS: `STATUS` / CURRENT STATUS: `STATUS`>
-      - `[...]`
+-----------------
+[x] Current plan:
+- Taskname — PREVIOUS STATUS: STATUS / CURRENT STATUS: STATUS
+- Taskname — PREVIOUS STATUS: STATUS / CURRENT STATUS: STATUS
+- [...]
 
-      [x] Message to User:
-        <1-5 lines of text. you can freely choose what's relevant for the operator now and what you want to tell him>
-      ```
+[x] Message to User:
+1–5 lines you want the operator to see
 
 -------------------------------------------------------------------------------
 
 ## Persistence Model
-- Source of truth for continuity: **snapshots** under `snapshot_path`.
-- At End of /proceed (and on timebox): create a compressed snapshot of the entire `workspace_root` (including hidden files) into `snapshot_path/<timestamp>.tgz`; write/update `latest_meta` with `{ snapshot_id, created_at, batch_summary, head_sha? }`. then you commit this snapshot.
-- At Start of /proceed: **restore** the latest snapshot into `workspace_root` before any work begins.
-- You always reply GIT DIFF Patch based on difference against original repo state (BASE-Snapshot) (BUT EXCLUDE .tgz FILES FROM THE DIFF)
-
-
-
-
+- Source of truth for continuity: snapshots under snapshot_path.
+- At End of /proceed (and on timebox): create a compressed snapshot of the entire workspace_root (including hidden files) into snapshot_path/<timestamp>.tgz; write/update latest_meta with { snapshot_id, created_at, batch_summary, head_sha? }. If Git is present, commit this snapshot; otherwise just persist the artifact and metadata.
+- At Start of /proceed: restore the latest snapshot into workspace_root before any work begins.
+- Always reply with a unified diff patch based on the difference against the original repo state (BASE-Snapshot). Exclude .tgz files from the diff.

@@ -880,8 +880,15 @@ void IGraphicsSkia::OnViewDestroyed()
 #elif defined IGRAPHICS_VULKAN
   if (mGrContext)
   {
-    PrepareCurrentSwapchainImageForFlush();
-    mGrContext->flushAndSubmit();
+    bool preparedForFlush = PrepareCurrentSwapchainImageForFlush();
+    if (preparedForFlush)
+    {
+      mGrContext->flushAndSubmit();
+    }
+    else
+    {
+      IGRAPHICS_VK_LOG_SIMPLE("OnViewDestroyed", "skipFlushNoPreparedSwapchainImage", vulkanlog::Severity::kInfo);
+    }
     ReleaseSkiaGpuResources(mGrContext.get());
     mGrContext->releaseResourcesAndAbandonContext();
   }
@@ -1066,8 +1073,15 @@ void IGraphicsSkia::DrawResize()
     }
     if (mGrContext)
     {
-      PrepareCurrentSwapchainImageForFlush();
-      mGrContext->flushAndSubmit();
+      bool preparedForFlush = PrepareCurrentSwapchainImageForFlush();
+      if (preparedForFlush)
+      {
+        mGrContext->flushAndSubmit();
+      }
+      else
+      {
+        IGRAPHICS_VK_LOG_SIMPLE("DrawResize", "skipFlushNoPreparedSwapchainImage", vulkanlog::Severity::kInfo);
+      }
       ReleaseSkiaGpuResources(mGrContext.get());
     }
     if (mVKCommandBuffer != VK_NULL_HANDLE)

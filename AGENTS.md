@@ -144,29 +144,21 @@ You are allowed to change and evolve / trim the plan based on the latest needs -
 
 ## Persistence Model
 - Source of truth for continuity: **snapshots** under `snapshot_path`.
-- At End of /proceed (and on timebox): create a compressed snapshot of the entire `workspace_root` (including hidden files) into `snapshot_path/<timestamp>.tgz`; write/update `latest_meta` with `{ snapshot_id, created_at, batch_summary, head_sha? }`.
-- At Start of /proceed: if `workspace_root` is empty or reset, **restore** the latest snapshot into `workspace_root` before any work begins.
-- You always at least reply with a Updated Plan / updated Plan-Summary.md and GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
-- You always at least reply with a Updated Plan / updated Plan-Summary.md and GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
-- You always at least reply with a Updated Plan / updated Plan-Summary.md and GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
-- You always at least reply with a Updated Plan / updated Plan-Summary.md and GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
-- You always at least reply with a Updated Plan / updated Plan-Summary.md and GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
-- You always at least reply with a Updated Plan / updated Plan-Summary.md and GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
-- You always at least reply with a Updated Plan / updated Plan-Summary.md and GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
-- You always at least reply with a Updated Plan / updated Plan-Summary.md and GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
-- You always at least reply with a Updated Plan / updated Plan-Summary.md and GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
-- You always at least reply with a Updated Plan / updated Plan-Summary.md and GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
-- You always at least reply with a Updated Plan / updated Plan-Summary.md and GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
-- You always at least reply with a Updated Plan / updated Plan-Summary.md and GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
-- You always at least reply with a Updated Plan / updated Plan-Summary.md and GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
-- You always at least reply with a Updated Plan / updated Plan-Summary.md and GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
-- You always at least reply with a Updated Plan / updated Plan-Summary.md and GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
-- You always at least reply with a Updated Plan / updated Plan-Summary.md and GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
-- You always at least reply with a Updated Plan / updated Plan-Summary.md and GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
-- You always at least reply with a Updated Plan / updated Plan-Summary.md and GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
-- You always at least reply with a Updated Plan / updated Plan-Summary.md and GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
-- You always at least reply with a Updated Plan / updated Plan-Summary.md and GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
-- You always at least reply with a Updated Plan / updated Plan-Summary.md and GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
-- You always at least reply with a Updated Plan / updated Plan-Summary.md and GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
+- At End of /proceed (and on timebox): create a compressed snapshot of the entire `workspace_root` (including hidden files) into `snapshot_path/<timestamp>.tgz`; write/update `latest_meta` with `{ snapshot_id, created_at, batch_summary, head_sha? }`. then you commit this snapshot.
+- At Start of /proceed: **restore** the latest snapshot into `workspace_root` before any work begins.
+- You always reply GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
+- You always reply GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
+- You always reply GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
+- You always reply GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
+- You always reply GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
+- You always reply GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
+- You always reply GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
+- You always reply GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
+- You always reply GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
+- You always reply GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
+- You always reply GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
+- You always reply GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
+- You always reply GIT DIFF Patch based on difference against original repo state (BASE-Snapshot)
+
 
 

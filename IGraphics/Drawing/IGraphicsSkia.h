@@ -269,6 +269,7 @@ private:
   uint64_t mVKFrameVersion = 0;
   std::mutex mVKSwapchainMutex;
   std::unordered_set<VkImage> mVKDebugImages;
+  bool PrepareCurrentSwapchainImageForFlush();
   void ResetVulkanSwapchainCaches();
   VkCommandBuffer EnsureVulkanCommandBuffer();
   sk_sp<SkSurface> EnsureSwapchainSurface(uint32_t imageIndex, int width, int height, const GrVkImageInfo& imageInfo);

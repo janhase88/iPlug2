@@ -15,7 +15,7 @@
 
 IF NONE OF ABOVE COMMANDS WAS GIVEN IGNORE THIS AGENTS.md FILE - RETURN.
 
-IF ONE OF THE ABOVE COMMANDS WAS GIVEN YOU ARE IN COMMAND MODE. IN COMMAND MODE ALWAYS CREATE GIT PATCH + SNAPSHOT
+IF ONE OF THE ABOVE COMMANDS WAS GIVEN YOU ARE IN COMMAND MODE. IN COMMAND MODE ALWAYS CREATE GIT DIFF + SNAPSHOT
 -------------------------------------------------------------------------------
 
 Remote-free by design. Continuity between worker turns is guaranteed by filesystem **snapshots to a durable `plan_path`** and **restore on the next turn**. Local Git is **optional** (for diffs/history only). No remotes, no PRs.
@@ -215,4 +215,4 @@ Turn Report: N
 - Restore snapshot before work; snapshot after work. That alone guarantees continuity.
 - Persist plan after each mutation; snapshot once per session (and on timebox).
 - Git optional: if present, commit once per session; prefer stash over preflight commits; never assume remotes.
-- IN COMMAND MODE ALWAYS CREATE GIT PATCH + SNAPSHOT (MANDATORY , MOST IMPORTANT)
+- IN COMMAND MODE ALWAYS CREATE GIT DIFF + SNAPSHOT (MANDATORY , MOST IMPORTANT)

@@ -15,11 +15,14 @@
 #include "include/core/SkFont.h"
 #include "include/core/SkFontMetrics.h"
 #include "include/core/SkFontMgr.h"
+#include "include/core/SkData.h"
 #include "include/core/SkMaskFilter.h"
 #include "include/core/SkPathEffect.h"
+#include "include/core/SkPixmap.h"
 #include "include/core/SkSwizzle.h"
 #include "include/core/SkTypeface.h"
 #include "include/core/SkVertices.h"
+#include "include/core/SkImage.h"
 #include "include/effects/SkDashPathEffect.h"
 #include "include/effects/SkGradientShader.h"
 #include "include/effects/SkImageFilters.h"
@@ -472,6 +475,31 @@ void IGraphicsSkia::ResetVulkanSwapchainCaches()
 
 #pragma mark - Private Classes and Structs
 
+namespace
+{
+static sk_sp<SkImage> EnsureRasterImage(sk_sp<SkImage> image)
+{
+  if (!image)
+    return nullptr;
+
+  sk_sp<SkImage> raster = image->makeRasterImage();
+  if (raster)
+    return raster;
+
+  SkImageInfo info = SkImageInfo::MakeN32Premul(image->width(), image->height());
+  SkBitmap bitmap;
+
+  if (!bitmap.tryAllocPixels(info))
+    return image;
+
+  if (!image->readPixels(bitmap.pixmap(), 0, 0))
+    return image;
+
+  raster = SkImage::MakeRasterCopy(bitmap.pixmap());
+  return raster ? raster : image;
+}
+} // namespace
+
 class IGraphicsSkia::Bitmap : public APIBitmap
 {
 public:
@@ -498,13 +526,9 @@ IGraphicsSkia::Bitmap::Bitmap(const char* path, double sourceScale)
 
   assert(data && "Unable to load file at path");
 
-  auto image = SkImages::DeferredFromEncodedData(data);
+  auto image = EnsureRasterImage(SkImage::MakeFromEncoded(data));
 
-#ifdef IGRAPHICS_CPU
-  image = image->makeRasterImage();
-#endif
-
-  mDrawable.mImage = image;
+  mDrawable.mImage = std::move(image);
 
   mDrawable.mIsSurface = false;
   SetBitmap(&mDrawable, mDrawable.mImage->width(), mDrawable.mImage->height(), sourceScale, 1.f);
@@ -513,13 +537,9 @@ IGraphicsSkia::Bitmap::Bitmap(const char* path, double sourceScale)
 IGraphicsSkia::Bitmap::Bitmap(const void* pData, int size, double sourceScale)
 {
   auto data = SkData::MakeWithoutCopy(pData, size);
-  auto image = SkImages::DeferredFromEncodedData(data);
+  auto image = EnsureRasterImage(SkImage::MakeFromEncoded(data));
 
-#ifdef IGRAPHICS_CPU
-  image = image->makeRasterImage();
-#endif
-
-  mDrawable.mImage = image;
+  mDrawable.mImage = std::move(image);
 
   mDrawable.mIsSurface = false;
   SetBitmap(&mDrawable, mDrawable.mImage->width(), mDrawable.mImage->height(), sourceScale, 1.f);
@@ -527,11 +547,7 @@ IGraphicsSkia::Bitmap::Bitmap(const void* pData, int size, double sourceScale)
 
 IGraphicsSkia::Bitmap::Bitmap(sk_sp<SkImage> image, double sourceScale)
 {
-#ifdef IGRAPHICS_CPU
-  mDrawable.mImage = image->makeRasterImage();
-#else
-  mDrawable.mImage = image;
-#endif
+  mDrawable.mImage = EnsureRasterImage(std::move(image));
 
   SetBitmap(&mDrawable, mDrawable.mImage->width(), mDrawable.mImage->height(), sourceScale, 1.f);
 }
@@ -2613,7 +2629,7 @@ void IGraphicsSkia::ApplyShadowMask(ILayerPtr& layer, RawBitmapData& mask, const
 
   SkImageInfo info = SkImageInfo::MakeN32Premul(width, height);
   SkPixmap pixMap(info, mask.Get(), rowBytes);
-  sk_sp<SkImage> image = SkImages::RasterFromPixmap(pixMap, nullptr, nullptr);
+  sk_sp<SkImage> image = SkImage::MakeRasterCopy(pixMap);
   sk_sp<SkImage> foreground;
 
   // Copy the foreground if needed

@@ -503,8 +503,26 @@ void IGraphicsSkia::ResetVulkanSwapchainCaches()
 namespace
 {
 
+
 static sk_sp<SkImage> MakeRasterCopyCompat(const SkPixmap& pixmap)
+
 {
+};
+
+template <bool HasMakeRasterCopyMethod>
+struct MakeRasterCopyHelper;
+
+template <>
+struct MakeRasterCopyHelper<true>
+{
+  static sk_sp<SkImage> Apply(const SkPixmap& pixmap) { return SkImage::MakeRasterCopy(pixmap); }
+};
+
+template <>
+struct MakeRasterCopyHelper<false>
+{
+  static sk_sp<SkImage> Apply(const SkPixmap& pixmap)
+  {
 #if IGRAPHICS_HAS_SKIMAGES
   if (auto image = SkImages::RasterFromPixmapCopy(pixmap))
     return image;
@@ -527,7 +545,14 @@ static sk_sp<SkImage> MakeRasterCopyCompat(const SkPixmap& pixmap)
   return SkImages::RasterFromBitmap(bitmap);
 #else
   return SkImage::MakeFromBitmap(bitmap);
+
 #endif
+  }
+};
+
+static sk_sp<SkImage> MakeRasterCopyCompat(const SkPixmap& pixmap)
+{
+  return MakeRasterCopyHelper<HasMakeRasterCopy<SkImage>::value>::Apply(pixmap);
 }
 
 static sk_sp<SkImage> DecodeImageFromData(sk_sp<SkData> data)

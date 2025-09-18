@@ -18,10 +18,9 @@ IF NONE OF ABOVE COMMANDS WAS GIVEN IGNORE THIS AGENTS.md FILE - RETURN.
 
 ## Environment
 - plan_path: workspace/Repo-Name/Plan/Current-Plan.xml
-- snapshot_path: workspace/Repo-Name/Plan/Snapshots/
 
 ### Environment Initialize
-- If plan_path or snapshot_path is not present, create the missing directories/files.
+- If plan_path is not present, create the missing directories/files.
 
 -------------------------------------------------------------------------------
 
@@ -141,6 +140,6 @@ Create/overwrite workspace/Repo-Name/Plan/Plan-Summary.md with:
 
 ## Persistence Model
 - Source of truth for continuity: snapshots under snapshot_path.
-- At End of /proceed (and on timebox): create a compressed snapshot of the entire workspace_root (including hidden files) into snapshot_path/<timestamp>.tgz; write/update latest_meta with { snapshot_id, created_at, batch_summary, head_sha? }. If Git is present, commit this snapshot; otherwise just persist the artifact and metadata.
-- At Start of /proceed: restore the latest snapshot into workspace_root before any work begins.
-- Always reply with a unified diff patch based on the difference against the original repo state (BASE-Snapshot). Exclude .tgz files from the diff.
+- At End of /proceed (and on timebox): commit all.
+- At Start of /proceed: restore the latest commit.
+- Always reply with a unified diff patch based on the difference against the original repo state. 

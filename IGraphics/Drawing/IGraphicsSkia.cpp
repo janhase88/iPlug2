@@ -503,31 +503,30 @@ void IGraphicsSkia::ResetVulkanSwapchainCaches()
 namespace
 {
 
+template <typename T>
+auto HasMakeRasterCopyTest(int) -> decltype(T::MakeRasterCopy(std::declval<const SkPixmap&>()), std::true_type{});
 
-static sk_sp<SkImage> MakeRasterCopyCompat(const SkPixmap& pixmap)
+template <typename>
+std::false_type HasMakeRasterCopyTest(...);
 
+template <typename T>
+struct HasMakeRasterCopy : decltype(HasMakeRasterCopyTest<T>(0))
 {
+  using type = decltype(HasMakeRasterCopyTest<T>(0));
+  static constexpr bool value = type::value;
 };
 
-template <bool HasMakeRasterCopyMethod>
-struct MakeRasterCopyHelper;
-
-template <>
-struct MakeRasterCopyHelper<true>
+template <typename T>
+static sk_sp<SkImage> MakeRasterCopyCompatImpl(const SkPixmap& pixmap, std::true_type)
 {
-  static sk_sp<SkImage> Apply(const SkPixmap& pixmap) { return SkImage::MakeRasterCopy(pixmap); }
-};
+  return T::MakeRasterCopy(pixmap);
+}
 
-template <>
-struct MakeRasterCopyHelper<false>
+template <typename T>
+static sk_sp<SkImage> MakeRasterCopyCompatImpl(const SkPixmap& pixmap, std::false_type)
 {
-  static sk_sp<SkImage> Apply(const SkPixmap& pixmap)
-  {
 #if IGRAPHICS_HAS_SKIMAGES
   if (auto image = SkImages::RasterFromPixmapCopy(pixmap))
-    return image;
-#else
-  if (auto image = SkImage::MakeRasterCopy(pixmap))
     return image;
 #endif
 
@@ -545,14 +544,12 @@ struct MakeRasterCopyHelper<false>
   return SkImages::RasterFromBitmap(bitmap);
 #else
   return SkImage::MakeFromBitmap(bitmap);
-
 #endif
-  }
-};
+}
 
 static sk_sp<SkImage> MakeRasterCopyCompat(const SkPixmap& pixmap)
 {
-  return MakeRasterCopyHelper<HasMakeRasterCopy<SkImage>::value>::Apply(pixmap);
+  return MakeRasterCopyCompatImpl<SkImage>(pixmap, HasMakeRasterCopy<SkImage>::type{});
 }
 
 static sk_sp<SkImage> DecodeImageFromData(sk_sp<SkData> data)

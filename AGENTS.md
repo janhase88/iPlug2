@@ -20,6 +20,11 @@ IF NONE OF ABOVE COMMANDS WAS GIVEN IGNORE THIS AGENTS.md FILE - RETURN.
 - `plan_path`: workspace/`Repo-Name`/Plan/Current-Plan.xml
 - `snapshot_path`:  workspace/`Repo-Name`/Plan/Snapshots/
 
+
+## Environment Initialize
+
+ - if `plan_path` && / || `snapshot_path` not present, create.
+
 -------------------------------------------------------------------------------
 
 ## Plan Structure

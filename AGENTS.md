@@ -146,7 +146,7 @@ You are allowed to change and evolve / trim the plan based on the latest needs -
 - Source of truth for continuity: **snapshots** under `snapshot_path`.
 - At End of /proceed (and on timebox): create a compressed snapshot of the entire `workspace_root` (including hidden files) into `snapshot_path/<timestamp>.tgz`; write/update `latest_meta` with `{ snapshot_id, created_at, batch_summary, head_sha? }`. then you commit this snapshot.
 - At Start of /proceed: **restore** the latest snapshot into `workspace_root` before any work begins.
-- You always reply GIT DIFF Patch based on difference against original repo state (BASE-Snapshot) (BUT EXCLUDE tar.gz SNAPSHOT FILES IN THE DIFF)
+- You always reply GIT DIFF Patch based on difference against original repo state (BASE-Snapshot) (BUT EXCLUDE .tgz FILES FROM THE DIFF)
 
 
 

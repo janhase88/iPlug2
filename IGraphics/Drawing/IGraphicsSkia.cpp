@@ -319,17 +319,30 @@ bool IGraphicsSkia::PrepareCurrentSwapchainImageForFlush()
   if (mVKInFlightFence == VK_NULL_HANDLE)
     return false;
 
-  VkResult waitRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
-  if (waitRes != VK_SUCCESS)
+
+  if (mVKSubmissionPending)
+  {
+    VkResult waitRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
+    if (waitRes != VK_SUCCESS)
+    {
+      IGRAPHICS_VK_LOG("PrepareCurrentSwapchainImageForFlush",
+                          "waitForFencesFailed",
+                          vulkanlog::Severity::kError,
+                          vulkanlog::MakeField("vkResult", static_cast<int>(waitRes)));
+      return false;
+    }
+  }
+
+  VkResult resetRes = vkResetFences(mVKDevice, 1, &mVKInFlightFence);
+  if (resetRes != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("PrepareCurrentSwapchainImageForFlush",
-                        "waitForFencesFailed",
+                        "resetFenceFailed",
                         vulkanlog::Severity::kError,
-                        vulkanlog::MakeField("vkResult", static_cast<int>(waitRes)));
+                        vulkanlog::MakeField("vkResult", static_cast<int>(resetRes)));
     return false;
   }
 
-  vkResetFences(mVKDevice, 1, &mVKInFlightFence);
   mVKSubmissionPending = false;
 
   VkCommandBuffer commandBuffer = EnsureVulkanCommandBuffer();

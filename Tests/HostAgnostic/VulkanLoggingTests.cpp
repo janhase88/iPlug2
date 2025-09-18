@@ -40,7 +40,7 @@ int main()
   assert(escaped == "line1\\n\\\"quoted\\\"\\t\\\\");
 
   logs.clear();
-  IGRAPHICS_VK_LOG("swapchain", "acquire", Severity::kError, {MakeField("retry", false)});
+  IGRAPHICS_VK_LOG("swapchain", "acquire", Severity::kError, MakeField("retry", false));
   assert(logs.size() == 1);
   assert(logs.front().find("\"retry\":false") != std::string::npos);
 

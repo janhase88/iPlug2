@@ -100,7 +100,7 @@ inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequ
     IGRAPHICS_VK_LOG("WinVulkanDeviceCoordinator.Initialize",
                         "vkCreateInstance",
                         vulkanlog::Severity::kError,
-                        {vulkanlog::MakeField("vkResult", static_cast<int>(res))});
+                        vulkanlog::MakeField("vkResult", static_cast<int>(res)));
     Teardown();
     return res;
   }
@@ -111,7 +111,7 @@ inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequ
     IGRAPHICS_VK_LOG("WinVulkanDeviceCoordinator.Initialize",
                         "vkCreateWin32SurfaceKHR",
                         vulkanlog::Severity::kError,
-                        {vulkanlog::MakeField("vkResult", static_cast<int>(res))});
+                        vulkanlog::MakeField("vkResult", static_cast<int>(res)));
     Teardown();
     return res;
   }
@@ -122,7 +122,7 @@ inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequ
     IGRAPHICS_VK_LOG("WinVulkanDeviceCoordinator.Initialize",
                         "selectPhysicalDevice",
                         vulkanlog::Severity::kError,
-                        {vulkanlog::MakeField("vkResult", static_cast<int>(res))});
+                        vulkanlog::MakeField("vkResult", static_cast<int>(res)));
     Teardown();
     return res;
   }
@@ -133,7 +133,7 @@ inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequ
     IGRAPHICS_VK_LOG("WinVulkanDeviceCoordinator.Initialize",
                         "vkCreateDevice",
                         vulkanlog::Severity::kError,
-                        {vulkanlog::MakeField("vkResult", static_cast<int>(res))});
+                        vulkanlog::MakeField("vkResult", static_cast<int>(res)));
     Teardown();
     return res;
   }

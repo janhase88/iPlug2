@@ -1477,13 +1477,17 @@ void IGraphicsSkia::BeginFrame()
       return;
     }
     VkResult waitRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
-    if (waitRes == VK_SUCCESS)
-      vkResetFences(mVKDevice, 1, &mVKInFlightFence);
-    else
+    if (waitRes != VK_SUCCESS)
+    {
       IGRAPHICS_VK_LOG("BeginFrame",
                           "waitForFencesFailed",
                           vulkanlog::Severity::kError,
                           vulkanlog::MakeField("vkResult", static_cast<int>(waitRes)));
+      mVKSkipFrame = true;
+      mVKCurrentImage = kInvalidImageIndex;
+      return;
+    }
+    vkResetFences(mVKDevice, 1, &mVKInFlightFence);
 
     mVKImageLayouts[imageIndex] = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     IGRAPHICS_VK_LOG("BeginFrame",
@@ -1739,14 +1743,17 @@ void IGraphicsSkia::EndFrame()
 
   VkResult submitRes = vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
   bool previousPending = mVKSubmissionPending;
-  mVKImageLayouts[mVKCurrentImage] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+  if (submitRes == VK_SUCCESS)
+  {
+    mVKImageLayouts[mVKCurrentImage] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+  }
   bool newPending = (submitRes == VK_SUCCESS);
   IGRAPHICS_VK_LOG("EndFrame",
                       "layoutUpdated",
                       vulkanlog::Severity::kDebug,
                       vulkanlog::MakeField("imageIndex", static_cast<uint32_t>(mVKCurrentImage)),
                        vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(swapImage)),
-                       vulkanlog::MakeField("layout", static_cast<int>(mVKImageLayouts[mVKCurrentImage])),
+                       vulkanlog::MakeField("layout", static_cast<int>((mVKCurrentImage < mVKImageLayouts.size()) ? mVKImageLayouts[mVKCurrentImage] : VK_IMAGE_LAYOUT_UNDEFINED)),
                        vulkanlog::MakeField("previousPending", previousPending),
                        vulkanlog::MakeField("newPending", newPending));
   mVKSubmissionPending = newPending;

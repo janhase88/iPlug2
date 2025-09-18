@@ -200,6 +200,7 @@ private:
   HGLRC mHGLRC = nullptr;
   HGLRC mStartHGLRC = nullptr;
   HDC mStartHDC = nullptr;
+  HDC mWindowDC = nullptr;
 #endif
 
   HINSTANCE mHInstance = nullptr;

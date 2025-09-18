@@ -15,12 +15,15 @@
 #include "include/core/SkFont.h"
 #include "include/core/SkFontMetrics.h"
 #include "include/core/SkFontMgr.h"
+#include "include/core/SkData.h"
 #include "include/core/SkMaskFilter.h"
 #include "include/core/SkPathEffect.h"
+#include "include/core/SkPixmap.h"
 #include "include/core/SkSwizzle.h"
 #include "include/core/SkTypeface.h"
 #include "include/core/SkVertices.h"
-#include "include/core/SkImages.h"
+#include "include/core/SkImage.h"
+
 #include "include/effects/SkDashPathEffect.h"
 #include "include/effects/SkGradientShader.h"
 #include "include/effects/SkImageFilters.h"
@@ -493,7 +496,9 @@ static sk_sp<SkImage> EnsureRasterImage(sk_sp<SkImage> image)
   if (!image->readPixels(bitmap.pixmap(), 0, 0))
     return image;
 
-  raster = SkImages::RasterFromBitmap(bitmap);
+
+  raster = SkImage::MakeRasterCopy(bitmap.pixmap());
+
   return raster ? raster : image;
 }
 } // namespace
@@ -524,7 +529,8 @@ IGraphicsSkia::Bitmap::Bitmap(const char* path, double sourceScale)
 
   assert(data && "Unable to load file at path");
 
-  auto image = EnsureRasterImage(SkImages::DeferredFromEncodedData(data));
+
+  auto image = EnsureRasterImage(SkImage::MakeFromEncoded(data));
 
   mDrawable.mImage = std::move(image);
 
@@ -535,7 +541,7 @@ IGraphicsSkia::Bitmap::Bitmap(const char* path, double sourceScale)
 IGraphicsSkia::Bitmap::Bitmap(const void* pData, int size, double sourceScale)
 {
   auto data = SkData::MakeWithoutCopy(pData, size);
-  auto image = EnsureRasterImage(SkImages::DeferredFromEncodedData(data));
+  auto image = EnsureRasterImage(SkImage::MakeFromEncoded(data));
 
   mDrawable.mImage = std::move(image);
 
@@ -2627,7 +2633,7 @@ void IGraphicsSkia::ApplyShadowMask(ILayerPtr& layer, RawBitmapData& mask, const
 
   SkImageInfo info = SkImageInfo::MakeN32Premul(width, height);
   SkPixmap pixMap(info, mask.Get(), rowBytes);
-  sk_sp<SkImage> image = SkImages::RasterFromPixmap(pixMap, nullptr, nullptr);
+  sk_sp<SkImage> image = SkImage::MakeRasterCopy(pixMap);
   sk_sp<SkImage> foreground;
 
   // Copy the foreground if needed

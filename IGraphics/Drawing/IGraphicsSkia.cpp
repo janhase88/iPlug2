@@ -495,7 +495,9 @@ static sk_sp<SkImage> EnsureRasterImage(sk_sp<SkImage> image)
   if (!image->readPixels(bitmap.pixmap(), 0, 0))
     return image;
 
+
   raster = SkImage::MakeRasterCopy(bitmap.pixmap());
+
   return raster ? raster : image;
 }
 } // namespace
@@ -525,6 +527,7 @@ IGraphicsSkia::Bitmap::Bitmap(const char* path, double sourceScale)
   sk_sp<SkData> data = SkData::MakeFromFileName(path);
 
   assert(data && "Unable to load file at path");
+
 
   auto image = EnsureRasterImage(SkImage::MakeFromEncoded(data));
 

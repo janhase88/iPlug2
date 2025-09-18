@@ -558,6 +558,18 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 #endif
 
       {
+#if defined IGRAPHICS_VULKAN
+        // When the Vulkan backend is shutting down (e.g. during CloseWindow), the device and
+        // swap-chain handles are reset prior to the HWND being destroyed. Skip drawing in that
+        // window to avoid dereferencing torn-down state while lingering WM_PAINT messages drain.
+        const bool hasVulkanContext = (pGraphics->mVkDevice != VK_NULL_HANDLE &&
+                                       pGraphics->mVkSwapchain.handle != VK_NULL_HANDLE);
+#else
+        const bool hasVulkanContext = true;
+#endif
+
+        if (hasVulkanContext)
+        {
 #if defined IGRAPHICS_GL
         ScopedGraphicsContext scopedGLCtx{pGraphics};
         pGraphics->Draw(rects);
@@ -565,6 +577,7 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 #else
         pGraphics->Draw(rects);
 #endif
+        }
       }
 
 #if defined IGRAPHICS_GL || defined IGRAPHICS_VULKAN || defined IGRAPHICS_D2D

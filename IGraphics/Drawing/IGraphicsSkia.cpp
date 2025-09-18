@@ -385,7 +385,7 @@ bool IGraphicsSkia::PrepareCurrentSwapchainImageForFlush()
                        vulkanlog::MakeField("newLayout", static_cast<int>(barrier.newLayout)));
 
   vkCmdPipelineBarrier(commandBuffer,
-                       VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                       VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                        0,
                        0,
@@ -1606,7 +1606,7 @@ void IGraphicsSkia::BeginFrame()
     {
     case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
       barrier.srcAccessMask = 0;
-      srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+      srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
       break;
     case VK_IMAGE_LAYOUT_UNDEFINED:
       barrier.srcAccessMask = 0;

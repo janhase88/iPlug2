@@ -215,3 +215,4 @@ Turn Report: N
 - Restore snapshot before work; snapshot after work. That alone guarantees continuity.
 - Persist plan after each mutation; snapshot once per session (and on timebox).
 - Git optional: if present, commit once per session; prefer stash over preflight commits; never assume remotes.
+- IN COMMAND MODE ALWAYS CREATE GIT PATCH + SNAPSHOT (MANDATORY , MOST IMPORTANT)

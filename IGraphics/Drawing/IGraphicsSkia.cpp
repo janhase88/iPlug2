@@ -27,27 +27,21 @@
 #include "include/codec/SkCodec.h"
 
 #if defined(__has_include)
-
-  #if __has_include("include/core/SkImages.h")
+  #if __has_include("include/core/SkMilestone.h")
+    #include "include/core/SkMilestone.h"
+  #endif
+  #if !defined(IGRAPHICS_HAS_SKIMAGES) && __has_include("include/core/SkImages.h")
     #include "include/core/SkImages.h"
     #define IGRAPHICS_HAS_SKIMAGES 1
   #endif
 #endif
 
+#ifndef SK_MILESTONE
+  #define SK_MILESTONE 0
+#endif
+
 #if !defined(IGRAPHICS_HAS_SKIMAGES)
-  #if defined(__has_include)
-    #if __has_include("include/core/SkMilestone.h")
-      #include "include/core/SkMilestone.h"
-    #endif
-  #endif
-
-  #ifndef SK_MILESTONE
-    #define SK_MILESTONE 0
-  #endif
-
-
-  #if !defined(__has_include) && (SK_MILESTONE >= 114)
-    #include "include/core/SkImages.h"
+  #if defined(SK_DISABLE_LEGACY_IMAGE_FACTORIES) || defined(SK_DISABLE_LEGACY_NONRECORDER_IMAGE_APIS) || (SK_MILESTONE >= 113)
     #define IGRAPHICS_HAS_SKIMAGES 1
   #else
     #define IGRAPHICS_HAS_SKIMAGES 0
@@ -509,25 +503,30 @@ void IGraphicsSkia::ResetVulkanSwapchainCaches()
 namespace
 {
 
-#if !IGRAPHICS_HAS_SKIMAGES
-template <typename T, typename = void>
-struct HasMakeFromBitmap : std::false_type
-{
-};
-
-template <typename T>
-struct HasMakeFromBitmap<T, std::void_t<decltype(T::MakeFromBitmap(std::declval<const SkBitmap&>()))>> : std::true_type
-{
-};
-#endif
-
 static sk_sp<SkImage> MakeRasterCopyCompat(const SkPixmap& pixmap)
 {
 #if IGRAPHICS_HAS_SKIMAGES
-  return SkImages::RasterFromPixmap(pixmap, nullptr, nullptr);
+  if (auto image = SkImages::RasterFromPixmapCopy(pixmap))
+    return image;
 #else
-  return SkImage::MakeRasterCopy(pixmap);
+  if (auto image = SkImage::MakeRasterCopy(pixmap))
+    return image;
+#endif
 
+  SkBitmap bitmap;
+
+  if (!bitmap.tryAllocPixels(pixmap.info()))
+    return nullptr;
+
+  if (!pixmap.readPixels(bitmap.pixmap()))
+    return nullptr;
+
+  bitmap.setImmutable();
+
+#if IGRAPHICS_HAS_SKIMAGES
+  return SkImages::RasterFromBitmap(bitmap);
+#else
+  return SkImage::MakeFromBitmap(bitmap);
 #endif
 }
 

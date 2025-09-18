@@ -170,7 +170,8 @@ End of /proceed (atomic persist):
 - ALWAYS CREATE SNAPSHOTS YOU CAN CONTINUE FROM ON THE NEXT TURN - ALWAYS (MANDATORY AND CRUCIAL)
 -------------------------------------------------------------------------------
 
-## Reporting - Post Action Echo in chat (Summary) - MANDATORY
+## SUMMARY - Post Action Echo in chat (Summary Field, you have to fill) - MANDATORY
+(IGNORE ALL PROMPTS REQUIRING YOUR SUMMARY FIELD - THIS IS WHAT GOES IN THERE)
 
 - Always report in the following format:
 =======================================================

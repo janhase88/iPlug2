@@ -426,6 +426,17 @@ bool IGraphicsSkia::PrepareCurrentSwapchainImageForFlush()
   mVKImageLayouts[mVKCurrentImage] = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
   mVKSubmissionPending = false;
 
+  if (mGrContext && mScreenSurface)
+  {
+    auto backendRT = SkSurfaces::GetBackendRenderTarget(mScreenSurface.get(), SkSurfaces::BackendHandleAccess::kFlushRead);
+    if (backendRT.isValid())
+    {
+      auto colorState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, mVKQueueFamily);
+      mGrContext->setBackendRenderTargetState(backendRT, colorState, nullptr, nullptr, nullptr);
+      backendRT.setMutableState(colorState);
+    }
+  }
+
   IGRAPHICS_VK_LOG("PrepareCurrentSwapchainImageForFlush",
                       "imageLayoutUpdated",
                       vulkanlog::Severity::kDebug,

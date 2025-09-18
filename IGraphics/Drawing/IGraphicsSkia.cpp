@@ -27,19 +27,30 @@
 #include "include/codec/SkCodec.h"
 
 #if defined(__has_include)
-  #if __has_include("include/core/SkMilestone.h")
-    #include "include/core/SkMilestone.h"
+
+  #if __has_include("include/core/SkImages.h")
+    #include "include/core/SkImages.h"
+    #define IGRAPHICS_HAS_SKIMAGES 1
   #endif
 #endif
 
-#ifndef SK_MILESTONE
-  #define SK_MILESTONE 0
-#endif
+#if !defined(IGRAPHICS_HAS_SKIMAGES)
+  #if defined(__has_include)
+    #if __has_include("include/core/SkMilestone.h")
+      #include "include/core/SkMilestone.h"
+    #endif
+  #endif
 
-#if SK_MILESTONE >= 114
-  #define IGRAPHICS_HAS_SKIMAGES 1
-#else
-  #define IGRAPHICS_HAS_SKIMAGES 0
+  #ifndef SK_MILESTONE
+    #define SK_MILESTONE 0
+  #endif
+
+  #if SK_MILESTONE >= 114
+    #include "include/core/SkImages.h"
+    #define IGRAPHICS_HAS_SKIMAGES 1
+  #else
+    #define IGRAPHICS_HAS_SKIMAGES 0
+  #endif
 #endif
 
 #include "include/effects/SkDashPathEffect.h"

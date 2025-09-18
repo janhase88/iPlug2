@@ -17,10 +17,11 @@ IF NONE OF ABOVE COMMANDS WAS GIVEN IGNORE THIS AGENTS.md FILE - RETURN.
 - Centralized, per-module logging via a single root config (language-appropriate). That config defines module levels and log sinks/paths. All code logs through the central logger; no inline constants.
 
 ## Environment
-- plan_path: workspace/Repo-Name/Plan/Current-Plan.xml
-
+- plan_path: /workspace/Repo-Name/Plan/Current-Plan.xml
+- snaphot_path: /mnt/snapshots
+ 
 ### Environment Initialize
-- If plan_path is not present, create the missing directories/files.
+- If plan_path or snaphot_path is not present, create the missing directories/files.
 
 -------------------------------------------------------------------------------
 
@@ -140,6 +141,6 @@ Create/overwrite workspace/Repo-Name/Plan/Plan-Summary.md with:
 
 ## Persistence Model
 - Source of truth for continuity: snapshots under snapshot_path.
-- At End of /proceed (and on timebox): commit all.
-- At Start of /proceed: restore the latest commit.
+- At End of /proceed (and on timebox): create compressed snapshot.
+- At Start of /proceed: restore from latest snapshot.
 - Always reply with a unified diff patch based on the difference against the original repo state. 

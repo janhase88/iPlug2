@@ -1,7 +1,21 @@
-IGNORE THIS FILE - RETURN
-
-
 # AGENTS.md — Plan Protocol (Remote-Free, Git-Optional, Snapshot-Durable)
+
+
+-------------------------------------------------------------------------------
+
+## Commands
+- /new-plan — Create or overwrite the plan in the workspace (echo plan in user-friendly form; not XML). Always add an environment check first and a final check last. Persist immediately to plan_path; set/keep the working branch; reply with a short confirmation.
+- /proceed — Execute next safe leaf tasks. If confidence < 0.90 or heuristics trigger, split first; parent waits. Batch work, update status/curcialInfo/tryCount, persist, and reply with a brief summary.
+- /revise — Restructure the plan (split/merge/rename/reorder; add acceptance/PROOF gates); keep history; persist.
+- /edit-plan — Conversationally evolve the plan (no execution); apply edits; persist after each change.
+- /set-style — Update <codingStyle> (tests/CI/perf/security posture, decomposition knobs, plan_path, auto_save, branch_name/lock, module logging map, persistence settings). Style can tighten rules but not disable principles. If logging_config_path is omitted, use the repo’s language-standard root config.
+- /save-plan — Persist plan (and optional curcialInfo bundle) to the durable store; snapshot; if local Git is available, create one commit.
+- /delete-plan — Remove plan (and style).
+- /ignore-plan — Answer directly; no plan changes.
+
+IF NONE OF ABOVE COMMANDS WAS GIVEN IGNORE THIS AGENTS.md FILE - RETURN.
+
+-------------------------------------------------------------------------------
 
 Remote-free by design. Continuity between worker turns is guaranteed by filesystem **snapshots to a durable `plan_path`** and **restore on the next turn**. Local Git is **optional** (for diffs/history only). No remotes, no PRs.
 
@@ -10,18 +24,6 @@ Remote-free by design. Continuity between worker turns is guaranteed by filesyst
 ## Principles (always on)
 - SOTA quality; SSOT; SoC; DRY; TDD bias; fail-fast; structured telemetry; deterministic builds.
 - Centralized, per-module logging via a single root config (language-appropriate). That config defines module levels and log sinks/paths. All code logs through the central logger; no inline constants.
-
--------------------------------------------------------------------------------
-
-## Commands
-- /new-plan — Create/overwrite the plan in the workspace (echo plan in user-friendly form; not XML). Always add an environment check first and a final check last. Persist immediately to plan_path; set/keep the working branch; reply with a short confirmation.
-- /proceed — Execute next safe leaf tasks. If confidence < 0.90 or heuristics trigger, split first; parent waits. Batch work, update status/curcialInfo/tryCount, persist, and reply with a brief summary.
-- /revise — Restructure the plan (split/merge/rename/reorder; add acceptance/PROOF gates); keep history; persist.
-- /edit-plan — Conversationally evolve the plan (no execution); apply edits; persist after each change.
-- /set-style — Update <codingStyle> (tests/CI/perf/security posture, decomposition knobs, plan_path, auto_save, branch_name/lock, module logging map, persistence settings). Style can tighten rules but not disable principles. If logging_config_path is omitted, use the repo’s language-standard root config.
-- /save-plan — Persist plan (and optional curcialInfo bundle) to the durable store; snapshot; if local Git is available, create one commit.
-- /delete-plan — Remove plan (and style).
-- /ignore-plan — Answer directly; no plan changes.
 
 -------------------------------------------------------------------------------
 
@@ -60,6 +62,7 @@ Remote-free by design. Continuity between worker turns is guaranteed by filesyst
 
 ## Evolving the Plan
 If a Task in the Plan becomes outdated or wrong (example: Environment check reveals build tests can't be run, but there's a task "run build tests"), then update the plan.
+You are allowed to change and evolve / trim the plan based on the latest needs - if task doesnt appear valid anymore edit the plan, so it stays valid.
 
 -------------------------------------------------------------------------------
 
@@ -92,8 +95,9 @@ If a Task in the Plan becomes outdated or wrong (example: Environment check reve
       <status>OPEN</status>
       <tryCount>0</tryCount>
       <curcialInfo>
-        Action: Verify toolchains/SDKs/drivers/env; run a smoke build/run appropriate to the project; ensure the root logging config loads and writes to the configured file path; verify durability of plan_path; ensure snapshot/patch directories exist.
-        Acceptance: clean build; smoke run/render without validation errors; module-level switches respected; log file created at configured path; plan_path exists, is writable, and sentinel is present; snap_dir/patch_dir/latest_meta created; if local Git exists, repo initialized and on <vcs>/<branch>.
+        Action: Verify toolchains/SDKs/drivers/env; run a smoke build/run appropriate to the project; ensure the root logging config loads and writes to the configured file path; verify durability of plan_path; ensure snapshot/patch directories exist. Update this plan.
+        Acceptance (if build tests are applicable): clean build; smoke run/render without validation errors; module-level switches respected; log file created at configured path; plan_path exists, is writable, and sentinel is present; snap_dir/patch_dir/latest_meta created; if local Git exists, repo initialized and on            <vcs>/<branch>.
+      
       </curcialInfo>
     </task>
 
@@ -158,11 +162,40 @@ End of /proceed (atomic persist):
 
 -------------------------------------------------------------------------------
 
-## Reporting & Persistence
+## Persistence
 - Keep a live plan. /new-plan always writes to plan_path (create/overwrite).
 - /proceed, /revise, and /edit-plan persist after each mutation.
 - Snapshots guarantee cross-turn continuity; patches are for audit; local Git (if present) is for intra-session diffs/history only. No remotes anywhere.
 - Responses are concise; the plan file is the source of truth.
+
+-------------------------------------------------------------------------------
+
+## Reporting - Post Action Echo in chat (Summary) - MANDATORY
+
+- Always report in the following format:
+=======================================================
+```
+[x] Continued From Previous Snapshot: `YES / FAILURE` - `relevant 1-3 Lines Info` 
+-----------------
+[x] File Overview:
+ - Num files Changed: N
+ - Num Files created: N
+ - Num Lines Modified: N
+
+[x]List of Files changed/created:
+    - `<Path/Filename>`
+    - `<Path/Filename>?`
+    - `[...]`
+-----------------
+[x] Current plan:
+ - <`Taskname` - PREVIOUS STATUS: `STATUS` / CURRENT STATUS: `STATUS`>
+ - <`Taskname` - PREVIOUS STATUS: `STATUS` / CURRENT STATUS: `STATUS`>
+ - <`Taskname` - PREVIOUS STATUS: `STATUS` / CURRENT STATUS: `STATUS`>
+ - `[...]`
+
+[x] Message to Operator:
+  <1-5 lines of text. you can freely choose what's relevant for the operator now and what you want to tell him>
+```
 
 -------------------------------------------------------------------------------
 

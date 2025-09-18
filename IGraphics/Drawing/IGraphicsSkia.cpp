@@ -26,8 +26,17 @@
 
 #include "include/codec/SkCodec.h"
 
-#if __has_include("include/core/SkImages.h")
-  #include "include/core/SkImages.h"
+#if defined(__has_include)
+  #if __has_include("include/core/SkMilestone.h")
+    #include "include/core/SkMilestone.h"
+  #endif
+#endif
+
+#ifndef SK_MILESTONE
+  #define SK_MILESTONE 0
+#endif
+
+#if SK_MILESTONE >= 114
   #define IGRAPHICS_HAS_SKIMAGES 1
 #else
   #define IGRAPHICS_HAS_SKIMAGES 0

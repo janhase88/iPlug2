@@ -1041,7 +1041,6 @@ void IGraphicsWin::CreateGLContext()
   }
 #endif
 
-
   if (!mWindowDC)
     ReleaseDC(mPlugWnd, dc);
 }

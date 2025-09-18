@@ -152,12 +152,12 @@ inline bool ShouldEmit(Severity severity)
 }
 
 #ifndef IGRAPHICS_VK_LOG
-  #define IGRAPHICS_VK_LOG(event, stage, severity, fields)                                                         \
+  #define IGRAPHICS_VK_LOG(event, stage, severity, ...)                                                            \
     do                                                                                                             \
     {                                                                                                              \
       if (::iplug::igraphics::vulkanlog::ShouldEmit(severity))                                                     \
       {                                                                                                            \
-        ::iplug::igraphics::vulkanlog::LogEvent(event, stage, severity, fields);                                   \
+        ::iplug::igraphics::vulkanlog::LogEvent(event, stage, severity, {__VA_ARGS__});                            \
       }                                                                                                            \
     } while (false)
 
@@ -166,7 +166,7 @@ inline bool ShouldEmit(Severity severity)
     {                                                                                                              \
       if (::iplug::igraphics::vulkanlog::ShouldEmit(severity))                                                     \
       {                                                                                                            \
-        ::iplug::igraphics::vulkanlog::LogEvent(event, stage, severity, {});                                       \
+        ::iplug::igraphics::vulkanlog::LogEvent(event, stage, severity);                                           \
       }                                                                                                            \
     } while (false)
 #endif

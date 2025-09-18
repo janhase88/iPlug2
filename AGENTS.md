@@ -15,6 +15,7 @@
 
 IF NONE OF ABOVE COMMANDS WAS GIVEN IGNORE THIS AGENTS.md FILE - RETURN.
 
+IF ONE OF THE ABOVE COMMANDS WAS GIVEN YOU ARE IN COMMAND MODE. IN COMMAND MODE ALWAYS CREATE GIT PATCH + SNAPSHOT
 -------------------------------------------------------------------------------
 
 Remote-free by design. Continuity between worker turns is guaranteed by filesystem **snapshots to a durable `plan_path`** and **restore on the next turn**. Local Git is **optional** (for diffs/history only). No remotes, no PRs.

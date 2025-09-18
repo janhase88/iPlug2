@@ -521,14 +521,50 @@ struct HasMakeFromBitmap<T, std::void_t<decltype(T::MakeFromBitmap(std::declval<
 };
 #endif
 
+template <typename T, typename = void>
+struct HasMakeRasterCopy : std::false_type
+{
+};
+
+template <typename T>
+struct HasMakeRasterCopy<T, std::void_t<decltype(T::MakeRasterCopy(std::declval<const SkPixmap&>()))>> : std::true_type
+{
+};
+
+template <bool HasMakeRasterCopyMethod>
+struct MakeRasterCopyHelper;
+
+template <>
+struct MakeRasterCopyHelper<true>
+{
+  static sk_sp<SkImage> Apply(const SkPixmap& pixmap) { return SkImage::MakeRasterCopy(pixmap); }
+};
+
+template <>
+struct MakeRasterCopyHelper<false>
+{
+  static sk_sp<SkImage> Apply(const SkPixmap& pixmap)
+  {
+#if IGRAPHICS_HAS_SKIMAGES
+    return SkImages::RasterFromPixmap(pixmap, nullptr, nullptr);
+#else
+    SkBitmap bitmap;
+
+    if (!bitmap.tryAllocPixels(pixmap.info()))
+      return nullptr;
+
+    if (!pixmap.readPixels(bitmap.pixmap()))
+      return nullptr;
+
+    bitmap.setImmutable();
+    return SkImage::MakeFromBitmap(bitmap);
+#endif
+  }
+};
+
 static sk_sp<SkImage> MakeRasterCopyCompat(const SkPixmap& pixmap)
 {
-#if IGRAPHICS_HAS_SKIMAGES
-  return SkImages::RasterFromPixmap(pixmap, nullptr, nullptr);
-#else
-  return SkImage::MakeRasterCopy(pixmap);
-
-#endif
+  return MakeRasterCopyHelper<HasMakeRasterCopy<SkImage>::value>::Apply(pixmap);
 }
 
 static sk_sp<SkImage> DecodeImageFromData(sk_sp<SkData> data)

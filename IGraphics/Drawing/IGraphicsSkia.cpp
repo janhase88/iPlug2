@@ -514,17 +514,7 @@ static sk_sp<SkImage> MakeRasterCopyCompat(const SkPixmap& pixmap)
 #if IGRAPHICS_HAS_SKIMAGES
   return SkImages::RasterFromPixmap(pixmap, nullptr, nullptr);
 #else
-  const SkImageInfo& info = pixmap.info();
-  SkBitmap bitmap;
-
-  if (!bitmap.tryAllocPixels(info))
-    return nullptr;
-
-  if (!pixmap.readPixels(bitmap.pixmap()))
-    return nullptr;
-
-  bitmap.setImmutable();
-  return SkImage::MakeFromBitmap(bitmap);
+  return SkImage::MakeRasterCopy(pixmap);
 #endif
 }
 
@@ -552,7 +542,7 @@ static sk_sp<SkImage> DecodeImageFromData(sk_sp<SkData> data)
     return nullptr;
 
   bitmap.setImmutable();
-  return SkImage::MakeFromBitmap(bitmap);
+  return MakeRasterCopyCompat(bitmap.pixmap());
 }
 
 static sk_sp<SkImage> EnsureRasterImage(sk_sp<SkImage> image)
@@ -574,7 +564,7 @@ static sk_sp<SkImage> EnsureRasterImage(sk_sp<SkImage> image)
     return image;
 
   bitmap.setImmutable();
-  raster = SkImage::MakeFromBitmap(bitmap);
+  raster = MakeRasterCopyCompat(bitmap.pixmap());
 
   return raster ? raster : image;
 }

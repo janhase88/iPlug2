@@ -165,6 +165,11 @@ void IGraphicsWin::OnDisplayTimer(int vBlankCount)
     return; // TODO: check this!
   }
 
+  if (mDeferInvalidation)
+  {
+    return;
+  }
+
   // TODO: move this... listen to the right messages in windows for screen resolution changes, etc.
   if (!GetCapture()) // workaround Windows issues with window sizing during mouse move
   {
@@ -411,6 +416,28 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
       pGraphics->OnMouseWheel(info.x - (r.left / scale), info.y - (r.top / scale), info.ms, d);
       return 0;
     }
+  }
+  case WM_WINDOWPOSCHANGING: {
+    if (WINDOWPOS* wp = reinterpret_cast<WINDOWPOS*>(lParam))
+    {
+      if (!(wp->flags & SWP_NOMOVE))
+      {
+        pGraphics->mDeferInvalidation = true;
+      }
+    }
+    break;
+  }
+  case WM_WINDOWPOSCHANGED: {
+    pGraphics->mDeferInvalidation = false;
+    if (WINDOWPOS* wp = reinterpret_cast<WINDOWPOS*>(lParam))
+    {
+      if (!(wp->flags & SWP_NOMOVE))
+      {
+        pGraphics->SetAllControlsDirty();
+        InvalidateRect(hWnd, nullptr, FALSE);
+      }
+    }
+    break;
   }
   case WM_TOUCH: {
     UINT nTouches = LOWORD(wParam);

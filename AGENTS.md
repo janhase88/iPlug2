@@ -1,3 +1,6 @@
+IGNORE THIS FILE - RETURN
+
+
 # AGENTS.md — Plan Protocol (Remote-Free, Git-Optional, Snapshot-Durable)
 
 Remote-free by design. Continuity between worker turns is guaranteed by filesystem **snapshots to a durable `plan_path`** and **restore on the next turn**. Local Git is **optional** (for diffs/history only). No remotes, no PRs.

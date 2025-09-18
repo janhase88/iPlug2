@@ -23,6 +23,7 @@
 #include "include/core/SkTypeface.h"
 #include "include/core/SkVertices.h"
 #include "include/core/SkImage.h"
+
 #include "include/codec/SkCodec.h"
 
 #if __has_include("include/core/SkImages.h")
@@ -31,6 +32,7 @@
 #else
   #define IGRAPHICS_HAS_SKIMAGES 0
 #endif
+
 #include "include/effects/SkDashPathEffect.h"
 #include "include/effects/SkGradientShader.h"
 #include "include/effects/SkImageFilters.h"
@@ -485,6 +487,7 @@ void IGraphicsSkia::ResetVulkanSwapchainCaches()
 
 namespace
 {
+
 static sk_sp<SkImage> MakeRasterCopyCompat(const SkPixmap& pixmap)
 {
 #if IGRAPHICS_HAS_SKIMAGES
@@ -551,6 +554,7 @@ static sk_sp<SkImage> EnsureRasterImage(sk_sp<SkImage> image)
 
   bitmap.setImmutable();
   raster = SkImage::MakeFromBitmap(bitmap);
+
   return raster ? raster : image;
 }
 } // namespace
@@ -581,6 +585,7 @@ IGraphicsSkia::Bitmap::Bitmap(const char* path, double sourceScale)
 
   assert(data && "Unable to load file at path");
 
+
   auto image = EnsureRasterImage(DecodeImageFromData(std::move(data)));
 
   mDrawable.mImage = std::move(image);
@@ -592,6 +597,7 @@ IGraphicsSkia::Bitmap::Bitmap(const char* path, double sourceScale)
 IGraphicsSkia::Bitmap::Bitmap(const void* pData, int size, double sourceScale)
 {
   auto data = SkData::MakeWithoutCopy(pData, size);
+
   auto image = EnsureRasterImage(DecodeImageFromData(std::move(data)));
 
   mDrawable.mImage = std::move(image);
@@ -2684,7 +2690,9 @@ void IGraphicsSkia::ApplyShadowMask(ILayerPtr& layer, RawBitmapData& mask, const
 
   SkImageInfo info = SkImageInfo::MakeN32Premul(width, height);
   SkPixmap pixMap(info, mask.Get(), rowBytes);
+
   sk_sp<SkImage> image = MakeRasterCopyCompat(pixMap);
+
   sk_sp<SkImage> foreground;
 
   // Copy the foreground if needed

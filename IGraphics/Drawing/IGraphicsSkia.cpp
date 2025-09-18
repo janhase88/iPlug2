@@ -509,6 +509,18 @@ void IGraphicsSkia::ResetVulkanSwapchainCaches()
 namespace
 {
 
+#if !IGRAPHICS_HAS_SKIMAGES
+template <typename T, typename = void>
+struct HasMakeFromBitmap : std::false_type
+{
+};
+
+template <typename T>
+struct HasMakeFromBitmap<T, std::void_t<decltype(T::MakeFromBitmap(std::declval<const SkBitmap&>()))>> : std::true_type
+{
+};
+#endif
+
 static sk_sp<SkImage> MakeRasterCopyCompat(const SkPixmap& pixmap)
 {
 #if IGRAPHICS_HAS_SKIMAGES
@@ -523,7 +535,17 @@ static sk_sp<SkImage> MakeRasterCopyCompat(const SkPixmap& pixmap)
     return nullptr;
 
   bitmap.setImmutable();
-  return SkImage::MakeFromBitmap(bitmap);
+
+  constexpr bool kHasMakeFromBitmap = HasMakeFromBitmap<SkImage>::value;
+
+  if constexpr (kHasMakeFromBitmap)
+  {
+    return SkImage::MakeFromBitmap(bitmap);
+  }
+  else
+  {
+    return bitmap.asImage();
+  }
 #endif
 }
 

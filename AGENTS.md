@@ -32,7 +32,7 @@ IF NONE OF ABOVE COMMANDS WAS GIVEN IGNORE THIS AGENTS.md FILE - RETURN.
 <plan>
   <Goal>`Main-Goal`</Goal>
   <Environment-Check>
-     Action: Verify toolchains/SDKs/drivers/env; run a smoke build/run appropriate to the project;  
+     Action: check what environment the repo needs to run build tests and if your environment does support these. you environment is ubuntu so all windows based and ui based system by default are not buildable in your env.
       Acceptance: Environment supports building the repo.
       Rejection: Environment does not support building the repo.
 
@@ -92,7 +92,7 @@ IF NONE OF ABOVE COMMANDS WAS GIVEN IGNORE THIS AGENTS.md FILE - RETURN.
 
 -------------------------------------------------------------------------------
 
-## Build Tests
+## Build Tests for code changes (NOT SANDBOX WORK ENVIRONMENT)
 
   if <Environment-Check> TRUE: Obtain PROOF task status via build tests.
   else if <Environment-Check> FALSE: Obtain PROOF task status from code-viewing only (no build tests, code-only-perspective)

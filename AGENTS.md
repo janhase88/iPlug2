@@ -175,7 +175,11 @@ End of /proceed (atomic persist):
 - Always report in the following format:
 =======================================================
 ```
-[x] Continued From Previous Snapshot: `YES / FAILURE` - `relevant 1-3 Lines Info` 
+[x] Snapshots:
+ - Snapshot created for this turns Diff: `YES / FAILURE' - `relevant 1-3 Lines Info` 
+
+ - Continued From Previous Snapshot: `YES / FAILURE` - `relevant 1-3 Lines Info` 
+
 -----------------
 [x] File Overview:
  - Num files Changed: N
@@ -186,6 +190,7 @@ End of /proceed (atomic persist):
     - `<Path/Filename>`
     - `<Path/Filename>?`
     - `[...]`
+
 -----------------
 [x] Current plan:
  - <`Taskname` - PREVIOUS STATUS: `STATUS` / CURRENT STATUS: `STATUS`>

@@ -428,7 +428,19 @@ bool IGraphicsSkia::PrepareCurrentSwapchainImageForFlush()
 
   if (mGrContext && mScreenSurface)
   {
-    auto backendRT = SkSurfaces::GetBackendRenderTarget(mScreenSurface.get(), SkSurfaces::BackendHandleAccess::kFlushRead);
+    GrVkImageInfo imageInfo{};
+    imageInfo.fImage = swapImage;
+    imageInfo.fImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    imageInfo.fImageTiling = VK_IMAGE_TILING_OPTIMAL;
+    imageInfo.fFormat = mVKSwapchainFormat;
+    imageInfo.fImageUsageFlags = mVKSwapchainUsageFlags;
+    imageInfo.fSampleCount = 1;
+    imageInfo.fLevelCount = 1;
+    imageInfo.fCurrentQueueFamily = mVKQueueFamily;
+
+    const int width = mScreenSurface->width();
+    const int height = mScreenSurface->height();
+    auto backendRT = GrBackendRenderTargets::MakeVk(width, height, imageInfo);
     if (backendRT.isValid())
     {
       auto colorState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, mVKQueueFamily);

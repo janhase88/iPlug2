@@ -167,7 +167,7 @@ End of /proceed (atomic persist):
 - /proceed, /revise, and /edit-plan persist after each mutation.
 - Snapshots guarantee cross-turn continuity; patches are for audit; local Git (if present) is for intra-session diffs/history only. No remotes anywhere.
 - Responses are concise; the plan file is the source of truth.
-
+- ALWAYS CREATE SNAPSHOTS YOU CAN CONTINUE FROM ON THE NEXT TURN - ALWAYS (MANDATORY AND CRUCIAL)
 -------------------------------------------------------------------------------
 
 ## Reporting - Post Action Echo in chat (Summary) - MANDATORY

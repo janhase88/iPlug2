@@ -526,26 +526,8 @@ static sk_sp<SkImage> MakeRasterCopyCompat(const SkPixmap& pixmap)
 #if IGRAPHICS_HAS_SKIMAGES
   return SkImages::RasterFromPixmap(pixmap, nullptr, nullptr);
 #else
-  SkBitmap bitmap;
+  return SkImage::MakeRasterCopy(pixmap);
 
-  if (!bitmap.tryAllocPixels(pixmap.info()))
-    return nullptr;
-
-  if (!pixmap.readPixels(bitmap.pixmap()))
-    return nullptr;
-
-  bitmap.setImmutable();
-
-  constexpr bool kHasMakeFromBitmap = HasMakeFromBitmap<SkImage>::value;
-
-  if constexpr (kHasMakeFromBitmap)
-  {
-    return SkImage::MakeFromBitmap(bitmap);
-  }
-  else
-  {
-    return bitmap.asImage();
-  }
 #endif
 }
 

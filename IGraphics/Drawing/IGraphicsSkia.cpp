@@ -1347,6 +1347,20 @@ void IGraphicsSkia::BeginFrame()
     }
     VkImage acquiredImage = (imageIndex < mVKSwapchainImages.size()) ? mVKSwapchainImages[imageIndex] : VK_NULL_HANDLE;
     VkImageLayout acquiredLayout = (imageIndex < mVKImageLayouts.size()) ? mVKImageLayouts[imageIndex] : VK_IMAGE_LAYOUT_UNDEFINED;
+    if (imageIndex < mVKImageLayouts.size() &&
+        acquiredLayout != VK_IMAGE_LAYOUT_UNDEFINED &&
+        acquiredLayout != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
+    {
+      IGRAPHICS_VK_LOG("BeginFrame",
+                          "acquiredImageUnexpectedLayout",
+                          vulkanlog::Severity::kWarning,
+                          vulkanlog::MakeField("imageIndex", imageIndex),
+                           vulkanlog::MakeField("trackedLayout", static_cast<int>(acquiredLayout)),
+                           vulkanlog::MakeField("frameVersion", static_cast<uint64_t>(mVKFrameVersion)),
+                           vulkanlog::MakeField("swapchainVersion", static_cast<uint64_t>(mVKSwapchainVersion)));
+      acquiredLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+      mVKImageLayouts[imageIndex] = acquiredLayout;
+    }
     IGRAPHICS_VK_LOG("BeginFrame",
                         "acquiredImage",
                         vulkanlog::Severity::kDebug,

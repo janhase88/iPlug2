@@ -26,6 +26,7 @@
 
 #include <VersionHelpers.h>
 #include <algorithm>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <wininet.h>
@@ -59,6 +60,10 @@ typedef HGLRC(WINAPI* PFNWGLCREATECONTEXTATTRIBSARBPROC)(HDC hDC, HGLRC hShareCo
   #define WGL_CONTEXT_MINOR_VERSION_ARB 0x2092
   #define WGL_CONTEXT_PROFILE_MASK_ARB 0x9126
   #define WGL_CONTEXT_CORE_PROFILE_BIT_ARB 0x00000001
+#endif
+
+#ifdef IGRAPHICS_GL
+typedef BOOL(WINAPI* PFNWGLSWAPINTERVALEXTPROC)(int interval);
 #endif
 
 #pragma mark - Static storage
@@ -1026,6 +1031,16 @@ void IGraphicsWin::CreateGLContext()
     DBGMSG("Error initializing glad");
 
   glGetError();
+
+#if defined IGRAPHICS_GL
+  if (PFNWGLSWAPINTERVALEXTPROC swapInterval = (PFNWGLSWAPINTERVALEXTPROC) wglGetProcAddress("wglSwapIntervalEXT"))
+  {
+    const intptr_t sentinel = reinterpret_cast<intptr_t>(swapInterval);
+    if (sentinel > 3 || sentinel < -3)
+      swapInterval(0);
+  }
+#endif
+
 
   if (!mWindowDC)
     ReleaseDC(mPlugWnd, dc);

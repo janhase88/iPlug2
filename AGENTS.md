@@ -159,6 +159,14 @@ Create/overwrite workspace/Repo-Name/Plan/Plan-Summary.md with:
 - At End of /proceed (and on timebox): create compressed git snapshot and commit (create patch).
 - At Start of /proceed: restore from latest snapshot.
 - Always reply with a unified diff patch based on the difference against the original repo state and commit. 
+- Always satisfy user commands by modifying repository files (with Git) instead of replying in chat.
+
+## Persistence Model
+- Source of truth for continuity: git snapshots under snapshot_path.
+- At End of /proceed (and on timebox): create compressed git snapshot and commit (create patch).
+- At Start of /proceed: restore from latest snapshot.
+- Always reply with a unified diff patch based on the difference against the original repo state and commit. 
+- Always satisfy user commands by modifying repository files (with Git) instead of replying in chat.
 
 
 

@@ -39,6 +39,7 @@
 
 #include "IPlugPlatform.h"
 #include "IPlugConstants.h"
+#include "IPlug/Sandbox/IPlugSandboxConfig.h"
 
 #include "IPlugAPP.h"
 
@@ -65,7 +66,7 @@
 #define OFF_TEXT "off"
 
 extern HWND gHWND;
-extern HINSTANCE gHINSTANCE;
+IPLUG_SANDBOX_HINSTANCE_EXTERN HINSTANCE gHINSTANCE;
 
 BEGIN_IPLUG_NAMESPACE
 

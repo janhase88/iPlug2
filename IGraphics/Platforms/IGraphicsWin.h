@@ -21,6 +21,7 @@
 #include "IGraphics_select.h"
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #ifdef IGRAPHICS_VULKAN
@@ -237,8 +238,23 @@ private:
 
   WDL_String mMainWndClassName;
 
+  StaticStorage<InstalledFont>& FontCacheStorage();
+  StaticStorage<HFontHolder>& HFontCacheStorage();
+  int& WndClassRefCount();
+  const wchar_t* WndClassName() const;
+
+#if IGRAPHICS_SANDBOX_WIN_CLASS
+  int mWndClassRefCount = 0;
+  std::wstring mWndClassNameW;
+#endif
+
+#if IGRAPHICS_SANDBOX_WIN_FONTS
+  StaticStorage<InstalledFont> mFontCache;
+  StaticStorage<HFontHolder> mHFontCache;
+#else
   static StaticStorage<InstalledFont> sPlatformFontCache;
   static StaticStorage<HFontHolder> sHFontCache;
+#endif
 
   std::unordered_map<ITouchID, IMouseInfo> mDeltaCapture; // associative array of touch id pointers to IMouseInfo structs, so that we can get deltas
 };

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "IGraphicsSkia.h"
+#include "Sandbox/IPlugSandboxConfig.h"
 
 #pragma warning(push)
 #pragma warning(disable : 4244)
@@ -820,12 +821,21 @@ static sk_sp<SkFontMgr> SFontMgrFactory()
 #endif
 }
 
+#if IGRAPHICS_SANDBOX_FONT_FACTORY
+thread_local bool gFontMgrFactoryCreated = false;
+#else
 bool gFontMgrFactoryCreated = false;
+#endif
 
 sk_sp<SkFontMgr> SkFontMgrRefDefault()
 {
+#if IGRAPHICS_SANDBOX_FONT_FACTORY
+  thread_local std::once_flag flag;
+  thread_local sk_sp<SkFontMgr> mgr;
+#else
   static std::once_flag flag;
   static sk_sp<SkFontMgr> mgr;
+#endif
   std::call_once(flag, [] {
     mgr = SFontMgrFactory();
     gFontMgrFactoryCreated = true;
@@ -835,12 +845,21 @@ sk_sp<SkFontMgr> SkFontMgrRefDefault()
 
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
 
+#if IGRAPHICS_SANDBOX_UNICODE_HELPER
+thread_local bool gSkUnicodeCreated = false;
+#else
 bool gSkUnicodeCreated = false;
+#endif
 
 sk_sp<SkUnicode> GetUnicode()
 {
+#if IGRAPHICS_SANDBOX_UNICODE_HELPER
+  thread_local std::once_flag flag;
+  thread_local sk_sp<SkUnicode> unicode;
+#else
   static std::once_flag flag;
   static sk_sp<SkUnicode> unicode;
+#endif
   std::call_once(flag, [] {
     unicode = SkUnicodes::ICU::Make();
     gSkUnicodeCreated = true;

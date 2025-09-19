@@ -10,8 +10,6 @@
 
 #pragma once
 
-#include "IPlug/Sandbox/IPlugSandboxConfig.h"
-
 /**
  * @file IPlug_include_in_plug_src.h
  * @brief IPlug source include
@@ -25,23 +23,19 @@
 // clang-format off
 
 #if defined OS_WIN && !defined VST3C_API
-  IPLUG_SANDBOX_HINSTANCE_STORAGE HINSTANCE gHINSTANCE = IPLUG_SANDBOX_HINSTANCE_INIT;
+  HINSTANCE gHINSTANCE = 0;
   #if defined(VST2_API) || defined(AAX_API) || defined(CLAP_API)
   #ifdef __MINGW32__
   extern "C"
   #endif
   BOOL WINAPI DllMain(HINSTANCE hDllInst, DWORD fdwReason, LPVOID res)
   {
-    IPLUG_SANDBOX_SET_HINSTANCE(hDllInst);
+    gHINSTANCE = hDllInst;
     return true;
   }
   #endif
 
-  #if IPLUG_SANDBOX_HOST_CACHE
-  thread_local UINT(WINAPI *__GetDpiForWindow)(HWND);
-  #else
   UINT(WINAPI *__GetDpiForWindow)(HWND);
-  #endif
 
   float GetScaleForHWND(HWND hWnd)
   {
@@ -122,7 +116,7 @@
   {
     #ifdef OS_WIN
     extern void* moduleHandle;
-    IPLUG_SANDBOX_SET_HINSTANCE((HINSTANCE) moduleHandle);
+    gHINSTANCE = (HINSTANCE) moduleHandle;
     #endif
     return true;
   }

@@ -18,7 +18,6 @@
  */
 
 #include "IPlugPlatform.h"
-#include "IPlug/Sandbox/IPlugSandboxConfig.h"
 
 #ifndef NO_IGRAPHICS
 
@@ -35,7 +34,7 @@
   }
 
   #elif defined OS_WIN
-  IPLUG_SANDBOX_HINSTANCE_EXTERN HINSTANCE gHINSTANCE;
+  extern HINSTANCE gHINSTANCE;
   #endif
 
   BEGIN_IPLUG_NAMESPACE

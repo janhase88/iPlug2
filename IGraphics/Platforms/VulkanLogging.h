@@ -10,7 +10,6 @@
 #include <utility>
 
 #include "IPlugLogger.h"
-#include "IPlug/Sandbox/IPlugSandboxConfig.h"
 
 BEGIN_IPLUG_NAMESPACE
 BEGIN_IGRAPHICS_NAMESPACE
@@ -74,11 +73,7 @@ inline void DefaultLogSink(const char* message)
 
 inline LogSink& LogSinkSlot()
 {
-#if IGRAPHICS_SANDBOX_VK_LOGGER
-  thread_local LogSink sink = DefaultLogSink;
-#else
   static LogSink sink = DefaultLogSink;
-#endif
   return sink;
 }
 

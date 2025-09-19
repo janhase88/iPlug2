@@ -156,23 +156,9 @@ Create/overwrite workspace/Repo-Name/Plan/Plan-Summary.md with:
 
 ## Persistence Model
 - Source of truth for continuity: git snapshots under snapshot_path.
-- At End of /proceed (and on timebox): create compressed git snapshot.
+- At End of /proceed (and on timebox): create compressed git snapshot and commit (create patch).
 - At Start of /proceed: restore from latest snapshot.
-- Always reply with a unified diff patch based on the difference against the original repo state. 
+- Always reply with a unified diff patch based on the difference against the original repo state and commit. 
 
-- Source of truth for continuity: git snapshots under snapshot_path.
-- At End of /proceed (and on timebox): create compressed git snapshot.
-- At Start of /proceed: restore from latest snapshot.
-- Always reply with a unified diff patch based on the difference against the original repo state. 
-
-- Source of truth for continuity: git snapshots under snapshot_path.
-- At End of /proceed (and on timebox): create compressed git snapshot.
-- At Start of /proceed: restore from latest snapshot.
-- Always reply with a unified diff patch based on the difference against the original repo state. 
-
-- Source of truth for continuity: git snapshots under snapshot_path.
-- At End of /proceed (and on timebox): create compressed git snapshot.
-- At Start of /proceed: restore from latest snapshot.
-- Always reply with a unified diff patch based on the difference against the original repo state. 
 
 

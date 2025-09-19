@@ -1,4 +1,4 @@
-# AGENTS.md — Plan Protocol (Remote-Free, Git-Optional, Snapshot-Durable)
+# AGENTS.md — Plan Execution Protocol
 
 -------------------------------------------------------------------------------
 
@@ -18,10 +18,10 @@ IF NONE OF ABOVE COMMANDS WAS GIVEN IGNORE THIS AGENTS.md FILE - RETURN.
 
 ## Environment
 - plan_path: /workspace/Repo-Name/Plan/Current-Plan.xml
-- snaphot_path: /mnt/snapshots
+- snapshot_path: /mnt/snapshots
  
 ### Environment Initialize
-- If plan_path or snaphot_path is not present, create the missing directories/files.
+- If plan_path or snapshot_path is not present, create the missing directories/files.
 
 -------------------------------------------------------------------------------
 
@@ -34,9 +34,12 @@ IF NONE OF ABOVE COMMANDS WAS GIVEN IGNORE THIS AGENTS.md FILE - RETURN.
     Action: check what environment the repo needs to run build tests and if your environment supports these. Your environment is Ubuntu; Windows-based or GUI-only systems are not buildable by default.
     Acceptance: Environment supports building the repo.
     Rejection: Environment does not support building the repo.
-    Build-Test-Compatible: TRUE or FALSE   ← SINGLE SOURCE OF TRUTH
+    Set `<Build-Test-Compatible>` TRUE OR FALSE
   </Environment-Check>
-
+  <PHASE>
+   INITIAL-PLANNING | PLAN-REFINED-ONCE | PLAN-REFINED-TWICE | PLAN-EXECUTION
+  </PHASE> 
+  <Build-Test-Compatible>N/A</Build-Test-Compatible>
   <context>
     Main-Goal Context
   </context>
@@ -107,8 +110,20 @@ IF NONE OF ABOVE COMMANDS WAS GIVEN IGNORE THIS AGENTS.md FILE - RETURN.
 
 -------------------------------------------------------------------------------
 
-## Evolving the Plan
-If a Task in the Plan becomes outdated or wrong, update or trim it so the plan stays valid.
+## Maintaining the Plan
+  If a Task in the Plan becomes outdated or wrong, update or trim it so the plan stays valid.
+
+## Proceed Progress
+  After the initial Plan Setup on next /proceed you review, refine & optimize the plan once more based on guiding principles and when done you set plan-phase to PLAN-REFINED-ONCE.
+  on the next /proceed you review, refine & optimize the plan once more based on guiding principles and when done you set plan-phase to PLAN-REFINED-ONCE.
+  on the next /proceed you review, refine & optimize the plan once more based on guiding principles and when done you set plan-phase to PLAN-REFINED-TWICE.
+  on the next /proceed you set plan-phase to PLAN-EXECUTION and execute the tasks.
+
+   -you move only to the next task, when a task is marked with SUCCESS.
+   -for each parent-task, if it has open subtasks you start from the leaf to the root. use common state-of-art plan execution logic, when in doubt, what to do.
+
+#Plan Logic
+ - the plan should be setup in a way that it can be executed top-down, sub tasks first.
 
 -------------------------------------------------------------------------------
 
@@ -144,3 +159,5 @@ Create/overwrite workspace/Repo-Name/Plan/Plan-Summary.md with:
 - At End of /proceed (and on timebox): create compressed snapshot.
 - At Start of /proceed: restore from latest snapshot.
 - Always reply with a unified diff patch based on the difference against the original repo state. 
+
+

@@ -20,6 +20,7 @@
 #include "IPlugParameter.h"
 #include "IPlugPaths.h"
 #include "IPopupMenuControl.h"
+#include "IPlug/Sandbox/IPlugSandboxConfig.h"
 #if defined IGRAPHICS_VULKAN
   #include "VulkanLogging.h"
 #endif
@@ -29,6 +30,8 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <cwchar>
+#include <string>
 #include <wininet.h>
 
 #if defined __clang__
@@ -43,9 +46,28 @@ using namespace igraphics;
 #pragma warning(disable : 4312) // Pointer size cast mismatch.
 #pragma warning(disable : 4311) // Pointer size cast mismatch.
 
+#if IGRAPHICS_SANDBOX_WIN_CLASS
+namespace
+{
+constexpr const wchar_t* kSandboxWndClassBaseName = L"IPlugWndClass";
+
+std::wstring MakeSandboxWndClassName(const IGraphicsWin* instance)
+{
+  wchar_t buffer[64];
+  std::swprintf(buffer, sizeof(buffer) / sizeof(wchar_t), L"%ls_%p", kSandboxWndClassBaseName, static_cast<const void*>(instance));
+  return std::wstring(buffer);
+}
+} // namespace
+#else
 static int nWndClassReg = 0;
 static const wchar_t* wndClassName = L"IPlugWndClass";
+#endif
+
+#if IGRAPHICS_SANDBOX_WIN_TIMERS
+static thread_local double sFPS = 0.0;
+#else
 static double sFPS = 0.0;
+#endif
 
 #define PARAM_EDIT_ID 99
 #define IPLUG_TIMER_ID 2
@@ -68,8 +90,46 @@ typedef BOOL(WINAPI* PFNWGLSWAPINTERVALEXTPROC)(int interval);
 
 #pragma mark - Static storage
 
+#if !IGRAPHICS_SANDBOX_WIN_FONTS
 StaticStorage<IGraphicsWin::InstalledFont> IGraphicsWin::sPlatformFontCache;
 StaticStorage<HFontHolder> IGraphicsWin::sHFontCache;
+#endif
+
+StaticStorage<IGraphicsWin::InstalledFont>& IGraphicsWin::FontCacheStorage()
+{
+#if IGRAPHICS_SANDBOX_WIN_FONTS
+  return mFontCache;
+#else
+  return sPlatformFontCache;
+#endif
+}
+
+StaticStorage<HFontHolder>& IGraphicsWin::HFontCacheStorage()
+{
+#if IGRAPHICS_SANDBOX_WIN_FONTS
+  return mHFontCache;
+#else
+  return sHFontCache;
+#endif
+}
+
+int& IGraphicsWin::WndClassRefCount()
+{
+#if IGRAPHICS_SANDBOX_WIN_CLASS
+  return mWndClassRefCount;
+#else
+  return nWndClassReg;
+#endif
+}
+
+const wchar_t* IGraphicsWin::WndClassName() const
+{
+#if IGRAPHICS_SANDBOX_WIN_CLASS
+  return mWndClassNameW.empty() ? kSandboxWndClassBaseName : mWndClassNameW.c_str();
+#else
+  return wndClassName;
+#endif
+}
 
 #pragma mark - Mouse and tablet helpers
 
@@ -791,8 +851,12 @@ LRESULT CALLBACK IGraphicsWin::ParamEditProc(HWND hWnd, UINT msg, WPARAM wParam,
 IGraphicsWin::IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float scale)
   : IGRAPHICS_DRAW_CLASS(dlg, w, h, fps, scale)
 {
-  StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
-  StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
+#if IGRAPHICS_SANDBOX_WIN_CLASS
+  mWndClassNameW = MakeSandboxWndClassName(this);
+#endif
+
+  StaticStorage<InstalledFont>::Accessor fontStorage(FontCacheStorage());
+  StaticStorage<HFontHolder>::Accessor hfontStorage(HFontCacheStorage());
   fontStorage.Retain();
   hfontStorage.Retain();
 
@@ -803,8 +867,8 @@ IGraphicsWin::IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float s
 
 IGraphicsWin::~IGraphicsWin()
 {
-  StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
-  StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
+  StaticStorage<InstalledFont>::Accessor fontStorage(FontCacheStorage());
+  StaticStorage<HFontHolder>::Accessor hfontStorage(HFontCacheStorage());
   fontStorage.Release();
   hfontStorage.Release();
   DestroyEditWindow();
@@ -1555,13 +1619,16 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     h = cR.bottom - cR.top;
   }
 
-  if (nWndClassReg++ == 0)
+  int& wndClassRefCount = WndClassRefCount();
+  const wchar_t* className = WndClassName();
+
+  if (wndClassRefCount++ == 0)
   {
-    WNDCLASSW wndClass = {CS_DBLCLKS | CS_OWNDC, WndProc, 0, 0, mHInstance, 0, 0, 0, 0, wndClassName};
+    WNDCLASSW wndClass = {CS_DBLCLKS | CS_OWNDC, WndProc, 0, 0, mHInstance, 0, 0, 0, 0, className};
     RegisterClassW(&wndClass);
   }
 
-  mPlugWnd = CreateWindowW(wndClassName, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
+  mPlugWnd = CreateWindowW(className, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
 #if defined IGRAPHICS_VULKAN
   SetPlatformContext(mPlugWnd);
   if (!CreateVulkanContext())
@@ -1608,9 +1675,9 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     RegisterTouchWindow(mPlugWnd, 0);
   }
 
-  if (!mPlugWnd && --nWndClassReg == 0)
+  if (!mPlugWnd && --wndClassRefCount == 0)
   {
-    UnregisterClassW(wndClassName, mHInstance);
+    UnregisterClassW(className, mHInstance);
   }
   else
   {
@@ -1819,9 +1886,11 @@ void IGraphicsWin::CloseWindow()
 
     mPlugWnd = 0;
 
-    if (--nWndClassReg == 0)
+    int& wndClassRefCount = WndClassRefCount();
+    const wchar_t* className = WndClassName();
+    if (--wndClassRefCount == 0)
     {
-      UnregisterClassW(wndClassName, mHInstance);
+      UnregisterClassW(className, mHInstance);
     }
   }
 }
@@ -2056,7 +2125,7 @@ void IGraphicsWin::CreatePlatformTextEntry(int paramIdx, const IText& text, cons
     return;
   }
 
-  StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
+  StaticStorage<HFontHolder>::Accessor hfontStorage(HFontCacheStorage());
 
   LOGFONTW lFont = {0};
   HFontHolder* hfontHolder = hfontStorage.Find(text.mFont);
@@ -2581,7 +2650,7 @@ static HFONT GetHFont(const char* fontName, int weight, bool italic, bool underl
 
 PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* fileNameOrResID)
 {
-  StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
+  StaticStorage<InstalledFont>::Accessor fontStorage(FontCacheStorage());
 
   void* pFontMem = nullptr;
   int resSize = 0;
@@ -2637,7 +2706,7 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* f
 
 PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, int dataSize)
 {
-  StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
+  StaticStorage<InstalledFont>::Accessor fontStorage(FontCacheStorage());
 
   std::unique_ptr<InstalledFont> pFont;
   void* pFontMem = pData;
@@ -2667,7 +2736,7 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
 
 void IGraphicsWin::CachePlatformFont(const char* fontID, const PlatformFontPtr& font)
 {
-  StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
+  StaticStorage<HFontHolder>::Accessor hfontStorage(HFontCacheStorage());
 
   HFONT hfont = font->GetDescriptor();
 

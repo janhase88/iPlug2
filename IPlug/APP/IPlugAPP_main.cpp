@@ -28,7 +28,6 @@ using namespace iplug;
 extern WDL_DLGRET MainDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
 HWND gHWND;
-extern HINSTANCE gHINSTANCE;
 UINT gScrollMessage;
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdParam, int nShowCmd)
@@ -47,7 +46,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdPa
       return 0;
     }
 #endif
-    gHINSTANCE = hInstance;
+    IPLUG_SANDBOX_SET_HINSTANCE(hInstance);
     
     InitCommonControls();
     gScrollMessage = RegisterWindowMessage("MSWHEEL_ROLLMSG");

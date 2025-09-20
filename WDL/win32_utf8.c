@@ -1,3 +1,5 @@
+#define WDL_WIN32_UTF8_BUILDING_SOURCE 1
+
 #if defined(__has_include)
   #if __has_include("../IPlug/Sandbox/IPlugSandboxConfig.h")
     #include "../IPlug/Sandbox/IPlugSandboxConfig.h"

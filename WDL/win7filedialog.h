@@ -2182,9 +2182,9 @@ public:
 
   void addOptions(DWORD o);
 
-  void startGroup(DWORD id, char *label);
-  void addText(DWORD id, char *txt);
-  void addCheckbox(char *name, DWORD id, int defval);
+  void startGroup(DWORD id, const char *label);
+  void addText(DWORD id, const char *txt);
+  void addCheckbox(const char *name, DWORD id, int defval);
   void endGroup();
 
   int getState(DWORD id);

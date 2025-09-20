@@ -34,6 +34,8 @@
 #endif
 
 #if defined(_WIN32)
+bool wdl_use_legacy_filebrowse = false;
+
 static bool wdl_filebrowse_should_use_legacy(WdlWindowsSandboxContext* context)
 {
 #if WDL_FILEBROWSE_HAS_SANDBOX_CONTEXT
@@ -48,8 +50,6 @@ static bool wdl_filebrowse_should_use_legacy(WdlWindowsSandboxContext* context)
 #endif
   return wdl_use_legacy_filebrowse;
 }
-
-bool wdl_use_legacy_filebrowse;
 #endif
 
 

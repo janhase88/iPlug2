@@ -123,12 +123,12 @@
     <task>
       <name>Implement sandboxed Windows path and regression coverage</name>
       <status>PROOF</status>
-      <tryCount>4</tryCount>
+      <tryCount>5</tryCount>
       <crucialInfo>
         Modify WDL Windows utilities to respect sandbox isolation and ensure documentation/tests communicate the new switch. Deliverable: merged code, updated docs, and regression strategy.
       </crucialInfo>
       <continue-info>
-        All implementation subtasks have landed; the latest fixes keep the UTF-8 TLS slot and sandbox thread-local pointer in sync during teardown and now ensure null-context scopes clear the shared macro so callbacks without an editor do not inherit stale sandbox state. Follow the validation checklist for manual QA until automated Windows coverage exists, then promote the task to SUCCESS.
+        Windows compile should now succeed after reworking IGraphicsWin to hold the sandbox context through a unique_ptr backed by the canonical global `::WdlWindowsSandboxContext`, ensuring every call site passes the raw pointer value rather than a namespace-local type. Await host confirmation from a Windows build and update regression notes once verified.
       </continue-info>
       <subtasks>
         <task>
@@ -190,9 +190,18 @@
           <crucialInfo>IGraphicsWin now owns a per-instance WdlWindowsSandboxContext, wraps menu, tooltip, clipboard, and cursor helpers in sandbox scopes, and routes file dialogs through the context-aware WDL APIs so each plug-in isolates its Windows state when the toggle is enabled. Property-prefix generation now uses manual hexadecimal formatting to avoid CRT-specific snprintf requirements during sandbox initialisation, sandbox scopes drive the shared macros so thread-local helpers stay consistent with the UTF-8 TLS slot, and compile-time assertions guarantee the scope guard remains non-copyable and non-assignable.</crucialInfo>
           <continue-info>Host/bootstrap layers still need review to ensure they set or forward sandbox contexts for non-IGraphics consumers; coordinate those follow-ups under the remaining implementation subtasks.</continue-info>
           <subtasks>
+            <task>
+              <name>Resolve Windows sandbox context type clashes after namespace refactor</name>
+              <status>PROOF</status>
+              <tryCount>3</tryCount>
+              <crucialInfo>Windows compilation reports ambiguous references to `WdlWindowsSandboxContext` between the WDL header and the IGraphics namespace forward declarations, along with constructor mismatches for `WdlWindowsSandboxScope` when passing IGraphicsWin storage. Reconcile the type declarations and scope helper signatures so both translation units agree on the canonical context type.</crucialInfo>
+              <continue-info>IGraphicsWin now instantiates and stores the sandbox context using the fully qualified `::WdlWindowsSandboxContext` pointer type to avoid namespace alias collisions. Request a Windows build to confirm the refactored pointers satisfy the WDL helper signatures and that the property registration helpers (`SetPropA`) still resolve as expected.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
           </subtasks>
         </task>
-       
+
 
   </Tasks>
 

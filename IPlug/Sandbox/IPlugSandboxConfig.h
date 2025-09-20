@@ -210,9 +210,9 @@ namespace iplug
 {
 namespace sandbox
 {
-inline WdlWindowsSandboxContext*& SandboxSharedWdlWindowsContext()
+inline ::WdlWindowsSandboxContext*& SandboxSharedWdlWindowsContext()
 {
-  thread_local WdlWindowsSandboxContext* context = nullptr;
+  thread_local ::WdlWindowsSandboxContext* context = nullptr;
   return context;
 }
 } // namespace sandbox
@@ -232,7 +232,7 @@ inline WdlWindowsSandboxContext*& SandboxSharedWdlWindowsContext()
     #define IPLUG_SANDBOX_WDL_WINDOWS_STORAGE
     #define IPLUG_SANDBOX_WDL_WINDOWS_EXTERN extern
     #define IPLUG_SANDBOX_WDL_WINDOWS_INIT nullptr
-    #define IPLUG_SANDBOX_WDL_WINDOWS_CONTEXT() static_cast<WdlWindowsSandboxContext*>(nullptr)
+    #define IPLUG_SANDBOX_WDL_WINDOWS_CONTEXT() static_cast<::WdlWindowsSandboxContext*>(nullptr)
     #define IPLUG_SANDBOX_SET_WDL_WINDOWS_CONTEXT(ctx)                                                              \
       do                                                                                                            \
       {                                                                                                             \

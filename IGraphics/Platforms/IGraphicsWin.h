@@ -21,9 +21,14 @@
 
 #include "IGraphics_select.h"
 
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#if defined(OS_WIN)
+struct WdlWindowsSandboxContext;
+#endif
 
 #ifdef IGRAPHICS_VULKAN
   #define VK_USE_PLATFORM_WIN32_KHR
@@ -37,7 +42,7 @@ BEGIN_IPLUG_NAMESPACE
 BEGIN_IGRAPHICS_NAMESPACE
 
 #if defined(OS_WIN)
-struct WdlWindowsSandboxContext;
+using ::WdlWindowsSandboxContext;
 #endif
 
 #ifdef IGRAPHICS_VULKAN
@@ -77,16 +82,7 @@ public:
   IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float scale);
   ~IGraphicsWin();
 
-  void SetWinModuleHandle(void* pInstance) override
-  {
-    mHInstance = (HINSTANCE) pInstance;
-#if IGRAPHICS_SANDBOX_WDL_WINDOWS
-    if (mSandboxContext)
-    {
-      mSandboxContext->module_handle = mHInstance;
-    }
-#endif
-  }
+  void SetWinModuleHandle(void* pInstance) override;
   void* GetWinModuleHandle() override { return mHInstance; }
 
   void ForceEndUserEdit() override;
@@ -257,17 +253,17 @@ private:
   int& WndClassRefCount();
   const wchar_t* WndClassName() const;
 
-#if defined(OS_WIN)
-  WdlWindowsSandboxContext* SandboxContext() const;
-#endif
-
 #if IGRAPHICS_SANDBOX_WIN_CLASS
   int mWndClassRefCount = 0;
   std::wstring mWndClassNameW;
 #endif
 
+#if defined(OS_WIN)
+  WdlWindowsSandboxContext* SandboxContext() const;
+#endif
+
 #if IGRAPHICS_SANDBOX_WDL_WINDOWS
-  WdlWindowsSandboxContext mSandboxContextStorage;
+  std::unique_ptr<WdlWindowsSandboxContext> mSandboxContextStorage;
 #endif
   WdlWindowsSandboxContext* mSandboxContext = nullptr;
 

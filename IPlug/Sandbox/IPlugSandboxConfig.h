@@ -1,5 +1,5 @@
 /*
- ============================================================================== 
+ ==============================================================================
 
  This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
 
@@ -36,12 +36,12 @@
 #endif
 IPLUG_SANDBOX_REQUIRE_BOOL(IPLUG_SANDBOX_ALL);
 
-#if !defined(IPLUG_SANDBOX_LINK_WDL_HELPERS)
+#ifndef IPLUG_SANDBOX_LINK_WDL_HELPERS
 #define IPLUG_SANDBOX_LINK_WDL_HELPERS IPLUG_SANDBOX_ALL
 #endif
 IPLUG_SANDBOX_REQUIRE_BOOL(IPLUG_SANDBOX_LINK_WDL_HELPERS);
 
-#if !defined(IPLUG_SANDBOX_USE_WDL_HELPERS)
+#ifndef IPLUG_SANDBOX_USE_WDL_HELPERS
 #define IPLUG_SANDBOX_USE_WDL_HELPERS IPLUG_SANDBOX_LINK_WDL_HELPERS
 #endif
 IPLUG_SANDBOX_REQUIRE_BOOL(IPLUG_SANDBOX_USE_WDL_HELPERS);
@@ -53,6 +53,9 @@ IPLUG_SANDBOX_REQUIRE_BOOL(IPLUG_SANDBOX_USE_WDL_HELPERS);
 #include "WdlWindowsSandboxContext.h"
 
 #if defined(_WIN32)
+  #if !IPLUG_SANDBOX_LINK_WDL_HELPERS || !IPLUG_SANDBOX_USE_WDL_HELPERS
+    #define WDL_WIN32_UTF8_USE_IPLUG_FALLBACKS 1
+  #endif
   #if IPLUG_HAS_WDL_WINDOWS_SANDBOX_CONTEXT && IPLUG_SANDBOX_LINK_WDL_HELPERS
     #ifdef __cplusplus
 extern "C" {
@@ -193,6 +196,10 @@ IPLUG_SANDBOX_REQUIRE_BOOL(IGRAPHICS_SANDBOX_VK_LOGGER);
 IPLUG_SANDBOX_REQUIRE_BOOL(IGRAPHICS_SANDBOX_VK_LOG_LEVEL);
 
 #undef IPLUG_SANDBOX_REQUIRE_BOOL
+#if !defined(__cplusplus)
+  #undef IPLUG_SANDBOX_ASSERT_CONCAT
+  #undef IPLUG_SANDBOX_ASSERT_CONCAT_INNER
+#endif
 
 // Validate hierarchy propagation so child toggles cannot enable isolation
 // when their parent family has been explicitly disabled.
@@ -266,7 +273,7 @@ inline ::WdlWindowsSandboxContext*& SandboxSharedWdlWindowsContext()
     #define IPLUG_SANDBOX_WDL_WINDOWS_CONTEXT() ::iplug::sandbox::SandboxSharedWdlWindowsContext()
     #define IPLUG_SANDBOX_SET_WDL_WINDOWS_CONTEXT(ctx)                                                              \
       do                                                                                                            \
-      {                                                                                                             \
+      {
         ::iplug::sandbox::SandboxSharedWdlWindowsContext() = (ctx);                                                 \
         WDL_UTF8_SetSandboxContext(ctx);                                                                            \
       } while (false)
@@ -277,7 +284,7 @@ inline ::WdlWindowsSandboxContext*& SandboxSharedWdlWindowsContext()
     #define IPLUG_SANDBOX_WDL_WINDOWS_CONTEXT() static_cast<::WdlWindowsSandboxContext*>(nullptr)
     #define IPLUG_SANDBOX_SET_WDL_WINDOWS_CONTEXT(ctx)                                                              \
       do                                                                                                            \
-      {                                                                                                             \
+      {
         (void) (ctx);                                                                                               \
       } while (false)
   #endif
@@ -290,7 +297,7 @@ inline ::WdlWindowsSandboxContext*& SandboxSharedWdlWindowsContext()
   #define IPLUG_SANDBOX_WDL_WINDOWS_CONTEXT() nullptr
   #define IPLUG_SANDBOX_SET_WDL_WINDOWS_CONTEXT(ctx)                                                                \
     do                                                                                                              \
-    {                                                                                                               \
+    {
       (void) (ctx);                                                                                                 \
     } while (false)
 #endif
@@ -315,7 +322,7 @@ inline void*& SandboxSharedHInstance()
     #define IPLUG_SANDBOX_HINSTANCE_INIT static_cast<HINSTANCE>(::iplug::sandbox::SandboxSharedHInstance())
     #define IPLUG_SANDBOX_SET_HINSTANCE(instance)                                                                     \
       do                                                                                                              \
-      {                                                                                                               \
+      {
         ::iplug::sandbox::SandboxSharedHInstance() = (instance);                                                      \
         gHINSTANCE = (instance);                                                                                      \
       } while (false)
@@ -325,7 +332,7 @@ inline void*& SandboxSharedHInstance()
     #define IPLUG_SANDBOX_HINSTANCE_INIT 0
     #define IPLUG_SANDBOX_SET_HINSTANCE(instance)                                                                     \
       do                                                                                                              \
-      {                                                                                                               \
+      {
         gHINSTANCE = (instance);                                                                                      \
       } while (false)
   #endif
@@ -336,7 +343,7 @@ inline void*& SandboxSharedHInstance()
   #define IPLUG_SANDBOX_HINSTANCE_INIT 0
   #define IPLUG_SANDBOX_SET_HINSTANCE(instance)                                                                       \
     do                                                                                                                \
-    {                                                                                                                 \
+    {
       (void) (instance);                                                                                              \
     } while (false)
 #endif
@@ -351,4 +358,3 @@ inline void*& SandboxSharedHInstance()
     #pragma message("iPlug2 sandbox: full sandbox configuration enabled (Windows build)")
   #endif
 #endif
-

@@ -677,11 +677,11 @@ struct IGraphicsSkia::Font
 StaticStorage<IGraphicsSkia::Font>& IGraphicsSkia::FontCacheStorage()
 {
 #if IGRAPHICS_SANDBOX_SKIA_FONT_CACHE
-  thread_local StaticStorage<Font> sFontCacheStorage;
+  return mFontCache;
 #else
   static StaticStorage<Font> sFontCacheStorage;
-#endif
   return sFontCacheStorage;
+#endif
 }
 
 #pragma mark - Utility conversions
@@ -888,6 +888,10 @@ IGraphicsSkia::IGraphicsSkia(IGEditorDelegate& dlg, int w, int h, int fps, float
 {
   mMainPath.setIsVolatile(true);
 
+#if IGRAPHICS_SANDBOX_FONT_FACTORY
+  mFontMgr = SFontMgrFactory();
+#endif
+
 #if defined IGRAPHICS_CPU
   DBGMSG("IGraphics Skia CPU @ %i FPS\n", fps);
 #elif defined IGRAPHICS_METAL
@@ -895,8 +899,10 @@ IGraphicsSkia::IGraphicsSkia(IGEditorDelegate& dlg, int w, int h, int fps, float
 #elif defined IGRAPHICS_GL
   DBGMSG("IGraphics Skia GL @ %i FPS\n", fps);
 #endif
+#if !IGRAPHICS_SANDBOX_SKIA_FONT_CACHE
   StaticStorage<Font>::Accessor storage{FontCacheStorage()};
   storage.Retain();
+#endif
 
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
   if (!mFontCollection)
@@ -918,18 +924,19 @@ IGraphicsSkia::~IGraphicsSkia()
   if (mFontCollection)
     mFontCollection->clearCaches();
 
-  {
-    StaticStorage<Font>::Accessor storage{FontCacheStorage()};
-    storage.Release();
-  }
-
   if (mTypefaceProvider)
     mTypefaceProvider->unref(); // pair with the manual ref
 
   mFontCollection.reset();
   mTypefaceProvider.reset();
-  mFontMgr.reset();
 #endif
+#if !IGRAPHICS_SANDBOX_SKIA_FONT_CACHE
+  {
+    StaticStorage<Font>::Accessor storage{FontCacheStorage()};
+    storage.Release();
+  }
+#endif
+  mFontMgr.reset();
 #ifdef IGRAPHICS_VULKAN
   if (mVKCommandBuffer != VK_NULL_HANDLE)
     vkFreeCommandBuffers(mVKDevice, mVKCommandPool, 1, &mVKCommandBuffer);
@@ -2258,12 +2265,18 @@ IColor IGraphicsSkia::GetPoint(int x, int y)
 
 sk_sp<SkFontMgr> IGraphicsSkia::SParagraphFontMgr()
 {
+#if IGRAPHICS_SANDBOX_FONT_FACTORY
+  if (!mFontMgr)
+    mFontMgr = SFontMgrFactory();
+  return mFontMgr;
+#else
   static std::once_flag flag;
   static sk_sp<SkFontMgr> mgr;
   std::call_once(flag, [] {
     mgr = SFontMgrFactory(); // SFontMgrFactory is already defined in your code
   });
   return mgr;
+#endif
 }
 
 bool IGraphicsSkia::LoadAPIFont(const char* fontID, const PlatformFontPtr& font)
@@ -2280,6 +2293,7 @@ bool IGraphicsSkia::LoadAPIFont(const char* fontID, const PlatformFontPtr& font)
   {
     auto wrappedData = SkData::MakeWithCopy(data->Get(), data->GetSize());
 
+    sk_sp<SkTypeface> typeFace;
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
 
     // if (!mFontCollection)
@@ -2294,9 +2308,17 @@ bool IGraphicsSkia::LoadAPIFont(const char* fontID, const PlatformFontPtr& font)
     // }
 
     // Create the typeface using our private font manager instance.
-    auto typeFace = mFontMgr->makeFromData(wrappedData);
+  #if IGRAPHICS_SANDBOX_FONT_FACTORY
+    typeFace = mFontMgr ? mFontMgr->makeFromData(wrappedData) : nullptr;
+  #else
+    typeFace = mFontMgr->makeFromData(wrappedData);
+  #endif
 #else
-    auto typeFace = SkFontMgrRefDefault()->makeFromData(wrappedData);
+  #if IGRAPHICS_SANDBOX_FONT_FACTORY
+    typeFace = mFontMgr ? mFontMgr->makeFromData(wrappedData) : nullptr;
+  #else
+    typeFace = SkFontMgrRefDefault()->makeFromData(wrappedData);
+  #endif
 #endif
 
     if (typeFace)

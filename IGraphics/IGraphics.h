@@ -1803,6 +1803,9 @@ protected:
 #pragma mark -
 
 private:
+  StaticStorage<APIBitmap>& BitmapCache();
+  StaticStorage<SVGHolder>& SVGCache();
+
   void ClearMouseOver()
   {
     mMouseOver = nullptr;
@@ -1865,7 +1868,12 @@ private:
   IKeyHandlerFunc mKeyHandlerFunc = nullptr;
   IDisplayTickFunc mDisplayTickFunc = nullptr;
   IUIAppearanceChangedFunc mAppearanceChangedFunc = nullptr;
-  
+
+#if IGRAPHICS_SANDBOX_IMAGE_CACHE
+  StaticStorage<APIBitmap> mBitmapCache;
+  StaticStorage<SVGHolder> mSVGCache;
+#endif
+
 protected:
   IGEditorDelegate* mDelegate;
   bool mCursorHidden = false;

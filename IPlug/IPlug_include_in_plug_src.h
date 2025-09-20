@@ -12,6 +12,10 @@
 
 #include "Sandbox/IPlugSandboxConfig.h"
 
+#if defined(OS_WIN)
+  #include "Sandbox/WdlWindowsSandboxContext.h"
+#endif
+
 /**
  * @file IPlug_include_in_plug_src.h
  * @brief IPlug source include

@@ -20,6 +20,7 @@ The centralized header ships with a parent/child hierarchy so related subsystems
 | `IPLUG_SANDBOX_VST3_PROCESSOR` | `IPLUG_SANDBOX_VST3` | Audio processor statics. |
 | `IPLUG_SANDBOX_VST3_CONTROLLER` | `IPLUG_SANDBOX_VST3` | Controller/UI statics. |
 | `IGRAPHICS_SANDBOX_WIN` | `IPLUG_SANDBOX_ALL` | Windows graphics subsystem. |
+| `IGRAPHICS_SANDBOX_WDL_WINDOWS` | `IGRAPHICS_SANDBOX_WIN` | WDL Win32 helpers (UTF-8 shims, file dialogs, virtual windows, DPI caches). |
 | `IGRAPHICS_SANDBOX_WIN_CLASS` | `IGRAPHICS_SANDBOX_WIN` | Window class registration. |
 | `IGRAPHICS_SANDBOX_WIN_TIMERS` | `IGRAPHICS_SANDBOX_WIN` | Frame timer counters. |
 | `IGRAPHICS_SANDBOX_WIN_FONTS` | `IGRAPHICS_SANDBOX_WIN` | Platform font caches. |
@@ -72,6 +73,7 @@ Ensure the definitions precede any `target_sources` that include iPlug headers s
 ## Behavioural changes when sandboxing is enabled
 - The Windows module handle (`gHINSTANCE`) keeps a thread-local slot backed by a shared fallback whenever `IPLUG_SANDBOX_HINSTANCE` is enabled, so new threads inherit the process handle while isolating writes; the DPI cache remains thread-local under `IPLUG_SANDBOX_HOST_CACHE`.【F:IPlug/IPlug_include_in_plug_src.h†L13-L71】【F:IPlug/Sandbox/IPlugSandboxConfig.h†L190-L218】
 - Window classes switch from a single static name to per-instance registrations when `IGRAPHICS_SANDBOX_WIN_CLASS` is active, preventing HWND collisions between plug-ins that share the same process.【F:IGraphics/Platforms/IGraphicsWin.cpp†L43-L66】【F:IGraphics/Platforms/IGraphicsWin.h†L229-L260】
+- When `IGRAPHICS_SANDBOX_WDL_WINDOWS` is enabled, each editor instantiates a dedicated `WdlWindowsSandboxContext` so UTF-8 hooks, Win32 file dialogs, DPI caches, and virtual window helpers no longer share global state across plug-ins; legacy builds continue to use the original globals when the toggle is disabled.【F:WDL/WdlWindowsSandboxContext.h†L1-L156】【F:IGraphics/Platforms/IGraphicsWin.cpp†L43-L112】【F:IGraphics/Platforms/IGraphicsWin.cpp†L918-L1029】【F:WDL/win32_utf8.c†L24-L336】【F:WDL/filebrowse.cpp†L1-L120】  Context-aware file dialog wrappers such as `WDL_ChooseFileForSaveCtx` and `WDL_ChooseFileForOpenCtx` mirror the legacy entry points while threading the sandbox pointer through each invocation, and the `WdlWindowsSandboxScope` helper now updates the shared TLS macro even when invoked without a context so stray callbacks cannot observe stale sandbox state while compile-time assertions prevent the guard from being copied or moved accidentally.【F:WDL/filebrowse.h†L12-L90】【F:WDL/filebrowse.cpp†L200-L677】【F:IGraphics/Platforms/IGraphicsWin.cpp†L43-L112】【F:IGraphics/Platforms/IGraphicsWin.cpp†L161-L168】
 - Font caches (`InstalledFont` and `HFontHolder`) migrate from static globals to per-instance `StaticStorage` containers when `IGRAPHICS_SANDBOX_WIN_FONTS` is set, eliminating shared typography state.【F:IGraphics/Platforms/IGraphicsWin.cpp†L78-L111】【F:IGraphics/Platforms/IGraphicsWin.h†L235-L260】
 - Skia factories (font manager and Unicode helpers) now rely on thread-local singletons whenever the draw sandbox is enabled, isolating GPU-backed resources for each plug-in thread.【F:IGraphics/Drawing/IGraphicsSkia.cpp†L9-L35】【F:IGraphics/Drawing/IGraphicsSkia.cpp†L825-L858】
 - Vulkan logging routes through a thread-local sink so log consumers can capture per-instance telemetry without cross-talk when the logging sandbox is on.【F:IGraphics/Platforms/VulkanLogging.h†L1-L70】
@@ -81,8 +83,14 @@ Because this environment lacks the Windows VST3 Vulkan toolchain, validation is 
 1. Build plug-ins with Vulkan validation layers enabled and confirm each instance emits logs only through its thread-local sink.
 2. Inspect multiple simultaneous plug-ins to ensure window class names and font caches remain isolated (no shared handles reported by debug tooling).
 3. Run hosts that reuse plugin DLLs (e.g., REAPER, Cubase) and confirm DPI scaling behaves consistently when instances are opened on different monitors.
+4. With `IGRAPHICS_SANDBOX_WDL_WINDOWS=1`, open two editor instances and verify context-scoped Win32 helpers:
+   - Hook UTF-8 combo boxes and list views (e.g., preset browsers) in both instances and ensure property collisions do not occur when destroying and recreating controls.
+   - Exercise legacy and modern file dialogs simultaneously, confirming the sandbox keeps per-instance recent directories and the Vista-style dialog host resets correctly after each use.
+   - Toggle cursor-locking controls (sliders, text boxes) to confirm the sandboxed virtual window helpers avoid cross-instance cursor warping.
 
-Any issues should be cross-referenced with the audit (`Plan/Artifacts/Sandbox-Audit.md`) and validation checklist (`Plan/Artifacts/Sandbox-Validation.md`) for targeted troubleshooting steps.
+Additional Windows-specific manual checks are documented in `Plan/Artifacts/Windows-Sandbox-Validation.md` to streamline regression testing until automated coverage is available.
+
+Any issues should be cross-referenced with the audit (`Plan/Artifacts/Windows-Sandbox-Risk-Summary.md`) and validation checklist (`Plan/Artifacts/Windows-Sandbox-Validation.md`) for targeted troubleshooting steps.
 
 ## Troubleshooting
 - **Compile-time assertion failure:** Ensure every overridden child macro keeps its parent enabled. For example, enable `IGRAPHICS_SANDBOX_LOGGING` whenever `IGRAPHICS_SANDBOX_VK_LOGGER` is `1`.

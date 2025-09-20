@@ -16,6 +16,8 @@ extern "C" {
 #include <sys/stat.h>
 #include <stdio.h>
 
+struct WdlWindowsSandboxContext;
+
 #define LB_GETTEXTUTF8 (LB_GETTEXT|0x8000)
 #define LB_GETTEXTLENUTF8 (LB_GETTEXTLEN|0x8000)
 
@@ -75,11 +77,42 @@ WDL_WIN32_UTF8_IMPL WCHAR *WDL_UTF8ToWC(const char *buf, BOOL doublenull, int mi
 
 WDL_WIN32_UTF8_IMPL BOOL WDL_HasUTF8(const char *_str);
 
-WDL_WIN32_UTF8_IMPL void WDL_UTF8_HookComboBox(HWND h);
-WDL_WIN32_UTF8_IMPL void WDL_UTF8_HookListView(HWND h);
-WDL_WIN32_UTF8_IMPL void WDL_UTF8_HookListBox(HWND h);
-WDL_WIN32_UTF8_IMPL void WDL_UTF8_HookTreeView(HWND h);
-WDL_WIN32_UTF8_IMPL void WDL_UTF8_HookTabCtrl(HWND h);
+WDL_WIN32_UTF8_IMPL void WDL_UTF8_SetSandboxContext(struct WdlWindowsSandboxContext* context);
+WDL_WIN32_UTF8_IMPL struct WdlWindowsSandboxContext* WDL_UTF8_GetSandboxContext(void);
+
+WDL_WIN32_UTF8_IMPL void WDL_UTF8_HookComboBoxCtx(struct WdlWindowsSandboxContext* context, HWND h);
+WDL_WIN32_UTF8_IMPL void WDL_UTF8_HookListViewCtx(struct WdlWindowsSandboxContext* context, HWND h);
+WDL_WIN32_UTF8_IMPL void WDL_UTF8_HookListBoxCtx(struct WdlWindowsSandboxContext* context, HWND h);
+WDL_WIN32_UTF8_IMPL void WDL_UTF8_HookTreeViewCtx(struct WdlWindowsSandboxContext* context, HWND h);
+WDL_WIN32_UTF8_IMPL void WDL_UTF8_HookTabCtrlCtx(struct WdlWindowsSandboxContext* context, HWND h);
+WDL_WIN32_UTF8_IMPL const char* WDL_UTF8_SandboxContextPropertyName(void);
+
+#ifndef WDL_WIN32_UTF8_DISABLE_LEGACY_HOOK_APIS
+static inline void WDL_UTF8_HookComboBox(HWND h)
+{
+  WDL_UTF8_HookComboBoxCtx(NULL, h);
+}
+
+static inline void WDL_UTF8_HookListView(HWND h)
+{
+  WDL_UTF8_HookListViewCtx(NULL, h);
+}
+
+static inline void WDL_UTF8_HookListBox(HWND h)
+{
+  WDL_UTF8_HookListBoxCtx(NULL, h);
+}
+
+static inline void WDL_UTF8_HookTreeView(HWND h)
+{
+  WDL_UTF8_HookTreeViewCtx(NULL, h);
+}
+
+static inline void WDL_UTF8_HookTabCtrl(HWND h)
+{
+  WDL_UTF8_HookTabCtrlCtx(NULL, h);
+}
+#endif
 
 WDL_WIN32_UTF8_IMPL LPSTR GetCommandParametersUTF8();
 WDL_WIN32_UTF8_IMPL void WDL_UTF8_ListViewConvertDispInfoToW(void *di); //NMLVDISPINFO 

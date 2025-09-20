@@ -263,5 +263,10 @@ void WDL_VWnd_regHelperClass(const char *classname, void *icon=NULL, void *icons
 LRESULT WDL_AccessibilityHandleForVWnd(bool isDialog, HWND hwnd, WDL_VWnd *vw, WPARAM wParam, LPARAM lParam);
 
 extern bool wdl_virtwnd_nosetcursorpos; // set to true to prevent SetCursorPos() from being called in sliders/etc (for pen/tablet mode)
+#ifdef _WIN32
+struct WdlWindowsSandboxContext;
+bool WDL_VWnd_GetSandboxNoSetCursorPos(void);
+void WDL_VWnd_SetSandboxNoSetCursorPos(bool value);
+#endif
 
 #endif

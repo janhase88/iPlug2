@@ -951,11 +951,11 @@ void WDL_VirtualSlider::OnMoveOrUp(int xpos, int ypos, int isup)
 
 
       if (
-        wdl_virtwnd_nosetcursorpos ||
+        WDL_VWnd_GetSandboxNoSetCursorPos() ||
 #ifdef _WIN32
         (ci.flags&2) ||
 #endif
-        !SetCursorPos(p.x,p.y)) 
+        !SetCursorPos(p.x,p.y))
       {
         m_last_y = ypos;
         m_last_x = xpos;

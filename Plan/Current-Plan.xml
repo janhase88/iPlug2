@@ -1,0 +1,224 @@
+<plan>
+  <Goal>Sandbox the WDL Windows path so plug-ins share no static Windows resources when hosted together.</Goal>
+
+  <Environment-Check>
+    Ubuntu 22.04 container without Windows SDK or GUI support; cannot compile or run Windows-specific plug-in hosts.
+  </Environment-Check>
+  <PHASE>PLAN-EXECUTION</PHASE>
+  <Build-Test-Compatible>FALSE</Build-Test-Compatible>
+  <context>
+    The existing optional sandbox toggles live in IPlug/Sandbox/IPlugSandboxConfig.h and gate Windows behaviours (HINSTANCE, DLL entry, host cache).
+    WDL/win32_* utilities, wingui helpers, and shared singletons inside WDL/wdl* headers currently expose process-wide state that is reused by multiple plug-in instances.
+    Goal is to route the "WDL windows path" resources through the sandbox layer so each instance observes isolated state when the sandbox switch is enabled while remaining backward compatible when disabled.
+  </context>
+
+  <Tasks>
+
+    <task>
+      <name>Audit Windows path integration points and shared resources</name>
+      <status>SUCCESS</status>
+      <tryCount>2</tryCount>
+      <crucialInfo>
+        Catalog all entry points where WDL Windows helpers interact with global/static data and how iPlug plug-ins access them today. Deliverables: module map, shared-resource inventory, and a synthesised risk summary highlighting hotspots and unknowns.
+      </crucialInfo>
+      <continue-info>
+        Reference Plan/Artifacts/Windows-Module-Map.md, Plan/Artifacts/Windows-Shared-Resource-Inventory.md, and Plan/Artifacts/Windows-Sandbox-Risk-Summary.md when beginning design work; these documents capture current ownership, lifetime assumptions, and open questions.
+      </continue-info>
+      <subtasks>
+        <task>
+          <name>Map Windows-specific modules (wingui, win32_helpers, win7filedialog, etc.) to iPlug and IGraphics integration layers</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>
+            Trace includes/usages from IPlug and IGraphics Windows platform files to determine which facilities must be isolated and where they are initialised today.
+          </crucialInfo>
+          <continue-info>
+            Completed. See Plan/Artifacts/Windows-Module-Map.md for detailed mapping and citations to reuse in downstream tasks.
+          </continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+        <task>
+          <name>Document globals, singletons, and shared caches that must move behind sandbox toggles</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>
+            Identify handles such as shared window classes, font caches, timers, host caches, and message loops that currently live in static variables.
+          </crucialInfo>
+          <continue-info>
+            Inventory recorded in Plan/Artifacts/Windows-Shared-Resource-Inventory.md with per-module sandbox notes and citations for design follow-up.
+          </continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+        <task>
+          <name>Summarise sandboxing risk areas and open questions</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>
+            Consolidate findings into a concise summary emphasising hotspots that require design changes or additional investigation. Deliverable stored in Plan/Artifacts/Windows-Sandbox-Risk-Summary.md.
+          </crucialInfo>
+          <continue-info>
+            Use the summary to prioritise design tasks; it records the open questions that must be resolved before implementation.
+          </continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+      </subtasks>
+    </task>
+
+    <task>
+      <name>Design sandbox-aware Windows path abstraction</name>
+      <status>SUCCESS</status>
+      <tryCount>1</tryCount>
+      <crucialInfo>
+        Plan how to thread sandbox context into WDL Windows utilities and expose a switch aligning with existing IPLUG_SANDBOX_* macros. Deliverable: design doc or structured notes capturing API, ownership, and migration strategy. Completed in Plan/Artifacts/Windows-Sandbox-Design.md with context structure, helper API adjustments, and toggle strategy recorded for implementation.
+      </crucialInfo>
+      <continue-info>
+        Reference Plan/Artifacts/Windows-Sandbox-Design.md when executing the implementation tasks; it documents lifecycle, API, and toggle expectations for the sandboxed Windows path.
+      </continue-info>
+      <subtasks>
+        <task>
+          <name>Define sandbox context structure and lifecycle</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>
+            Sandbox context layout, per-instance namespaces, and lifecycle hooks defined in Plan/Artifacts/Windows-Sandbox-Design.md §1.
+          </crucialInfo>
+          <continue-info>
+            Implementations should instantiate/destroy the context following the lifecycle described in §1, ensuring combo/list view isolation and deterministic teardown.
+          </continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+        <task>
+          <name>Outline API adjustments for WDL Windows helpers</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>
+            Context-aware signatures and migration approach captured in Plan/Artifacts/Windows-Sandbox-Design.md §2.
+          </crucialInfo>
+          <continue-info>
+            Use the §2 guidance when modifying WDL helpers and IGraphics call sites so new wrappers cover UTF-8 hooks, file dialogs, DPI caches, menus, and virtual windows.
+          </continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+        <task>
+          <name>Align new toggles/initialisation with IPlugSandboxConfig.h hierarchy</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>
+            Toggle propagation, storage macros, and runtime behaviour specified in Plan/Artifacts/Windows-Sandbox-Design.md §3.
+          </crucialInfo>
+          <continue-info>
+            Implementation should add the proposed feature flag and macros while preserving legacy fallbacks and respecting runtime immutability described in §3.
+          </continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+      </subtasks>
+    </task>
+
+    <task>
+      <name>Implement sandboxed Windows path and regression coverage</name>
+      <status>PROOF</status>
+      <tryCount>4</tryCount>
+      <crucialInfo>
+        Modify WDL Windows utilities to respect sandbox isolation and ensure documentation/tests communicate the new switch. Deliverable: merged code, updated docs, and regression strategy.
+      </crucialInfo>
+      <continue-info>
+        All implementation subtasks have landed; the latest fixes keep the UTF-8 TLS slot and sandbox thread-local pointer in sync during teardown and now ensure null-context scopes clear the shared macro so callbacks without an editor do not inherit stale sandbox state. Follow the validation checklist for manual QA until automated Windows coverage exists, then promote the task to SUCCESS.
+      </continue-info>
+      <subtasks>
+        <task>
+          <name>Introduce sandbox context plumbing across WDL Windows helpers</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>
+            Context-aware helper signatures now land across the WDL Windows modules, retrieving per-instance state from `WdlWindowsSandboxContext` while preserving legacy globals when the sandbox toggle is off.
+          </crucialInfo>
+          <continue-info>
+            Monitor future WDL additions for new globals and thread the sandbox context through them following the established pattern.
+          </continue-info>
+          <subtasks>
+            <task>
+              <name>Define sandbox context storage and toggles for WDL Windows helpers</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>
+                Introduce a shared context structure plus compile-time macros so sandbox-enabled builds acquire per-instance storage without breaking existing global-based implementations.
+              </crucialInfo>
+              <continue-info>
+                WdlWindowsSandboxContext lives in WDL/WdlWindowsSandboxContext.h with helper APIs for allocation, and IPlugSandboxConfig.h now exposes the IGRAPHICS_SANDBOX_WDL_WINDOWS toggle and TLS accessors.
+              </continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+            <task>
+              <name>Convert UTF-8 hook helpers to use sandbox context</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>
+                win32_utf8 now exposes context-aware hook entry points plus a TLS setter so combo-box atoms follow the sandbox context when isolation is enabled while legacy builds continue using the global statics.
+              </crucialInfo>
+              <continue-info>
+                Use WDL_UTF8_SetSandboxContext alongside the new *Ctx wrappers when wiring IGraphics to ensure the TLS pointer is populated before invoking any UTF-8 helpers.
+              </continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+            <task>
+              <name>Thread context through remaining WDL Windows caches</name>
+              <status>SUCCESS</status>
+              <tryCount>4</tryCount>
+              <crucialInfo>
+                File dialogs, UTF-8 hooks, DPI caches, and virtual window helpers now pull all mutable state from `WdlWindowsSandboxContext`, eliminating the shared globals enumerated in the risk summary while preserving legacy fallbacks when the sandbox toggle is disabled.
+              </crucialInfo>
+              <continue-info>
+                No additional follow-up required unless new WDL helpers introduce globals; reference the validation checklist to confirm per-instance behaviour on Windows hosts during regression passes. Ensure any future context-aware wrappers (e.g., `WDL_ChooseFileForOpenCtx`) stay in sync with the legacy overloads so both APIs remain available.
+              </continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+          </subtasks>
+        </task>
+        <task>
+          <name>Adapt IPlug/IGraphics integration to use sandboxed helpers</name>
+          <status>SUCCESS</status>
+          <tryCount>4</tryCount>
+          <crucialInfo>IGraphicsWin now owns a per-instance WdlWindowsSandboxContext, wraps menu, tooltip, clipboard, and cursor helpers in sandbox scopes, and routes file dialogs through the context-aware WDL APIs so each plug-in isolates its Windows state when the toggle is enabled. Property-prefix generation now uses manual hexadecimal formatting to avoid CRT-specific snprintf requirements during sandbox initialisation, sandbox scopes drive the shared macros so thread-local helpers stay consistent with the UTF-8 TLS slot, and compile-time assertions guarantee the scope guard remains non-copyable and non-assignable.</crucialInfo>
+          <continue-info>Host/bootstrap layers still need review to ensure they set or forward sandbox contexts for non-IGraphics consumers; coordinate those follow-ups under the remaining implementation subtasks.</continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+        <task>
+          <name>Update documentation and establish regression safeguards</name>
+          <status>PROOF</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>
+            Documentation now covers the `IGRAPHICS_SANDBOX_WDL_WINDOWS` toggle, sandbox context lifecycle, and manual regression steps captured in `Plan/Artifacts/Windows-Sandbox-Validation.md` until automated tests are available.
+          </crucialInfo>
+          <continue-info>
+            Future work may automate the Windows validation checklist once CI coverage exists; for now, follow the documented manual steps during QA.
+          </continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+      </subtasks>
+    </task>
+
+  </Tasks>
+
+  <Finalization>
+    <task>
+      <name>FINAL CHECK</name>
+      <status>OPEN</status>
+      <tryCount>0</tryCount>
+      <crucialInfo>
+        Action: Mark all tasks as AWAITS REVIEW. Mark this task as FINAL-REVIEW-STARTED. Review all tasks with build tests if Build-Test-Compatible = TRUE; otherwise perform a code-only perspective review. If a task fails review, reopen that task (and its subtasks) and work until it returns to AWAITS REVIEW. Loop until all tasks are REVIEW PASSED. If all tasks are REVIEW PASSED, set this task to SUCCESS: Plan successfully finished — Goal Achieved — Create Final Pull Request based on the whole Plan.
+      </crucialInfo>
+    </task>
+  </Finalization>
+
+</plan>

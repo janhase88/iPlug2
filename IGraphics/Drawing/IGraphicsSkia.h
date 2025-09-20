@@ -276,7 +276,11 @@ private:
   bool AssertValidSwapchainImage(VkImage image, const char* context);
 #endif
 
+#if IGRAPHICS_SANDBOX_SKIA_FONT_CACHE
+  static thread_local StaticStorage<Font> sFontCache;
+#else
   static StaticStorage<Font> sFontCache;
+#endif
 };
 
 END_IGRAPHICS_NAMESPACE

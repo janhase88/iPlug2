@@ -674,7 +674,11 @@ struct IGraphicsSkia::Font
 };
 
 // Fonts
+#if IGRAPHICS_SANDBOX_SKIA_FONT_CACHE
+thread_local StaticStorage<IGraphicsSkia::Font> IGraphicsSkia::sFontCache;
+#else
 StaticStorage<IGraphicsSkia::Font> IGraphicsSkia::sFontCache;
+#endif
 
 #pragma mark - Utility conversions
 

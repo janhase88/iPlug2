@@ -29,6 +29,8 @@ The centralized header ships with a parent/child hierarchy so related subsystems
 | `IGRAPHICS_SANDBOX_VK_CONTEXT` | `IGRAPHICS_SANDBOX_VULKAN` | Context bootstrap caches. |
 | `IGRAPHICS_SANDBOX_DRAW` | `IPLUG_SANDBOX_ALL` | Drawing factories shared by multiple backends. |
 | `IGRAPHICS_SANDBOX_TEXTURE_CACHE` | `IGRAPHICS_SANDBOX_DRAW` | Shared texture maps. |
+| `IGRAPHICS_SANDBOX_IMAGE_CACHE` | `IGRAPHICS_SANDBOX_DRAW` | Bitmap/SVG static storage used by `IGraphics`. |
+| `IGRAPHICS_SANDBOX_SKIA_FONT_CACHE` | `IGRAPHICS_SANDBOX_DRAW` | Skia `StaticStorage<Font>` cache in `IGraphicsSkia`. |
 | `IGRAPHICS_SANDBOX_FONT_FACTORY` | `IGRAPHICS_SANDBOX_DRAW` | Skia font manager globals. |
 | `IGRAPHICS_SANDBOX_UNICODE_HELPER` | `IGRAPHICS_SANDBOX_DRAW` | Skia Unicode helper singletons. |
 | `IGRAPHICS_SANDBOX_LOGGING` | `IPLUG_SANDBOX_ALL` | Graphics logging facilities. |
@@ -73,7 +75,8 @@ Ensure the definitions precede any `target_sources` that include iPlug headers s
 - The Windows module handle (`gHINSTANCE`) keeps a thread-local slot backed by a shared fallback whenever `IPLUG_SANDBOX_HINSTANCE` is enabled, so new threads inherit the process handle while isolating writes; the DPI cache remains thread-local under `IPLUG_SANDBOX_HOST_CACHE`.【F:IPlug/IPlug_include_in_plug_src.h†L13-L71】【F:IPlug/Sandbox/IPlugSandboxConfig.h†L190-L218】
 - Window classes switch from a single static name to per-instance registrations when `IGRAPHICS_SANDBOX_WIN_CLASS` is active, preventing HWND collisions between plug-ins that share the same process.【F:IGraphics/Platforms/IGraphicsWin.cpp†L43-L66】【F:IGraphics/Platforms/IGraphicsWin.h†L229-L260】
 - Font caches (`InstalledFont` and `HFontHolder`) migrate from static globals to per-instance `StaticStorage` containers when `IGRAPHICS_SANDBOX_WIN_FONTS` is set, eliminating shared typography state.【F:IGraphics/Platforms/IGraphicsWin.cpp†L78-L111】【F:IGraphics/Platforms/IGraphicsWin.h†L235-L260】
-- Skia factories (font manager and Unicode helpers) now rely on thread-local singletons whenever the draw sandbox is enabled, isolating GPU-backed resources for each plug-in thread.【F:IGraphics/Drawing/IGraphicsSkia.cpp†L9-L35】【F:IGraphics/Drawing/IGraphicsSkia.cpp†L825-L858】
+- Skia factories (font manager and Unicode helpers) and the Skia font cache now rely on thread-local storage whenever the draw sandbox is enabled, isolating GPU-backed resources for each plug-in thread.【F:IGraphics/Drawing/IGraphicsSkia.h†L279-L283】【F:IGraphics/Drawing/IGraphicsSkia.cpp†L677-L915】
+- The core `IGraphics` bitmap/SVG caches switch to thread-local storage when the image-cache sandbox is active, preventing decoded assets from leaking across editors.【F:IGraphics/IGraphics.cpp†L35-L79】
 - Vulkan logging routes through a thread-local sink so log consumers can capture per-instance telemetry without cross-talk when the logging sandbox is on.【F:IGraphics/Platforms/VulkanLogging.h†L1-L70】
 
 ## Validation workflow

@@ -40,8 +40,13 @@ using VST3_API_BASE = iplug::IPlugVST3Controller;
 using namespace iplug;
 using namespace igraphics;
 
+#if IGRAPHICS_SANDBOX_IMAGE_CACHE
+thread_local StaticStorage<APIBitmap> sBitmapCache;
+thread_local StaticStorage<SVGHolder> sSVGCache;
+#else
 static StaticStorage<APIBitmap> sBitmapCache;
 static StaticStorage<SVGHolder> sSVGCache;
+#endif
 
 IGraphics::IGraphics(IGEditorDelegate& dlg, int w, int h, int fps, float scale)
 : mWidth(w)

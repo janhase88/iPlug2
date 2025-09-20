@@ -6,8 +6,8 @@
 #include <utility>
 #include <vector>
 
-#include "IGraphicsSkia.h"
 #include "Sandbox/IPlugSandboxConfig.h"
+#include "IGraphicsSkia.h"
 
 #pragma warning(push)
 #pragma warning(disable : 4244)
@@ -674,11 +674,19 @@ struct IGraphicsSkia::Font
 };
 
 // Fonts
+namespace
+{
 #if IGRAPHICS_SANDBOX_SKIA_FONT_CACHE
-thread_local StaticStorage<IGraphicsSkia::Font> IGraphicsSkia::sFontCache;
+thread_local StaticStorage<IGraphicsSkia::Font> sFontCacheStorage;
 #else
-StaticStorage<IGraphicsSkia::Font> IGraphicsSkia::sFontCache;
+StaticStorage<IGraphicsSkia::Font> sFontCacheStorage;
 #endif
+} // namespace
+
+StaticStorage<IGraphicsSkia::Font>& IGraphicsSkia::FontCacheStorage()
+{
+  return sFontCacheStorage;
+}
 
 #pragma mark - Utility conversions
 
@@ -891,7 +899,7 @@ IGraphicsSkia::IGraphicsSkia(IGEditorDelegate& dlg, int w, int h, int fps, float
 #elif defined IGRAPHICS_GL
   DBGMSG("IGraphics Skia GL @ %i FPS\n", fps);
 #endif
-  StaticStorage<Font>::Accessor storage(sFontCache);
+  StaticStorage<Font>::Accessor storage{FontCacheStorage()};
   storage.Retain();
 
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
@@ -915,7 +923,7 @@ IGraphicsSkia::~IGraphicsSkia()
     mFontCollection->clearCaches();
 
   {
-    StaticStorage<Font>::Accessor storage(sFontCache);
+    StaticStorage<Font>::Accessor storage{FontCacheStorage()};
     storage.Release();
   }
 
@@ -2264,7 +2272,7 @@ sk_sp<SkFontMgr> IGraphicsSkia::SParagraphFontMgr()
 
 bool IGraphicsSkia::LoadAPIFont(const char* fontID, const PlatformFontPtr& font)
 {
-  StaticStorage<Font>::Accessor storage(sFontCache);
+  StaticStorage<Font>::Accessor storage{FontCacheStorage()};
   Font* cached = storage.Find(fontID);
 
   if (cached)
@@ -2316,7 +2324,7 @@ void IGraphicsSkia::PrepareAndMeasureText(const IText& text, const char* str, IR
 {
   using namespace skia::textlayout;
 
-  StaticStorage<Font>::Accessor storage(sFontCache);
+  StaticStorage<Font>::Accessor storage{FontCacheStorage()};
   Font* pFont = storage.Find(text.mFont);
   assert(pFont && "No font found - did you forget to load it?");
 
@@ -2391,7 +2399,7 @@ void IGraphicsSkia::DoDrawText(const IText& text, const char* str, const IRECT& 
   SkFont font; // Dummy, not used by new implementation but required by signature.
   PrepareAndMeasureText(text, str, measured, x, y, font);
 
-  StaticStorage<Font>::Accessor storage(sFontCache);
+  StaticStorage<Font>::Accessor storage{FontCacheStorage()};
   Font* pFont = storage.Find(text.mFont);
   assert(pFont && "No font found - did you forget to load it?");
 

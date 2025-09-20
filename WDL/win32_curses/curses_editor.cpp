@@ -11,6 +11,14 @@
 
 #include "curses_editor.h"
 #include "../wdlutf8.h"
+#if defined(__has_include)
+  #if __has_include("../../IPlug/Sandbox/IPlugSandboxConfig.h")
+    #include "../../IPlug/Sandbox/IPlugSandboxConfig.h"
+  #elif __has_include("IPlug/Sandbox/IPlugSandboxConfig.h")
+    #include "IPlug/Sandbox/IPlugSandboxConfig.h"
+  #endif
+#endif
+
 #include "../win32_utf8.h"
 #include "../wdlcstring.h"
 

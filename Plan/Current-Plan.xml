@@ -1,0 +1,41 @@
+<plan>
+  <Goal>Remove sandbox build options from common-win.props and fix WDL sandbox unresolved externals while centralizing configuration in IPlugSandboxConfig.h.</Goal>
+  <Environment-Check>
+    <Action>Verify whether the Linux container can run Windows-focused build tests for the repository.</Action>
+    <Acceptance>The environment supports building the repo's Windows configurations.</Acceptance>
+    <Rejection>The environment cannot run the Windows/MSVC toolchain required for the affected build artifacts.</Rejection>
+    <Result>Rejection</Result>
+    <Notes>Container only has Linux tooling; Visual Studio/MSBuild is unavailable.</Notes>
+  </Environment-Check>
+  <PHASE>PLAN-EXECUTION</PHASE>
+  <Build-Test-Compatible>FALSE</Build-Test-Compatible>
+  <context>
+    Adjust the Windows sandbox configuration workflow to rely entirely on IPlugSandboxConfig.h defaults and ensure WDL UTF-8 helpers link without manual property toggles.
+  </context>
+  <Tasks>
+    <task>
+      <name>Update sandbox configuration defaults</name>
+      <status>SUCCESS</status>
+      <tryCount>1</tryCount>
+      <crucialInfo>Ensure IPLUG_SANDBOX_ALL defaults to enabled and that helper toggles remain consistent.</crucialInfo>
+      <continue-info></continue-info>
+      <subtasks />
+    </task>
+    <task>
+      <name>Clean sandbox toggles from common-win.props</name>
+      <status>SUCCESS</status>
+      <tryCount>1</tryCount>
+      <crucialInfo>Remove per-project property overrides and always include the helper sources required for sandbox builds.</crucialInfo>
+      <continue-info></continue-info>
+      <subtasks />
+    </task>
+  </Tasks>
+  <Finalization>
+    <task>
+      <name>FINAL CHECK</name>
+      <status>OPEN</status>
+      <tryCount>0</tryCount>
+      <crucialInfo>Perform a code-only review because Windows build tooling is unavailable. Confirm all tasks are marked SUCCESS before finalizing.</crucialInfo>
+    </task>
+  </Finalization>
+</plan>

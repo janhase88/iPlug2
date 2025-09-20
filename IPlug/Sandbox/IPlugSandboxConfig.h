@@ -16,21 +16,33 @@
  *
  * Downstream projects define @c IPLUG_SANDBOX_ALL (and optional overrides) before
  * including any iPlug headers to control whether plug-in instances share process
- * level state. All toggles are boolean (0 or 1) and default to 0 to preserve
- * legacy behaviour.
+ * level state. All toggles are boolean (0 or 1) and default to 1 so isolation is
+ * enabled out of the box.
  */
 
 // Utility for validating boolean-like macro values.
-#define IPLUG_SANDBOX_REQUIRE_BOOL(name)                                                                          \
-  static_assert((name) == 0 || (name) == 1, "iPlug sandbox macro '" #name "' must be either 0 or 1")
+#if defined(__cplusplus)
+  #define IPLUG_SANDBOX_REQUIRE_BOOL(name)                                                                        \
+    static_assert((name) == 0 || (name) == 1, "iPlug sandbox macro '" #name "' must be either 0 or 1")
+#else
+  #define IPLUG_SANDBOX_ASSERT_CONCAT_INNER(a, b) a##b
+  #define IPLUG_SANDBOX_ASSERT_CONCAT(a, b) IPLUG_SANDBOX_ASSERT_CONCAT_INNER(a, b)
+  #define IPLUG_SANDBOX_REQUIRE_BOOL(name)                                                                        \
+    typedef char IPLUG_SANDBOX_ASSERT_CONCAT(iplug_sandbox_require_bool_, __LINE__)[(name) == 0 || (name) == 1 ? 1 : -1]
+#endif
+
+#ifndef IPLUG_SANDBOX_ALL
+#define IPLUG_SANDBOX_ALL 1
+#endif
+IPLUG_SANDBOX_REQUIRE_BOOL(IPLUG_SANDBOX_ALL);
 
 #if !defined(IPLUG_SANDBOX_LINK_WDL_HELPERS)
-#define IPLUG_SANDBOX_LINK_WDL_HELPERS 0
+#define IPLUG_SANDBOX_LINK_WDL_HELPERS IPLUG_SANDBOX_ALL
 #endif
 IPLUG_SANDBOX_REQUIRE_BOOL(IPLUG_SANDBOX_LINK_WDL_HELPERS);
 
 #if !defined(IPLUG_SANDBOX_USE_WDL_HELPERS)
-#define IPLUG_SANDBOX_USE_WDL_HELPERS 0
+#define IPLUG_SANDBOX_USE_WDL_HELPERS IPLUG_SANDBOX_LINK_WDL_HELPERS
 #endif
 IPLUG_SANDBOX_REQUIRE_BOOL(IPLUG_SANDBOX_USE_WDL_HELPERS);
 #if IPLUG_SANDBOX_USE_WDL_HELPERS && !IPLUG_SANDBOX_LINK_WDL_HELPERS
@@ -51,11 +63,6 @@ void WDL_UTF8_SetSandboxContext(struct WdlWindowsSandboxContext* context);
     #endif
   #endif
 #endif
-
-#ifndef IPLUG_SANDBOX_ALL
-#define IPLUG_SANDBOX_ALL 0
-#endif
-IPLUG_SANDBOX_REQUIRE_BOOL(IPLUG_SANDBOX_ALL);
 
 #ifndef IPLUG_SANDBOX_CORE
 #define IPLUG_SANDBOX_CORE IPLUG_SANDBOX_ALL
@@ -189,9 +196,14 @@ IPLUG_SANDBOX_REQUIRE_BOOL(IGRAPHICS_SANDBOX_VK_LOG_LEVEL);
 
 // Validate hierarchy propagation so child toggles cannot enable isolation
 // when their parent family has been explicitly disabled.
-#define IPLUG_SANDBOX_ENSURE_CHILD(child, parent)                                                                    \
-  static_assert(!(child) || (parent),                                                                                \
-                "iPlug sandbox macro '" #child "' requires parent toggle '" #parent "' to be enabled")
+#if defined(__cplusplus)
+  #define IPLUG_SANDBOX_ENSURE_CHILD(child, parent)                                                                \
+    static_assert(!(child) || (parent),                                                                            \
+                  "iPlug sandbox macro '" #child "' requires parent toggle '" #parent "' to be enabled")
+#else
+  #define IPLUG_SANDBOX_ENSURE_CHILD(child, parent)                                                                \
+    typedef char IPLUG_SANDBOX_ASSERT_CONCAT(iplug_sandbox_child_guard_, __LINE__)[(!(child) || (parent)) ? 1 : -1]
+#endif
 
 IPLUG_SANDBOX_ENSURE_CHILD(IPLUG_SANDBOX_CORE, IPLUG_SANDBOX_ALL);
 IPLUG_SANDBOX_ENSURE_CHILD(IPLUG_SANDBOX_DLL_ENTRY, IPLUG_SANDBOX_CORE);
@@ -225,6 +237,10 @@ IPLUG_SANDBOX_ENSURE_CHILD(IGRAPHICS_SANDBOX_VK_LOGGER, IGRAPHICS_SANDBOX_LOGGIN
 IPLUG_SANDBOX_ENSURE_CHILD(IGRAPHICS_SANDBOX_VK_LOG_LEVEL, IGRAPHICS_SANDBOX_LOGGING);
 
 #undef IPLUG_SANDBOX_ENSURE_CHILD
+#if !defined(__cplusplus)
+  #undef IPLUG_SANDBOX_ASSERT_CONCAT
+  #undef IPLUG_SANDBOX_ASSERT_CONCAT_INNER
+#endif
 
 /** Helper macro for evaluating sandbox toggles in preprocessor conditionals. */
 #define IPLUG_SANDBOX_ENABLED(flag) (flag)

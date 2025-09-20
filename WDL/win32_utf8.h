@@ -1,15 +1,45 @@
 #ifndef _WDL_WIN32_UTF8_H_
 #define _WDL_WIN32_UTF8_H_
 
+#if defined(__has_include)
+  #if __has_include("../IPlug/Sandbox/IPlugSandboxConfig.h")
+    #include "../IPlug/Sandbox/IPlugSandboxConfig.h"
+  #elif __has_include("IPlug/Sandbox/IPlugSandboxConfig.h")
+    #include "IPlug/Sandbox/IPlugSandboxConfig.h"
+  #endif
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 #if defined(_WIN32) && !defined(WDL_NO_SUPPORT_UTF8)
 
-#ifndef WDL_WIN32_UTF8_IMPL 
+#ifdef IPLUG_SANDBOX_LINK_WDL_HELPERS
+  #if !IPLUG_SANDBOX_LINK_WDL_HELPERS
+    #define WDL_WIN32_UTF8_USE_IPLUG_FALLBACKS 1
+  #endif
+#endif
+#ifdef IPLUG_SANDBOX_USE_WDL_HELPERS
+  #if !IPLUG_SANDBOX_USE_WDL_HELPERS
+    #define WDL_WIN32_UTF8_USE_IPLUG_FALLBACKS 1
+  #endif
+#endif
+
+#ifndef WDL_WIN32_UTF8_IMPL
 #define WDL_WIN32_UTF8_IMPL
 #define WDL_WIN32_UTF8_IMPL_NOTSTATIC
+#endif
+
+#if defined(WDL_WIN32_UTF8_USE_IPLUG_FALLBACKS)
+  #undef WDL_WIN32_UTF8_IMPL
+  #undef WDL_WIN32_UTF8_IMPL_NOTSTATIC
+  #if defined(_MSC_VER)
+    #define WDL_WIN32_UTF8_IMPL static __inline
+  #else
+    #define WDL_WIN32_UTF8_IMPL static inline
+  #endif
+  #define WDL_WIN32_UTF8_IMPL_NOTSTATIC WDL_WIN32_UTF8_IMPL
 #endif
 
 #include <windows.h>
@@ -322,6 +352,247 @@ WDL_WIN32_UTF8_IMPL BOOL CreateProcessUTF8( LPCTSTR lpApplicationName, LPTSTR lp
 #endif
 #define stat(fn,s) statUTF8(fn,s)
 typedef char wdl_utf8_chk_stat_types_assert_failed[sizeof(struct stat) == sizeof(struct _stat) ? 1 : -1];
+
+#if defined(WDL_WIN32_UTF8_USE_IPLUG_FALLBACKS)
+
+#include <commctrl.h>
+#include <commdlg.h>
+#include <shlobj.h>
+
+WDL_WIN32_UTF8_IMPL void WDL_Fallback_UTF8_SetSandboxContext(struct WdlWindowsSandboxContext* context)
+{
+  (void) context;
+}
+#undef WDL_UTF8_SetSandboxContext
+#define WDL_UTF8_SetSandboxContext WDL_Fallback_UTF8_SetSandboxContext
+
+WDL_WIN32_UTF8_IMPL struct WdlWindowsSandboxContext* WDL_Fallback_UTF8_GetSandboxContext(void)
+{
+  return NULL;
+}
+#undef WDL_UTF8_GetSandboxContext
+#define WDL_UTF8_GetSandboxContext WDL_Fallback_UTF8_GetSandboxContext
+
+WDL_WIN32_UTF8_IMPL const char* WDL_Fallback_UTF8_SandboxContextPropertyName(void)
+{
+  return NULL;
+}
+#undef WDL_UTF8_SandboxContextPropertyName
+#define WDL_UTF8_SandboxContextPropertyName WDL_Fallback_UTF8_SandboxContextPropertyName
+
+WDL_WIN32_UTF8_IMPL DWORD WDL_Fallback_GetCurrentDirectoryUTF8(DWORD bufferLength, LPTSTR buffer)
+{
+  return GetCurrentDirectoryA(bufferLength, (LPSTR) buffer);
+}
+#undef GetCurrentDirectoryUTF8
+#define GetCurrentDirectoryUTF8 WDL_Fallback_GetCurrentDirectoryUTF8
+
+WDL_WIN32_UTF8_IMPL BOOL WDL_Fallback_SetCurrentDirectoryUTF8(LPCTSTR path)
+{
+  return SetCurrentDirectoryA((LPCSTR) path);
+}
+#undef SetCurrentDirectoryUTF8
+#define SetCurrentDirectoryUTF8 WDL_Fallback_SetCurrentDirectoryUTF8
+
+WDL_WIN32_UTF8_IMPL BOOL WDL_Fallback_GetOpenFileNameUTF8(LPOPENFILENAME ofn)
+{
+  return GetOpenFileNameA((LPOPENFILENAMEA) ofn);
+}
+#undef GetOpenFileNameUTF8
+#define GetOpenFileNameUTF8 WDL_Fallback_GetOpenFileNameUTF8
+
+WDL_WIN32_UTF8_IMPL BOOL WDL_Fallback_GetSaveFileNameUTF8(LPOPENFILENAME ofn)
+{
+  return GetSaveFileNameA((LPOPENFILENAMEA) ofn);
+}
+#undef GetSaveFileNameUTF8
+#define GetSaveFileNameUTF8 WDL_Fallback_GetSaveFileNameUTF8
+
+WDL_WIN32_UTF8_IMPL HINSTANCE WDL_Fallback_LoadLibraryUTF8(LPCTSTR path)
+{
+  return LoadLibraryA((LPCSTR) path);
+}
+#undef LoadLibraryUTF8
+#define LoadLibraryUTF8 WDL_Fallback_LoadLibraryUTF8
+
+WDL_WIN32_UTF8_IMPL struct _ITEMIDLIST* WDL_Fallback_SHBrowseForFolderUTF8(struct _browseinfoA* info)
+{
+  return SHBrowseForFolderA((LPBROWSEINFOA) info);
+}
+#undef SHBrowseForFolderUTF8
+#define SHBrowseForFolderUTF8 WDL_Fallback_SHBrowseForFolderUTF8
+
+#if defined(_WIN64)
+WDL_WIN32_UTF8_IMPL BOOL WDL_Fallback_SHGetPathFromIDListUTF8(const struct _ITEMIDLIST __unaligned* pidl, LPSTR path, int pathLength)
+#else
+WDL_WIN32_UTF8_IMPL BOOL WDL_Fallback_SHGetPathFromIDListUTF8(const struct _ITEMIDLIST* pidl, LPSTR path, int pathLength)
+#endif
+{
+  (void) pathLength;
+  return SHGetPathFromIDListA((PCIDLIST_ABSOLUTE) pidl, path);
+}
+#undef SHGetPathFromIDListUTF8
+#define SHGetPathFromIDListUTF8 WDL_Fallback_SHGetPathFromIDListUTF8
+
+WDL_WIN32_UTF8_IMPL WCHAR* WDL_Fallback_UTF8ToWC(const char* utf8, BOOL doubleNull, int minimumSize, DWORD* sizeOut)
+{
+  if (!utf8)
+  {
+    return NULL;
+  }
+
+  int length = 0;
+  if (doubleNull)
+  {
+    while (utf8[length] != '\0' || utf8[length + 1] != '\0')
+    {
+      ++length;
+    }
+    length += 2;
+  }
+  else
+  {
+    length = -1;
+  }
+
+  UINT codePage = CP_UTF8;
+  DWORD flags = MB_ERR_INVALID_CHARS;
+  int required = MultiByteToWideChar(codePage, flags, utf8, length, NULL, 0);
+
+  if (required <= 0)
+  {
+    codePage = CP_ACP;
+    flags = 0;
+    required = MultiByteToWideChar(codePage, flags, utf8, length, NULL, 0);
+  }
+
+  if (required <= 0)
+  {
+    return NULL;
+  }
+
+  if (minimumSize > required)
+  {
+    required = minimumSize;
+  }
+
+  const int terminators = doubleNull ? 2 : 1;
+  const SIZE_T allocation = (SIZE_T) (required + terminators) * sizeof(WCHAR);
+  WCHAR* wide = (WCHAR*) LocalAlloc(LMEM_FIXED | LMEM_ZEROINIT, allocation);
+  if (!wide)
+  {
+    return NULL;
+  }
+
+  const int written = MultiByteToWideChar(codePage, flags, utf8, length, wide, required);
+  if (written >= 0 && sizeOut)
+  {
+    *sizeOut = (DWORD) written;
+  }
+
+  return wide;
+}
+#undef WDL_UTF8ToWC
+#define WDL_UTF8ToWC WDL_Fallback_UTF8ToWC
+
+WDL_WIN32_UTF8_IMPL int WDL_Fallback_UTF8_SendBFFM_SETSEL(HWND hwnd, const char* selection)
+{
+  return (int) SendMessageA(hwnd, BFFM_SETSELECTIONA, TRUE, (LPARAM) selection);
+}
+#undef WDL_UTF8_SendBFFM_SETSEL
+#define WDL_UTF8_SendBFFM_SETSEL WDL_Fallback_UTF8_SendBFFM_SETSEL
+
+WDL_WIN32_UTF8_IMPL LPSTR WDL_Fallback_GetCommandParametersUTF8(void)
+{
+  LPSTR commandLine = GetCommandLineA();
+  if (!commandLine)
+  {
+    return NULL;
+  }
+
+  while (*commandLine == ' ')
+  {
+    ++commandLine;
+  }
+
+  if (*commandLine == '"')
+  {
+    ++commandLine;
+    while (*commandLine && *commandLine != '"')
+    {
+      ++commandLine;
+    }
+    if (*commandLine == '"')
+    {
+      ++commandLine;
+    }
+  }
+  else
+  {
+    while (*commandLine && *commandLine != ' ')
+    {
+      ++commandLine;
+    }
+  }
+
+  while (*commandLine == ' ')
+  {
+    ++commandLine;
+  }
+
+  return *commandLine ? commandLine : NULL;
+}
+#undef GetCommandParametersUTF8
+#define GetCommandParametersUTF8 WDL_Fallback_GetCommandParametersUTF8
+
+WDL_WIN32_UTF8_IMPL void WDL_Fallback_UTF8_HookComboBoxCtx(struct WdlWindowsSandboxContext* context, HWND hwnd)
+{
+  (void) context;
+  (void) hwnd;
+}
+#undef WDL_UTF8_HookComboBoxCtx
+#define WDL_UTF8_HookComboBoxCtx WDL_Fallback_UTF8_HookComboBoxCtx
+
+WDL_WIN32_UTF8_IMPL void WDL_Fallback_UTF8_HookListViewCtx(struct WdlWindowsSandboxContext* context, HWND hwnd)
+{
+  (void) context;
+  (void) hwnd;
+}
+#undef WDL_UTF8_HookListViewCtx
+#define WDL_UTF8_HookListViewCtx WDL_Fallback_UTF8_HookListViewCtx
+
+WDL_WIN32_UTF8_IMPL void WDL_Fallback_UTF8_HookListBoxCtx(struct WdlWindowsSandboxContext* context, HWND hwnd)
+{
+  (void) context;
+  (void) hwnd;
+}
+#undef WDL_UTF8_HookListBoxCtx
+#define WDL_UTF8_HookListBoxCtx WDL_Fallback_UTF8_HookListBoxCtx
+
+WDL_WIN32_UTF8_IMPL void WDL_Fallback_UTF8_HookTreeViewCtx(struct WdlWindowsSandboxContext* context, HWND hwnd)
+{
+  (void) context;
+  (void) hwnd;
+}
+#undef WDL_UTF8_HookTreeViewCtx
+#define WDL_UTF8_HookTreeViewCtx WDL_Fallback_UTF8_HookTreeViewCtx
+
+WDL_WIN32_UTF8_IMPL void WDL_Fallback_UTF8_HookTabCtrlCtx(struct WdlWindowsSandboxContext* context, HWND hwnd)
+{
+  (void) context;
+  (void) hwnd;
+}
+#undef WDL_UTF8_HookTabCtrlCtx
+#define WDL_UTF8_HookTabCtrlCtx WDL_Fallback_UTF8_HookTabCtrlCtx
+
+WDL_WIN32_UTF8_IMPL void WDL_Fallback_UTF8_ListViewConvertDispInfoToW(void* data)
+{
+  (void) data;
+}
+#undef WDL_UTF8_ListViewConvertDispInfoToW
+#define WDL_UTF8_ListViewConvertDispInfoToW WDL_Fallback_UTF8_ListViewConvertDispInfoToW
+
+#endif
 
 #else
 

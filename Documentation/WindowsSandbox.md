@@ -3,14 +3,14 @@
 ## Purpose
 The optional sandbox configuration in iPlug2 allows Windows plug-ins to behave as if each instance is hosted in isolation. When enabled, the macros in `Sandbox/IPlugSandboxConfig.h` ensure that shared globals—such as the module handle, Win32 window classes, font caches, Skia factories, and Vulkan logging sinks—are no longer shared across instances. This prevents state leaks between plug-ins that would otherwise reuse these resources inside the same process.
 
-By default, all sandbox toggles are disabled (`0`) to preserve legacy behaviour. Projects opt in by defining `IPLUG_SANDBOX_ALL` (or specific child toggles) **before** including any iPlug headers.
+By default, every sandbox toggle resolves to `1`, so isolation is enabled automatically. Projects can opt out by defining `IPLUG_SANDBOX_ALL=0` (or selectively disabling child toggles) **before** including any iPlug headers.
 
 ## Macro hierarchy reference
 The centralized header ships with a parent/child hierarchy so related subsystems cannot be partially enabled. Each entry defaults to its parent unless explicitly overridden.
 
 | Macro | Defaults To | Protects |
 | --- | --- | --- |
-| `IPLUG_SANDBOX_ALL` | `0` | Master switch; enables all descendants. |
+| `IPLUG_SANDBOX_ALL` | `1` | Master switch; enables all descendants. |
 | `IPLUG_SANDBOX_CORE` | `IPLUG_SANDBOX_ALL` | Core DLL entry points, global host caches, shared `HINSTANCE`. |
 | `IPLUG_SANDBOX_DLL_ENTRY` | `IPLUG_SANDBOX_CORE` | Guard `DllMain` and related entry helpers. |
 | `IPLUG_SANDBOX_HINSTANCE` | `IPLUG_SANDBOX_CORE` | Wraps `gHINSTANCE` in thread-local storage. |
@@ -20,7 +20,7 @@ The centralized header ships with a parent/child hierarchy so related subsystems
 | `IPLUG_SANDBOX_VST3_PROCESSOR` | `IPLUG_SANDBOX_VST3` | Audio processor statics. |
 | `IPLUG_SANDBOX_VST3_CONTROLLER` | `IPLUG_SANDBOX_VST3` | Controller/UI statics. |
 | `IGRAPHICS_SANDBOX_WIN` | `IPLUG_SANDBOX_ALL` | Windows graphics subsystem. |
-| `IPLUG_SANDBOX_USE_WDL_HELPERS` | `0` | Opt-in switch for WDL helper integration when sandboxing the Win32 backend. |
+| `IPLUG_SANDBOX_USE_WDL_HELPERS` | `IPLUG_SANDBOX_LINK_WDL_HELPERS` | Opt-in switch for WDL helper integration when sandboxing the Win32 backend. |
 | `IGRAPHICS_SANDBOX_WDL_WINDOWS` | `IGRAPHICS_SANDBOX_WIN && IPLUG_SANDBOX_USE_WDL_HELPERS` | WDL Win32 helpers (UTF-8 shims, file dialogs, virtual windows, DPI caches). |
 | `IGRAPHICS_SANDBOX_WIN_CLASS` | `IGRAPHICS_SANDBOX_WIN` | Window class registration. |
 | `IGRAPHICS_SANDBOX_WIN_TIMERS` | `IGRAPHICS_SANDBOX_WIN` | Frame timer counters. |
@@ -40,43 +40,30 @@ The centralized header ships with a parent/child hierarchy so related subsystems
 > **Hierarchy enforcement:** Each child performs a `static_assert` against its parent, so a partial configuration (for example, enabling `IGRAPHICS_SANDBOX_VK_LOGGER` while disabling `IGRAPHICS_SANDBOX_LOGGING`) will fail at compile time with a clear diagnostic.
 
 ## Enabling the sandbox
-1. Define the desired macros before including any iPlug headers. Most projects can simply add `IPLUG_SANDBOX_ALL=1` to their compiler definitions. The header automatically validates the values are boolean (`0` or `1`).
+1. Override any sandbox macros **before** including iPlug headers only if you need to relax isolation. For example, add `IPLUG_SANDBOX_ALL=0` to revert to the legacy shared-state behaviour or disable individual descendants selectively. The header automatically validates every value is boolean (`0` or `1`).
 2. Include iPlug's umbrella headers (`IPlug_include_in_plug_src.h`, `IGraphics_include_in_plug_src.h`) as usual. They already include `Sandbox/IPlugSandboxConfig.h`, so no additional includes are required. The header itself lives under `IPlug/Sandbox/` if you need to reference it directly.
 3. Rebuild the plug-in. On MSVC, a build will emit `#pragma message` notes describing whether a full or partial sandbox configuration is active so misconfigurations are easy to spot.
 
 ### MSBuild usage
-The Windows property sheet exposes three primary properties:
-- `IPlugSandboxMode` toggles `IPLUG_SANDBOX_ALL`.
-- `IPlugSandboxExtraDefs` appends additional preprocessor overrides.
-- `IPlugSandboxEnableWDL` controls whether the WDL Win32 helper sources are compiled and both helper toggles
-  (`IPLUG_SANDBOX_LINK_WDL_HELPERS` and `IPLUG_SANDBOX_USE_WDL_HELPERS`) are defined.
-
-By default `IPlugSandboxEnableWDL` is `0`, which keeps builds on the legacy behaviour and avoids referencing the
-context-aware helper symbols. Setting the property to `1` pulls `WDL/filebrowse.cpp` and `WDL/win32_utf8.c` into the
-project automatically so the sandbox-aware dialogs and UTF-8 hooks link successfully.
-
-Example property group inside your `.vcxproj`:
-```xml
-<PropertyGroup>
-  <IPlugSandboxMode>1</IPlugSandboxMode>
-  <IPlugSandboxExtraDefs>IGRAPHICS_SANDBOX_VK_LOGGER=0</IPlugSandboxExtraDefs>
-</PropertyGroup>
-```
-This enables full sandboxing but disables Vulkan log isolation if you prefer to share a global log sink across instances. To
-opt into the WDL helpers, extend the property group with `<IPlugSandboxEnableWDL>1</IPlugSandboxEnableWDL>`.
+The Windows property sheet now enables sandboxing and links the required WDL helper sources automatically, so no extra
+properties are necessary. To opt out, add the desired overrides to your project definitions (e.g. `IPLUG_SANDBOX_ALL=0` or
+`IPLUG_SANDBOX_USE_WDL_HELPERS=0`).
 
 ### Manual or alternative build systems
-Projects that invoke the compiler directly should add equivalent definitions:
+Projects that invoke the compiler directly can disable isolation explicitly:
 ```bash
-cl /DIPLUG_SANDBOX_ALL=1 /DIGRAPHICS_SANDBOX_TEXTURE_CACHE=1 ...
+cl /DIPLUG_SANDBOX_ALL=0 /DIGRAPHICS_SANDBOX_VK_LOGGER=0 ...
 ```
-For CMake-based builds, apply the macros to the relevant target:
+For CMake-based builds, apply overrides to the relevant target when required:
 ```cmake
 target_compile_definitions(MyPlugin PRIVATE
-  IPLUG_SANDBOX_ALL=1
-  IGRAPHICS_SANDBOX_VK_LOGGER=1)
+  IPLUG_SANDBOX_ALL=0
+  IGRAPHICS_SANDBOX_WDL_WINDOWS=0)
 ```
-Ensure the definitions precede any `target_sources` that include iPlug headers so translation units see the correct configuration. When building without the property sheet you only need to compile `WDL/filebrowse.cpp` and `WDL/win32_utf8.c` **and** define both `IPLUG_SANDBOX_LINK_WDL_HELPERS=1` and `IPLUG_SANDBOX_USE_WDL_HELPERS=1` if you actively enable `IGRAPHICS_SANDBOX_WDL_WINDOWS`. Leaving the toggles at their defaults preserves the legacy behaviour and avoids pulling in the helper symbols. Projects that still reference an older WDL checkout without `WdlWindowsSandboxContext.h` automatically fall back to the legacy behaviour as well, allowing builds to succeed until the dependency is updated. When contextual helper entry points are missing at link time—because custom projects omit the helper translation units or depend on a WDL revision without the new APIs—the shim remaps the sandbox-aware wrappers onto the legacy `WDL_ChooseFileForOpen/Save` functions and treats the UTF-8 hooks as no-ops, preserving the pre-sandbox behaviour while keeping the build green.
+Ensure any overrides precede `target_sources` so translation units observe the intended configuration. Because the helper
+macros default to `1`, projects that keep sandboxing enabled must compile `WDL/filebrowse.cpp` and `WDL/win32_utf8.c`.
+If you prefer not to link the helpers, define both `IPLUG_SANDBOX_LINK_WDL_HELPERS=0` and `IPLUG_SANDBOX_USE_WDL_HELPERS=0`
+before including iPlug headers.
 
 ## Behavioural changes when sandboxing is enabled
 - The Windows module handle (`gHINSTANCE`) keeps a thread-local slot backed by a shared fallback whenever `IPLUG_SANDBOX_HINSTANCE` is enabled, so new threads inherit the process handle while isolating writes; the DPI cache remains thread-local under `IPLUG_SANDBOX_HOST_CACHE`.【F:IPlug/IPlug_include_in_plug_src.h†L13-L71】【F:IPlug/Sandbox/IPlugSandboxConfig.h†L190-L218】

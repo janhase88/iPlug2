@@ -1,3 +1,11 @@
+#if defined(__has_include)
+  #if __has_include("../IPlug/Sandbox/IPlugSandboxConfig.h")
+    #include "../IPlug/Sandbox/IPlugSandboxConfig.h"
+  #elif __has_include("IPlug/Sandbox/IPlugSandboxConfig.h")
+    #include "IPlug/Sandbox/IPlugSandboxConfig.h"
+  #endif
+#endif
+
 #if defined(_WIN32) && !defined(WDL_WIN32_UTF8_NO_UI_IMPL)
 #include <shlobj.h>
 #include <commctrl.h>

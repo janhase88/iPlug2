@@ -21,17 +21,24 @@
 #include "IPlugPaths.h"
 #include "IPopupMenuControl.h"
 #include "Sandbox/IPlugSandboxConfig.h"
+#include "Sandbox/WdlWindowsSandboxContext.h"
+#include "../../WDL/filebrowse.h"
+#include "../../WDL/win32_utf8.h"
 #if defined IGRAPHICS_VULKAN
   #include "VulkanLogging.h"
 #endif
 
 #include <VersionHelpers.h>
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <cwchar>
 #include <string>
+#include <type_traits>
+#include <vector>
 #include <wininet.h>
 
 #if defined __clang__
@@ -41,6 +48,69 @@
 
 using namespace iplug;
 using namespace igraphics;
+
+#if defined(OS_WIN)
+namespace
+{
+class WdlWindowsSandboxScope
+{
+public:
+  explicit WdlWindowsSandboxScope(WdlWindowsSandboxContext* context)
+  {
+#if IGRAPHICS_SANDBOX_WDL_WINDOWS
+    mPrevious = IPLUG_SANDBOX_WDL_WINDOWS_CONTEXT();
+    const bool needsUpdate = (context == nullptr) || (mPrevious != context);
+    if (needsUpdate)
+    {
+      IPLUG_SANDBOX_SET_WDL_WINDOWS_CONTEXT(context);
+      mNeedsRestore = true;
+    }
+#else
+    (void) context;
+#endif
+  }
+
+  ~WdlWindowsSandboxScope()
+  {
+#if IGRAPHICS_SANDBOX_WDL_WINDOWS
+    if (mNeedsRestore)
+    {
+      IPLUG_SANDBOX_SET_WDL_WINDOWS_CONTEXT(mPrevious);
+    }
+#endif
+  }
+
+  WdlWindowsSandboxScope(const WdlWindowsSandboxScope&) = delete;
+  WdlWindowsSandboxScope& operator=(const WdlWindowsSandboxScope&) = delete;
+  WdlWindowsSandboxScope(WdlWindowsSandboxScope&&) = delete;
+  WdlWindowsSandboxScope& operator=(WdlWindowsSandboxScope&&) = delete;
+
+private:
+#if IGRAPHICS_SANDBOX_WDL_WINDOWS
+  WdlWindowsSandboxContext* mPrevious = nullptr;
+  bool mNeedsRestore = false;
+#endif
+};
+
+static std::atomic<uint64_t>& SandboxInstanceCounter()
+{
+  static std::atomic<uint64_t> counter{1};
+  return counter;
+}
+
+#if IGRAPHICS_SANDBOX_WDL_WINDOWS
+static constexpr const char* kIPlugUtf8PrefixBase = "IPlugSandbox/";
+#endif
+} // namespace
+static_assert(!std::is_copy_constructible<WdlWindowsSandboxScope>::value,
+  "WdlWindowsSandboxScope must remain non-copyable to avoid duplicating TLS restores.");
+static_assert(!std::is_copy_assignable<WdlWindowsSandboxScope>::value,
+  "WdlWindowsSandboxScope must remain non-assignable to avoid duplicating TLS restores.");
+static_assert(!std::is_move_constructible<WdlWindowsSandboxScope>::value,
+  "WdlWindowsSandboxScope must remain non-movable to avoid duplicating TLS restores.");
+static_assert(!std::is_move_assignable<WdlWindowsSandboxScope>::value,
+  "WdlWindowsSandboxScope must remain non-move-assignable to avoid duplicating TLS restores.");
+#endif
 
 #pragma warning(disable : 4244) // Pointer size cast mismatch.
 #pragma warning(disable : 4312) // Pointer size cast mismatch.
@@ -130,6 +200,17 @@ const wchar_t* IGraphicsWin::WndClassName() const
   return wndClassName;
 #endif
 }
+
+#if defined(OS_WIN)
+WdlWindowsSandboxContext* IGraphicsWin::SandboxContext() const
+{
+#if IGRAPHICS_SANDBOX_WDL_WINDOWS
+  return mSandboxContext;
+#else
+  return nullptr;
+#endif
+}
+#endif
 
 #pragma mark - Mouse and tablet helpers
 
@@ -294,6 +375,13 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
     CREATESTRUCTW* lpcs = (CREATESTRUCTW*)lParam;
     SetWindowLongPtrW(hWnd, GWLP_USERDATA, (LPARAM)lpcs->lpCreateParams);
     IGraphicsWin* pGraphics = (IGraphicsWin*)GetWindowLongPtrW(hWnd, GWLP_USERDATA);
+    WdlWindowsSandboxScope sandboxScope(pGraphics ? pGraphics->SandboxContext() : nullptr);
+#if IGRAPHICS_SANDBOX_WDL_WINDOWS
+    if (pGraphics && pGraphics->SandboxContext())
+    {
+      SetPropA(hWnd, WDL_UTF8_SandboxContextPropertyName(), (HANDLE) pGraphics->SandboxContext());
+    }
+#endif
 
     if (pGraphics->mVSYNCEnabled) // use VBLANK thread
     {
@@ -314,6 +402,7 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
   }
 
   IGraphicsWin* pGraphics = (IGraphicsWin*)GetWindowLongPtrW(hWnd, GWLP_USERDATA);
+  WdlWindowsSandboxScope sandboxScope(pGraphics ? pGraphics->SandboxContext() : nullptr);
 
   if (!pGraphics || hWnd != pGraphics->mPlugWnd)
   {
@@ -748,6 +837,7 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 LRESULT CALLBACK IGraphicsWin::ParamEditProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
   IGraphicsWin* pGraphics = (IGraphicsWin*)GetWindowLongPtrW(GetParent(hWnd), GWLP_USERDATA);
+  WdlWindowsSandboxScope sandboxScope(pGraphics ? pGraphics->SandboxContext() : nullptr);
 
   if (pGraphics && pGraphics->mParamEditWnd && pGraphics->mParamEditWnd == hWnd)
   {
@@ -851,6 +941,17 @@ LRESULT CALLBACK IGraphicsWin::ParamEditProc(HWND hWnd, UINT msg, WPARAM wParam,
 IGraphicsWin::IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float scale)
   : IGRAPHICS_DRAW_CLASS(dlg, w, h, fps, scale)
 {
+#if IGRAPHICS_SANDBOX_WDL_WINDOWS
+  WdlWindowsSandboxContext_Init(&mSandboxContextStorage);
+  mSandboxContext = &mSandboxContextStorage;
+  mSandboxContext->instance_id = SandboxInstanceCounter().fetch_add(1, std::memory_order_relaxed);
+  char prefix[64];
+  if (WdlWindowsSandboxContext_FormatUtf8PropertyPrefix(mSandboxContext, kIPlugUtf8PrefixBase, prefix, sizeof(prefix)))
+  {
+    WdlWindowsSandboxContext_SetUtf8PropertyPrefix(mSandboxContext, prefix);
+  }
+#endif
+
 #if IGRAPHICS_SANDBOX_WIN_CLASS
   mWndClassNameW = MakeSandboxWndClassName(this);
 #endif
@@ -867,12 +968,24 @@ IGraphicsWin::IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float s
 
 IGraphicsWin::~IGraphicsWin()
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   StaticStorage<InstalledFont>::Accessor fontStorage(FontCacheStorage());
   StaticStorage<HFontHolder>::Accessor hfontStorage(HFontCacheStorage());
   fontStorage.Release();
   hfontStorage.Release();
   DestroyEditWindow();
   CloseWindow();
+#if IGRAPHICS_SANDBOX_WDL_WINDOWS
+  if (mSandboxContext)
+  {
+    if (WDL_UTF8_GetSandboxContext() == mSandboxContext)
+    {
+      IPLUG_SANDBOX_SET_WDL_WINDOWS_CONTEXT(nullptr);
+    }
+    WdlWindowsSandboxContext_Destroy(mSandboxContext);
+    mSandboxContext = nullptr;
+  }
+#endif
 }
 
 static void GetWindowSize(HWND pWnd, int* pW, int* pH)
@@ -907,6 +1020,7 @@ static UINT SETPOS_FLAGS = SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE;
 
 void IGraphicsWin::PlatformResize(bool parentHasResized)
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   if (WindowIsOpen())
   {
     HWND pParent = 0, pGrandparent = 0;
@@ -945,6 +1059,7 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
 
 void IGraphicsWin::HideMouseCursor(bool hide, bool lock)
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   if (mCursorHidden == hide)
     return;
 
@@ -970,6 +1085,7 @@ void IGraphicsWin::HideMouseCursor(bool hide, bool lock)
 
 void IGraphicsWin::MoveMouseCursor(float x, float y)
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   if (mTabletInput)
     return;
 
@@ -993,6 +1109,7 @@ void IGraphicsWin::MoveMouseCursor(float x, float y)
 
 ECursor IGraphicsWin::SetMouseCursor(ECursor cursorType)
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   HCURSOR cursor;
 
   switch (cursorType)
@@ -1591,6 +1708,7 @@ void IGraphicsWin::DeactivateGLContext()
 
 EMsgBoxResult IGraphicsWin::ShowMessageBox(const char* str, const char* title, EMsgBoxType type, IMsgBoxCompletionHandlerFunc completionHandler)
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   ReleaseMouseCapture();
 
   EMsgBoxResult result = static_cast<EMsgBoxResult>(MessageBoxW(GetMainWnd(), UTF8AsUTF16(str).Get(), UTF8AsUTF16(title).Get(), static_cast<int>(type)));
@@ -1603,6 +1721,7 @@ EMsgBoxResult IGraphicsWin::ShowMessageBox(const char* str, const char* title, E
 
 void* IGraphicsWin::OpenWindow(void* pParent)
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   mParentWnd = (HWND)pParent;
   int screenScale = GetScaleForHWND(mParentWnd);
   int x = 0, y = 0, w = WindowWidth() * screenScale, h = WindowHeight() * screenScale;
@@ -1629,6 +1748,12 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   }
 
   mPlugWnd = CreateWindowW(className, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
+#if IGRAPHICS_SANDBOX_WDL_WINDOWS
+  if (mPlugWnd && mSandboxContext)
+  {
+    SetPropA(mPlugWnd, WDL_UTF8_SandboxContextPropertyName(), (HANDLE) mSandboxContext);
+  }
+#endif
 #if defined IGRAPHICS_VULKAN
   SetPlatformContext(mPlugWnd);
   if (!CreateVulkanContext())
@@ -1745,6 +1870,7 @@ BOOL CALLBACK IGraphicsWin::FindMainWindow(HWND hWnd, LPARAM lParam)
   IGraphicsWin* pGraphics = (IGraphicsWin*)lParam;
   if (pGraphics)
   {
+    WdlWindowsSandboxScope sandboxScope(pGraphics->SandboxContext());
     DWORD wPID;
     GetWindowThreadProcessId(hWnd, &wPID);
     WDL_String str;
@@ -1760,6 +1886,7 @@ BOOL CALLBACK IGraphicsWin::FindMainWindow(HWND hWnd, LPARAM lParam)
 
 HWND IGraphicsWin::GetMainWnd()
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   if (!mMainWnd)
   {
     if (mParentWnd)
@@ -1797,6 +1924,7 @@ IRECT IGraphicsWin::GetWindowRECT()
 
 void IGraphicsWin::CloseWindow()
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   if (mPlugWnd)
   {
     if (mVSYNCEnabled)
@@ -1850,36 +1978,21 @@ void IGraphicsWin::CloseWindow()
 
 
     // Unregister OLE drop target and uninitialize OLE if needed
-
-
     if (mDropTarget)
-
-
     {
-
-
       RevokeDragDrop(mPlugWnd);
-
-
       mDropTarget->Release();
-
-
       mDropTarget = nullptr;
     }
 
-
     if (mOLEInited)
-
-
     {
-
-
       OleUninitialize();
-
-
       mOLEInited = false;
     }
-
+#if IGRAPHICS_SANDBOX_WDL_WINDOWS
+    RemovePropA(mPlugWnd, WDL_UTF8_SandboxContextPropertyName());
+#endif
 
     DestroyWindow(mPlugWnd);
 
@@ -1898,6 +2011,7 @@ void IGraphicsWin::CloseWindow()
 
 void IGraphicsWin::OnOLEDropFiles(const std::vector<std::wstring>& filesW, LONG xScreen, LONG yScreen)
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   // Convert screen -> client coords and scale to IGraphics space
   POINT p{(LONG)xScreen, (LONG)yScreen};
   ScreenToClient(mPlugWnd, &p);
@@ -1925,6 +2039,7 @@ bool IGraphicsWin::PlatformSupportsMultiTouch() const { return GetSystemMetrics(
 
 IPopupMenu* IGraphicsWin::GetItemMenu(long idx, long& idxInMenu, long& offsetIdx, IPopupMenu& baseMenu)
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   long oldIDx = offsetIdx;
   offsetIdx += baseMenu.NItems();
 
@@ -1953,6 +2068,7 @@ IPopupMenu* IGraphicsWin::GetItemMenu(long idx, long& idxInMenu, long& offsetIdx
 
 HMENU IGraphicsWin::CreateMenu(IPopupMenu& menu, long* pOffsetIdx)
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   HMENU hMenu = ::CreatePopupMenu();
 
   WDL_String escapedText;
@@ -2041,6 +2157,7 @@ HMENU IGraphicsWin::CreateMenu(IPopupMenu& menu, long* pOffsetIdx)
 
 IPopupMenu* IGraphicsWin::CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT bounds, bool& isAsync)
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   long offsetIdx = 0;
   HMENU hMenu = CreateMenu(menu, &offsetIdx);
 
@@ -2095,6 +2212,7 @@ IPopupMenu* IGraphicsWin::CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT 
 
 void IGraphicsWin::CreatePlatformTextEntry(int paramIdx, const IText& text, const IRECT& bounds, int length, const char* str)
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   if (mParamEditWnd)
     return;
 
@@ -2171,6 +2289,7 @@ void IGraphicsWin::CreatePlatformTextEntry(int paramIdx, const IText& text, cons
 
 bool IGraphicsWin::RevealPathInExplorerOrFinder(WDL_String& path, bool select)
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   bool success = false;
 
   if (path.GetLength())
@@ -2204,11 +2323,138 @@ bool IGraphicsWin::RevealPathInExplorerOrFinder(WDL_String& path, bool select)
 
 void IGraphicsWin::PromptForFile(WDL_String& fileName, WDL_String& path, EFileAction action, const char* ext, IFileDialogCompletionHandlerFunc completionHandler)
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
+
   if (!WindowIsOpen())
   {
     fileName.Set("");
     return;
   }
+
+#if IGRAPHICS_SANDBOX_WDL_WINDOWS
+  if (mSandboxContext)
+  {
+    std::vector<char> filterList;
+    std::string defaultExt;
+
+    if (CStringHasContents(ext))
+    {
+      const char* firstSpace = strchr(ext, ' ');
+      if (firstSpace)
+        defaultExt.assign(ext, firstSpace - ext);
+      else
+        defaultExt.assign(ext);
+
+      std::string pattern;
+      pattern.reserve(strlen(ext) * 3);
+
+      bool newToken = true;
+      for (const char* cursor = ext; *cursor; ++cursor)
+      {
+        if (*cursor == ' ')
+        {
+          newToken = true;
+          continue;
+        }
+
+        if (newToken)
+        {
+          if (!pattern.empty())
+            pattern.append(";");
+
+          pattern.append("*.");
+          newToken = false;
+        }
+
+        pattern.push_back(*cursor);
+      }
+
+      if (!pattern.empty())
+      {
+        filterList.insert(filterList.end(), pattern.begin(), pattern.end());
+        filterList.push_back('\0');
+        filterList.insert(filterList.end(), pattern.begin(), pattern.end());
+        filterList.push_back('\0');
+        filterList.push_back('\0');
+      }
+    }
+
+    const char* filterPtr = filterList.empty() ? nullptr : filterList.data();
+    const char* defaultExtPtr = defaultExt.empty() ? nullptr : defaultExt.c_str();
+    const char* initialDir = path.GetLength() ? path.Get() : nullptr;
+    const char* initialFile = fileName.GetLength() ? fileName.Get() : nullptr;
+
+    auto updatePath = [&](const char* absolutePath) {
+      char drive[_MAX_DRIVE];
+      char directoryOut[_MAX_PATH];
+      if (_splitpath_s(absolutePath, drive, sizeof(drive), directoryOut, sizeof(directoryOut), NULL, 0, NULL, 0) == 0)
+      {
+        path.Set(drive);
+        path.Append(directoryOut);
+      }
+    };
+
+    if (action == EFileAction::Save)
+    {
+      char buffer[_MAX_PATH] = {0};
+      const bool result = WDL_ChooseFileForSaveCtx(mSandboxContext,
+                                                   mPlugWnd,
+                                                   nullptr,
+                                                   initialDir,
+                                                   initialFile,
+                                                   filterPtr,
+                                                   defaultExtPtr,
+                                                   true,
+                                                   buffer,
+                                                   sizeof(buffer),
+                                                   nullptr,
+                                                   nullptr,
+                                                   mHInstance);
+      if (result)
+      {
+        fileName.Set(buffer);
+        updatePath(buffer);
+      }
+      else
+      {
+        fileName.Set("");
+      }
+    }
+    else
+    {
+      char* selection = WDL_ChooseFileForOpen2Ctx(mSandboxContext,
+                                                  mPlugWnd,
+                                                  nullptr,
+                                                  initialDir,
+                                                  initialFile,
+                                                  filterPtr,
+                                                  defaultExtPtr,
+                                                  true,
+                                                  0,
+                                                  nullptr,
+                                                  nullptr,
+                                                  mHInstance);
+      if (selection)
+      {
+        fileName.Set(selection);
+        updatePath(selection);
+        free(selection);
+      }
+      else
+      {
+        fileName.Set("");
+      }
+    }
+
+    if (completionHandler)
+    {
+      completionHandler(fileName, path);
+    }
+
+    ReleaseMouseCapture();
+    return;
+  }
+#endif
 
   wchar_t fileNameWide[_MAX_PATH];
 
@@ -2312,6 +2558,7 @@ void IGraphicsWin::PromptForFile(WDL_String& fileName, WDL_String& path, EFileAc
 
 void IGraphicsWin::PromptForDirectory(WDL_String& dir, IFileDialogCompletionHandlerFunc completionHandler)
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   BROWSEINFOW bi;
   memset(&bi, 0, sizeof(bi));
 
@@ -2371,6 +2618,7 @@ static UINT_PTR CALLBACK CCHookProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM
 
 bool IGraphicsWin::PromptForColor(IColor& color, const char* prompt, IColorPickerHandlerFunc func)
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   ReleaseMouseCapture();
 
   if (!mPlugWnd)
@@ -2407,6 +2655,7 @@ bool IGraphicsWin::PromptForColor(IColor& color, const char* prompt, IColorPicke
 
 bool IGraphicsWin::OpenURL(const char* url, const char* msgWindowTitle, const char* confirmMsg, const char* errMsgOnFailure)
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   if (confirmMsg && MessageBoxW(mPlugWnd, UTF8AsUTF16(confirmMsg).Get(), UTF8AsUTF16(msgWindowTitle).Get(), MB_YESNO) != IDYES)
   {
     return false;
@@ -2428,6 +2677,7 @@ bool IGraphicsWin::OpenURL(const char* url, const char* msgWindowTitle, const ch
 
 void IGraphicsWin::SetTooltip(const char* tooltip)
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   UTF8AsUTF16 tipWide(tooltip);
   TOOLINFOW ti = {TTTOOLINFOW_V2_SIZE, 0, mPlugWnd, (UINT_PTR)mPlugWnd, {0, 0, 0, 0}, NULL, NULL, 0, NULL};
   ti.lpszText = const_cast<wchar_t*>(tipWide.Get());
@@ -2436,6 +2686,7 @@ void IGraphicsWin::SetTooltip(const char* tooltip)
 
 void IGraphicsWin::ShowTooltip()
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   if (mTooltipIdx > -1)
   {
     if (auto* pTooltipControl = GetControl(mTooltipIdx))
@@ -2452,6 +2703,7 @@ void IGraphicsWin::ShowTooltip()
 
 void IGraphicsWin::HideTooltip()
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   if (mShowingTooltip)
   {
     SetTooltip(NULL);
@@ -2461,6 +2713,7 @@ void IGraphicsWin::HideTooltip()
 
 bool IGraphicsWin::GetTextFromClipboard(WDL_String& str)
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   bool result = false;
 
   if (IsClipboardFormatAvailable(CF_UNICODETEXT))
@@ -2493,6 +2746,7 @@ bool IGraphicsWin::GetTextFromClipboard(WDL_String& str)
 
 bool IGraphicsWin::SetTextInClipboard(const char* str)
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   if (!OpenClipboard(mMainWnd))
     return false;
 
@@ -2538,6 +2792,7 @@ bool IGraphicsWin::SetTextInClipboard(const char* str)
 
 bool IGraphicsWin::SetFilePathInClipboard(const char* path)
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   if (!OpenClipboard(mMainWnd))
     return false;
 
@@ -2581,6 +2836,7 @@ bool IGraphicsWin::SetFilePathInClipboard(const char* path)
 
 bool IGraphicsWin::InitiateExternalFileDragDrop(const char* path, const IRECT& /*iconBounds*/)
 {
+  WdlWindowsSandboxScope sandboxScope(mSandboxContext);
   using namespace DragAndDropHelpers;
   OleInitialize(nullptr);
 

@@ -4,6 +4,42 @@
 #include "win32_utf8.h"
 
 
+#if defined(_WIN32)
+  #if !defined(WDL_WIN7FILEDIALOG_HAS_SANDBOX_CONTEXT)
+    #define WDL_WIN7FILEDIALOG_HAS_SANDBOX_CONTEXT 0
+    #if defined(__has_include)
+      #if __has_include("WdlWindowsSandboxContext.h")
+        #include "WdlWindowsSandboxContext.h"
+        #undef WDL_WIN7FILEDIALOG_HAS_SANDBOX_CONTEXT
+        #define WDL_WIN7FILEDIALOG_HAS_SANDBOX_CONTEXT 1
+      #endif
+    #else
+      #include "WdlWindowsSandboxContext.h"
+      #undef WDL_WIN7FILEDIALOG_HAS_SANDBOX_CONTEXT
+      #define WDL_WIN7FILEDIALOG_HAS_SANDBOX_CONTEXT 1
+    #endif
+  #endif
+#endif
+
+#ifndef WDL_WIN7FILEDIALOG_HAS_SANDBOX_CONTEXT
+#define WDL_WIN7FILEDIALOG_HAS_SANDBOX_CONTEXT 0
+#endif
+
+#if defined(_WIN32)
+static FARPROC* wdl_win7filedialog_shell_create_item_slot(WdlWindowsSandboxContext* context)
+{
+#if WDL_WIN7FILEDIALOG_HAS_SANDBOX_CONTEXT
+  if (context)
+  {
+    return &context->file_dialogs.shell_create_item_from_path;
+  }
+#endif
+  static FARPROC g_shell_create_item_from_path = NULL;
+  return &g_shell_create_item_from_path;
+}
+#endif
+
+
 Win7FileDialog::Win7FileDialog(const char *name, int issave)
 {
   m_dlgid = 0;
@@ -88,13 +124,28 @@ void Win7FileDialog::setFileTypeIndex(int i)
 
 void Win7FileDialog::setFolder(const char *folder, int def)
 {
-  static HRESULT (WINAPI *my_SHCreateItemFromParsingName)(PCWSTR pszPath, IBindCtx *pbc, REFIID riid, void **ppv) = NULL;
+  WdlWindowsSandboxContext* context = NULL;
+#if !defined(WDL_NO_SUPPORT_UTF8)
+  context = WDL_UTF8_GetSandboxContext();
+#endif
+  FARPROC* shell_create_item_slot = wdl_win7filedialog_shell_create_item_slot(context);
+  HRESULT (WINAPI *my_SHCreateItemFromParsingName)(PCWSTR pszPath, IBindCtx *pbc, REFIID riid, void **ppv) = NULL;
+  if (shell_create_item_slot)
+  {
+    my_SHCreateItemFromParsingName = (HRESULT (WINAPI *)(PCWSTR, IBindCtx *, REFIID, void **)) (*shell_create_item_slot);
+  }
+
   if(!my_SHCreateItemFromParsingName)
   {
     HMODULE dll = LoadLibrary("shell32.dll");
     if(dll)
     {
-      *((void **)(&my_SHCreateItemFromParsingName)) = (void *)GetProcAddress(dll, "SHCreateItemFromParsingName");
+      my_SHCreateItemFromParsingName = (HRESULT (WINAPI *)(PCWSTR, IBindCtx *, REFIID, void **))
+        GetProcAddress(dll, "SHCreateItemFromParsingName");
+      if (shell_create_item_slot)
+      {
+        *shell_create_item_slot = (FARPROC) my_SHCreateItemFromParsingName;
+      }
     }
   }
   if(!my_SHCreateItemFromParsingName) return;

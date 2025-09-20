@@ -27,6 +27,84 @@
 #include "../lice/lice.h"
 #include "../assocarray.h"
 
+#if defined(_WIN32)
+  #if !defined(WDL_VIRTWND_HAS_SANDBOX_CONTEXT)
+    #define WDL_VIRTWND_HAS_SANDBOX_CONTEXT 0
+    #if defined(__has_include)
+      #if __has_include("../WdlWindowsSandboxContext.h")
+        #include "../WdlWindowsSandboxContext.h"
+        #undef WDL_VIRTWND_HAS_SANDBOX_CONTEXT
+        #define WDL_VIRTWND_HAS_SANDBOX_CONTEXT 1
+      #endif
+    #else
+      #include "../WdlWindowsSandboxContext.h"
+      #undef WDL_VIRTWND_HAS_SANDBOX_CONTEXT
+      #define WDL_VIRTWND_HAS_SANDBOX_CONTEXT 1
+    #endif
+  #endif
+  #if !defined(WDL_VIRTWND_SANDBOX_DECLARED)
+    #define WDL_VIRTWND_SANDBOX_DECLARED
+    struct WdlWindowsSandboxContext;
+    #ifdef __cplusplus
+    extern "C" {
+    #endif
+    struct WdlWindowsSandboxContext* WDL_UTF8_GetSandboxContext(void);
+    #ifdef __cplusplus
+    }
+    #endif
+  #endif
+#endif
+
+#ifndef WDL_VIRTWND_HAS_SANDBOX_CONTEXT
+#define WDL_VIRTWND_HAS_SANDBOX_CONTEXT 0
+#endif
+
+#if defined(_WIN32)
+static WNDPROC* wdl_virtwnd_dialog_proc_slot_for(WdlWindowsSandboxContext* context)
+{
+#if WDL_VIRTWND_HAS_SANDBOX_CONTEXT
+  if (context)
+  {
+    return &context->virtual_windows.dialog_host_proc;
+  }
+#endif
+  static WNDPROC g_vwndDlgHost_oldProc = NULL;
+  return &g_vwndDlgHost_oldProc;
+}
+
+static int* wdl_virtwnd_helper_registered_slot_for(WdlWindowsSandboxContext* context)
+{
+#if WDL_VIRTWND_HAS_SANDBOX_CONTEXT
+  if (context)
+  {
+    return &context->virtual_windows.helper_class_registered;
+  }
+#endif
+  static int g_vwnd_registered = 0;
+  return &g_vwnd_registered;
+}
+
+static int* wdl_virtwnd_cursor_flag_slot(WdlWindowsSandboxContext* context)
+{
+#if WDL_VIRTWND_HAS_SANDBOX_CONTEXT
+  if (context)
+  {
+    return &context->virtual_windows.suppress_cursor_warp;
+  }
+#endif
+  return NULL;
+}
+
+static WdlWindowsSandboxContext* wdl_virtwnd_current_context()
+{
+#if defined(WDL_NO_SUPPORT_UTF8)
+  return NULL;
+#else
+  return WDL_UTF8_GetSandboxContext();
+#endif
+}
+#endif
+
 WDL_VWnd_Painter::WDL_VWnd_Painter()
 {
   m_GSC=0;
@@ -1748,9 +1826,12 @@ int WDL_VirtualWnd_ScaledBG_GetPix(WDL_VirtualWnd_BGCfg *src,
 
 #ifdef _WIN32
 
-static WNDPROC vwndDlgHost_oldProc;
 static LRESULT CALLBACK vwndDlgHost_newProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+  WdlWindowsSandboxContext* context = wdl_virtwnd_current_context();
+  WNDPROC* old_proc_slot = wdl_virtwnd_dialog_proc_slot_for(context);
+  WNDPROC old_proc = old_proc_slot ? *old_proc_slot : NULL;
+
   if (msg==WM_ERASEBKGND) return 1;
   if (msg==WM_PAINT ||
       (msg == WM_SETFOCUS && (GetWindowLong(hwnd,GWL_STYLE)&(WS_CHILD|WS_TABSTOP))==(WS_CHILD|WS_TABSTOP))
@@ -1762,9 +1843,12 @@ static LRESULT CALLBACK vwndDlgHost_newProc(HWND hwnd, UINT msg, WPARAM wParam, 
       CallWindowProc(pc,hwnd,msg,wParam,lParam);
       return 0;
     }
-  }   
+  }
 
-  return CallWindowProc(vwndDlgHost_oldProc,hwnd,msg,wParam,lParam);
+  if (old_proc)
+    return CallWindowProc(old_proc,hwnd,msg,wParam,lParam);
+
+  return DefWindowProc(hwnd,msg,wParam,lParam);
 }
 
 #endif
@@ -1772,20 +1856,53 @@ static LRESULT CALLBACK vwndDlgHost_newProc(HWND hwnd, UINT msg, WPARAM wParam, 
 void WDL_VWnd_regHelperClass(const char *classname, void *icon1, void *icon2)
 {
 #ifdef _WIN32
-  static bool reg;
-  if (reg) return;
+  WdlWindowsSandboxContext* context = wdl_virtwnd_current_context();
+  int* reg_slot = wdl_virtwnd_helper_registered_slot_for(context);
+  if (reg_slot && *reg_slot) return;
 
-  reg=true;
+  if (reg_slot)
+    *reg_slot = 1;
 
   WNDCLASSEX wc={sizeof(wc),};
   GetClassInfoEx(NULL,"#32770",&wc);
   wc.lpszClassName = (char*)classname;
   if (icon1) wc.hIcon = (HICON)icon1;
   if (icon2) wc.hIconSm = (HICON)icon2;
-  vwndDlgHost_oldProc=wc.lpfnWndProc;
+  WNDPROC* old_proc_slot = wdl_virtwnd_dialog_proc_slot_for(context);
+  if (old_proc_slot)
+    *old_proc_slot = wc.lpfnWndProc;
   wc.lpfnWndProc=vwndDlgHost_newProc;
   RegisterClassEx(&wc);
 #endif
 }
 
 bool wdl_virtwnd_nosetcursorpos;
+
+#ifdef _WIN32
+bool WDL_VWnd_GetSandboxNoSetCursorPos(void)
+{
+  WdlWindowsSandboxContext* context = wdl_virtwnd_current_context();
+  int* slot = wdl_virtwnd_cursor_flag_slot(context);
+  if (slot)
+  {
+    if (*slot < 0)
+    {
+      *slot = wdl_virtwnd_nosetcursorpos ? 1 : 0;
+    }
+    return *slot != 0;
+  }
+  return wdl_virtwnd_nosetcursorpos;
+}
+
+void WDL_VWnd_SetSandboxNoSetCursorPos(bool value)
+{
+  WdlWindowsSandboxContext* context = wdl_virtwnd_current_context();
+  int* slot = wdl_virtwnd_cursor_flag_slot(context);
+  if (slot)
+  {
+    *slot = value ? 1 : 0;
+    return;
+  }
+  wdl_virtwnd_nosetcursorpos = value;
+}
+#endif

@@ -8,9 +8,48 @@
 
 
 #ifdef _WIN32
+  #include "win32_utf8.h"
+  #if !defined(WDL_FILEBROWSE_HAS_SANDBOX_CONTEXT)
+    #define WDL_FILEBROWSE_HAS_SANDBOX_CONTEXT 0
+    #if defined(__has_include)
+      #if __has_include("WdlWindowsSandboxContext.h")
+        #include "WdlWindowsSandboxContext.h"
+        #undef WDL_FILEBROWSE_HAS_SANDBOX_CONTEXT
+        #define WDL_FILEBROWSE_HAS_SANDBOX_CONTEXT 1
+      #endif
+    #else
+      #include "WdlWindowsSandboxContext.h"
+      #undef WDL_FILEBROWSE_HAS_SANDBOX_CONTEXT
+      #define WDL_FILEBROWSE_HAS_SANDBOX_CONTEXT 1
+    #endif
+  #endif
   #ifdef _MSC_VER // todo: win7filedialog.cpp support for mingw32
     #define WDL_FILEBROWSE_WIN7VISTAMODE
   #endif
+#endif
+
+
+#ifndef WDL_FILEBROWSE_HAS_SANDBOX_CONTEXT
+#define WDL_FILEBROWSE_HAS_SANDBOX_CONTEXT 0
+#endif
+
+#if defined(_WIN32)
+static bool wdl_filebrowse_should_use_legacy(WdlWindowsSandboxContext* context)
+{
+#if WDL_FILEBROWSE_HAS_SANDBOX_CONTEXT
+  if (context)
+  {
+    if (context->file_dialogs.use_legacy_dialogs < 0)
+    {
+      context->file_dialogs.use_legacy_dialogs = wdl_use_legacy_filebrowse ? 1 : 0;
+    }
+    return context->file_dialogs.use_legacy_dialogs != 0;
+  }
+#endif
+  return wdl_use_legacy_filebrowse;
+}
+
+bool wdl_use_legacy_filebrowse;
 #endif
 
 
@@ -158,14 +197,11 @@ struct WDL_FileBrowse_Dis {
 };
 #endif
 
-#ifdef _WIN32
-bool wdl_use_legacy_filebrowse;
-#endif
-
-bool WDL_ChooseFileForSave(HWND parent, 
-                                      const char *text, 
-                                      const char *initialdir, 
-                                      const char *initialfile, 
+bool WDL_ChooseFileForSaveCtx(WdlWindowsSandboxContext* context,
+                                      HWND parent,
+                                      const char *text,
+                                      const char *initialdir,
+                                      const char *initialfile,
                                       const char *extlist,
                                       const char *defext,
                                       bool preservecwd,
@@ -193,7 +229,7 @@ bool WDL_ChooseFileForSave(HWND parent,
   WDL_fixfnforopenfn(temp);
 
 #ifdef WDL_FILEBROWSE_WIN7VISTAMODE
-  if (!wdl_use_legacy_filebrowse)
+  if (!wdl_filebrowse_should_use_legacy(context))
   {
     Win7FileDialog fd(text, 1);
     if(fd.inited())
@@ -244,13 +280,13 @@ bool WDL_ChooseFileForSave(HWND parent,
       {
         //ifilesavedialog saves the last folder automatically
         fd.getResult(fn, fnsize);
-        
+
         if (preservecwd) SetCurrentDirectory(olddir);
         return true;
       }
-      
+
       if (preservecwd) SetCurrentDirectory(olddir);
-      return NULL;
+      return false;
     }
   }
 #endif
@@ -297,11 +333,45 @@ bool WDL_ChooseFileForSave(HWND parent,
 #endif
 }
 
+bool WDL_ChooseFileForSave(HWND parent,
+                                      const char *text,
+                                      const char *initialdir,
+                                      const char *initialfile,
+                                      const char *extlist,
+                                      const char *defext,
+                                      bool preservecwd,
+                                      char *fn,
+                                      int fnsize,
+                                      const char *dlgid,
+                                      void *dlgProc,
+#ifdef _WIN32
+                                      HINSTANCE hInstance
+#else
+                                      struct SWELL_DialogResourceIndex *reshead
+#endif
+                                      )
+{
+#if defined(_WIN32) && !defined(WDL_NO_SUPPORT_UTF8)
+  WdlWindowsSandboxContext* context = WDL_UTF8_GetSandboxContext();
+#else
+  WdlWindowsSandboxContext* context = NULL;
+#endif
+  return WDL_ChooseFileForSaveCtx(context, parent, text, initialdir, initialfile, extlist, defext,
+                                  preservecwd, fn, fnsize, dlgid, dlgProc,
+#ifdef _WIN32
+                                  hInstance
+#else
+                                  reshead
+#endif
+                                  );
+}
 
-char *WDL_ChooseFileForOpen2(HWND parent,
-                                        const char *text, 
-                                        const char *initialdir,  
-                                        const char *initialfile, 
+
+char *WDL_ChooseFileForOpen2Ctx(WdlWindowsSandboxContext* context,
+                                        HWND parent,
+                                        const char *text,
+                                        const char *initialdir,
+                                        const char *initialfile,
                                         const char *extlist,
                                         const char *defext,
 
@@ -324,7 +394,7 @@ char *WDL_ChooseFileForOpen2(HWND parent,
   WDL_FileBrowse_Dis win32disfix(parent);
 
 #ifdef WDL_FILEBROWSE_WIN7VISTAMODE
-  if (!wdl_use_legacy_filebrowse && allowmul!=1)
+  if (!wdl_filebrowse_should_use_legacy(context) && allowmul!=1)
   {
     Win7FileDialog fd(text);
     if(fd.inited())
@@ -464,8 +534,81 @@ char *WDL_ChooseFileForOpen2(HWND parent,
 #endif
 }
 
+char *WDL_ChooseFileForOpen2(HWND parent,
+                                        const char *text,
+                                        const char *initialdir,
+                                        const char *initialfile,
+                                        const char *extlist,
+                                        const char *defext,
+
+                                        bool preservecwd,
+                                        int allowmul,
+
+                                        const char *dlgid,
+                                        void *dlgProc,
+#ifdef _WIN32
+                                        HINSTANCE hInstance
+#else
+                                        struct SWELL_DialogResourceIndex *reshead
+#endif
+                                        )
+{
+#if defined(_WIN32) && !defined(WDL_NO_SUPPORT_UTF8)
+  WdlWindowsSandboxContext* context = WDL_UTF8_GetSandboxContext();
+#else
+  WdlWindowsSandboxContext* context = NULL;
+#endif
+  return WDL_ChooseFileForOpen2Ctx(context, parent, text, initialdir, initialfile, extlist, defext,
+                                   preservecwd, allowmul, dlgid, dlgProc,
+#ifdef _WIN32
+                                   hInstance
+#else
+                                   reshead
+#endif
+                                   );
+}
+
+char *WDL_ChooseFileForOpenCtx(WdlWindowsSandboxContext* context,
+                                        HWND parent,
+                                        const char *text,
+                                        const char *initialdir,
+                                        const char *initialfile,
+                                        const char *extlist,
+                                        const char *defext,
+
+                                        bool preservecwd,
+                                        bool allowmul,
+
+                                        const char *dlgid,
+                                        void *dlgProc,
+#ifdef _WIN32
+                                        HINSTANCE hInstance
+#else
+                                        struct SWELL_DialogResourceIndex *reshead
+#endif
+                                        )
+{
+  return WDL_ChooseFileForOpen2Ctx(context,
+                                   parent,
+                                   text,
+                                   initialdir,
+                                   initialfile,
+                                   extlist,
+                                   defext,
+                                   preservecwd,
+                                   allowmul ? 1 : 0,
+                                   dlgid,
+                                   dlgProc,
+#ifdef _WIN32
+                                   hInstance
+#else
+                                   reshead
+#endif
+                                   );
+}
+
 char *WDL_ChooseFileForOpen(HWND parent,
-                                        const char *text, 
+                                        const char *text,
                                         const char *initialdir,
                                         const char *initialfile,
                                         const char *extlist,
@@ -483,11 +626,26 @@ char *WDL_ChooseFileForOpen(HWND parent,
 #endif
                                         )
 {
-  return WDL_ChooseFileForOpen2(parent,text, initialdir,initialfile,extlist,defext,preservecwd,allowmul?1:0,dlgid,dlgProc,
-#ifdef _WIN32
-                                        hInstance
+#if defined(_WIN32) && !defined(WDL_NO_SUPPORT_UTF8)
+  WdlWindowsSandboxContext* context = WDL_UTF8_GetSandboxContext();
 #else
-                                        reshead
+  WdlWindowsSandboxContext* context = NULL;
 #endif
-                                        );
+  return WDL_ChooseFileForOpenCtx(context,
+                                  parent,
+                                  text,
+                                  initialdir,
+                                  initialfile,
+                                  extlist,
+                                  defext,
+                                  preservecwd,
+                                  allowmul,
+                                  dlgid,
+                                  dlgProc,
+#ifdef _WIN32
+                                  hInstance
+#else
+                                  reshead
+#endif
+                                  );
 }

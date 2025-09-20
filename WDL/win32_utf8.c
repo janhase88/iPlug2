@@ -3,17 +3,71 @@
 #include <commctrl.h>
 #endif
 
+#include <stdint.h>
+
 #include "win32_utf8.h"
 #include "wdltypes.h"
 #include "wdlutf8.h"
 
 #ifdef _WIN32
 
+#if !defined(WDL_UTF8_HAS_SANDBOX_CONTEXT)
+  #if defined(__has_include)
+    #if __has_include("WdlWindowsSandboxContext.h")
+      #include "WdlWindowsSandboxContext.h"
+      #define WDL_UTF8_HAS_SANDBOX_CONTEXT 1
+    #endif
+  #else
+    #include "WdlWindowsSandboxContext.h"
+    #define WDL_UTF8_HAS_SANDBOX_CONTEXT 1
+  #endif
+#endif
+
+#ifndef WDL_UTF8_HAS_SANDBOX_CONTEXT
+#define WDL_UTF8_HAS_SANDBOX_CONTEXT 0
+#endif
+
 #if !defined(WDL_NO_SUPPORT_UTF8)
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+
+#if WDL_UTF8_HAS_SANDBOX_CONTEXT
+  #if defined(_MSC_VER)
+    static __declspec(thread) WdlWindowsSandboxContext* g_wdl_utf8_tls_context = NULL;
+  #elif defined(__GNUC__)
+    static __thread WdlWindowsSandboxContext* g_wdl_utf8_tls_context = NULL;
+  #else
+    static WdlWindowsSandboxContext* g_wdl_utf8_tls_context = NULL;
+  #endif
+#else
+  struct WdlWindowsSandboxContext;
+#endif
+
+void WDL_UTF8_SetSandboxContext(WdlWindowsSandboxContext* context)
+{
+#if WDL_UTF8_HAS_SANDBOX_CONTEXT
+  g_wdl_utf8_tls_context = context;
+#else
+  (void) context;
+#endif
+}
+
+WdlWindowsSandboxContext* WDL_UTF8_GetSandboxContext(void)
+{
+#if WDL_UTF8_HAS_SANDBOX_CONTEXT
+  return g_wdl_utf8_tls_context;
+#else
+  return NULL;
+#endif
+}
+
+static WdlWindowsSandboxContext* wdl_utf8_current_context(void)
+{
+  return WDL_UTF8_GetSandboxContext();
+}
 
 
 #ifndef WDL_UTF8_MAXFNLEN
@@ -83,8 +137,264 @@ static void wdl_utf8_correctlongpath(WCHAR *buf)
 #define IS_NOT_WIN9X_AND
 #endif
 
-static ATOM s_combobox_atom;
+static ATOM g_wdl_utf8_combo_atom;
+
+static ATOM* wdl_utf8_combo_atom_slot_for(WdlWindowsSandboxContext* context)
+{
+#if WDL_UTF8_HAS_SANDBOX_CONTEXT
+  if (context)
+    return &context->utf8_hooks.combo_atom;
+#else
+  (void) context;
+#endif
+  return &g_wdl_utf8_combo_atom;
+}
+
+static ATOM* wdl_utf8_combo_atom_slot(void)
+{
+  return wdl_utf8_combo_atom_slot_for(wdl_utf8_current_context());
+}
 #define WDL_UTF8_OLDPROCPROP "WDLUTF8OldProc"
+
+static const char kWdlUtf8ContextProp[] = "WDLUTF8SandboxContext";
+
+const char* WDL_UTF8_SandboxContextPropertyName(void)
+{
+  return kWdlUtf8ContextProp;
+}
+
+struct wdl_utf8_property_key
+{
+  char stack[128];
+  char* heap;
+};
+
+static void wdl_utf8_property_key_release(struct wdl_utf8_property_key* key)
+{
+#if WDL_UTF8_HAS_SANDBOX_CONTEXT
+  if (key && key->heap)
+  {
+    free(key->heap);
+    key->heap = NULL;
+  }
+#else
+  (void) key;
+#endif
+}
+
+static const char* wdl_utf8_property_name(WdlWindowsSandboxContext* context,
+                                          struct wdl_utf8_property_key* key)
+{
+#if WDL_UTF8_HAS_SANDBOX_CONTEXT
+  if (context)
+  {
+    if (!context->utf8_hooks.property_prefix || context->utf8_hooks.property_prefix_length == 0)
+    {
+      char generated_prefix[64];
+      if (WdlWindowsSandboxContext_FormatUtf8PropertyPrefix(context, NULL, generated_prefix, sizeof(generated_prefix)))
+      {
+        WdlWindowsSandboxContext_SetUtf8PropertyPrefix(context, generated_prefix);
+      }
+    }
+
+    if (context->utf8_hooks.property_prefix && context->utf8_hooks.property_prefix_length > 0)
+    {
+      const size_t prefix_len = context->utf8_hooks.property_prefix_length;
+      const size_t base_len = sizeof(WDL_UTF8_OLDPROCPROP) - 1;
+      const size_t total_len = prefix_len + base_len;
+
+      if (total_len < sizeof(key->stack))
+      {
+        memcpy(key->stack, context->utf8_hooks.property_prefix, prefix_len);
+        memcpy(key->stack + prefix_len, WDL_UTF8_OLDPROCPROP, base_len + 1);
+        return key->stack;
+      }
+
+      char* combined = (char*) malloc(total_len + 1);
+      if (!combined)
+      {
+        return WDL_UTF8_OLDPROCPROP;
+      }
+
+      memcpy(combined, context->utf8_hooks.property_prefix, prefix_len);
+      memcpy(combined + prefix_len, WDL_UTF8_OLDPROCPROP, base_len + 1);
+      key->heap = combined;
+      return combined;
+    }
+  }
+#else
+  (void) context;
+  (void) key;
+#endif
+
+  return WDL_UTF8_OLDPROCPROP;
+}
+
+struct lv_tmpbuf_state
+{
+  WCHAR* buf;
+  int buf_sz;
+};
+
+struct wdl_utf8_hook
+{
+#if WDL_UTF8_HAS_SANDBOX_CONTEXT
+  WdlWindowsSandboxContext* context;
+#endif
+  HWND hwnd;
+  WNDPROC old_proc;
+  WNDPROC old_proc_wide;
+  struct lv_tmpbuf_state* list_view_buffer;
+};
+
+static struct wdl_utf8_hook* wdl_utf8_hook_get(HWND hwnd)
+{
+#if WDL_UTF8_HAS_SANDBOX_CONTEXT
+  WdlWindowsSandboxContext* context = wdl_utf8_current_context();
+  if (!context)
+  {
+    context = (WdlWindowsSandboxContext*) GetPropA(hwnd, WDL_UTF8_SandboxContextPropertyName());
+  }
+
+  if (context)
+  {
+    struct wdl_utf8_property_key key = {{0}, NULL};
+    const char* property = wdl_utf8_property_name(context, &key);
+    struct wdl_utf8_hook* hook = (struct wdl_utf8_hook*) GetPropA(hwnd, property);
+    wdl_utf8_property_key_release(&key);
+    if (hook)
+    {
+      return hook;
+    }
+  }
+#endif
+
+  return (struct wdl_utf8_hook*) GetPropA(hwnd, WDL_UTF8_OLDPROCPROP);
+}
+
+static void wdl_utf8_hook_destroy(struct wdl_utf8_hook* hook)
+{
+  if (!hook)
+  {
+    return;
+  }
+
+  if (hook->list_view_buffer)
+  {
+    if (hook->list_view_buffer->buf)
+    {
+      free(hook->list_view_buffer->buf);
+    }
+    free(hook->list_view_buffer);
+    hook->list_view_buffer = NULL;
+  }
+
+  free(hook);
+}
+
+static struct wdl_utf8_hook* wdl_utf8_hook_create(WdlWindowsSandboxContext* context, HWND hwnd)
+{
+  struct wdl_utf8_hook* hook = (struct wdl_utf8_hook*) calloc(1, sizeof(*hook));
+  if (!hook)
+  {
+    return NULL;
+  }
+
+#if WDL_UTF8_HAS_SANDBOX_CONTEXT
+  hook->context = context;
+#else
+  (void) context;
+#endif
+  hook->hwnd = hwnd;
+  return hook;
+}
+
+static int wdl_utf8_hook_attach(HWND hwnd, struct wdl_utf8_hook* hook)
+{
+  if (!hook)
+  {
+    return 0;
+  }
+
+  int attached = 0;
+
+#if WDL_UTF8_HAS_SANDBOX_CONTEXT
+  if (hook->context)
+  {
+    struct wdl_utf8_property_key key = {{0}, NULL};
+    const char* property = wdl_utf8_property_name(hook->context, &key);
+    if (SetPropA(hwnd, property, (HANDLE) hook))
+    {
+      if (SetPropA(hwnd, WDL_UTF8_SandboxContextPropertyName(), (HANDLE) hook->context))
+      {
+        attached = 1;
+      }
+      else
+      {
+        RemovePropA(hwnd, property);
+      }
+    }
+
+    if (!attached)
+    {
+      RemovePropA(hwnd, WDL_UTF8_SandboxContextPropertyName());
+    }
+
+    wdl_utf8_property_key_release(&key);
+  }
+#endif
+
+  if (!attached)
+  {
+    if (SetPropA(hwnd, WDL_UTF8_OLDPROCPROP, (HANDLE) hook))
+    {
+      attached = 1;
+    }
+  }
+
+  return attached;
+}
+
+static void wdl_utf8_hook_detach(HWND hwnd)
+{
+  struct wdl_utf8_hook* hook = wdl_utf8_hook_get(hwnd);
+  if (!hook)
+  {
+    return;
+  }
+
+#if WDL_UTF8_HAS_SANDBOX_CONTEXT
+  if (hook->context)
+  {
+    struct wdl_utf8_property_key key = {{0}, NULL};
+    const char* property = wdl_utf8_property_name(hook->context, &key);
+    RemovePropA(hwnd, property);
+    RemovePropA(hwnd, WDL_UTF8_SandboxContextPropertyName());
+    wdl_utf8_property_key_release(&key);
+  }
+#endif
+
+  RemovePropA(hwnd, WDL_UTF8_OLDPROCPROP);
+  wdl_utf8_hook_destroy(hook);
+}
+
+static WNDPROC wdl_utf8_swap_window_proc(HWND hwnd, WNDPROC new_proc, DWORD* error)
+{
+  SetLastError(0);
+  LONG_PTR previous = SetWindowLongPtr(hwnd, GWLP_WNDPROC, (LONG_PTR) new_proc);
+  DWORD last_error = GetLastError();
+  if (error)
+  {
+    *error = last_error;
+  }
+
+  if (!previous && last_error != 0)
+  {
+    return NULL;
+  }
+
+  return (WNDPROC) previous;
+}
 
 int GetWindowTextUTF8(HWND hWnd, LPTSTR lpString, int nMaxCount)
 {
@@ -94,20 +404,30 @@ int GetWindowTextUTF8(HWND hWnd, LPTSTR lpString, int nMaxCount)
     *lpString = 0;
     return 0;
   }
+  ATOM* combo_atom_slot = wdl_utf8_combo_atom_slot();
+  ATOM combo_atom = combo_atom_slot ? *combo_atom_slot : 0;
   if (nMaxCount>0 AND_IS_NOT_WIN9X)
   {
     int alloc_size=nMaxCount;
-    LPARAM restore_wndproc = 0;
+    WNDPROC restore_wndproc = NULL;
+    DWORD restore_error = 0;
 
     // if a hooked combo box, and has an edit child, ask it directly
-    if (s_combobox_atom && s_combobox_atom == GetClassWord(hWnd,GCW_ATOM) && GetProp(hWnd,WDL_UTF8_OLDPROCPROP))
+    struct wdl_utf8_hook* combo_hook = wdl_utf8_hook_get(hWnd);
+    if (combo_atom && combo_atom == GetClassWord(hWnd,GCW_ATOM) && combo_hook)
     {
       HWND h2=FindWindowEx(hWnd,NULL,"Edit",NULL);
       if (h2)
       {
-        LPARAM resp = (LPARAM) GetProp(h2,WDL_UTF8_OLDPROCPROP);
-        if (resp)
-          restore_wndproc = SetWindowLongPtr(h2,GWLP_WNDPROC,resp);
+        struct wdl_utf8_hook* edit_hook = wdl_utf8_hook_get(h2);
+        if (edit_hook && edit_hook->old_proc)
+        {
+          restore_wndproc = wdl_utf8_swap_window_proc(h2, edit_hook->old_proc, &restore_error);
+          if (restore_error != 0)
+          {
+            restore_wndproc = NULL;
+          }
+        }
         hWnd=h2;
       }
       else
@@ -166,7 +486,7 @@ int GetWindowTextUTF8(HWND hWnd, LPTSTR lpString, int nMaxCount)
       }
     }
     if (restore_wndproc)
-      SetWindowLongPtr(hWnd,GWLP_WNDPROC,restore_wndproc);
+      wdl_utf8_swap_window_proc(hWnd, restore_wndproc, NULL);
   }
   return GetWindowTextA(hWnd,lpString,nMaxCount);
 }
@@ -1297,14 +1617,16 @@ BOOL CreateProcessUTF8(LPCTSTR lpApplicationName,
 
 static LRESULT WINAPI cb_newProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-  WNDPROC oldproc = (WNDPROC)GetProp(hwnd,WDL_UTF8_OLDPROCPROP);
+  struct wdl_utf8_hook* hook = wdl_utf8_hook_get(hwnd);
+  WNDPROC oldproc = hook ? hook->old_proc : NULL;
   if (!oldproc) return 0;
+
+  WNDPROC oldprocW = (hook && hook->old_proc_wide) ? hook->old_proc_wide : oldproc;
 
   if (msg==WM_NCDESTROY)
   {
-    SetWindowLongPtr(hwnd, GWLP_WNDPROC,(INT_PTR)oldproc);
-    RemoveProp(hwnd,WDL_UTF8_OLDPROCPROP);
-    RemoveProp(hwnd,WDL_UTF8_OLDPROCPROP "W");
+    wdl_utf8_swap_window_proc(hwnd, oldproc, NULL);
+    wdl_utf8_hook_detach(hwnd);
   }
   else if (msg == CB_ADDSTRING ||
            msg == CB_INSERTSTRING ||
@@ -1319,8 +1641,7 @@ static LRESULT WINAPI cb_newProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       MBTOWIDE(wbuf,str);
       if (wbuf_ok)
       {
-        WNDPROC oldprocW = (WNDPROC)GetProp(hwnd,WDL_UTF8_OLDPROCPROP "W");
-        LRESULT rv=CallWindowProcW(oldprocW ? oldprocW : oldproc,hwnd,msg,wParam,(LPARAM)wbuf);
+        LRESULT rv=CallWindowProcW(oldprocW,hwnd,msg,wParam,(LPARAM)wbuf);
         MBTOWIDE_FREE(wbuf);
         return rv;
       }
@@ -1330,15 +1651,14 @@ static LRESULT WINAPI cb_newProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
   }
   else if ((msg == CB_GETLBTEXT || msg == LB_GETTEXTUTF8) && lParam)
   {
-    WNDPROC oldprocW = (WNDPROC)GetProp(hwnd,WDL_UTF8_OLDPROCPROP "W");
-    LRESULT l = CallWindowProcW(oldprocW ? oldprocW : oldproc,hwnd,msg == CB_GETLBTEXT ? CB_GETLBTEXTLEN : LB_GETTEXTLEN,wParam,0);
-    
+    LRESULT l = CallWindowProcW(oldprocW,hwnd,msg == CB_GETLBTEXT ? CB_GETLBTEXTLEN : LB_GETTEXTLEN,wParam,0);
+
     if (l != CB_ERR)
     {
       WIDETOMB_ALLOC(tmp,l+1);
       if (tmp)
       {
-        LRESULT rv=CallWindowProcW(oldprocW ? oldprocW : oldproc,hwnd,msg & ~0x8000,wParam,(LPARAM)tmp);
+        LRESULT rv=CallWindowProcW(oldprocW,hwnd,msg & ~0x8000,wParam,(LPARAM)tmp);
         if (rv>=0)
         {
           *(char *)lParam=0;
@@ -1353,8 +1673,7 @@ static LRESULT WINAPI cb_newProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
   }
   else if (msg == CB_GETLBTEXTLEN || msg == LB_GETTEXTLENUTF8)
   {
-    WNDPROC oldprocW = (WNDPROC)GetProp(hwnd,WDL_UTF8_OLDPROCPROP "W");
-    return CallWindowProcW(oldprocW ? oldprocW : oldproc,hwnd,msg & ~0x8000,wParam,lParam) * 4 + 32; // make sure caller allocates a lot extra
+    return CallWindowProcW(oldprocW,hwnd,msg & ~0x8000,wParam,lParam) * 4 + 32; // make sure caller allocates a lot extra
   }
 
   return CallWindowProc(oldproc,hwnd,msg,wParam,lParam);
@@ -1377,18 +1696,19 @@ static int compareUTF8ToFilteredASCII(const char *utf, const char *ascii)
 
 static LRESULT WINAPI cbedit_newProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-  WNDPROC oldproc = (WNDPROC)GetProp(hwnd,WDL_UTF8_OLDPROCPROP);
+  struct wdl_utf8_hook* hook = wdl_utf8_hook_get(hwnd);
+  WNDPROC oldproc = hook ? hook->old_proc : NULL;
   if (!oldproc) return 0;
+
+  WNDPROC oldprocW = (hook && hook->old_proc_wide) ? hook->old_proc_wide : oldproc;
 
   if (msg==WM_NCDESTROY)
   {
-    SetWindowLongPtr(hwnd, GWLP_WNDPROC,(INT_PTR)oldproc);
-    RemoveProp(hwnd,WDL_UTF8_OLDPROCPROP);
-    RemoveProp(hwnd,WDL_UTF8_OLDPROCPROP "W");
+    wdl_utf8_swap_window_proc(hwnd, oldproc, NULL);
+    wdl_utf8_hook_detach(hwnd);
   }
   else if (msg == WM_SETTEXT && lParam && *(const char *)lParam)
   {
-    WNDPROC oldproc2 = (WNDPROC)GetProp(hwnd,WDL_UTF8_OLDPROCPROP "W");
     HWND par = GetParent(hwnd);
 
     int sel = (int) SendMessage(par,CB_GETCURSEL,0,0);
@@ -1404,7 +1724,7 @@ static LRESULT WINAPI cbedit_newProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
           MBTOWIDE(wbuf,p);
           if (wbuf_ok)
           {
-            LRESULT ret = CallWindowProcW(oldproc2 ? oldproc2 : oldproc,hwnd,msg,wParam,(LPARAM)wbuf);
+            LRESULT ret = CallWindowProcW(oldprocW,hwnd,msg,wParam,(LPARAM)wbuf);
             MBTOWIDE_FREE(wbuf);
             if (p != tmp) free(p);
             return ret;
@@ -1419,44 +1739,83 @@ static LRESULT WINAPI cbedit_newProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
   return CallWindowProc(oldproc,hwnd,msg,wParam,lParam);
 }
 
-void WDL_UTF8_HookListBox(HWND h)
+void WDL_UTF8_HookListBoxCtx(WdlWindowsSandboxContext* context, HWND h)
 {
   if (WDL_NOT_NORMALLY(!h) ||
     #ifdef WDL_SUPPORT_WIN9X
       GetVersion()>=0x80000000||
     #endif
-    GetProp(h,WDL_UTF8_OLDPROCPROP)) return;
-  SetProp(h,WDL_UTF8_OLDPROCPROP "W",(HANDLE)GetWindowLongPtrW(h,GWLP_WNDPROC));
-  SetProp(h,WDL_UTF8_OLDPROCPROP,(HANDLE)SetWindowLongPtr(h,GWLP_WNDPROC,(INT_PTR)cb_newProc));
+    wdl_utf8_hook_get(h)) return;
+
+  struct wdl_utf8_hook* hook = wdl_utf8_hook_create(context, h);
+  if (!hook)
+  {
+    return;
+  }
+
+  hook->old_proc_wide = (WNDPROC) GetWindowLongPtrW(h,GWLP_WNDPROC);
+  DWORD swap_error = 0;
+  hook->old_proc = wdl_utf8_swap_window_proc(h, cb_newProc, &swap_error);
+  if (!hook->old_proc && swap_error != 0)
+  {
+    wdl_utf8_hook_destroy(hook);
+    return;
+  }
+
+  if (!wdl_utf8_hook_attach(h, hook))
+  {
+    wdl_utf8_swap_window_proc(h, hook->old_proc, NULL);
+    wdl_utf8_hook_destroy(hook);
+  }
 }
 
-void WDL_UTF8_HookComboBox(HWND h)
+void WDL_UTF8_HookComboBoxCtx(WdlWindowsSandboxContext* context, HWND h)
 {
-  WDL_UTF8_HookListBox(h);
-  if (h && !s_combobox_atom) s_combobox_atom = (ATOM)GetClassWord(h,GCW_ATOM);
+  WDL_UTF8_HookListBoxCtx(context, h);
+  ATOM* combo_atom_slot = wdl_utf8_combo_atom_slot_for(context);
+  if (h && combo_atom_slot && !*combo_atom_slot) *combo_atom_slot = (ATOM)GetClassWord(h,GCW_ATOM);
 
   if (h)
   {
     h = FindWindowEx(h,NULL,"Edit",NULL);
-    if (h && !GetProp(h,WDL_UTF8_OLDPROCPROP))
+    if (h && !wdl_utf8_hook_get(h))
     {
-      SetProp(h,WDL_UTF8_OLDPROCPROP "W",(HANDLE)GetWindowLongPtrW(h,GWLP_WNDPROC));
-      SetProp(h,WDL_UTF8_OLDPROCPROP,(HANDLE)SetWindowLongPtr(h,GWLP_WNDPROC,(INT_PTR)cbedit_newProc));
+      struct wdl_utf8_hook* edit_hook = wdl_utf8_hook_create(context, h);
+      if (!edit_hook)
+      {
+        return;
+      }
+
+      edit_hook->old_proc_wide = (WNDPROC) GetWindowLongPtrW(h,GWLP_WNDPROC);
+      DWORD swap_error = 0;
+      edit_hook->old_proc = wdl_utf8_swap_window_proc(h, cbedit_newProc, &swap_error);
+      if (!edit_hook->old_proc && swap_error != 0)
+      {
+        wdl_utf8_hook_destroy(edit_hook);
+        return;
+      }
+
+      if (!wdl_utf8_hook_attach(h, edit_hook))
+      {
+        wdl_utf8_swap_window_proc(h, edit_hook->old_proc, NULL);
+        wdl_utf8_hook_destroy(edit_hook);
+      }
     }
   }
 }
 
 static LRESULT WINAPI tc_newProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-  WNDPROC oldproc = (WNDPROC)GetProp(hwnd,WDL_UTF8_OLDPROCPROP);
+  struct wdl_utf8_hook* hook = wdl_utf8_hook_get(hwnd);
+  WNDPROC oldproc = hook ? hook->old_proc : NULL;
   if (!oldproc) return 0;
 
   if (msg==WM_NCDESTROY)
   {
-    SetWindowLongPtr(hwnd, GWLP_WNDPROC,(INT_PTR)oldproc);
-    RemoveProp(hwnd,WDL_UTF8_OLDPROCPROP);
+    wdl_utf8_swap_window_proc(hwnd, oldproc, NULL);
+    wdl_utf8_hook_detach(hwnd);
   }
-  else if (msg == TCM_INSERTITEMA) 
+  else if (msg == TCM_INSERTITEMA)
   {
     LPTCITEM pItem = (LPTCITEM) lParam;
     char *str;
@@ -1484,15 +1843,16 @@ static LRESULT WINAPI tc_newProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 static LRESULT WINAPI tv_newProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-  WNDPROC oldproc = (WNDPROC)GetProp(hwnd,WDL_UTF8_OLDPROCPROP);
+  struct wdl_utf8_hook* hook = wdl_utf8_hook_get(hwnd);
+  WNDPROC oldproc = hook ? hook->old_proc : NULL;
   if (!oldproc) return 0;
 
   if (msg==WM_NCDESTROY)
   {
-    SetWindowLongPtr(hwnd, GWLP_WNDPROC,(INT_PTR)oldproc);
-    RemoveProp(hwnd,WDL_UTF8_OLDPROCPROP);
+    wdl_utf8_swap_window_proc(hwnd, oldproc, NULL);
+    wdl_utf8_hook_detach(hwnd);
   }
-  else if (msg == TVM_INSERTITEMA || msg == TVM_SETITEMA) 
+  else if (msg == TVM_INSERTITEMA || msg == TVM_SETITEMA)
   {
     LPTVITEM pItem = msg == TVM_INSERTITEMA ? &((LPTVINSERTSTRUCT)lParam)->item : (LPTVITEM) lParam;
     char *str;
@@ -1544,28 +1904,18 @@ static LRESULT WINAPI tv_newProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
   return CallWindowProc(oldproc,hwnd,msg,wParam,lParam);
 }
 
-struct lv_tmpbuf_state {
-  WCHAR *buf;
-  int buf_sz;
-};
-
 static LRESULT WINAPI lv_newProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-  WNDPROC oldproc = (WNDPROC)GetProp(hwnd,WDL_UTF8_OLDPROCPROP);
+  struct wdl_utf8_hook* hook = wdl_utf8_hook_get(hwnd);
+  WNDPROC oldproc = hook ? hook->old_proc : NULL;
   if (!oldproc) return 0;
+
+  struct lv_tmpbuf_state *buf = hook ? hook->list_view_buffer : NULL;
 
   if (msg==WM_NCDESTROY)
   {
-    struct lv_tmpbuf_state *buf = (struct lv_tmpbuf_state *)GetProp(hwnd,WDL_UTF8_OLDPROCPROP "B");
-    if (buf)
-    {
-      free(buf->buf);
-      free(buf);
-    }
-    RemoveProp(hwnd,WDL_UTF8_OLDPROCPROP "B");
-
-    SetWindowLongPtr(hwnd, GWLP_WNDPROC,(INT_PTR)oldproc);
-    RemoveProp(hwnd,WDL_UTF8_OLDPROCPROP);
+    wdl_utf8_swap_window_proc(hwnd, oldproc, NULL);
+    wdl_utf8_hook_detach(hwnd);
   }
   else if (msg == LVM_INSERTCOLUMNA || msg==LVM_SETCOLUMNA)
   {
@@ -1608,7 +1958,7 @@ static LRESULT WINAPI lv_newProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       }
     }
   }
-  else if (msg == LVM_INSERTITEMA || msg == LVM_SETITEMA || msg == LVM_SETITEMTEXTA) 
+  else if (msg == LVM_INSERTITEMA || msg == LVM_SETITEMA || msg == LVM_SETITEMTEXTA)
   {
     LPLVITEMA pItem = (LPLVITEMA) lParam;
     char *str;
@@ -1664,38 +2014,99 @@ static LRESULT WINAPI lv_newProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
   return CallWindowProc(oldproc,hwnd,msg,wParam,lParam);
 }
 
-void WDL_UTF8_HookListView(HWND h)
+void WDL_UTF8_HookListViewCtx(WdlWindowsSandboxContext* context, HWND h)
 {
   if (WDL_NOT_NORMALLY(!h) ||
     #ifdef WDL_SUPPORT_WIN9X
       GetVersion()>=0x80000000||
     #endif
-    GetProp(h,WDL_UTF8_OLDPROCPROP)) return;
-  SetProp(h,WDL_UTF8_OLDPROCPROP,(HANDLE)SetWindowLongPtr(h,GWLP_WNDPROC,(INT_PTR)lv_newProc));
+    wdl_utf8_hook_get(h)) return;
 
-  SetProp(h,WDL_UTF8_OLDPROCPROP "B", (HANDLE)calloc(sizeof(struct lv_tmpbuf_state),1));
+  struct wdl_utf8_hook* hook = wdl_utf8_hook_create(context, h);
+  if (!hook)
+  {
+    return;
+  }
+
+  DWORD swap_error = 0;
+  hook->old_proc = wdl_utf8_swap_window_proc(h, lv_newProc, &swap_error);
+  if (!hook->old_proc && swap_error != 0)
+  {
+    wdl_utf8_hook_destroy(hook);
+    return;
+  }
+
+  hook->list_view_buffer = (struct lv_tmpbuf_state*) calloc(1, sizeof(struct lv_tmpbuf_state));
+  if (!hook->list_view_buffer)
+  {
+    wdl_utf8_swap_window_proc(h, hook->old_proc, NULL);
+    wdl_utf8_hook_destroy(hook);
+    return;
+  }
+
+  if (!wdl_utf8_hook_attach(h, hook))
+  {
+    wdl_utf8_swap_window_proc(h, hook->old_proc, NULL);
+    wdl_utf8_hook_destroy(hook);
+  }
 }
 
-void WDL_UTF8_HookTreeView(HWND h)
+void WDL_UTF8_HookTreeViewCtx(WdlWindowsSandboxContext* context, HWND h)
 {
   if (WDL_NOT_NORMALLY(!h) ||
     #ifdef WDL_SUPPORT_WIN9X
       GetVersion()>=0x80000000||
     #endif
-    GetProp(h,WDL_UTF8_OLDPROCPROP)) return;
+    wdl_utf8_hook_get(h)) return;
 
-  SetProp(h,WDL_UTF8_OLDPROCPROP,(HANDLE)SetWindowLongPtr(h,GWLP_WNDPROC,(INT_PTR)tv_newProc));
+  struct wdl_utf8_hook* hook = wdl_utf8_hook_create(context, h);
+  if (!hook)
+  {
+    return;
+  }
+
+  DWORD swap_error = 0;
+  hook->old_proc = wdl_utf8_swap_window_proc(h, tv_newProc, &swap_error);
+  if (!hook->old_proc && swap_error != 0)
+  {
+    wdl_utf8_hook_destroy(hook);
+    return;
+  }
+
+  if (!wdl_utf8_hook_attach(h, hook))
+  {
+    wdl_utf8_swap_window_proc(h, hook->old_proc, NULL);
+    wdl_utf8_hook_destroy(hook);
+  }
 }
 
-void WDL_UTF8_HookTabCtrl(HWND h)
+void WDL_UTF8_HookTabCtrlCtx(WdlWindowsSandboxContext* context, HWND h)
 {
   if (WDL_NOT_NORMALLY(!h) ||
     #ifdef WDL_SUPPORT_WIN9X
       GetVersion()>=0x80000000||
     #endif
-    GetProp(h,WDL_UTF8_OLDPROCPROP)) return;
+    wdl_utf8_hook_get(h)) return;
 
-  SetProp(h,WDL_UTF8_OLDPROCPROP,(HANDLE)SetWindowLongPtr(h,GWLP_WNDPROC,(INT_PTR)tc_newProc));
+  struct wdl_utf8_hook* hook = wdl_utf8_hook_create(context, h);
+  if (!hook)
+  {
+    return;
+  }
+
+  DWORD swap_error = 0;
+  hook->old_proc = wdl_utf8_swap_window_proc(h, tc_newProc, &swap_error);
+  if (!hook->old_proc && swap_error != 0)
+  {
+    wdl_utf8_hook_destroy(hook);
+    return;
+  }
+
+  if (!wdl_utf8_hook_attach(h, hook))
+  {
+    wdl_utf8_swap_window_proc(h, hook->old_proc, NULL);
+    wdl_utf8_hook_destroy(hook);
+  }
 }
 
 void WDL_UTF8_ListViewConvertDispInfoToW(void *_di)
@@ -1703,13 +2114,41 @@ void WDL_UTF8_ListViewConvertDispInfoToW(void *_di)
   NMLVDISPINFO *di = (NMLVDISPINFO *)_di;
   if (di && (di->item.mask & LVIF_TEXT) && di->item.pszText && di->item.cchTextMax>0)
   {
-    static struct lv_tmpbuf_state s_buf;
     const char *src = (const char *)di->item.pszText;
     const size_t src_sz = strlen(src);
-    struct lv_tmpbuf_state *sb = (struct lv_tmpbuf_state *)GetProp(di->hdr.hwndFrom,WDL_UTF8_OLDPROCPROP "B");
-    if (WDL_NOT_NORMALLY(!sb)) sb = &s_buf; // if the caller forgot to call HookListView...
+    struct wdl_utf8_hook* hook = wdl_utf8_hook_get(di->hdr.hwndFrom);
+    struct lv_tmpbuf_state *sb = hook ? hook->list_view_buffer : NULL;
 
-    if (!sb->buf || sb->buf_sz < src_sz)
+    WdlWindowsSandboxContext* context = NULL;
+    int using_context_buf = 0;
+#if WDL_UTF8_HAS_SANDBOX_CONTEXT
+    context = hook ? hook->context : wdl_utf8_current_context();
+    if (!context)
+    {
+      context = (WdlWindowsSandboxContext*) GetPropA(di->hdr.hwndFrom, WDL_UTF8_SandboxContextPropertyName());
+    }
+
+    struct lv_tmpbuf_state context_buf = {0};
+    if (!sb && context)
+    {
+      context_buf.buf = (WCHAR*) context->utf8_hooks.list_view_tmpbuf;
+      context_buf.buf_sz = context->utf8_hooks.list_view_tmpbuf_size;
+      sb = &context_buf;
+      using_context_buf = 1;
+    }
+#else
+    (void) context;
+#endif
+
+    struct lv_tmpbuf_state temp_buf = {0};
+    int using_temp_buf = 0;
+    if (!sb)
+    {
+      sb = &temp_buf;
+      using_temp_buf = 1;
+    }
+
+    if (!sb->buf || sb->buf_sz < (int) src_sz)
     {
       const int newsz = (int) wdl_min(src_sz * 2 + 256, 0x7fffFFFF);
       if (!sb->buf || sb->buf_sz < newsz)
@@ -1718,26 +2157,43 @@ void WDL_UTF8_ListViewConvertDispInfoToW(void *_di)
         sb->buf = (WCHAR *)malloc((sb->buf_sz = newsz) * sizeof(WCHAR));
       }
     }
+
     if (WDL_NOT_NORMALLY(!sb->buf))
     {
       di->item.pszText = (char*)L"";
-      return;
+    }
+    else
+    {
+      di->item.pszText = (char*)sb->buf;
+
+      if (!MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,src,-1,sb->buf,sb->buf_sz))
+      {
+        if (WDL_NOT_NORMALLY(GetLastError()==ERROR_INSUFFICIENT_BUFFER))
+        {
+          sb->buf[sb->buf_sz-1] = 0;
+        }
+        else
+        {
+          if (!MultiByteToWideChar(CP_ACP,MB_ERR_INVALID_CHARS,src,-1,sb->buf,sb->buf_sz))
+            sb->buf[sb->buf_sz-1] = 0;
+        }
+      }
     }
 
-    di->item.pszText = (char*)sb->buf;
-
-    if (!MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,src,-1,sb->buf,sb->buf_sz))
+#if WDL_UTF8_HAS_SANDBOX_CONTEXT
+    if (using_context_buf && context)
     {
-      if (WDL_NOT_NORMALLY(GetLastError()==ERROR_INSUFFICIENT_BUFFER))
-      {
-        sb->buf[sb->buf_sz-1] = 0;
-      }
-      else
-      {
-        if (!MultiByteToWideChar(CP_ACP,MB_ERR_INVALID_CHARS,src,-1,sb->buf,sb->buf_sz))
-          sb->buf[sb->buf_sz-1] = 0;
-      }
-    }   
+      context->utf8_hooks.list_view_tmpbuf = (wchar_t*) sb->buf;
+      context->utf8_hooks.list_view_tmpbuf_size = sb->buf_sz;
+    }
+#endif
+
+    if (using_temp_buf)
+    {
+      free(sb->buf);
+      sb->buf = NULL;
+      sb->buf_sz = 0;
+    }
   }
 }
 

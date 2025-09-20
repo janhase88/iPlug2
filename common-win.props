@@ -32,6 +32,7 @@
     <IGRAPHICS_VULKAN_LOG_VERBOSITY Condition="'$(IGRAPHICS_VULKAN_LOG_VERBOSITY)' == ''">1</IGRAPHICS_VULKAN_LOG_VERBOSITY>
     <IPlugSandboxMode Condition="'$(IPlugSandboxMode)' == ''">0</IPlugSandboxMode>
     <IPlugSandboxExtraDefs Condition="'$(IPlugSandboxExtraDefs)' == ''"></IPlugSandboxExtraDefs>
+    <IPlugSandboxEnableWDL Condition="'$(IPlugSandboxEnableWDL)' == ''">0</IPlugSandboxEnableWDL>
     <IGRAPHICS_INC_PATHS>$(IGRAPHICS_PATH);$(IGRAPHICS_PATH)\Controls;$(IGRAPHICS_PATH)\Drawing;$(IGRAPHICS_PATH)\Platforms;$(IGRAPHICS_PATH)\Extras;$(NANOSVG_PATH);$(NANOVG_PATH);$(PNG_PATH);$(ZLIB_PATH);$(FREETYPE_PATH);$(STB_PATH);$(SKIA_INC_PATHS);$(YOGA_INC_PATHS);$(VULKAN_INC_PATHS)</IGRAPHICS_INC_PATHS>
     <CLAP_SDK Condition="'$(CLAP_SDK)'==''">$(IPLUG_DEPS_PATH)\CLAP_SDK\include</CLAP_SDK>
     <CLAP_HELPERS Condition="'$(CLAP_HELPERS)'==''">$(IPLUG_DEPS_PATH)\CLAP_HELPERS\include\clap\helpers</CLAP_HELPERS>
@@ -86,7 +87,7 @@
   <ItemDefinitionGroup>
     <ClCompile>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <PreprocessorDefinitions>$(ALL_DEFS);IGRAPHICS_VULKAN_LOG_VERBOSITY=$(IGRAPHICS_VULKAN_LOG_VERBOSITY);IPLUG_SANDBOX_ALL=$(IPlugSandboxMode);$(IPlugSandboxExtraDefs);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>$(ALL_DEFS);IGRAPHICS_VULKAN_LOG_VERBOSITY=$(IGRAPHICS_VULKAN_LOG_VERBOSITY);IPLUG_SANDBOX_ALL=$(IPlugSandboxMode);IPLUG_SANDBOX_LINK_WDL_HELPERS=$(IPlugSandboxEnableWDL);IPLUG_SANDBOX_USE_WDL_HELPERS=$(IPlugSandboxEnableWDL);$(IPlugSandboxExtraDefs);%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>4996;4250;4018;4267;4068;26451;26812</DisableSpecificWarnings>
       <AdditionalIncludeDirectories>$(WDL_PATH);$(IPLUG_PATH);$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
@@ -107,6 +108,14 @@
       <AdditionalIncludeDirectories>$(SolutionDir);$(SolutionDir)\resources\fonts;$(SolutionDir)\resources\img;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
   </ItemDefinitionGroup>
+  <ItemGroup Condition="'$(IPlugSandboxEnableWDL)' == '1'">
+    <ClCompile Include="$(WDL_PATH)\filebrowse.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="$(WDL_PATH)\win32_utf8.c">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+  </ItemGroup>
   <ItemGroup>
     <BuildMacro Include="IPLUG2_ROOT">
       <Value>$(IPLUG2_ROOT)</Value>
@@ -254,6 +263,9 @@
     </BuildMacro>
     <BuildMacro Include="APP_INC_PATHS">
       <Value>$(APP_INC_PATHS)</Value>
+    </BuildMacro>
+    <BuildMacro Include="IPlugSandboxEnableWDL">
+      <Value>$(IPlugSandboxEnableWDL)</Value>
     </BuildMacro>
     <BuildMacro Include="VST2_INC_PATHS">
       <Value>$(VST2_INC_PATHS)</Value>

@@ -674,17 +674,13 @@ struct IGraphicsSkia::Font
 };
 
 // Fonts
-namespace
-{
-#if IGRAPHICS_SANDBOX_SKIA_FONT_CACHE
-thread_local StaticStorage<IGraphicsSkia::Font> sFontCacheStorage;
-#else
-StaticStorage<IGraphicsSkia::Font> sFontCacheStorage;
-#endif
-} // namespace
-
 StaticStorage<IGraphicsSkia::Font>& IGraphicsSkia::FontCacheStorage()
 {
+#if IGRAPHICS_SANDBOX_SKIA_FONT_CACHE
+  thread_local StaticStorage<Font> sFontCacheStorage;
+#else
+  static StaticStorage<Font> sFontCacheStorage;
+#endif
   return sFontCacheStorage;
 }
 

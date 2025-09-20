@@ -192,21 +192,7 @@
           <subtasks>
           </subtasks>
         </task>
-        <task>
-          <name>Update documentation and establish regression safeguards</name>
-          <status>PROOF</status>
-          <tryCount>1</tryCount>
-          <crucialInfo>
-            Documentation now covers the `IGRAPHICS_SANDBOX_WDL_WINDOWS` toggle, sandbox context lifecycle, and manual regression steps captured in `Plan/Artifacts/Windows-Sandbox-Validation.md` until automated tests are available.
-          </crucialInfo>
-          <continue-info>
-            Future work may automate the Windows validation checklist once CI coverage exists; for now, follow the documented manual steps during QA.
-          </continue-info>
-          <subtasks>
-          </subtasks>
-        </task>
-      </subtasks>
-    </task>
+       
 
   </Tasks>
 

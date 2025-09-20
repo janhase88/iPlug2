@@ -4,6 +4,7 @@
 #  error "WdlUtf8Fallback.h requires a Windows build"
 #endif
 
+#include <windows.h>
 #include <commctrl.h>
 #include <commdlg.h>
 #include <shlobj.h>
@@ -306,6 +307,109 @@ WDL_WIN32_UTF8_IMPL void WDL_UTF8_HookTabCtrlCtx(struct WdlWindowsSandboxContext
 }
 
 WDL_WIN32_UTF8_IMPL void WDL_UTF8_ListViewConvertDispInfoToW(void* data)
+{
+  WDL_Fallback_UTF8_ListViewConvertDispInfoToW(data);
+}
+
+#endif
+
+#if !defined(WDL_WIN32_UTF8_USE_IPLUG_FALLBACKS) && defined(_MSC_VER) && !defined(WDL_WIN32_UTF8_BUILDING_SOURCE)
+
+__declspec(selectany) void WDL_UTF8_SetSandboxContext(struct WdlWindowsSandboxContext* context)
+{
+  WDL_Fallback_UTF8_SetSandboxContext(context);
+}
+
+__declspec(selectany) struct WdlWindowsSandboxContext* WDL_UTF8_GetSandboxContext(void)
+{
+  return WDL_Fallback_UTF8_GetSandboxContext();
+}
+
+__declspec(selectany) const char* WDL_UTF8_SandboxContextPropertyName(void)
+{
+  return WDL_Fallback_UTF8_SandboxContextPropertyName();
+}
+
+__declspec(selectany) DWORD GetCurrentDirectoryUTF8(DWORD bufferLength, LPTSTR buffer)
+{
+  return WDL_Fallback_GetCurrentDirectoryUTF8(bufferLength, buffer);
+}
+
+__declspec(selectany) BOOL SetCurrentDirectoryUTF8(LPCTSTR path)
+{
+  return WDL_Fallback_SetCurrentDirectoryUTF8(path);
+}
+
+__declspec(selectany) BOOL GetOpenFileNameUTF8(LPOPENFILENAME ofn)
+{
+  return WDL_Fallback_GetOpenFileNameUTF8(ofn);
+}
+
+__declspec(selectany) BOOL GetSaveFileNameUTF8(LPOPENFILENAME ofn)
+{
+  return WDL_Fallback_GetSaveFileNameUTF8(ofn);
+}
+
+__declspec(selectany) HINSTANCE LoadLibraryUTF8(LPCTSTR path)
+{
+  return WDL_Fallback_LoadLibraryUTF8(path);
+}
+
+__declspec(selectany) struct _ITEMIDLIST* SHBrowseForFolderUTF8(struct _browseinfoA* info)
+{
+  return WDL_Fallback_SHBrowseForFolderUTF8(info);
+}
+
+#if defined(_WIN64)
+__declspec(selectany) BOOL SHGetPathFromIDListUTF8(const struct _ITEMIDLIST __unaligned* pidl, LPSTR path, int pathLength)
+#else
+__declspec(selectany) BOOL SHGetPathFromIDListUTF8(const struct _ITEMIDLIST* pidl, LPSTR path, int pathLength)
+#endif
+{
+  return WDL_Fallback_SHGetPathFromIDListUTF8(pidl, path, pathLength);
+}
+
+__declspec(selectany) WCHAR* WDL_UTF8ToWC(const char* utf8, BOOL doubleNull, int minimumSize, DWORD* sizeOut)
+{
+  return WDL_Fallback_UTF8ToWC(utf8, doubleNull, minimumSize, sizeOut);
+}
+
+__declspec(selectany) int WDL_UTF8_SendBFFM_SETSEL(HWND hwnd, const char* selection)
+{
+  return WDL_Fallback_UTF8_SendBFFM_SETSEL(hwnd, selection);
+}
+
+__declspec(selectany) LPSTR GetCommandParametersUTF8(void)
+{
+  return WDL_Fallback_GetCommandParametersUTF8();
+}
+
+__declspec(selectany) void WDL_UTF8_HookComboBoxCtx(struct WdlWindowsSandboxContext* context, HWND hwnd)
+{
+  WDL_Fallback_UTF8_HookComboBoxCtx(context, hwnd);
+}
+
+__declspec(selectany) void WDL_UTF8_HookListViewCtx(struct WdlWindowsSandboxContext* context, HWND hwnd)
+{
+  WDL_Fallback_UTF8_HookListViewCtx(context, hwnd);
+}
+
+__declspec(selectany) void WDL_UTF8_HookListBoxCtx(struct WdlWindowsSandboxContext* context, HWND hwnd)
+{
+  WDL_Fallback_UTF8_HookListBoxCtx(context, hwnd);
+}
+
+__declspec(selectany) void WDL_UTF8_HookTreeViewCtx(struct WdlWindowsSandboxContext* context, HWND hwnd)
+{
+  WDL_Fallback_UTF8_HookTreeViewCtx(context, hwnd);
+}
+
+__declspec(selectany) void WDL_UTF8_HookTabCtrlCtx(struct WdlWindowsSandboxContext* context, HWND hwnd)
+{
+  WDL_Fallback_UTF8_HookTabCtrlCtx(context, hwnd);
+}
+
+__declspec(selectany) void WDL_UTF8_ListViewConvertDispInfoToW(void* data)
 {
   WDL_Fallback_UTF8_ListViewConvertDispInfoToW(data);
 }

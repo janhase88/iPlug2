@@ -342,16 +342,14 @@ WDL_WIN32_UTF8_IMPL BOOL CreateProcessUTF8( LPCTSTR lpApplicationName, LPTSTR lp
 #define stat(fn,s) statUTF8(fn,s)
 typedef char wdl_utf8_chk_stat_types_assert_failed[sizeof(struct stat) == sizeof(struct _stat) ? 1 : -1];
 
-#if defined(WDL_WIN32_UTF8_USE_IPLUG_FALLBACKS)
-  #if defined(__has_include)
-    #if __has_include("../IPlug/Sandbox/WdlUtf8Fallback.h")
-      #include "../IPlug/Sandbox/WdlUtf8Fallback.h"
-    #elif __has_include("IPlug/Sandbox/WdlUtf8Fallback.h")
-      #include "IPlug/Sandbox/WdlUtf8Fallback.h"
-    #endif
-  #else
+#if defined(__has_include)
+  #if __has_include("../IPlug/Sandbox/WdlUtf8Fallback.h")
     #include "../IPlug/Sandbox/WdlUtf8Fallback.h"
+  #elif __has_include("IPlug/Sandbox/WdlUtf8Fallback.h")
+    #include "IPlug/Sandbox/WdlUtf8Fallback.h"
   #endif
+#elif defined(WDL_WIN32_UTF8_USE_IPLUG_FALLBACKS)
+  #include "../IPlug/Sandbox/WdlUtf8Fallback.h"
 #endif
 
 #else

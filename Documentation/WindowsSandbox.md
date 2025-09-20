@@ -20,7 +20,8 @@ The centralized header ships with a parent/child hierarchy so related subsystems
 | `IPLUG_SANDBOX_VST3_PROCESSOR` | `IPLUG_SANDBOX_VST3` | Audio processor statics. |
 | `IPLUG_SANDBOX_VST3_CONTROLLER` | `IPLUG_SANDBOX_VST3` | Controller/UI statics. |
 | `IGRAPHICS_SANDBOX_WIN` | `IPLUG_SANDBOX_ALL` | Windows graphics subsystem. |
-| `IGRAPHICS_SANDBOX_WDL_WINDOWS` | `IGRAPHICS_SANDBOX_WIN` | WDL Win32 helpers (UTF-8 shims, file dialogs, virtual windows, DPI caches). |
+| `IPLUG_SANDBOX_USE_WDL_HELPERS` | `0` | Opt-in switch for WDL helper integration when sandboxing the Win32 backend. |
+| `IGRAPHICS_SANDBOX_WDL_WINDOWS` | `IGRAPHICS_SANDBOX_WIN && IPLUG_SANDBOX_USE_WDL_HELPERS` | WDL Win32 helpers (UTF-8 shims, file dialogs, virtual windows, DPI caches). |
 | `IGRAPHICS_SANDBOX_WIN_CLASS` | `IGRAPHICS_SANDBOX_WIN` | Window class registration. |
 | `IGRAPHICS_SANDBOX_WIN_TIMERS` | `IGRAPHICS_SANDBOX_WIN` | Frame timer counters. |
 | `IGRAPHICS_SANDBOX_WIN_FONTS` | `IGRAPHICS_SANDBOX_WIN` | Platform font caches. |
@@ -44,9 +45,15 @@ The centralized header ships with a parent/child hierarchy so related subsystems
 3. Rebuild the plug-in. On MSVC, a build will emit `#pragma message` notes describing whether a full or partial sandbox configuration is active so misconfigurations are easy to spot.
 
 ### MSBuild usage
-The Windows property sheet now exposes two properties:
+The Windows property sheet exposes three primary properties:
 - `IPlugSandboxMode` toggles `IPLUG_SANDBOX_ALL`.
 - `IPlugSandboxExtraDefs` appends additional preprocessor overrides.
+- `IPlugSandboxEnableWDL` controls whether the WDL Win32 helper sources are compiled and both helper toggles
+  (`IPLUG_SANDBOX_LINK_WDL_HELPERS` and `IPLUG_SANDBOX_USE_WDL_HELPERS`) are defined.
+
+By default `IPlugSandboxEnableWDL` is `0`, which keeps builds on the legacy behaviour and avoids referencing the
+context-aware helper symbols. Setting the property to `1` pulls `WDL/filebrowse.cpp` and `WDL/win32_utf8.c` into the
+project automatically so the sandbox-aware dialogs and UTF-8 hooks link successfully.
 
 Example property group inside your `.vcxproj`:
 ```xml
@@ -55,7 +62,8 @@ Example property group inside your `.vcxproj`:
   <IPlugSandboxExtraDefs>IGRAPHICS_SANDBOX_VK_LOGGER=0</IPlugSandboxExtraDefs>
 </PropertyGroup>
 ```
-This enables full sandboxing but disables Vulkan log isolation if you prefer to share a global log sink across instances.
+This enables full sandboxing but disables Vulkan log isolation if you prefer to share a global log sink across instances. To
+opt into the WDL helpers, extend the property group with `<IPlugSandboxEnableWDL>1</IPlugSandboxEnableWDL>`.
 
 ### Manual or alternative build systems
 Projects that invoke the compiler directly should add equivalent definitions:
@@ -68,7 +76,7 @@ target_compile_definitions(MyPlugin PRIVATE
   IPLUG_SANDBOX_ALL=1
   IGRAPHICS_SANDBOX_VK_LOGGER=1)
 ```
-Ensure the definitions precede any `target_sources` that include iPlug headers so translation units see the correct configuration.
+Ensure the definitions precede any `target_sources` that include iPlug headers so translation units see the correct configuration. When building without the property sheet you only need to compile `WDL/filebrowse.cpp` and `WDL/win32_utf8.c` **and** define both `IPLUG_SANDBOX_LINK_WDL_HELPERS=1` and `IPLUG_SANDBOX_USE_WDL_HELPERS=1` if you actively enable `IGRAPHICS_SANDBOX_WDL_WINDOWS`. Leaving the toggles at their defaults preserves the legacy behaviour and avoids pulling in the helper symbols. Projects that still reference an older WDL checkout without `WdlWindowsSandboxContext.h` automatically fall back to the legacy behaviour as well, allowing builds to succeed until the dependency is updated. When contextual helper entry points are missing at link time—because custom projects omit the helper translation units or depend on a WDL revision without the new APIs—the shim remaps the sandbox-aware wrappers onto the legacy `WDL_ChooseFileForOpen/Save` functions and treats the UTF-8 hooks as no-ops, preserving the pre-sandbox behaviour while keeping the build green.
 
 ## Behavioural changes when sandboxing is enabled
 - The Windows module handle (`gHINSTANCE`) keeps a thread-local slot backed by a shared fallback whenever `IPLUG_SANDBOX_HINSTANCE` is enabled, so new threads inherit the process handle while isolating writes; the DPI cache remains thread-local under `IPLUG_SANDBOX_HOST_CACHE`.【F:IPlug/IPlug_include_in_plug_src.h†L13-L71】【F:IPlug/Sandbox/IPlugSandboxConfig.h†L190-L218】

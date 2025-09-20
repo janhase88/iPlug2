@@ -24,15 +24,32 @@
 #define IPLUG_SANDBOX_REQUIRE_BOOL(name)                                                                          \
   static_assert((name) == 0 || (name) == 1, "iPlug sandbox macro '" #name "' must be either 0 or 1")
 
+#if !defined(IPLUG_SANDBOX_LINK_WDL_HELPERS)
+#define IPLUG_SANDBOX_LINK_WDL_HELPERS 0
+#endif
+IPLUG_SANDBOX_REQUIRE_BOOL(IPLUG_SANDBOX_LINK_WDL_HELPERS);
+
+#if !defined(IPLUG_SANDBOX_USE_WDL_HELPERS)
+#define IPLUG_SANDBOX_USE_WDL_HELPERS 0
+#endif
+IPLUG_SANDBOX_REQUIRE_BOOL(IPLUG_SANDBOX_USE_WDL_HELPERS);
+#if IPLUG_SANDBOX_USE_WDL_HELPERS && !IPLUG_SANDBOX_LINK_WDL_HELPERS
+  #undef IPLUG_SANDBOX_USE_WDL_HELPERS
+  #define IPLUG_SANDBOX_USE_WDL_HELPERS 0
+#endif
+
+#include "WdlWindowsSandboxContext.h"
+
 #if defined(_WIN32)
-struct WdlWindowsSandboxContext;
-#ifdef __cplusplus
+  #if IPLUG_HAS_WDL_WINDOWS_SANDBOX_CONTEXT && IPLUG_SANDBOX_LINK_WDL_HELPERS
+    #ifdef __cplusplus
 extern "C" {
-#endif
+    #endif
 void WDL_UTF8_SetSandboxContext(struct WdlWindowsSandboxContext* context);
-#ifdef __cplusplus
-} // extern "C"
-#endif
+    #ifdef __cplusplus
+}
+    #endif
+  #endif
 #endif
 
 #ifndef IPLUG_SANDBOX_ALL
@@ -86,7 +103,15 @@ IPLUG_SANDBOX_REQUIRE_BOOL(IPLUG_SANDBOX_VST3_CONTROLLER);
 IPLUG_SANDBOX_REQUIRE_BOOL(IGRAPHICS_SANDBOX_WIN);
 
 #ifndef IGRAPHICS_SANDBOX_WDL_WINDOWS
-#define IGRAPHICS_SANDBOX_WDL_WINDOWS IGRAPHICS_SANDBOX_WIN
+#define IGRAPHICS_SANDBOX_WDL_WINDOWS (IGRAPHICS_SANDBOX_WIN && IPLUG_SANDBOX_USE_WDL_HELPERS)
+#endif
+#if !IPLUG_HAS_WDL_WINDOWS_SANDBOX_CONTEXT || !IPLUG_SANDBOX_LINK_WDL_HELPERS
+  #undef IGRAPHICS_SANDBOX_WDL_WINDOWS
+  #define IGRAPHICS_SANDBOX_WDL_WINDOWS 0
+#endif
+#if !IPLUG_SANDBOX_USE_WDL_HELPERS
+  #undef IGRAPHICS_SANDBOX_WDL_WINDOWS
+  #define IGRAPHICS_SANDBOX_WDL_WINDOWS 0
 #endif
 IPLUG_SANDBOX_REQUIRE_BOOL(IGRAPHICS_SANDBOX_WDL_WINDOWS);
 
@@ -179,6 +204,7 @@ IPLUG_SANDBOX_ENSURE_CHILD(IPLUG_SANDBOX_VST3_PROCESSOR, IPLUG_SANDBOX_VST3);
 IPLUG_SANDBOX_ENSURE_CHILD(IPLUG_SANDBOX_VST3_CONTROLLER, IPLUG_SANDBOX_VST3);
 
 IPLUG_SANDBOX_ENSURE_CHILD(IGRAPHICS_SANDBOX_WIN, IPLUG_SANDBOX_ALL);
+IPLUG_SANDBOX_ENSURE_CHILD(IPLUG_SANDBOX_USE_WDL_HELPERS, IGRAPHICS_SANDBOX_WIN);
 IPLUG_SANDBOX_ENSURE_CHILD(IGRAPHICS_SANDBOX_WDL_WINDOWS, IGRAPHICS_SANDBOX_WIN);
 IPLUG_SANDBOX_ENSURE_CHILD(IGRAPHICS_SANDBOX_WIN_CLASS, IGRAPHICS_SANDBOX_WIN);
 IPLUG_SANDBOX_ENSURE_CHILD(IGRAPHICS_SANDBOX_WIN_TIMERS, IGRAPHICS_SANDBOX_WIN);
@@ -236,7 +262,7 @@ inline ::WdlWindowsSandboxContext*& SandboxSharedWdlWindowsContext()
     #define IPLUG_SANDBOX_SET_WDL_WINDOWS_CONTEXT(ctx)                                                              \
       do                                                                                                            \
       {                                                                                                             \
-        WDL_UTF8_SetSandboxContext(ctx);                                                                            \
+        (void) (ctx);                                                                                               \
       } while (false)
   #endif
 #else

@@ -50,6 +50,88 @@ using namespace iplug;
 using namespace igraphics;
 
 #if defined(OS_WIN)
+extern "C" bool IPlugSandboxFallback_ChooseFileForSaveCtx(WdlWindowsSandboxContext*,
+                                                          HWND parent,
+                                                          const char* text,
+                                                          const char* initialdir,
+                                                          const char* initialfile,
+                                                          const char* extlist,
+                                                          const char* defext,
+                                                          bool preservecwd,
+                                                          char* fn,
+                                                          int fnsize,
+                                                          const char* dlgid,
+                                                          void* dlgProc,
+                                                          HINSTANCE hInstance)
+{
+  return WDL_ChooseFileForSave(parent,
+                               text,
+                               initialdir,
+                               initialfile,
+                               extlist,
+                               defext,
+                               preservecwd,
+                               fn,
+                               fnsize,
+                               dlgid,
+                               dlgProc,
+                               hInstance);
+}
+
+extern "C" char* IPlugSandboxFallback_ChooseFileForOpen2Ctx(WdlWindowsSandboxContext*,
+                                                            HWND parent,
+                                                            const char* text,
+                                                            const char* initialdir,
+                                                            const char* initialfile,
+                                                            const char* extlist,
+                                                            const char* defext,
+                                                            bool preservecwd,
+                                                            int allowmul,
+                                                            const char* dlgid,
+                                                            void* dlgProc,
+                                                            HINSTANCE hInstance)
+{
+  return WDL_ChooseFileForOpen2(parent,
+                                text,
+                                initialdir,
+                                initialfile,
+                                extlist,
+                                defext,
+                                preservecwd,
+                                allowmul,
+                                dlgid,
+                                dlgProc,
+                                hInstance);
+}
+
+extern "C" void IPlugSandboxFallback_SetUtf8SandboxContext(WdlWindowsSandboxContext*) {}
+
+extern "C" WdlWindowsSandboxContext* IPlugSandboxFallback_GetUtf8SandboxContext()
+{
+  return nullptr;
+}
+
+extern "C" const char* IPlugSandboxFallback_SandboxContextPropertyName()
+{
+  return nullptr;
+}
+
+#if defined(_MSC_VER)
+  #if defined(_WIN64)
+    #define IPLUG_SANDBOX_ALT_ALIAS(from, to) __pragma(comment(linker, "/alternatename:" from "=" to))
+  #else
+    #define IPLUG_SANDBOX_ALT_ALIAS(from, to) __pragma(comment(linker, "/alternatename:_" from "=_" to))
+  #endif
+
+  IPLUG_SANDBOX_ALT_ALIAS("WDL_UTF8_SetSandboxContext", "IPlugSandboxFallback_SetUtf8SandboxContext");
+  IPLUG_SANDBOX_ALT_ALIAS("WDL_UTF8_GetSandboxContext", "IPlugSandboxFallback_GetUtf8SandboxContext");
+  IPLUG_SANDBOX_ALT_ALIAS("WDL_UTF8_SandboxContextPropertyName", "IPlugSandboxFallback_SandboxContextPropertyName");
+  IPLUG_SANDBOX_ALT_ALIAS("WDL_ChooseFileForSaveCtx", "IPlugSandboxFallback_ChooseFileForSaveCtx");
+  IPLUG_SANDBOX_ALT_ALIAS("WDL_ChooseFileForOpen2Ctx", "IPlugSandboxFallback_ChooseFileForOpen2Ctx");
+
+  #undef IPLUG_SANDBOX_ALT_ALIAS
+#endif
+
 namespace
 {
 class WdlWindowsSandboxScope
@@ -392,7 +474,10 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 #if IGRAPHICS_SANDBOX_WDL_WINDOWS
     if (pGraphics && pGraphics->SandboxContext())
     {
-      SetPropA(hWnd, WDL_UTF8_SandboxContextPropertyName(), (HANDLE) pGraphics->SandboxContext());
+      if (const char* propertyName = WDL_UTF8_SandboxContextPropertyName())
+      {
+        SetPropA(hWnd, propertyName, (HANDLE) pGraphics->SandboxContext());
+      }
     }
 #endif
 
@@ -1766,7 +1851,10 @@ void* IGraphicsWin::OpenWindow(void* pParent)
 #if IGRAPHICS_SANDBOX_WDL_WINDOWS
   if (mPlugWnd && mSandboxContext)
   {
-    SetPropA(mPlugWnd, WDL_UTF8_SandboxContextPropertyName(), (HANDLE) mSandboxContext);
+    if (const char* propertyName = WDL_UTF8_SandboxContextPropertyName())
+    {
+      SetPropA(mPlugWnd, propertyName, (HANDLE) mSandboxContext);
+    }
   }
 #endif
 #if defined IGRAPHICS_VULKAN
@@ -2006,7 +2094,10 @@ void IGraphicsWin::CloseWindow()
       mOLEInited = false;
     }
 #if IGRAPHICS_SANDBOX_WDL_WINDOWS
-    RemovePropA(mPlugWnd, WDL_UTF8_SandboxContextPropertyName());
+    if (const char* propertyName = WDL_UTF8_SandboxContextPropertyName())
+    {
+      RemovePropA(mPlugWnd, propertyName);
+    }
 #endif
 
     DestroyWindow(mPlugWnd);
@@ -2412,6 +2503,7 @@ void IGraphicsWin::PromptForFile(WDL_String& fileName, WDL_String& path, EFileAc
     if (action == EFileAction::Save)
     {
       char buffer[_MAX_PATH] = {0};
+#if IGRAPHICS_SANDBOX_WDL_WINDOWS
       const bool result = WDL_ChooseFileForSaveCtx(mSandboxContext,
                                                    mPlugWnd,
                                                    nullptr,
@@ -2425,6 +2517,20 @@ void IGraphicsWin::PromptForFile(WDL_String& fileName, WDL_String& path, EFileAc
                                                    nullptr,
                                                    nullptr,
                                                    mHInstance);
+#else
+      const bool result = WDL_ChooseFileForSave(mPlugWnd,
+                                                nullptr,
+                                                initialDir,
+                                                initialFile,
+                                                filterPtr,
+                                                defaultExtPtr,
+                                                true,
+                                                buffer,
+                                                sizeof(buffer),
+                                                nullptr,
+                                                nullptr,
+                                                mHInstance);
+#endif
       if (result)
       {
         fileName.Set(buffer);
@@ -2437,6 +2543,7 @@ void IGraphicsWin::PromptForFile(WDL_String& fileName, WDL_String& path, EFileAc
     }
     else
     {
+#if IGRAPHICS_SANDBOX_WDL_WINDOWS
       char* selection = WDL_ChooseFileForOpen2Ctx(mSandboxContext,
                                                   mPlugWnd,
                                                   nullptr,
@@ -2449,6 +2556,19 @@ void IGraphicsWin::PromptForFile(WDL_String& fileName, WDL_String& path, EFileAc
                                                   nullptr,
                                                   nullptr,
                                                   mHInstance);
+#else
+      char* selection = WDL_ChooseFileForOpen2(mPlugWnd,
+                                               nullptr,
+                                               initialDir,
+                                               initialFile,
+                                               filterPtr,
+                                               defaultExtPtr,
+                                               true,
+                                               0,
+                                               nullptr,
+                                               nullptr,
+                                               mHInstance);
+#endif
       if (selection)
       {
         fileName.Set(selection);

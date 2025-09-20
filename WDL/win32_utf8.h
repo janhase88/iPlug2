@@ -562,62 +562,104 @@ WDL_WIN32_UTF8_FALLBACK_IMPL void WDL_Fallback_UTF8_ListViewConvertDispInfoToW(v
 
 #if defined(WDL_WIN32_UTF8_USE_IPLUG_FALLBACKS)
 
-#undef WDL_UTF8_SetSandboxContext
-#define WDL_UTF8_SetSandboxContext WDL_Fallback_UTF8_SetSandboxContext
+WDL_WIN32_UTF8_IMPL void WDL_UTF8_SetSandboxContext(struct WdlWindowsSandboxContext* context)
+{
+  WDL_Fallback_UTF8_SetSandboxContext(context);
+}
 
-#undef WDL_UTF8_GetSandboxContext
-#define WDL_UTF8_GetSandboxContext WDL_Fallback_UTF8_GetSandboxContext
+WDL_WIN32_UTF8_IMPL struct WdlWindowsSandboxContext* WDL_UTF8_GetSandboxContext(void)
+{
+  return WDL_Fallback_UTF8_GetSandboxContext();
+}
 
-#undef WDL_UTF8_SandboxContextPropertyName
-#define WDL_UTF8_SandboxContextPropertyName WDL_Fallback_UTF8_SandboxContextPropertyName
+WDL_WIN32_UTF8_IMPL const char* WDL_UTF8_SandboxContextPropertyName(void)
+{
+  return WDL_Fallback_UTF8_SandboxContextPropertyName();
+}
 
-#undef GetCurrentDirectoryUTF8
-#define GetCurrentDirectoryUTF8 WDL_Fallback_GetCurrentDirectoryUTF8
+WDL_WIN32_UTF8_IMPL DWORD GetCurrentDirectoryUTF8(DWORD bufferLength, LPTSTR buffer)
+{
+  return WDL_Fallback_GetCurrentDirectoryUTF8(bufferLength, buffer);
+}
 
-#undef SetCurrentDirectoryUTF8
-#define SetCurrentDirectoryUTF8 WDL_Fallback_SetCurrentDirectoryUTF8
+WDL_WIN32_UTF8_IMPL BOOL SetCurrentDirectoryUTF8(LPCTSTR path)
+{
+  return WDL_Fallback_SetCurrentDirectoryUTF8(path);
+}
 
-#undef GetOpenFileNameUTF8
-#define GetOpenFileNameUTF8 WDL_Fallback_GetOpenFileNameUTF8
+WDL_WIN32_UTF8_IMPL BOOL GetOpenFileNameUTF8(LPOPENFILENAME ofn)
+{
+  return WDL_Fallback_GetOpenFileNameUTF8(ofn);
+}
 
-#undef GetSaveFileNameUTF8
-#define GetSaveFileNameUTF8 WDL_Fallback_GetSaveFileNameUTF8
+WDL_WIN32_UTF8_IMPL BOOL GetSaveFileNameUTF8(LPOPENFILENAME ofn)
+{
+  return WDL_Fallback_GetSaveFileNameUTF8(ofn);
+}
 
-#undef LoadLibraryUTF8
-#define LoadLibraryUTF8 WDL_Fallback_LoadLibraryUTF8
+WDL_WIN32_UTF8_IMPL HINSTANCE LoadLibraryUTF8(LPCTSTR path)
+{
+  return WDL_Fallback_LoadLibraryUTF8(path);
+}
 
-#undef SHBrowseForFolderUTF8
-#define SHBrowseForFolderUTF8 WDL_Fallback_SHBrowseForFolderUTF8
+WDL_WIN32_UTF8_IMPL struct _ITEMIDLIST* SHBrowseForFolderUTF8(struct _browseinfoA* info)
+{
+  return WDL_Fallback_SHBrowseForFolderUTF8(info);
+}
 
-#undef SHGetPathFromIDListUTF8
-#define SHGetPathFromIDListUTF8 WDL_Fallback_SHGetPathFromIDListUTF8
+#if defined(_WIN64)
+WDL_WIN32_UTF8_IMPL BOOL SHGetPathFromIDListUTF8(const struct _ITEMIDLIST __unaligned* pidl, LPSTR path, int pathLength)
+#else
+WDL_WIN32_UTF8_IMPL BOOL SHGetPathFromIDListUTF8(const struct _ITEMIDLIST* pidl, LPSTR path, int pathLength)
+#endif
+{
+  return WDL_Fallback_SHGetPathFromIDListUTF8(pidl, path, pathLength);
+}
 
-#undef WDL_UTF8ToWC
-#define WDL_UTF8ToWC WDL_Fallback_UTF8ToWC
+WDL_WIN32_UTF8_IMPL WCHAR* WDL_UTF8ToWC(const char* utf8, BOOL doubleNull, int minimumSize, DWORD* sizeOut)
+{
+  return WDL_Fallback_UTF8ToWC(utf8, doubleNull, minimumSize, sizeOut);
+}
 
-#undef WDL_UTF8_SendBFFM_SETSEL
-#define WDL_UTF8_SendBFFM_SETSEL WDL_Fallback_UTF8_SendBFFM_SETSEL
+WDL_WIN32_UTF8_IMPL int WDL_UTF8_SendBFFM_SETSEL(HWND hwnd, const char* selection)
+{
+  return WDL_Fallback_UTF8_SendBFFM_SETSEL(hwnd, selection);
+}
 
-#undef GetCommandParametersUTF8
-#define GetCommandParametersUTF8 WDL_Fallback_GetCommandParametersUTF8
+WDL_WIN32_UTF8_IMPL LPSTR GetCommandParametersUTF8(void)
+{
+  return WDL_Fallback_GetCommandParametersUTF8();
+}
 
-#undef WDL_UTF8_HookComboBoxCtx
-#define WDL_UTF8_HookComboBoxCtx WDL_Fallback_UTF8_HookComboBoxCtx
+WDL_WIN32_UTF8_IMPL void WDL_UTF8_HookComboBoxCtx(struct WdlWindowsSandboxContext* context, HWND hwnd)
+{
+  WDL_Fallback_UTF8_HookComboBoxCtx(context, hwnd);
+}
 
-#undef WDL_UTF8_HookListViewCtx
-#define WDL_UTF8_HookListViewCtx WDL_Fallback_UTF8_HookListViewCtx
+WDL_WIN32_UTF8_IMPL void WDL_UTF8_HookListViewCtx(struct WdlWindowsSandboxContext* context, HWND hwnd)
+{
+  WDL_Fallback_UTF8_HookListViewCtx(context, hwnd);
+}
 
-#undef WDL_UTF8_HookListBoxCtx
-#define WDL_UTF8_HookListBoxCtx WDL_Fallback_UTF8_HookListBoxCtx
+WDL_WIN32_UTF8_IMPL void WDL_UTF8_HookListBoxCtx(struct WdlWindowsSandboxContext* context, HWND hwnd)
+{
+  WDL_Fallback_UTF8_HookListBoxCtx(context, hwnd);
+}
 
-#undef WDL_UTF8_HookTreeViewCtx
-#define WDL_UTF8_HookTreeViewCtx WDL_Fallback_UTF8_HookTreeViewCtx
+WDL_WIN32_UTF8_IMPL void WDL_UTF8_HookTreeViewCtx(struct WdlWindowsSandboxContext* context, HWND hwnd)
+{
+  WDL_Fallback_UTF8_HookTreeViewCtx(context, hwnd);
+}
 
-#undef WDL_UTF8_HookTabCtrlCtx
-#define WDL_UTF8_HookTabCtrlCtx WDL_Fallback_UTF8_HookTabCtrlCtx
+WDL_WIN32_UTF8_IMPL void WDL_UTF8_HookTabCtrlCtx(struct WdlWindowsSandboxContext* context, HWND hwnd)
+{
+  WDL_Fallback_UTF8_HookTabCtrlCtx(context, hwnd);
+}
 
-#undef WDL_UTF8_ListViewConvertDispInfoToW
-#define WDL_UTF8_ListViewConvertDispInfoToW WDL_Fallback_UTF8_ListViewConvertDispInfoToW
+WDL_WIN32_UTF8_IMPL void WDL_UTF8_ListViewConvertDispInfoToW(void* data)
+{
+  WDL_Fallback_UTF8_ListViewConvertDispInfoToW(data);
+}
 
 #endif
 

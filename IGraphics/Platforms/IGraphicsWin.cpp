@@ -212,6 +212,19 @@ WdlWindowsSandboxContext* IGraphicsWin::SandboxContext() const
 }
 #endif
 
+#if defined(OS_WIN)
+void IGraphicsWin::SetWinModuleHandle(void* pInstance)
+{
+  mHInstance = static_cast<HINSTANCE>(pInstance);
+#if IGRAPHICS_SANDBOX_WDL_WINDOWS
+  if (mSandboxContext)
+  {
+    mSandboxContext->module_handle = mHInstance;
+  }
+#endif
+}
+#endif
+
 #pragma mark - Mouse and tablet helpers
 
 extern float GetScaleForHWND(HWND hWnd);
@@ -942,8 +955,9 @@ IGraphicsWin::IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float s
   : IGRAPHICS_DRAW_CLASS(dlg, w, h, fps, scale)
 {
 #if IGRAPHICS_SANDBOX_WDL_WINDOWS
-  WdlWindowsSandboxContext_Init(&mSandboxContextStorage);
-  mSandboxContext = &mSandboxContextStorage;
+  mSandboxContextStorage = std::make_unique<WdlWindowsSandboxContext>();
+  mSandboxContext = mSandboxContextStorage.get();
+  WdlWindowsSandboxContext_Init(mSandboxContext);
   mSandboxContext->instance_id = SandboxInstanceCounter().fetch_add(1, std::memory_order_relaxed);
   char prefix[64];
   if (WdlWindowsSandboxContext_FormatUtf8PropertyPrefix(mSandboxContext, kIPlugUtf8PrefixBase, prefix, sizeof(prefix)))
@@ -984,6 +998,7 @@ IGraphicsWin::~IGraphicsWin()
     }
     WdlWindowsSandboxContext_Destroy(mSandboxContext);
     mSandboxContext = nullptr;
+    mSandboxContextStorage.reset();
   }
 #endif
 }

@@ -24,6 +24,8 @@
 #define IPLUG_SANDBOX_REQUIRE_BOOL(name)                                                                          \
   static_assert((name) == 0 || (name) == 1, "iPlug sandbox macro '" #name "' must be either 0 or 1")
 
+#define IPLUG_SANDBOX_ALL 1
+
 #ifndef IPLUG_SANDBOX_ALL
 #define IPLUG_SANDBOX_ALL 0
 #endif

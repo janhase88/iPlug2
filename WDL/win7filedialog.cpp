@@ -173,7 +173,7 @@ void Win7FileDialog::setFolder(const char *folder, int def)
     m_fod->SetFolder(si);
 }
 
-void Win7FileDialog::addText(DWORD id, char *txt)
+void Win7FileDialog::addText(DWORD id, const char *txt)
 {
   if(m_fdc == NULL) return;
 #if defined(WDL_NO_SUPPORT_UTF8)
@@ -188,7 +188,7 @@ void Win7FileDialog::addText(DWORD id, char *txt)
 #endif
 }
 
-void Win7FileDialog::addCheckbox(char *name, DWORD id, int defval)
+void Win7FileDialog::addCheckbox(const char *name, DWORD id, int defval)
 {
   if(m_fdc == NULL) return;
 
@@ -204,7 +204,7 @@ void Win7FileDialog::addCheckbox(char *name, DWORD id, int defval)
 #endif
 }
 
-void Win7FileDialog::startGroup(DWORD id, char *label)
+void Win7FileDialog::startGroup(DWORD id, const char *label)
 {
   if(m_fdc == NULL) return;
 #if defined(WDL_NO_SUPPORT_UTF8)

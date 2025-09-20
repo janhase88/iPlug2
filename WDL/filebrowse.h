@@ -9,6 +9,10 @@
 
 struct WdlWindowsSandboxContext;
 
+#if defined(__cplusplus) && defined(_WIN32)
+extern bool wdl_use_legacy_filebrowse;
+#endif
+
 bool WDL_ChooseDirectory(HWND parent, const char *text, const char *initialdir, char *fn, int fnsize, bool preservecwd);
 bool WDL_ChooseFileForSaveCtx(struct WdlWindowsSandboxContext* context,
                                       HWND parent,

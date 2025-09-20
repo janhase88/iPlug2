@@ -152,6 +152,15 @@ static inline const char* WDL_UTF8_SandboxContextPropertyName(void)
 #if defined(_WIN32)
   #include <windows.h>
 
+  #if defined(__has_include)
+    #if __has_include("../../WDL/filebrowse.h")
+      #include "../../WDL/filebrowse.h"
+    #endif
+  #else
+    #include "../../WDL/filebrowse.h"
+  #endif
+
+  #if !defined(_WDL_FILEBROWSE_H_)
 extern "C"
 {
 bool WDL_ChooseFileForSave(HWND parent,
@@ -163,9 +172,9 @@ bool WDL_ChooseFileForSave(HWND parent,
                            bool preservecwd,
                            char* fn,
                            int fnsize,
-                           const char* dlgid = NULL,
-                           void* dlgProc = NULL,
-                           HINSTANCE hInstance = NULL);
+                           const char* dlgid,
+                           void* dlgProc,
+                           HINSTANCE hInstance);
 
 char* WDL_ChooseFileForOpen2(HWND parent,
                              const char* text,
@@ -175,10 +184,11 @@ char* WDL_ChooseFileForOpen2(HWND parent,
                              const char* defext,
                              bool preservecwd,
                              int allowmul,
-                             const char* dlgid = NULL,
-                             void* dlgProc = NULL,
-                             HINSTANCE hInstance = NULL);
+                             const char* dlgid,
+                             void* dlgProc,
+                             HINSTANCE hInstance);
 }
+  #endif
 
 #if defined(__cplusplus)
 extern "C"
@@ -258,5 +268,6 @@ const char* IPlugSandboxFallback_SandboxContextPropertyName(void);
     #define WDL_UTF8_GetSandboxContext IPlugSandboxFallback_GetUtf8SandboxContext
     #define WDL_UTF8_SandboxContextPropertyName IPlugSandboxFallback_SandboxContextPropertyName
   #endif
+
 #endif
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Sandbox/IPlugSandboxConfig.h"
 #include "IGraphics.h"
 #include "IPlugPlatform.h"
 #include <cstdint>
@@ -75,6 +76,7 @@ struct VkFenceHolder
 #pragma warning(push)
 #pragma warning(disable : 4244)
 #include "include/core/SkCanvas.h"
+#include "include/core/SkFontMgr.h"
 #include "include/core/SkImage.h"
 #include "include/core/SkPath.h"
 #include "include/core/SkSurface.h"
@@ -220,6 +222,12 @@ private:
   SkMatrix mClipMatrix;
   SkMatrix mFinalMatrix;
 
+#if IGRAPHICS_SANDBOX_SKIA_FONT_CACHE
+  mutable StaticStorage<Font> mFontCache;
+#endif
+
+  sk_sp<SkFontMgr> mFontMgr;
+
 #if defined OS_WIN && defined IGRAPHICS_CPU
   WDL_TypedBuf<uint8_t> mSurfaceMemory;
 #endif
@@ -232,8 +240,7 @@ private:
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
   sk_sp<skia::textlayout::FontCollection> mFontCollection;
   sk_sp<skia::textlayout::TypefaceFontProvider> mTypefaceProvider;
-  sk_sp<SkFontMgr> mFontMgr;
-  static sk_sp<SkFontMgr> SParagraphFontMgr();
+  sk_sp<SkFontMgr> SParagraphFontMgr();
 #endif
 
 #ifdef IGRAPHICS_METAL
@@ -276,7 +283,7 @@ private:
   bool AssertValidSwapchainImage(VkImage image, const char* context);
 #endif
 
-  static StaticStorage<Font>& FontCacheStorage();
+  StaticStorage<Font>& FontCacheStorage() const;
 };
 
 END_IGRAPHICS_NAMESPACE

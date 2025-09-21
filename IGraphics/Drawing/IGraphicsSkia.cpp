@@ -142,7 +142,6 @@ extern std::map<std::string, MTLTexturePtr> gTextureMap;
 #if defined IGRAPHICS_VULKAN
 namespace
 {
-constexpr uint64_t kVKFrameWaitTimeoutNs = 16'000'000; // ~16 ms at 60 Hz
 template <typename...>
 struct MakeVoid
 {
@@ -355,18 +354,7 @@ bool IGraphicsSkia::PrepareCurrentSwapchainImageForFlush()
 
   if (mVKSubmissionPending)
   {
-    VkResult waitRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, kVKFrameWaitTimeoutNs);
-    if (waitRes == VK_TIMEOUT)
-    {
-      IGRAPHICS_VK_LOG("PrepareCurrentSwapchainImageForFlush",
-                          "waitForFencesTimeout",
-                          vulkanlog::Severity::kWarning,
-                          vulkanlog::MakeField("timeoutNs", static_cast<uint64_t>(kVKFrameWaitTimeoutNs)),
-                          vulkanlog::MakeField("submissionPending", mVKSubmissionPending));
-      mVKSkipFrame = true;
-      ResetVulkanSwapchainCaches();
-      return false;
-    }
+    VkResult waitRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
     if (waitRes != VK_SUCCESS)
     {
       IGRAPHICS_VK_LOG("PrepareCurrentSwapchainImageForFlush",
@@ -375,7 +363,6 @@ bool IGraphicsSkia::PrepareCurrentSwapchainImageForFlush()
                           vulkanlog::MakeField("vkResult", static_cast<int>(waitRes)));
       return false;
     }
-    mVKSubmissionPending = false;
   }
 
   VkResult resetRes = vkResetFences(mVKDevice, 1, &mVKInFlightFence);
@@ -387,6 +374,7 @@ bool IGraphicsSkia::PrepareCurrentSwapchainImageForFlush()
                         vulkanlog::MakeField("vkResult", static_cast<int>(resetRes)));
     return false;
   }
+
   mVKSubmissionPending = false;
 
   VkCommandBuffer commandBuffer = EnsureVulkanCommandBuffer();
@@ -456,19 +444,7 @@ bool IGraphicsSkia::PrepareCurrentSwapchainImageForFlush()
     return false;
   }
 
-  mVKSubmissionPending = true;
-
-  VkResult fenceRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, kVKFrameWaitTimeoutNs);
-  if (fenceRes == VK_TIMEOUT)
-  {
-    IGRAPHICS_VK_LOG("PrepareCurrentSwapchainImageForFlush",
-                        "waitForFencesPostSubmitTimeout",
-                        vulkanlog::Severity::kWarning,
-                        vulkanlog::MakeField("timeoutNs", static_cast<uint64_t>(kVKFrameWaitTimeoutNs)));
-    mVKSkipFrame = true;
-    ResetVulkanSwapchainCaches();
-    return false;
-  }
+  VkResult fenceRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
   if (fenceRes != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("PrepareCurrentSwapchainImageForFlush",
@@ -478,15 +454,7 @@ bool IGraphicsSkia::PrepareCurrentSwapchainImageForFlush()
     return false;
   }
 
-  VkResult postResetRes = vkResetFences(mVKDevice, 1, &mVKInFlightFence);
-  if (postResetRes != VK_SUCCESS)
-  {
-    IGRAPHICS_VK_LOG("PrepareCurrentSwapchainImageForFlush",
-                        "postSubmitResetFailed",
-                        vulkanlog::Severity::kError,
-                        vulkanlog::MakeField("vkResult", static_cast<int>(postResetRes)));
-    return false;
-  }
+  vkResetFences(mVKDevice, 1, &mVKInFlightFence);
   mVKImageLayouts[mVKCurrentImage] = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
   mVKSubmissionPending = false;
 
@@ -1279,32 +1247,14 @@ void IGraphicsSkia::DrawResize()
   if (mVKDevice != VK_NULL_HANDLE)
   {
     bool fenceCompleted = !mVKSubmissionPending;
-    bool fenceTimedOut = false;
     if (mVKSubmissionPending && mVKInFlightFence != VK_NULL_HANDLE)
     {
-      VkResult waitRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, kVKFrameWaitTimeoutNs);
+      VkResult waitRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
       if (waitRes == VK_SUCCESS)
       {
         fenceCompleted = true;
-        VkResult resetRes = vkResetFences(mVKDevice, 1, &mVKInFlightFence);
-        if (resetRes != VK_SUCCESS)
-        {
-          IGRAPHICS_VK_LOG("DrawResize",
-                              "resetFenceAfterWaitFailed",
-                              vulkanlog::Severity::kError,
-                              vulkanlog::MakeField("vkResult", static_cast<int>(resetRes)));
-          mVKCurrentImage = kInvalidImageIndex;
-          return;
-        }
+        vkResetFences(mVKDevice, 1, &mVKInFlightFence);
         mVKSubmissionPending = false;
-      }
-      else if (waitRes == VK_TIMEOUT)
-      {
-        IGRAPHICS_VK_LOG("DrawResize",
-                            "waitForFencesTimeout",
-                            vulkanlog::Severity::kWarning,
-                            vulkanlog::MakeField("timeoutNs", static_cast<uint64_t>(kVKFrameWaitTimeoutNs)));
-        fenceTimedOut = true;
       }
       else
       {
@@ -1316,11 +1266,6 @@ void IGraphicsSkia::DrawResize()
     }
     if (!fenceCompleted)
     {
-      if (fenceTimedOut)
-      {
-        mVKCurrentImage = kInvalidImageIndex;
-        return;
-      }
       VkResult idleRes = vkDeviceWaitIdle(mVKDevice);
       if (idleRes != VK_SUCCESS)
       {
@@ -1330,16 +1275,7 @@ void IGraphicsSkia::DrawResize()
                             vulkanlog::MakeField("vkResult", static_cast<int>(idleRes)));
       }
       if (mVKInFlightFence != VK_NULL_HANDLE)
-      {
-        VkResult resetRes = vkResetFences(mVKDevice, 1, &mVKInFlightFence);
-        if (resetRes != VK_SUCCESS)
-        {
-          IGRAPHICS_VK_LOG("DrawResize",
-                              "resetFenceAfterIdleFailed",
-                              vulkanlog::Severity::kError,
-                              vulkanlog::MakeField("vkResult", static_cast<int>(resetRes)));
-        }
-      }
+        vkResetFences(mVKDevice, 1, &mVKInFlightFence);
       mVKSubmissionPending = false;
     }
     if (mGrContext)
@@ -1494,36 +1430,9 @@ void IGraphicsSkia::DrawResize()
                               "createOrResizeFailure",
                               vulkanlog::Severity::kError,
                               vulkanlog::MakeField("vkResult", static_cast<int>(res)));
-          VkResult waitRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, kVKFrameWaitTimeoutNs);
-          if (waitRes == VK_TIMEOUT)
-          {
-            IGRAPHICS_VK_LOG("DrawResize",
-                                "createOrResizeFailureTimeout",
-                                vulkanlog::Severity::kWarning,
-                                vulkanlog::MakeField("timeoutNs", static_cast<uint64_t>(kVKFrameWaitTimeoutNs)));
-          }
-          else if (waitRes == VK_SUCCESS)
-          {
-            VkResult resetRes = vkResetFences(mVKDevice, 1, &mVKInFlightFence);
-            if (resetRes == VK_SUCCESS)
-            {
-              vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // ensure fence signalled
-            }
-            else
-            {
-              IGRAPHICS_VK_LOG("DrawResize",
-                                  "createOrResizeFailureReset",
-                                  vulkanlog::Severity::kError,
-                                  vulkanlog::MakeField("vkResult", static_cast<int>(resetRes)));
-            }
-          }
-          else
-          {
-            IGRAPHICS_VK_LOG("DrawResize",
-                                "createOrResizeFailureWait",
-                                vulkanlog::Severity::kError,
-                                vulkanlog::MakeField("vkResult", static_cast<int>(waitRes)));
-          }
+          vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
+          vkResetFences(mVKDevice, 1, &mVKInFlightFence);
+          vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // ensure fence signalled
           mVKSwapchain = VK_NULL_HANDLE;
           mVKSwapchainImages.clear();
           mVKCurrentImage = kInvalidImageIndex;
@@ -1649,48 +1558,33 @@ void IGraphicsSkia::BeginFrame()
                           "waitForFence",
                           vulkanlog::Severity::kDebug,
                           vulkanlog::MakeField("frameVersion", static_cast<uint64_t>(mVKFrameVersion)));
-      VkResult fenceRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, kVKFrameWaitTimeoutNs);
-      if (fenceRes == VK_TIMEOUT)
-      {
-        IGRAPHICS_VK_LOG("BeginFrame",
-                            "waitForFenceTimeout",
-                            vulkanlog::Severity::kWarning,
-                            vulkanlog::MakeField("timeoutNs", static_cast<uint64_t>(kVKFrameWaitTimeoutNs)));
-        mVKSkipFrame = true;
-        ResetVulkanSwapchainCaches();
-        mScreenSurface.reset();
-        mVKCurrentImage = kInvalidImageIndex;
-        if (lock.owns_lock())
-          lock.unlock();
-        return;
-      }
+      VkResult fenceRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, 1000000000); // 1s timeout
       if (fenceRes != VK_SUCCESS)
       {
-        IGRAPHICS_VK_LOG("BeginFrame",
-                            "waitForFenceFailed",
-                            vulkanlog::Severity::kError,
-                            vulkanlog::MakeField("vkResult", static_cast<int>(fenceRes)));
+        if (fenceRes == VK_TIMEOUT)
+        {
+          IGRAPHICS_VK_LOG_SIMPLE("BeginFrame",
+                              "waitForFenceTimeout",
+                              vulkanlog::Severity::kError);
+        }
+        vkResetFences(mVKDevice, 1, &mVKInFlightFence);
+        VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.waitSemaphoreCount = 1;
+        submitInfo.pWaitSemaphores = &mVKImageAvailableSemaphore;
+        submitInfo.pWaitDstStageMask = &waitStage;
+        VkResult submitRes = vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence); // ensure fence becomes signaled
+        if (submitRes == VK_SUCCESS)
+          mVKSubmissionPending = false;
+        else
+          IGRAPHICS_VK_LOG("BeginFrame",
+                              "fenceRecoverySubmitFailed",
+                              vulkanlog::Severity::kError,
+                              vulkanlog::MakeField("vkResult", static_cast<int>(submitRes)));
         mVKSkipFrame = true;
-        ResetVulkanSwapchainCaches();
         mScreenSurface.reset();
         mVKCurrentImage = kInvalidImageIndex;
-        if (lock.owns_lock())
-          lock.unlock();
-        return;
-      }
-      VkResult resetRes = vkResetFences(mVKDevice, 1, &mVKInFlightFence);
-      if (resetRes != VK_SUCCESS)
-      {
-        IGRAPHICS_VK_LOG("BeginFrame",
-                            "resetFenceFailed",
-                            vulkanlog::Severity::kError,
-                            vulkanlog::MakeField("vkResult", static_cast<int>(resetRes)));
-        mVKSkipFrame = true;
-        ResetVulkanSwapchainCaches();
-        mScreenSurface.reset();
-        mVKCurrentImage = kInvalidImageIndex;
-        if (lock.owns_lock())
-          lock.unlock();
         return;
       }
       mVKSubmissionPending = false;
@@ -1755,31 +1649,7 @@ void IGraphicsSkia::BeginFrame()
                               "releaseImageOutOfDate",
                               vulkanlog::Severity::kInfo,
                               vulkanlog::MakeField("vkResult", static_cast<int>(presentRes)));
-          VkResult waitRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, kVKFrameWaitTimeoutNs);
-          if (waitRes == VK_TIMEOUT)
-          {
-            IGRAPHICS_VK_LOG("BeginFrame",
-                                "releaseImageOutOfDateTimeout",
-                                vulkanlog::Severity::kWarning,
-                                vulkanlog::MakeField("timeoutNs", static_cast<uint64_t>(kVKFrameWaitTimeoutNs)));
-            mVKSkipFrame = true;
-            ResetVulkanSwapchainCaches();
-            mScreenSurface.reset();
-            mVKCurrentImage = kInvalidImageIndex;
-            return;
-          }
-          if (waitRes != VK_SUCCESS)
-          {
-            IGRAPHICS_VK_LOG("BeginFrame",
-                                "releaseImageOutOfDateWaitFailed",
-                                vulkanlog::Severity::kError,
-                                vulkanlog::MakeField("vkResult", static_cast<int>(waitRes)));
-            mVKSkipFrame = true;
-            ResetVulkanSwapchainCaches();
-            mScreenSurface.reset();
-            mVKCurrentImage = kInvalidImageIndex;
-            return;
-          }
+          vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
           mVKSubmissionPending = false;
           mVKSkipFrame = true;
           mScreenSurface.reset();
@@ -1887,68 +1757,18 @@ void IGraphicsSkia::BeginFrame()
     VkResult fenceStatus = vkGetFenceStatus(mVKDevice, mVKInFlightFence);
     if (fenceStatus == VK_SUCCESS)
     {
-      VkResult resetRes = vkResetFences(mVKDevice, 1, &mVKInFlightFence);
-      if (resetRes != VK_SUCCESS)
-      {
-        IGRAPHICS_VK_LOG("BeginFrame",
-                            "resetFenceAfterStatusFailed",
-                            vulkanlog::Severity::kError,
-                            vulkanlog::MakeField("vkResult", static_cast<int>(resetRes)));
-        mVKSkipFrame = true;
-        ResetVulkanSwapchainCaches();
-        mScreenSurface.reset();
-        mVKCurrentImage = kInvalidImageIndex;
-        if (lock.owns_lock())
-          lock.unlock();
-        return;
-      }
+      vkResetFences(mVKDevice, 1, &mVKInFlightFence);
     }
     else if (fenceStatus == VK_NOT_READY)
     {
-      VkResult waitRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, kVKFrameWaitTimeoutNs);
-      if (waitRes == VK_TIMEOUT)
-      {
-        IGRAPHICS_VK_LOG("BeginFrame",
-                            "fenceStatusTimeout",
-                            vulkanlog::Severity::kWarning,
-                            vulkanlog::MakeField("timeoutNs", static_cast<uint64_t>(kVKFrameWaitTimeoutNs)));
-        mVKSkipFrame = true;
-        ResetVulkanSwapchainCaches();
-        mScreenSurface.reset();
-        mVKCurrentImage = kInvalidImageIndex;
-        if (lock.owns_lock())
-          lock.unlock();
-        return;
-      }
-      if (waitRes != VK_SUCCESS)
-      {
+      VkResult waitRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
+      if (waitRes == VK_SUCCESS)
+        vkResetFences(mVKDevice, 1, &mVKInFlightFence);
+      else
         IGRAPHICS_VK_LOG("BeginFrame",
                             "fenceWaitFailed",
                             vulkanlog::Severity::kError,
                             vulkanlog::MakeField("vkResult", static_cast<int>(waitRes)));
-        mVKSkipFrame = true;
-        ResetVulkanSwapchainCaches();
-        mScreenSurface.reset();
-        mVKCurrentImage = kInvalidImageIndex;
-        if (lock.owns_lock())
-          lock.unlock();
-        return;
-      }
-      VkResult resetRes = vkResetFences(mVKDevice, 1, &mVKInFlightFence);
-      if (resetRes != VK_SUCCESS)
-      {
-        IGRAPHICS_VK_LOG("BeginFrame",
-                            "resetFenceAfterWaitFailed",
-                            vulkanlog::Severity::kError,
-                            vulkanlog::MakeField("vkResult", static_cast<int>(resetRes)));
-        mVKSkipFrame = true;
-        ResetVulkanSwapchainCaches();
-        mScreenSurface.reset();
-        mVKCurrentImage = kInvalidImageIndex;
-        if (lock.owns_lock())
-          lock.unlock();
-        return;
-      }
     }
     else
     {
@@ -2039,20 +1859,7 @@ void IGraphicsSkia::BeginFrame()
       mVKCurrentImage = kInvalidImageIndex;
       return;
     }
-    mVKSubmissionPending = true;
-    VkResult waitRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, kVKFrameWaitTimeoutNs);
-    if (waitRes == VK_TIMEOUT)
-    {
-      IGRAPHICS_VK_LOG("BeginFrame",
-                          "waitForFencesTimeout",
-                          vulkanlog::Severity::kWarning,
-                          vulkanlog::MakeField("timeoutNs", static_cast<uint64_t>(kVKFrameWaitTimeoutNs)));
-      mVKSkipFrame = true;
-      ResetVulkanSwapchainCaches();
-      mScreenSurface.reset();
-      mVKCurrentImage = kInvalidImageIndex;
-      return;
-    }
+    VkResult waitRes = vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
     if (waitRes != VK_SUCCESS)
     {
       IGRAPHICS_VK_LOG("BeginFrame",
@@ -2060,25 +1867,10 @@ void IGraphicsSkia::BeginFrame()
                           vulkanlog::Severity::kError,
                           vulkanlog::MakeField("vkResult", static_cast<int>(waitRes)));
       mVKSkipFrame = true;
-      ResetVulkanSwapchainCaches();
-      mScreenSurface.reset();
       mVKCurrentImage = kInvalidImageIndex;
       return;
     }
-    VkResult resetRes = vkResetFences(mVKDevice, 1, &mVKInFlightFence);
-    if (resetRes != VK_SUCCESS)
-    {
-      IGRAPHICS_VK_LOG("BeginFrame",
-                          "resetFenceAfterBarrierFailed",
-                          vulkanlog::Severity::kError,
-                          vulkanlog::MakeField("vkResult", static_cast<int>(resetRes)));
-      mVKSkipFrame = true;
-      ResetVulkanSwapchainCaches();
-      mScreenSurface.reset();
-      mVKCurrentImage = kInvalidImageIndex;
-      return;
-    }
-    mVKSubmissionPending = false;
+    vkResetFences(mVKDevice, 1, &mVKInFlightFence);
 
     mVKImageLayouts[imageIndex] = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     IGRAPHICS_VK_LOG("BeginFrame",

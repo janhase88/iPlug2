@@ -155,37 +155,22 @@ void IGraphics::SetScaleConstraints(float lo, float hi)
 
 void IGraphics::RemoveControlWithTag(int ctrlTag)
 {
-  mControls.DeletePtr(GetControlWithTag(ctrlTag), true);
-  mCtrlTags.erase(ctrlTag);
-  SetAllControlsDirty();
+  IControl* pControl = GetControlWithTag(ctrlTag);
+
+  if(!pControl)
+    return;
+
+  RemoveControl(pControl);
 }
 
 void IGraphics::RemoveControls(int fromIdx)
 {
-  int idx = NControls()-1;
-  while (idx >= fromIdx)
+  while (NControls() > fromIdx)
   {
-    IControl* pControl = GetControl(idx);
-    
-    if(ControlIsCaptured(pControl))
-      ReleaseMouseCapture();
+    IControl* pControl = GetControl(NControls()-1);
 
-    if(pControl == mMouseOver)
-      ClearMouseOver();
-
-    if(pControl == mInTextEntry)
-      ClearInTextEntryControl();
-
-    if(pControl == mInPopupMenu)
-      mInPopupMenu = nullptr;
-    
-    if(pControl->GetTag() > kNoTag)
-      mCtrlTags.erase(pControl->GetTag());
-    
-    mControls.Delete(idx--, true);
+    RemoveControl(pControl);
   }
-  
-  SetAllControlsDirty();
 }
 
 void IGraphics::RemoveControl(int idx)

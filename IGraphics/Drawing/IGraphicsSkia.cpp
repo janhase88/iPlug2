@@ -674,7 +674,7 @@ struct IGraphicsSkia::Font
 };
 
 // Fonts
-StaticStorage<IGraphicsSkia::Font>& IGraphicsSkia::FontCacheStorage()
+StaticStorage<IGraphicsSkia::Font>& IGraphicsSkia::FontCacheStorage() const
 {
 #if IGRAPHICS_SANDBOX_SKIA_FONT_CACHE
   return mFontCache;

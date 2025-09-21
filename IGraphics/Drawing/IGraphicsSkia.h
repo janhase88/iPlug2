@@ -224,7 +224,7 @@ private:
   SkMatrix mFinalMatrix;
 
 #if IGRAPHICS_SANDBOX_SKIA_FONT_CACHE
-  StaticStorage<Font> mFontCache;
+  mutable StaticStorage<Font> mFontCache;
 #endif
 
   sk_sp<SkFontMgr> mFontMgr;
@@ -289,7 +289,7 @@ private:
   bool AssertValidSwapchainImage(VkImage image, const char* context);
 #endif
 
-  StaticStorage<Font>& FontCacheStorage();
+  StaticStorage<Font>& FontCacheStorage() const;
 };
 
 END_IGRAPHICS_NAMESPACE

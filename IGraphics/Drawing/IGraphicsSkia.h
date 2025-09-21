@@ -87,6 +87,8 @@ struct VkFenceHolder
   #include "modules/skparagraph/include/TypefaceFontProvider.h"
 #endif
 
+class SkUnicode;
+
 namespace skia::textlayout
 {
 class FontCollection;
@@ -240,6 +242,11 @@ private:
   sk_sp<skia::textlayout::FontCollection> mFontCollection;
   sk_sp<skia::textlayout::TypefaceFontProvider> mTypefaceProvider;
   sk_sp<SkFontMgr> SParagraphFontMgr();
+  sk_sp<SkUnicode> GetUnicodeHelper();
+
+#if IGRAPHICS_SANDBOX_UNICODE_HELPER
+  sk_sp<SkUnicode> mUnicodeHelper;
+#endif
 #endif
 
 #ifdef IGRAPHICS_METAL

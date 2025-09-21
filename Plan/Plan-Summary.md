@@ -1,16 +1,13 @@
 [x] Continued From Previous Snapshot: YES — Updated PLAN-EXECUTION scope to include repairing Skia/Vulkan Windows compilation failures introduced by ctx/VulkanContext regressions.
 -----------------
 [x] File Overview:
-- Num files Changed: 5
+- Num files Changed: 2
 - Num files Created: 0
-- Num lines Modified: 28
+- Num lines Modified: 6
 
 [x] List of Files changed/created:
 - Plan/Current-Plan.xml
-- IGraphics/Platforms/VulkanContext.h
-- IGraphics/Drawing/IGraphicsSkia.cpp
-- IGraphics/Platforms/IGraphicsWin.h
-- Plan/Plan-Summary.md
+- IGraphics/Platforms/IGraphicsWin.cpp
 
 -----------------
 [x] Current plan:
@@ -29,4 +26,4 @@
 - FINAL CHECK — PREVIOUS STATUS: OPEN / CURRENT STATUS: OPEN
 
 [x] Message to User:
-Shared Vulkan struct now lives as PlatformVulkanContext with a legacy alias, letting Skia consume the Windows bootstrap data without member name clashes; next step remains drafting the Windows validation recipe for the open verification subtask.
+Windows Vulkan bootstrap now instantiates PlatformVulkanContext explicitly so the shared header resolves without colliding with Skia’s VulkanContext() accessors; plan context updated to record the fix while the Windows validation recipe task remains open.

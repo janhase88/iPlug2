@@ -367,7 +367,7 @@
           <name>Correct VulkanContext definitions</name>
           <status>SUCCESS</status>
           <tryCount>3</tryCount>
-          <crucialInfo>Shared header keeps the VkImage vector pointer and semaphore/fence handles consistent; struct now lives as PlatformVulkanContext with a legacy VulkanContext alias so downstream callers keep compiling while Skia disambiguates its accessor methods.</crucialInfo>
+          <crucialInfo>Shared header keeps the VkImage vector pointer and semaphore/fence handles consistent; struct now lives as PlatformVulkanContext with a legacy VulkanContext alias so downstream callers keep compiling while Skia disambiguates its accessor methods. Windows bootstrap now instantiates PlatformVulkanContext explicitly to avoid the VulkanContext() member accessor collisions that previously yielded pointer-to-member syntax errors.</crucialInfo>
           <continue-info>Confirm that any additional Vulkan helpers include the shared header instead of re-declaring the struct.</continue-info>
         </task>
         <task>

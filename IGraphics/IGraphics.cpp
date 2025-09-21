@@ -1343,9 +1343,12 @@ void IGraphics::OnDropMultiple(const std::vector<const char*>& paths, float x, f
 void IGraphics::ReleaseMouseCapture()
 {
 #ifdef OS_WIN
-  if (::GetCapture() == static_cast<HWND>(GetWindow()))
+  if (auto window = static_cast<HWND>(GetWindow()))
   {
-    ::ReleaseCapture();
+    if (::GetCapture() == window)
+    {
+      ::ReleaseCapture();
+    }
   }
 #endif
   mCapturedMap.clear();

@@ -512,6 +512,10 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
     pGraphics->OnMouseOut();
     return 0;
   }
+  case WM_CAPTURECHANGED: {
+    pGraphics->ReleaseMouseCapture();
+    return 0;
+  }
   case WM_LBUTTONUP:
   case WM_RBUTTONUP: {
     ReleaseCapture();

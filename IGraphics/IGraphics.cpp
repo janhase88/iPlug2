@@ -14,6 +14,10 @@
 #pragma warning(disable:4244) // float conversion
 #include "nanosvg.h"
 
+#ifdef OS_WIN
+#include <windows.h>
+#endif
+
 #if defined VST3_API
 #include "pluginterfaces/base/ustring.h"
 #include "IPlugVST3.h"
@@ -1339,6 +1343,12 @@ void IGraphics::OnDropMultiple(const std::vector<const char*>& paths, float x, f
 void IGraphics::ReleaseMouseCapture()
 {
   mCapturedMap.clear();
+#ifdef OS_WIN
+  if (::GetCapture() == static_cast<HWND>(GetWindow()))
+  {
+    ::ReleaseCapture();
+  }
+#endif
   if (mCursorHidden)
     HideMouseCursor(false);
 }

@@ -2524,8 +2524,46 @@ void IGraphicsSkia::EndFrame()
                        vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(swapImage)));
   if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
   {
-    vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
-    lock.unlock();
+    uint64_t waitedNs = 0;
+    VkResult waitVkResult = VK_SUCCESS;
+    FenceWaitOutcome waitOutcome = WaitForFenceWithinBudget(mVKDevice,
+                                                            mVKInFlightFence,
+                                                            kVKFrameWaitBudgetNs,
+                                                            kVKFrameWaitPollNs,
+                                                            waitedNs,
+                                                            waitVkResult);
+    if (waitOutcome == FenceWaitOutcome::kTimeout)
+    {
+      IGRAPHICS_VK_LOG("EndFrame",
+                          "presentOutOfDateTimeout",
+                          vulkanlog::Severity::kWarning,
+                          vulkanlog::MakeField("waitedNs", waitedNs),
+                          vulkanlog::MakeField("budgetNs", static_cast<uint64_t>(kVKFrameWaitBudgetNs)));
+      mVKSkipFrame = true;
+      ResetVulkanSwapchainCaches();
+      mScreenSurface.reset();
+      mVKCurrentImage = kInvalidImageIndex;
+      if (lock.owns_lock())
+        lock.unlock();
+      return;
+    }
+    if (waitOutcome == FenceWaitOutcome::kError)
+    {
+      IGRAPHICS_VK_LOG("EndFrame",
+                          "presentOutOfDateWaitFailed",
+                          vulkanlog::Severity::kError,
+                          vulkanlog::MakeField("vkResult", static_cast<int>(waitVkResult)),
+                          vulkanlog::MakeField("waitedNs", waitedNs));
+      mVKSkipFrame = true;
+      ResetVulkanSwapchainCaches();
+      mScreenSurface.reset();
+      mVKCurrentImage = kInvalidImageIndex;
+      if (lock.owns_lock())
+        lock.unlock();
+      return;
+    }
+    if (lock.owns_lock())
+      lock.unlock();
     DrawResize();
     return;
   }

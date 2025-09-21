@@ -859,15 +859,14 @@ thread_local bool gSkUnicodeCreated = false;
 bool gSkUnicodeCreated = false;
 #endif
 
-sk_sp<SkUnicode> GetUnicode()
+namespace
 {
-#if IGRAPHICS_SANDBOX_UNICODE_HELPER
-  thread_local std::once_flag flag;
-  thread_local sk_sp<SkUnicode> unicode;
-#else
+#if !IGRAPHICS_SANDBOX_UNICODE_HELPER
+sk_sp<SkUnicode> GetSharedUnicode()
+{
   static std::once_flag flag;
   static sk_sp<SkUnicode> unicode;
-#endif
+
   std::call_once(flag, [] {
     unicode = SkUnicodes::ICU::Make();
     gSkUnicodeCreated = true;
@@ -881,6 +880,8 @@ sk_sp<SkUnicode> GetUnicode()
 
   return unicode;
 }
+#endif
+} // namespace
 #endif
 
 IGraphicsSkia::IGraphicsSkia(IGEditorDelegate& dlg, int w, int h, int fps, float scale)
@@ -917,6 +918,30 @@ IGraphicsSkia::IGraphicsSkia(IGEditorDelegate& dlg, int w, int h, int fps, float
   }
 #endif
 }
+
+#if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
+sk_sp<SkUnicode> IGraphicsSkia::GetUnicodeHelper()
+{
+#if IGRAPHICS_SANDBOX_UNICODE_HELPER
+  if (!mUnicodeHelper)
+  {
+    mUnicodeHelper = SkUnicodes::ICU::Make();
+
+    if (!mUnicodeHelper)
+    {
+      DBGMSG("Could not load unicode data\n");
+      return nullptr;
+    }
+
+    gSkUnicodeCreated = true;
+  }
+
+  return mUnicodeHelper;
+#else
+  return GetSharedUnicode();
+#endif
+}
+#endif
 
 IGraphicsSkia::~IGraphicsSkia()
 {
@@ -2847,7 +2872,7 @@ void IGraphicsSkia::DrawMultiLineText(const IText& text, const char* str, const 
   ParagraphStyle paragraphStyle;
   paragraphStyle.setTextAlign(ConvertTextAlign(text.mAlign));
 
-  auto builder = ParagraphBuilder::make(paragraphStyle, mFontCollection, GetUnicode());
+  auto builder = ParagraphBuilder::make(paragraphStyle, mFontCollection, GetUnicodeHelper());
 
   assert(builder && "Paragraph Builder couldn't be created");
 

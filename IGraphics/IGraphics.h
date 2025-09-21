@@ -43,6 +43,7 @@
 #include "IPlugConstants.h"
 #include "IPlugLogger.h"
 #include "IPlugPaths.h"
+#include "Sandbox/IPlugSandboxConfig.h"
 
 #include "IGraphicsConstants.h"
 #include "IGraphicsStructs.h"

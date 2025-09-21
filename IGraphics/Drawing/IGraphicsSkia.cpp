@@ -138,6 +138,10 @@
 using namespace iplug;
 using namespace igraphics;
 
+#if defined IGRAPHICS_VULKAN
+using PlatformVulkanContext = ::iplug::igraphics::VulkanContext;
+#endif
+
 extern std::map<std::string, MTLTexturePtr> gTextureMap;
 
 #if defined IGRAPHICS_VULKAN
@@ -1144,7 +1148,7 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   mMTLCommandQueue = (void*)commandQueue;
   mMTLLayer = pContext;
 #elif defined IGRAPHICS_VULKAN
-  VulkanContext* ctx = static_cast<VulkanContext*>(pContext);
+  PlatformVulkanContext* ctx = static_cast<PlatformVulkanContext*>(pContext);
 
   mVKInstance = ctx->instance;
   mVKPhysicalDevice = ctx->physicalDevice;

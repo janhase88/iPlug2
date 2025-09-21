@@ -348,11 +348,12 @@
     <task>
       <name>FIX_VULKAN_CTX_COMPILATION_ERRORS</name>
       <status>AWAIT-CHILDREN-TASK-SUCCESS</status>
-      <tryCount>1</tryCount>
+      <tryCount>2</tryCount>
       <crucialInfo>Windows Skia/Vulkan builds fail because ctx is undefined throughout IGraphicsSkia Vulkan paths,
       VulkanContext references use pointer-to-member syntax errors, Vulkan image vectors receive mismatched arguments,
       and related helper declarations lack headers. Centralized the VulkanContext definition so both IGraphicsWin and
-      IGraphicsSkia see the same struct, restoring ctx visibility and ensuring swapchain image vectors receive VkImage handles.</crucialInfo>
+      IGraphicsSkia see the same struct, restoring ctx visibility, and added a dedicated PlatformVulkanContext alias in
+      IGraphicsSkia.cpp so references resolve cleanly even with the renderer's VulkanContext() accessors.</crucialInfo>
       <continue-info>Focus on authoring the remote validation recipe for Windows builds once the outstanding verification subtask completes.</continue-info>
       <subtasks>
         <task>
@@ -365,8 +366,8 @@
         <task>
           <name>Correct VulkanContext definitions</name>
           <status>SUCCESS</status>
-          <tryCount>1</tryCount>
-          <crucialInfo>Shared header keeps the VkImage vector pointer and semaphore/fence handles consistent, while aliasing in IGraphicsWin.h avoids pointer-to-member parsing errors triggered by the nested namespace lookup.</crucialInfo>
+          <tryCount>2</tryCount>
+          <crucialInfo>Shared header keeps the VkImage vector pointer and semaphore/fence handles consistent; additional PlatformVulkanContext alias inside IGraphicsSkia.cpp disambiguates the struct from member accessors to prevent pointer-to-member parsing errors.</crucialInfo>
           <continue-info>Confirm that any additional Vulkan helpers include the shared header instead of re-declaring the struct.</continue-info>
         </task>
         <task>

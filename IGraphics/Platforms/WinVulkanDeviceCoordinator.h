@@ -9,12 +9,14 @@
 #include <cstdint>
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstring>
 #include <vector>
 
 #include "IPlugPlatform.h"
 
 #include "IPlugLogger.h"
+#include "Sandbox/IPlugSandboxConfig.h"
 
 #include "VulkanLogging.h"
 
@@ -60,6 +62,9 @@ public:
   void Teardown();
   bool IsInitialized() const { return mInitialized; }
   const WinVulkanDeviceSnapshot& Snapshot() const { return mSnapshot; }
+#if !IGRAPHICS_SANDBOX_VK_DEVICE
+  bool HasOtherSharedReferences() const;
+#endif
 
 private:
   VkResult CreateInstance(const WinVulkanDeviceRequest& request);
@@ -69,6 +74,11 @@ private:
   void ResetSnapshot();
 
   bool mInitialized = false;
+#if !IGRAPHICS_SANDBOX_VK_DEVICE
+  bool mHasSharedRef = false;
+  inline static std::atomic<uint32_t> sSharedRefCount{0};
+  inline static WinVulkanDeviceSnapshot sSharedSnapshot{};
+#endif
   WinVulkanDeviceSnapshot mSnapshot{};
 };
 
@@ -86,11 +96,41 @@ inline WinVulkanDeviceCoordinator::~WinVulkanDeviceCoordinator()
 
 inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequest& request, WinVulkanDeviceSnapshot& outSnapshot)
 {
+#if !IGRAPHICS_SANDBOX_VK_DEVICE
+  if (mHasSharedRef)
+  {
+    outSnapshot = mSnapshot;
+    return VK_SUCCESS;
+  }
+
+  const uint32_t currentRefs = sSharedRefCount.load(std::memory_order_acquire);
+  if (currentRefs > 0)
+  {
+    mSnapshot = sSharedSnapshot;
+    mSnapshot.surface = VK_NULL_HANDLE;
+    VkResult surfaceRes = CreateSurface(request);
+    if (surfaceRes != VK_SUCCESS)
+    {
+      IGRAPHICS_VK_LOG("WinVulkanDeviceCoordinator.Initialize",
+                          "vkCreateWin32SurfaceKHR",
+                          vulkanlog::Severity::kError,
+                          vulkanlog::MakeField("vkResult", static_cast<int>(surfaceRes)));
+      ResetSnapshot();
+      return surfaceRes;
+    }
+    mInitialized = true;
+    mHasSharedRef = true;
+    outSnapshot = mSnapshot;
+    sSharedRefCount.fetch_add(1, std::memory_order_acq_rel);
+    return VK_SUCCESS;
+  }
+#else
   if (mInitialized)
   {
     outSnapshot = mSnapshot;
     return VK_SUCCESS;
   }
+#endif
 
   ResetSnapshot();
 
@@ -140,24 +180,68 @@ inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequ
 
   mInitialized = true;
   outSnapshot = mSnapshot;
+#if !IGRAPHICS_SANDBOX_VK_DEVICE
+  sSharedSnapshot = mSnapshot;
+  sSharedSnapshot.surface = VK_NULL_HANDLE;
+  sSharedRefCount.store(1, std::memory_order_release);
+  mHasSharedRef = true;
+#endif
   return VK_SUCCESS;
 }
 
 inline void WinVulkanDeviceCoordinator::Teardown()
 {
+#if !IGRAPHICS_SANDBOX_VK_DEVICE
+  bool destroyShared = true;
+  if (mHasSharedRef)
+  {
+    const uint32_t previousRefs = sSharedRefCount.fetch_sub(1, std::memory_order_acq_rel);
+    mHasSharedRef = false;
+    if (previousRefs == 0)
+    {
+      sSharedRefCount.store(0, std::memory_order_release);
+      destroyShared = false;
+    }
+    else if (previousRefs > 1)
+    {
+      destroyShared = false;
+    }
+  }
+  else
+  {
+    if (sSharedRefCount.load(std::memory_order_acquire) > 0)
+    {
+      destroyShared = false;
+    }
+    else if (!mInitialized && mSnapshot.instance == VK_NULL_HANDLE && mSnapshot.device == VK_NULL_HANDLE)
+    {
+      return;
+    }
+  }
+#else
   if (!mInitialized && mSnapshot.instance == VK_NULL_HANDLE && mSnapshot.device == VK_NULL_HANDLE)
   {
     return;
   }
-
-  if (mSnapshot.device != VK_NULL_HANDLE)
-  {
-    vkDestroyDevice(mSnapshot.device, nullptr);
-  }
+  const bool destroyShared = true;
+#endif
 
   if (mSnapshot.surface != VK_NULL_HANDLE && mSnapshot.instance != VK_NULL_HANDLE)
   {
     vkDestroySurfaceKHR(mSnapshot.instance, mSnapshot.surface, nullptr);
+    mSnapshot.surface = VK_NULL_HANDLE;
+  }
+
+#if !IGRAPHICS_SANDBOX_VK_DEVICE
+  if (!destroyShared)
+  {
+    return;
+  }
+#endif
+
+  if (mSnapshot.device != VK_NULL_HANDLE)
+  {
+    vkDestroyDevice(mSnapshot.device, nullptr);
   }
 
   if (mSnapshot.instance != VK_NULL_HANDLE)
@@ -165,9 +249,24 @@ inline void WinVulkanDeviceCoordinator::Teardown()
     vkDestroyInstance(mSnapshot.instance, nullptr);
   }
 
+#if !IGRAPHICS_SANDBOX_VK_DEVICE
+  sSharedSnapshot = {};
+#endif
   ResetSnapshot();
   mInitialized = false;
 }
+
+#if !IGRAPHICS_SANDBOX_VK_DEVICE
+inline bool WinVulkanDeviceCoordinator::HasOtherSharedReferences() const
+{
+  const uint32_t refCount = sSharedRefCount.load(std::memory_order_acquire);
+  if (mHasSharedRef)
+  {
+    return refCount > 1;
+  }
+  return refCount > 0;
+}
+#endif
 
 inline VkResult WinVulkanDeviceCoordinator::CreateInstance(const WinVulkanDeviceRequest& request)
 {

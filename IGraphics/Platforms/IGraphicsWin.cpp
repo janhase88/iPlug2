@@ -1370,7 +1370,13 @@ void IGraphicsWin::DestroyVulkanContext()
 #if IGRAPHICS_SANDBOX_LOGGING
   const vulkanlog::ScopedLoggerBinding loggerBinding(mVulkanLoggerContext);
 #endif
-  if (VulkanDevice())
+#if !IGRAPHICS_SANDBOX_VK_DEVICE
+  const bool sharedElsewhere = VulkanCoordinator().HasOtherSharedReferences();
+#else
+  const bool sharedElsewhere = false;
+#endif
+
+  if (VulkanDevice() && !sharedElsewhere)
     vkDeviceWaitIdle(VulkanDevice());
 
   VulkanImageAvailableSemaphore().Reset();

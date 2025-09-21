@@ -37,6 +37,10 @@ using VST3_API_BASE = iplug::IPlugVST3Controller;
 #include "ITextEntryControl.h"
 #include "IBubbleControl.h"
 
+#ifdef OS_WIN
+#include <windows.h>
+#endif
+
 using namespace iplug;
 using namespace igraphics;
 
@@ -1341,6 +1345,9 @@ void IGraphics::ReleaseMouseCapture()
   mCapturedMap.clear();
   if (mCursorHidden)
     HideMouseCursor(false);
+#ifdef OS_WIN
+  ::ReleaseCapture();
+#endif
 }
 
 int IGraphics::GetMouseControlIdx(float x, float y, bool mouseOver)

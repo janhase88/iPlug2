@@ -139,7 +139,7 @@ using namespace iplug;
 using namespace igraphics;
 
 #if defined IGRAPHICS_VULKAN
-using PlatformVulkanContext = ::iplug::igraphics::VulkanContext;
+using PlatformVulkanContext = ::iplug::igraphics::PlatformVulkanContext;
 #endif
 
 extern std::map<std::string, MTLTexturePtr> gTextureMap;

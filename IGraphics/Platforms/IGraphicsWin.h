@@ -33,10 +33,6 @@
 BEGIN_IPLUG_NAMESPACE
 BEGIN_IGRAPHICS_NAMESPACE
 
-#ifdef IGRAPHICS_VULKAN
-using VulkanContext = ::iplug::igraphics::VulkanContext;
-#endif
-
 // Forward declare the OLE drop target helper (defined in IGraphicsWin_dnd.h)
 namespace DragAndDropHelpers
 {

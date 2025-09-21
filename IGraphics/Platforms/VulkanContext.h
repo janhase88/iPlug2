@@ -22,7 +22,7 @@ struct LoggerContext;
 }
 #endif
 
-struct VulkanContext
+struct PlatformVulkanContext
 {
   VkInstance instance = VK_NULL_HANDLE;
   VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
@@ -41,6 +41,8 @@ struct VulkanContext
   const vulkanlog::LoggerContext* loggerContext = nullptr;
 #endif
 };
+
+using VulkanContext = PlatformVulkanContext;
 
 } // namespace igraphics
 } // namespace iplug

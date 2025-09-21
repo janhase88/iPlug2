@@ -114,6 +114,7 @@
   #endif
 
 #elif defined IGRAPHICS_VULKAN
+  #include "../Platforms/VulkanContext.h"
   #include "include/gpu/MutableTextureState.h"
   #include "include/gpu/ganesh/vk/GrVkBackendSemaphore.h"
   #include "include/gpu/ganesh/vk/GrVkBackendSurface.h"

@@ -51,6 +51,9 @@ struct VulkanContext
   std::vector<VkImage>* swapchainImages = nullptr;
   VkFormat format = VK_FORMAT_B8G8R8A8_UNORM;
   VkImageUsageFlags usageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+#if IGRAPHICS_SANDBOX_LOGGING
+  const vulkanlog::LoggerContext* loggerContext = nullptr;
+#endif
 };
 #endif
 
@@ -110,6 +113,15 @@ public:
   void* GetWindow() override { return mPlugWnd; }
 
   const char* GetPlatformAPIStr() override { return "win32"; };
+
+#if defined(IGRAPHICS_VULKAN) && IGRAPHICS_SANDBOX_LOGGING
+  void SetVulkanLogSink(vulkanlog::LogSink sink);
+  vulkanlog::LogSink GetVulkanLogSink() const;
+  #if IGRAPHICS_SANDBOX_VK_LOG_LEVEL
+  void SetVulkanLogVerbosity(vulkanlog::Verbosity verbosity);
+  vulkanlog::Verbosity GetVulkanLogVerbosity() const;
+  #endif
+#endif
 
   bool GetTextFromClipboard(WDL_String& str) override;
   bool SetTextInClipboard(const char* str) override;
@@ -174,11 +186,36 @@ private:
   void ActivateGLContext() override;
   void DeactivateGLContext() override;
 
+  UINT_PTR DisplayTimerId() const;
+  void StartDisplayTimer(HWND hWnd, int periodMs);
+  void StopDisplayTimer();
+
 #ifdef IGRAPHICS_VULKAN
   bool CreateVulkanContext(); // Vulkan context management
   void DestroyVulkanContext();
   void ActivateVulkanContext();
   void DeactivateVulkanContext();
+#if IGRAPHICS_SANDBOX_VULKAN
+  struct SandboxVulkanState
+  {
+    WinVulkanDeviceCoordinator deviceCoordinator;
+    VkInstance instance = VK_NULL_HANDLE;
+    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+    VkDevice device = VK_NULL_HANDLE;
+    VkSurfaceKHR surface = VK_NULL_HANDLE;
+    VkSwapchainHolder swapchain;
+    VkQueue queue = VK_NULL_HANDLE;
+    uint32_t queueFamily = 0;
+    VkSemaphoreHolder imageAvailableSemaphore;
+    VkSemaphoreHolder renderFinishedSemaphore;
+    VkFenceHolder inFlightFence;
+    std::vector<VkImage> swapchainImages;
+    VkFormat format = VK_FORMAT_B8G8R8A8_UNORM;
+    VkImageUsageFlags swapchainUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  };
+
+  SandboxVulkanState mSandboxVulkan{};
+#else
   WinVulkanDeviceCoordinator mVulkanDeviceCoordinator;
   VkInstance mVkInstance = VK_NULL_HANDLE;
   VkPhysicalDevice mVkPhysicalDevice = VK_NULL_HANDLE;
@@ -193,6 +230,39 @@ private:
   std::vector<VkImage> mVkSwapchainImages;
   VkFormat mVkFormat = VK_FORMAT_B8G8R8A8_UNORM;
   VkImageUsageFlags mVkSwapchainUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+#endif
+  WinVulkanDeviceCoordinator& VulkanCoordinator();
+  const WinVulkanDeviceCoordinator& VulkanCoordinator() const;
+  VkInstance& VulkanInstance();
+  VkInstance VulkanInstance() const;
+  VkPhysicalDevice& VulkanPhysicalDevice();
+  VkPhysicalDevice VulkanPhysicalDevice() const;
+  VkDevice& VulkanDevice();
+  VkDevice VulkanDevice() const;
+  VkSurfaceKHR& VulkanSurface();
+  VkSurfaceKHR VulkanSurface() const;
+  VkSwapchainHolder& VulkanSwapchain();
+  const VkSwapchainHolder& VulkanSwapchain() const;
+  VkQueue& VulkanQueue();
+  VkQueue VulkanQueue() const;
+  uint32_t& VulkanQueueFamily();
+  uint32_t VulkanQueueFamily() const;
+  VkSemaphoreHolder& VulkanImageAvailableSemaphore();
+  const VkSemaphoreHolder& VulkanImageAvailableSemaphore() const;
+  VkSemaphoreHolder& VulkanRenderFinishedSemaphore();
+  const VkSemaphoreHolder& VulkanRenderFinishedSemaphore() const;
+  VkFenceHolder& VulkanInFlightFence();
+  const VkFenceHolder& VulkanInFlightFence() const;
+  std::vector<VkImage>& VulkanSwapchainImages();
+  const std::vector<VkImage>& VulkanSwapchainImages() const;
+  VkFormat& VulkanFormat();
+  VkFormat VulkanFormat() const;
+  VkImageUsageFlags& VulkanSwapchainUsageFlags();
+  VkImageUsageFlags VulkanSwapchainUsageFlags() const;
+  bool HasVulkanContext() const;
+#if IGRAPHICS_SANDBOX_LOGGING
+  vulkanlog::LoggerContext mVulkanLoggerContext{};
+#endif
 #endif
 
 #ifdef IGRAPHICS_GL
@@ -243,17 +313,29 @@ private:
   int& WndClassRefCount();
   const wchar_t* WndClassName() const;
 
-#if IGRAPHICS_SANDBOX_WIN_CLASS
-  int mWndClassRefCount = 0;
-  std::wstring mWndClassNameW;
-#endif
-
 #if IGRAPHICS_SANDBOX_WIN_FONTS
   StaticStorage<InstalledFont> mFontCache;
   StaticStorage<HFontHolder> mHFontCache;
 #else
   static StaticStorage<InstalledFont> sPlatformFontCache;
   static StaticStorage<HFontHolder> sHFontCache;
+#endif
+
+#if IGRAPHICS_SANDBOX_WIN
+  struct SandboxWinState
+  {
+#if IGRAPHICS_SANDBOX_WIN_CLASS
+    int wndClassRefCount = 0;
+    std::wstring wndClassName;
+#endif
+#if IGRAPHICS_SANDBOX_WIN_TIMERS
+    UINT_PTR displayTimerId = 0;
+    int displayTimerPeriodMs = 0;
+    bool displayTimerActive = false;
+#endif
+  };
+
+  SandboxWinState mSandboxState{};
 #endif
 
   std::unordered_map<ITouchID, IMouseInfo> mDeltaCapture; // associative array of touch id pointers to IMouseInfo structs, so that we can get deltas

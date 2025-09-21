@@ -22,6 +22,7 @@
   #endif
   #include <vulkan/vulkan.h>
   #include "include/gpu/vk/GrVkTypes.h"
+  #include "../Platforms/VulkanLogging.h"
 
 struct VkSwapchainHolder
 {
@@ -258,30 +259,99 @@ private:
 
 #ifdef IGRAPHICS_VULKAN
   static constexpr uint32_t kInvalidImageIndex = std::numeric_limits<uint32_t>::max();
-  VkInstance mVKInstance = VK_NULL_HANDLE;
-  VkPhysicalDevice mVKPhysicalDevice = VK_NULL_HANDLE;
-  VkDevice mVKDevice = VK_NULL_HANDLE;
-  VkSurfaceKHR mVKSurface = VK_NULL_HANDLE;
-  VkSwapchainKHR mVKSwapchain = VK_NULL_HANDLE;
-  VkQueue mVKQueue = VK_NULL_HANDLE;
-  VkCommandPool mVKCommandPool = VK_NULL_HANDLE;
-  VkCommandBuffer mVKCommandBuffer = VK_NULL_HANDLE;
-  uint32_t mVKQueueFamily = 0;
-  std::vector<VkImage> mVKSwapchainImages;
-  std::vector<VkImageLayout> mVKImageLayouts;
-  std::vector<sk_sp<SkSurface>> mVKSwapchainSurfaces;
-  uint32_t mVKCurrentImage = kInvalidImageIndex;
-  VkSemaphore mVKImageAvailableSemaphore = VK_NULL_HANDLE;
-  VkSemaphore mVKRenderFinishedSemaphore = VK_NULL_HANDLE;
-  VkFence mVKInFlightFence = VK_NULL_HANDLE;
-  VkFormat mVKSwapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
-  VkImageUsageFlags mVKSwapchainUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-  bool mVKSkipFrame = false;
-  bool mVKSubmissionPending = false;
-  uint64_t mVKSwapchainVersion = 0;
-  uint64_t mVKFrameVersion = 0;
-  std::mutex mVKSwapchainMutex;
-  std::unordered_set<VkImage> mVKDebugImages;
+  struct SkiaVulkanContextState
+  {
+    VkInstance instance = VK_NULL_HANDLE;
+    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+    VkDevice device = VK_NULL_HANDLE;
+    VkSurfaceKHR surface = VK_NULL_HANDLE;
+    VkSwapchainKHR swapchain = VK_NULL_HANDLE;
+    VkQueue queue = VK_NULL_HANDLE;
+    VkCommandPool commandPool = VK_NULL_HANDLE;
+    VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+    uint32_t queueFamily = 0;
+    std::vector<VkImage> swapchainImages;
+    std::vector<VkImageLayout> imageLayouts;
+    std::vector<sk_sp<SkSurface>> swapchainSurfaces;
+    uint32_t currentImage = kInvalidImageIndex;
+    VkSemaphore imageAvailableSemaphore = VK_NULL_HANDLE;
+    VkSemaphore renderFinishedSemaphore = VK_NULL_HANDLE;
+    VkFence inFlightFence = VK_NULL_HANDLE;
+    VkFormat swapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
+    VkImageUsageFlags swapchainUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    bool skipFrame = false;
+    bool submissionPending = false;
+    uint64_t swapchainVersion = 0;
+    uint64_t frameVersion = 0;
+    std::mutex swapchainMutex;
+    std::unordered_set<VkImage> debugImages;
+#if IGRAPHICS_SANDBOX_LOGGING
+    const vulkanlog::LoggerContext* loggerContext = nullptr;
+#endif
+  };
+
+#if IGRAPHICS_SANDBOX_VK_CONTEXT
+  SkiaVulkanContextState mVulkanContext{};
+#else
+  static SkiaVulkanContextState& SharedVulkanContext();
+#endif
+
+  SkiaVulkanContextState& VulkanContext();
+  const SkiaVulkanContextState& VulkanContext() const;
+
+  VkInstance& VKInstance();
+  const VkInstance& VKInstance() const;
+  VkPhysicalDevice& VKPhysicalDevice();
+  const VkPhysicalDevice& VKPhysicalDevice() const;
+  VkDevice& VKDevice();
+  const VkDevice& VKDevice() const;
+  VkSurfaceKHR& VKSurface();
+  const VkSurfaceKHR& VKSurface() const;
+  VkSwapchainKHR& VKSwapchain();
+  const VkSwapchainKHR& VKSwapchain() const;
+  VkQueue& VKQueue();
+  const VkQueue& VKQueue() const;
+  VkCommandPool& VKCommandPool();
+  const VkCommandPool& VKCommandPool() const;
+  VkCommandBuffer& VKCommandBuffer();
+  const VkCommandBuffer& VKCommandBuffer() const;
+  uint32_t& VKQueueFamily();
+  const uint32_t& VKQueueFamily() const;
+  std::vector<VkImage>& VKSwapchainImages();
+  const std::vector<VkImage>& VKSwapchainImages() const;
+  std::vector<VkImageLayout>& VKImageLayouts();
+  const std::vector<VkImageLayout>& VKImageLayouts() const;
+  std::vector<sk_sp<SkSurface>>& VKSwapchainSurfaces();
+  const std::vector<sk_sp<SkSurface>>& VKSwapchainSurfaces() const;
+  uint32_t& VKCurrentImage();
+  const uint32_t& VKCurrentImage() const;
+  VkSemaphore& VKImageAvailableSemaphore();
+  const VkSemaphore& VKImageAvailableSemaphore() const;
+  VkSemaphore& VKRenderFinishedSemaphore();
+  const VkSemaphore& VKRenderFinishedSemaphore() const;
+  VkFence& VKInFlightFence();
+  const VkFence& VKInFlightFence() const;
+  VkFormat& VKSwapchainFormat();
+  const VkFormat& VKSwapchainFormat() const;
+  VkImageUsageFlags& VKSwapchainUsageFlags();
+  const VkImageUsageFlags& VKSwapchainUsageFlags() const;
+  bool& VKSkipFrame();
+  const bool& VKSkipFrame() const;
+  bool& VKSubmissionPending();
+  const bool& VKSubmissionPending() const;
+  uint64_t& VKSwapchainVersion();
+  const uint64_t& VKSwapchainVersion() const;
+  uint64_t& VKFrameVersion();
+  const uint64_t& VKFrameVersion() const;
+  std::mutex& VKSwapchainMutex();
+  const std::mutex& VKSwapchainMutex() const;
+  std::unordered_set<VkImage>& VKDebugImages();
+  const std::unordered_set<VkImage>& VKDebugImages() const;
+#if IGRAPHICS_SANDBOX_LOGGING
+  const vulkanlog::LoggerContext*& VKLoggerContext();
+  const vulkanlog::LoggerContext* const& VKLoggerContext() const;
+#endif
+
   bool PrepareCurrentSwapchainImageForFlush();
   void ResetVulkanSwapchainCaches();
   VkCommandBuffer EnsureVulkanCommandBuffer();

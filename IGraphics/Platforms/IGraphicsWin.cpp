@@ -63,12 +63,6 @@ static int nWndClassReg = 0;
 static const wchar_t* wndClassName = L"IPlugWndClass";
 #endif
 
-#if IGRAPHICS_SANDBOX_WIN_TIMERS
-static thread_local double sFPS = 0.0;
-#else
-static double sFPS = 0.0;
-#endif
-
 #define PARAM_EDIT_ID 99
 #define IPLUG_TIMER_ID 2
 
@@ -116,7 +110,7 @@ StaticStorage<HFontHolder>& IGraphicsWin::HFontCacheStorage()
 int& IGraphicsWin::WndClassRefCount()
 {
 #if IGRAPHICS_SANDBOX_WIN_CLASS
-  return mWndClassRefCount;
+  return mSandboxState.wndClassRefCount;
 #else
   return nWndClassReg;
 #endif
@@ -125,11 +119,85 @@ int& IGraphicsWin::WndClassRefCount()
 const wchar_t* IGraphicsWin::WndClassName() const
 {
 #if IGRAPHICS_SANDBOX_WIN_CLASS
-  return mWndClassNameW.empty() ? kSandboxWndClassBaseName : mWndClassNameW.c_str();
+  return mSandboxState.wndClassName.empty() ? kSandboxWndClassBaseName : mSandboxState.wndClassName.c_str();
 #else
   return wndClassName;
 #endif
 }
+
+#if defined IGRAPHICS_VULKAN
+
+#if IGRAPHICS_SANDBOX_VULKAN
+WinVulkanDeviceCoordinator& IGraphicsWin::VulkanCoordinator() { return mSandboxVulkan.deviceCoordinator; }
+const WinVulkanDeviceCoordinator& IGraphicsWin::VulkanCoordinator() const { return mSandboxVulkan.deviceCoordinator; }
+VkInstance& IGraphicsWin::VulkanInstance() { return mSandboxVulkan.instance; }
+VkInstance IGraphicsWin::VulkanInstance() const { return mSandboxVulkan.instance; }
+VkPhysicalDevice& IGraphicsWin::VulkanPhysicalDevice() { return mSandboxVulkan.physicalDevice; }
+VkPhysicalDevice IGraphicsWin::VulkanPhysicalDevice() const { return mSandboxVulkan.physicalDevice; }
+VkDevice& IGraphicsWin::VulkanDevice() { return mSandboxVulkan.device; }
+VkDevice IGraphicsWin::VulkanDevice() const { return mSandboxVulkan.device; }
+VkSurfaceKHR& IGraphicsWin::VulkanSurface() { return mSandboxVulkan.surface; }
+VkSurfaceKHR IGraphicsWin::VulkanSurface() const { return mSandboxVulkan.surface; }
+VkSwapchainHolder& IGraphicsWin::VulkanSwapchain() { return mSandboxVulkan.swapchain; }
+const VkSwapchainHolder& IGraphicsWin::VulkanSwapchain() const { return mSandboxVulkan.swapchain; }
+VkQueue& IGraphicsWin::VulkanQueue() { return mSandboxVulkan.queue; }
+VkQueue IGraphicsWin::VulkanQueue() const { return mSandboxVulkan.queue; }
+uint32_t& IGraphicsWin::VulkanQueueFamily() { return mSandboxVulkan.queueFamily; }
+uint32_t IGraphicsWin::VulkanQueueFamily() const { return mSandboxVulkan.queueFamily; }
+VkSemaphoreHolder& IGraphicsWin::VulkanImageAvailableSemaphore() { return mSandboxVulkan.imageAvailableSemaphore; }
+const VkSemaphoreHolder& IGraphicsWin::VulkanImageAvailableSemaphore() const { return mSandboxVulkan.imageAvailableSemaphore; }
+VkSemaphoreHolder& IGraphicsWin::VulkanRenderFinishedSemaphore() { return mSandboxVulkan.renderFinishedSemaphore; }
+const VkSemaphoreHolder& IGraphicsWin::VulkanRenderFinishedSemaphore() const { return mSandboxVulkan.renderFinishedSemaphore; }
+VkFenceHolder& IGraphicsWin::VulkanInFlightFence() { return mSandboxVulkan.inFlightFence; }
+const VkFenceHolder& IGraphicsWin::VulkanInFlightFence() const { return mSandboxVulkan.inFlightFence; }
+std::vector<VkImage>& IGraphicsWin::VulkanSwapchainImages() { return mSandboxVulkan.swapchainImages; }
+const std::vector<VkImage>& IGraphicsWin::VulkanSwapchainImages() const { return mSandboxVulkan.swapchainImages; }
+VkFormat& IGraphicsWin::VulkanFormat() { return mSandboxVulkan.format; }
+VkFormat IGraphicsWin::VulkanFormat() const { return mSandboxVulkan.format; }
+VkImageUsageFlags& IGraphicsWin::VulkanSwapchainUsageFlags() { return mSandboxVulkan.swapchainUsageFlags; }
+VkImageUsageFlags IGraphicsWin::VulkanSwapchainUsageFlags() const { return mSandboxVulkan.swapchainUsageFlags; }
+#else
+WinVulkanDeviceCoordinator& IGraphicsWin::VulkanCoordinator() { return mVulkanDeviceCoordinator; }
+const WinVulkanDeviceCoordinator& IGraphicsWin::VulkanCoordinator() const { return mVulkanDeviceCoordinator; }
+VkInstance& IGraphicsWin::VulkanInstance() { return mVkInstance; }
+VkInstance IGraphicsWin::VulkanInstance() const { return mVkInstance; }
+VkPhysicalDevice& IGraphicsWin::VulkanPhysicalDevice() { return mVkPhysicalDevice; }
+VkPhysicalDevice IGraphicsWin::VulkanPhysicalDevice() const { return mVkPhysicalDevice; }
+VkDevice& IGraphicsWin::VulkanDevice() { return mVkDevice; }
+VkDevice IGraphicsWin::VulkanDevice() const { return mVkDevice; }
+VkSurfaceKHR& IGraphicsWin::VulkanSurface() { return mVkSurface; }
+VkSurfaceKHR IGraphicsWin::VulkanSurface() const { return mVkSurface; }
+VkSwapchainHolder& IGraphicsWin::VulkanSwapchain() { return mVkSwapchain; }
+const VkSwapchainHolder& IGraphicsWin::VulkanSwapchain() const { return mVkSwapchain; }
+VkQueue& IGraphicsWin::VulkanQueue() { return mPresentQueue; }
+VkQueue IGraphicsWin::VulkanQueue() const { return mPresentQueue; }
+uint32_t& IGraphicsWin::VulkanQueueFamily() { return mVkQueueFamily; }
+uint32_t IGraphicsWin::VulkanQueueFamily() const { return mVkQueueFamily; }
+VkSemaphoreHolder& IGraphicsWin::VulkanImageAvailableSemaphore() { return mImageAvailableSemaphore; }
+const VkSemaphoreHolder& IGraphicsWin::VulkanImageAvailableSemaphore() const { return mImageAvailableSemaphore; }
+VkSemaphoreHolder& IGraphicsWin::VulkanRenderFinishedSemaphore() { return mRenderFinishedSemaphore; }
+const VkSemaphoreHolder& IGraphicsWin::VulkanRenderFinishedSemaphore() const { return mRenderFinishedSemaphore; }
+VkFenceHolder& IGraphicsWin::VulkanInFlightFence() { return mInFlightFence; }
+const VkFenceHolder& IGraphicsWin::VulkanInFlightFence() const { return mInFlightFence; }
+std::vector<VkImage>& IGraphicsWin::VulkanSwapchainImages() { return mVkSwapchainImages; }
+const std::vector<VkImage>& IGraphicsWin::VulkanSwapchainImages() const { return mVkSwapchainImages; }
+VkFormat& IGraphicsWin::VulkanFormat() { return mVkFormat; }
+VkFormat IGraphicsWin::VulkanFormat() const { return mVkFormat; }
+VkImageUsageFlags& IGraphicsWin::VulkanSwapchainUsageFlags() { return mVkSwapchainUsageFlags; }
+VkImageUsageFlags IGraphicsWin::VulkanSwapchainUsageFlags() const { return mVkSwapchainUsageFlags; }
+#endif
+
+bool IGraphicsWin::HasVulkanContext() const
+{
+#if IGRAPHICS_SANDBOX_VULKAN
+  const SandboxVulkanState& state = mSandboxVulkan;
+  return state.device != VK_NULL_HANDLE && state.queue != VK_NULL_HANDLE && state.swapchain.handle != VK_NULL_HANDLE;
+#else
+  return VulkanDevice() != VK_NULL_HANDLE && VulkanQueue() != VK_NULL_HANDLE && VulkanSwapchain().handle != VK_NULL_HANDLE;
+#endif
+}
+
+#endif // defined IGRAPHICS_VULKAN
 
 #pragma mark - Mouse and tablet helpers
 
@@ -305,7 +373,7 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
       int mSec = static_cast<int>(std::floorf(1000.0f / (pGraphics->FPS())));
       if (mSec < 20)
         mSec = 15;
-      SetTimer(hWnd, IPLUG_TIMER_ID, mSec, NULL);
+      pGraphics->StartDisplayTimer(hWnd, mSec);
     }
 
     SetFocus(hWnd); // gets scroll wheel working straight away
@@ -345,11 +413,15 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
     pGraphics->OnDisplayTimer(wParam);
     return 0;
 
-  case WM_TIMER:
-    if (wParam == IPLUG_TIMER_ID)
+  case WM_TIMER: {
+#if IGRAPHICS_SANDBOX_WIN_TIMERS
+    assert(wParam == pGraphics->DisplayTimerId() && "Sandbox timer dispatched to unexpected instance");
+#endif
+    if (wParam == pGraphics->DisplayTimerId())
       pGraphics->OnDisplayTimer(0);
 
     return 0;
+  }
 
   case WM_ERASEBKGND:
     return 0;
@@ -654,8 +726,7 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
         // When the Vulkan backend is shutting down (e.g. during CloseWindow), the device and
         // swap-chain handles are reset prior to the HWND being destroyed. Skip drawing in that
         // window to avoid dereferencing torn-down state while lingering WM_PAINT messages drain.
-        const bool hasVulkanContext = (pGraphics->mVkDevice != VK_NULL_HANDLE &&
-                                       pGraphics->mVkSwapchain.handle != VK_NULL_HANDLE);
+      const bool hasVulkanContext = pGraphics->HasVulkanContext();
 #else
         const bool hasVulkanContext = true;
 #endif
@@ -852,7 +923,13 @@ IGraphicsWin::IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float s
   : IGRAPHICS_DRAW_CLASS(dlg, w, h, fps, scale)
 {
 #if IGRAPHICS_SANDBOX_WIN_CLASS
-  mWndClassNameW = MakeSandboxWndClassName(this);
+  mSandboxState.wndClassName = MakeSandboxWndClassName(this);
+#endif
+
+#if IGRAPHICS_SANDBOX_WIN_TIMERS
+  mSandboxState.displayTimerId = reinterpret_cast<UINT_PTR>(this);
+  mSandboxState.displayTimerPeriodMs = 0;
+  mSandboxState.displayTimerActive = false;
 #endif
 
   StaticStorage<InstalledFont>::Accessor fontStorage(FontCacheStorage());
@@ -1144,9 +1221,36 @@ void IGraphicsWin::DestroyGLContext()
 #endif
 
 #ifdef IGRAPHICS_VULKAN
+#if IGRAPHICS_SANDBOX_LOGGING
+void IGraphicsWin::SetVulkanLogSink(vulkanlog::LogSink sink)
+{
+  mVulkanLoggerContext.sink = sink ? sink : vulkanlog::DefaultLogSink;
+}
+
+vulkanlog::LogSink IGraphicsWin::GetVulkanLogSink() const
+{
+  return mVulkanLoggerContext.sink;
+}
+
+  #if IGRAPHICS_SANDBOX_VK_LOG_LEVEL
+void IGraphicsWin::SetVulkanLogVerbosity(vulkanlog::Verbosity verbosity)
+{
+  mVulkanLoggerContext.verbosity = verbosity;
+}
+
+vulkanlog::Verbosity IGraphicsWin::GetVulkanLogVerbosity() const
+{
+  return mVulkanLoggerContext.verbosity;
+}
+  #endif
+#endif
+
 bool IGraphicsWin::CreateVulkanContext()
 {
-  if (mVkInstance)
+#if IGRAPHICS_SANDBOX_LOGGING
+  const vulkanlog::ScopedLoggerBinding loggerBinding(mVulkanLoggerContext);
+#endif
+  if (VulkanInstance())
     return true;
 
   WinVulkanPreferredAdapter preferredAdapter = WinVulkanPreferredAdapter::kAny;
@@ -1169,26 +1273,26 @@ bool IGraphicsWin::CreateVulkanContext()
 #endif
 
   WinVulkanDeviceSnapshot snapshot{};
-  VkResult res = mVulkanDeviceCoordinator.Initialize(request, snapshot);
+  VkResult res = VulkanCoordinator().Initialize(request, snapshot);
   if (res != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("CreateVulkanContext",
                         "deviceCoordinator",
                         vulkanlog::Severity::kError,
                         vulkanlog::MakeField("vkResult", static_cast<int>(res)));
-    mVulkanDeviceCoordinator.Teardown();
+    VulkanCoordinator().Teardown();
     return false;
   }
 
-  mVkInstance = snapshot.instance;
-  mVkPhysicalDevice = snapshot.physicalDevice;
-  mVkDevice = snapshot.device;
-  mVkSurface = snapshot.surface;
-  mPresentQueue = snapshot.presentQueue;
-  mVkQueueFamily = snapshot.queueFamily;
+  VulkanInstance() = snapshot.instance;
+  VulkanPhysicalDevice() = snapshot.physicalDevice;
+  VulkanDevice() = snapshot.device;
+  VulkanSurface() = snapshot.surface;
+  VulkanQueue() = snapshot.presentQueue;
+  VulkanQueueFamily() = snapshot.queueFamily;
 
   VkSurfaceCapabilitiesKHR caps{};
-  res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(mVkPhysicalDevice, mVkSurface, &caps);
+  res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(VulkanPhysicalDevice(), VulkanSurface(), &caps);
   if (res != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("CreateVulkanContext",
@@ -1199,9 +1303,15 @@ bool IGraphicsWin::CreateVulkanContext()
     return false;
   }
 
-  mVkSwapchain.device = mVkDevice;
+  VulkanSwapchain().device = VulkanDevice();
   bool submissionPending = false;
-  res = CreateOrResizeVulkanSwapchain(caps.currentExtent.width, caps.currentExtent.height, mVkSwapchain.handle, mVkSwapchainImages, mVkFormat, mVkSwapchainUsageFlags, submissionPending);
+  res = CreateOrResizeVulkanSwapchain(caps.currentExtent.width,
+                                      caps.currentExtent.height,
+                                      VulkanSwapchain().handle,
+                                      VulkanSwapchainImages(),
+                                      VulkanFormat(),
+                                      VulkanSwapchainUsageFlags(),
+                                      submissionPending);
   if (res != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("CreateVulkanContext",
@@ -1213,8 +1323,8 @@ bool IGraphicsWin::CreateVulkanContext()
   }
 
   VkSemaphoreCreateInfo semInfo{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-  mImageAvailableSemaphore.device = mVkDevice;
-  res = vkCreateSemaphore(mVkDevice, &semInfo, nullptr, &mImageAvailableSemaphore.handle);
+  VulkanImageAvailableSemaphore().device = VulkanDevice();
+  res = vkCreateSemaphore(VulkanDevice(), &semInfo, nullptr, &VulkanImageAvailableSemaphore().handle);
   if (res != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("CreateVulkanContext",
@@ -1225,8 +1335,8 @@ bool IGraphicsWin::CreateVulkanContext()
     DestroyVulkanContext();
     return false;
   }
-  mRenderFinishedSemaphore.device = mVkDevice;
-  res = vkCreateSemaphore(mVkDevice, &semInfo, nullptr, &mRenderFinishedSemaphore.handle);
+  VulkanRenderFinishedSemaphore().device = VulkanDevice();
+  res = vkCreateSemaphore(VulkanDevice(), &semInfo, nullptr, &VulkanRenderFinishedSemaphore().handle);
   if (res != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("CreateVulkanContext",
@@ -1240,8 +1350,8 @@ bool IGraphicsWin::CreateVulkanContext()
 
   VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
   fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-  mInFlightFence.device = mVkDevice;
-  res = vkCreateFence(mVkDevice, &fenceInfo, nullptr, &mInFlightFence.handle);
+  VulkanInFlightFence().device = VulkanDevice();
+  res = vkCreateFence(VulkanDevice(), &fenceInfo, nullptr, &VulkanInFlightFence().handle);
   if (res != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("CreateVulkanContext",
@@ -1257,50 +1367,59 @@ bool IGraphicsWin::CreateVulkanContext()
 
 void IGraphicsWin::DestroyVulkanContext()
 {
-  if (mVkDevice)
-    vkDeviceWaitIdle(mVkDevice);
+#if IGRAPHICS_SANDBOX_LOGGING
+  const vulkanlog::ScopedLoggerBinding loggerBinding(mVulkanLoggerContext);
+#endif
+  if (VulkanDevice())
+    vkDeviceWaitIdle(VulkanDevice());
 
-  mImageAvailableSemaphore.Reset();
-  mRenderFinishedSemaphore.Reset();
-  mInFlightFence.Reset();
-  mVkSwapchain.Reset();
-  mVkSwapchain.device = mVkDevice;
-  mVkSwapchainImages.clear();
-  mVkFormat = VK_FORMAT_B8G8R8A8_UNORM;
-  mVkSwapchainUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  VulkanImageAvailableSemaphore().Reset();
+  VulkanRenderFinishedSemaphore().Reset();
+  VulkanInFlightFence().Reset();
+  VulkanSwapchain().Reset();
+  VulkanSwapchain().device = VulkanDevice();
+  VulkanSwapchainImages().clear();
+  VulkanFormat() = VK_FORMAT_B8G8R8A8_UNORM;
+  VulkanSwapchainUsageFlags() = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-  mVulkanDeviceCoordinator.Teardown();
+  VulkanCoordinator().Teardown();
 
-  mVkInstance = VK_NULL_HANDLE;
-  mVkPhysicalDevice = VK_NULL_HANDLE;
-  mVkDevice = VK_NULL_HANDLE;
-  mVkSurface = VK_NULL_HANDLE;
-  mPresentQueue = VK_NULL_HANDLE;
-  mVkQueueFamily = 0;
-  mVkSwapchain.device = VK_NULL_HANDLE;
+  VulkanInstance() = VK_NULL_HANDLE;
+  VulkanPhysicalDevice() = VK_NULL_HANDLE;
+  VulkanDevice() = VK_NULL_HANDLE;
+  VulkanSurface() = VK_NULL_HANDLE;
+  VulkanQueue() = VK_NULL_HANDLE;
+  VulkanQueueFamily() = 0;
+  VulkanSwapchain().device = VK_NULL_HANDLE;
 }
 
 bool IGraphicsWin::RecreateVulkanContext()
 {
+#if IGRAPHICS_SANDBOX_LOGGING
+  const vulkanlog::ScopedLoggerBinding loggerBinding(mVulkanLoggerContext);
+#endif
   OnViewDestroyed();
   SkipVKFrame();
   DestroyVulkanContext();
   if (!CreateVulkanContext())
     return false;
   VulkanContext ctx;
-  ctx.instance = mVkInstance;
-  ctx.physicalDevice = mVkPhysicalDevice;
-  ctx.device = mVkDevice;
-  ctx.surface = mVkSurface;
-  ctx.swapchain = mVkSwapchain.handle;
-  ctx.queue = mPresentQueue;
-  ctx.queueFamily = mVkQueueFamily;
-  ctx.imageAvailableSemaphore = mImageAvailableSemaphore.handle;
-  ctx.renderFinishedSemaphore = mRenderFinishedSemaphore.handle;
-  ctx.inFlightFence = mInFlightFence.handle;
-  ctx.swapchainImages = &mVkSwapchainImages;
-  ctx.format = mVkFormat;
-  ctx.usageFlags = mVkSwapchainUsageFlags;
+  ctx.instance = VulkanInstance();
+  ctx.physicalDevice = VulkanPhysicalDevice();
+  ctx.device = VulkanDevice();
+  ctx.surface = VulkanSurface();
+  ctx.swapchain = VulkanSwapchain().handle;
+  ctx.queue = VulkanQueue();
+  ctx.queueFamily = VulkanQueueFamily();
+  ctx.imageAvailableSemaphore = VulkanImageAvailableSemaphore().handle;
+  ctx.renderFinishedSemaphore = VulkanRenderFinishedSemaphore().handle;
+  ctx.inFlightFence = VulkanInFlightFence().handle;
+  ctx.swapchainImages = &VulkanSwapchainImages();
+  ctx.format = VulkanFormat();
+  ctx.usageFlags = VulkanSwapchainUsageFlags();
+#if IGRAPHICS_SANDBOX_LOGGING
+  ctx.loggerContext = &mVulkanLoggerContext;
+#endif
   OnViewInitialized(&ctx);
   return true;
 }
@@ -1308,20 +1427,23 @@ bool IGraphicsWin::RecreateVulkanContext()
 VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
   uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format, VkImageUsageFlags& usage, bool& submissionPending)
 {
+#if IGRAPHICS_SANDBOX_LOGGING
+  const vulkanlog::ScopedLoggerBinding loggerBinding(mVulkanLoggerContext);
+#endif
   IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
                       "request",
                       vulkanlog::Severity::kInfo,
                       vulkanlog::MakeField("width", static_cast<uint32_t>(width)),
                        vulkanlog::MakeField("height", static_cast<uint32_t>(height)),
-                       vulkanlog::MakeHandleField("previousSwapchain", vulkanlog::HandleToUint64(reinterpret_cast<uintptr_t>(mVkSwapchain.handle))));
-  if (!mVkDevice || !mVkPhysicalDevice || !mVkSurface)
+                       vulkanlog::MakeHandleField("previousSwapchain", vulkanlog::HandleToUint64(reinterpret_cast<uintptr_t>(VulkanSwapchain().handle))));
+  if (!VulkanDevice() || !VulkanPhysicalDevice() || !VulkanSurface())
     return VK_ERROR_INITIALIZATION_FAILED;
 
   VkResult res = VK_SUCCESS;
-  if (mInFlightFence.handle)
+  if (VulkanInFlightFence().handle)
   {
-    vkQueueWaitIdle(mPresentQueue);
-    res = vkResetFences(mVkDevice, 1, &mInFlightFence.handle);
+    vkQueueWaitIdle(VulkanQueue());
+    res = vkResetFences(VulkanDevice(), 1, &VulkanInFlightFence().handle);
     if (res != VK_SUCCESS)
     {
       IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
@@ -1331,7 +1453,7 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
       return res;
     }
     // ensure next BeginFrame sees the fence as signaled
-    res = vkQueueSubmit(mPresentQueue, 0, nullptr, mInFlightFence.handle);
+    res = vkQueueSubmit(VulkanQueue(), 0, nullptr, VulkanInFlightFence().handle);
     if (res != VK_SUCCESS)
     {
       IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
@@ -1346,14 +1468,14 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
                         vulkanlog::Severity::kDebug);
   }
 
-  mVkSwapchain.Reset();
-  mVkSwapchain.device = mVkDevice;
+  VulkanSwapchain().Reset();
+  VulkanSwapchain().device = VulkanDevice();
   IGRAPHICS_VK_LOG_SIMPLE("CreateOrResizeVulkanSwapchain",
                       "clearedPreviousSwapchain",
                       vulkanlog::Severity::kDebug);
 
   VkSurfaceCapabilitiesKHR caps{};
-  res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(mVkPhysicalDevice, mVkSurface, &caps);
+  res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(VulkanPhysicalDevice(), VulkanSurface(), &caps);
   if (res != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
@@ -1374,7 +1496,7 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
                        vulkanlog::MakeField("usage", static_cast<uint32_t>(caps.supportedUsageFlags)));
 
   uint32_t formatCount = 0;
-  res = vkGetPhysicalDeviceSurfaceFormatsKHR(mVkPhysicalDevice, mVkSurface, &formatCount, nullptr);
+  res = vkGetPhysicalDeviceSurfaceFormatsKHR(VulkanPhysicalDevice(), VulkanSurface(), &formatCount, nullptr);
   if (res != VK_SUCCESS || formatCount == 0)
   {
     IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
@@ -1385,7 +1507,7 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
     return res;
   }
   std::vector<VkSurfaceFormatKHR> formats(formatCount);
-  res = vkGetPhysicalDeviceSurfaceFormatsKHR(mVkPhysicalDevice, mVkSurface, &formatCount, formats.data());
+  res = vkGetPhysicalDeviceSurfaceFormatsKHR(VulkanPhysicalDevice(), VulkanSurface(), &formatCount, formats.data());
   if (res != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
@@ -1411,7 +1533,7 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
                        vulkanlog::MakeField("options", static_cast<uint32_t>(formatCount)));
 
   uint32_t presentCount = 0;
-  res = vkGetPhysicalDeviceSurfacePresentModesKHR(mVkPhysicalDevice, mVkSurface, &presentCount, nullptr);
+  res = vkGetPhysicalDeviceSurfacePresentModesKHR(VulkanPhysicalDevice(), VulkanSurface(), &presentCount, nullptr);
   if (res != VK_SUCCESS || presentCount == 0)
   {
     IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
@@ -1422,7 +1544,7 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
     return res;
   }
   std::vector<VkPresentModeKHR> presentModes(presentCount);
-  res = vkGetPhysicalDeviceSurfacePresentModesKHR(mVkPhysicalDevice, mVkSurface, &presentCount, presentModes.data());
+  res = vkGetPhysicalDeviceSurfacePresentModesKHR(VulkanPhysicalDevice(), VulkanSurface(), &presentCount, presentModes.data());
   if (res != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
@@ -1448,7 +1570,7 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
 
   VkSwapchainCreateInfoKHR swapInfo{};
   swapInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-  swapInfo.surface = mVkSurface;
+  swapInfo.surface = VulkanSurface();
   swapInfo.minImageCount = caps.minImageCount + 1;
   if (caps.maxImageCount > 0 && swapInfo.minImageCount > caps.maxImageCount)
     swapInfo.minImageCount = caps.maxImageCount;
@@ -1487,9 +1609,9 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
                        vulkanlog::MakeField("height", static_cast<uint32_t>(swapInfo.imageExtent.height)),
                        vulkanlog::MakeField("minImageCount", static_cast<uint32_t>(swapInfo.minImageCount)),
                        vulkanlog::MakeField("usage", static_cast<uint32_t>(swapInfo.imageUsage)),
-                       vulkanlog::MakeHandleField("oldSwapchain", vulkanlog::HandleToUint64(reinterpret_cast<uintptr_t>(mVkSwapchain.handle))));
+                       vulkanlog::MakeHandleField("oldSwapchain", vulkanlog::HandleToUint64(reinterpret_cast<uintptr_t>(VulkanSwapchain().handle))));
 
-  res = vkCreateSwapchainKHR(mVkDevice, &swapInfo, nullptr, &mVkSwapchain.handle);
+  res = vkCreateSwapchainKHR(VulkanDevice(), &swapInfo, nullptr, &VulkanSwapchain().handle);
   if (res != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
@@ -1500,7 +1622,7 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
   }
 
   uint32_t imageCount = 0;
-  res = vkGetSwapchainImagesKHR(mVkDevice, mVkSwapchain.handle, &imageCount, nullptr);
+  res = vkGetSwapchainImagesKHR(VulkanDevice(), VulkanSwapchain().handle, &imageCount, nullptr);
   if (res != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
@@ -1509,8 +1631,8 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
                         vulkanlog::MakeField("vkResult", static_cast<int>(res)));
     return res;
   }
-  mVkSwapchainImages.resize(imageCount);
-  res = vkGetSwapchainImagesKHR(mVkDevice, mVkSwapchain.handle, &imageCount, mVkSwapchainImages.data());
+  VulkanSwapchainImages().resize(imageCount);
+  res = vkGetSwapchainImagesKHR(VulkanDevice(), VulkanSwapchain().handle, &imageCount, VulkanSwapchainImages().data());
   if (res != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
@@ -1527,7 +1649,7 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
   IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
                       "creationResult",
                       vulkanlog::Severity::kDebug,
-                      vulkanlog::MakeHandleField("swapchain", vulkanlog::HandleToUint64(reinterpret_cast<uintptr_t>(mVkSwapchain.handle))),
+                      vulkanlog::MakeHandleField("swapchain", vulkanlog::HandleToUint64(reinterpret_cast<uintptr_t>(VulkanSwapchain().handle))),
                        vulkanlog::MakeField("width", static_cast<uint32_t>(swapInfo.imageExtent.width)),
                        vulkanlog::MakeField("height", static_cast<uint32_t>(swapInfo.imageExtent.height)),
                        vulkanlog::MakeField("format", static_cast<int>(surfaceFormat.format)),
@@ -1539,15 +1661,15 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
                         "swapchainImage",
                         vulkanlog::Severity::kDebug,
                         vulkanlog::MakeField("index", static_cast<uint32_t>(i)),
-                         vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(mVkSwapchainImages[i])));
+                        vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(VulkanSwapchainImages()[i])));
   }
 
-  mVkFormat = surfaceFormat.format;
-  format = mVkFormat;
+  VulkanFormat() = surfaceFormat.format;
+  format = VulkanFormat();
   usage = usageFlags;
-  mVkSwapchainUsageFlags = usageFlags;
-  swapchain = mVkSwapchain.handle;
-  images = mVkSwapchainImages;
+  VulkanSwapchainUsageFlags() = usageFlags;
+  swapchain = VulkanSwapchain().handle;
+  images = VulkanSwapchainImages();
   return VK_SUCCESS;
 }
 
@@ -1589,6 +1711,63 @@ void IGraphicsWin::DeactivateGLContext()
 #endif
 }
 
+UINT_PTR IGraphicsWin::DisplayTimerId() const
+{
+#if IGRAPHICS_SANDBOX_WIN_TIMERS
+  return mSandboxState.displayTimerId != 0 ? mSandboxState.displayTimerId : reinterpret_cast<UINT_PTR>(this);
+#else
+  return IPLUG_TIMER_ID;
+#endif
+}
+
+void IGraphicsWin::StartDisplayTimer(HWND hWnd, int periodMs)
+{
+#if IGRAPHICS_SANDBOX_WIN_TIMERS
+  if (mSandboxState.displayTimerId == 0)
+  {
+    mSandboxState.displayTimerId = reinterpret_cast<UINT_PTR>(this);
+  }
+
+  if (mSandboxState.displayTimerActive && mSandboxState.displayTimerPeriodMs == periodMs)
+  {
+    return;
+  }
+
+  if (mSandboxState.displayTimerActive)
+  {
+    KillTimer(hWnd, mSandboxState.displayTimerId);
+  }
+
+  if (SetTimer(hWnd, mSandboxState.displayTimerId, periodMs, NULL))
+  {
+    mSandboxState.displayTimerActive = true;
+    mSandboxState.displayTimerPeriodMs = periodMs;
+  }
+  else
+  {
+    mSandboxState.displayTimerActive = false;
+    mSandboxState.displayTimerPeriodMs = 0;
+  }
+#else
+  SetTimer(hWnd, IPLUG_TIMER_ID, periodMs, NULL);
+#endif
+}
+
+void IGraphicsWin::StopDisplayTimer()
+{
+#if IGRAPHICS_SANDBOX_WIN_TIMERS
+  if (mSandboxState.displayTimerActive && mPlugWnd)
+  {
+    KillTimer(mPlugWnd, mSandboxState.displayTimerId);
+    mSandboxState.displayTimerActive = false;
+    mSandboxState.displayTimerPeriodMs = 0;
+  }
+#else
+  if (mPlugWnd)
+    KillTimer(mPlugWnd, IPLUG_TIMER_ID);
+#endif
+}
+
 EMsgBoxResult IGraphicsWin::ShowMessageBox(const char* str, const char* title, EMsgBoxType type, IMsgBoxCompletionHandlerFunc completionHandler)
 {
   ReleaseMouseCapture();
@@ -1622,35 +1801,71 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   int& wndClassRefCount = WndClassRefCount();
   const wchar_t* className = WndClassName();
 
-  if (wndClassRefCount++ == 0)
+  if (wndClassRefCount == 0)
   {
     WNDCLASSW wndClass = {CS_DBLCLKS | CS_OWNDC, WndProc, 0, 0, mHInstance, 0, 0, 0, 0, className};
-    RegisterClassW(&wndClass);
+    if (!RegisterClassW(&wndClass))
+    {
+      DBGMSG("IGraphicsWin::OpenWindow failed to register class %ls (error %lu)", className, GetLastError());
+      return nullptr;
+    }
   }
 
-  mPlugWnd = CreateWindowW(className, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
+  ++wndClassRefCount;
+
+  mPlugWnd = CreateWindowW(className,
+                           L"IPlug",
+                           WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
+                           x,
+                           y,
+                           w,
+                           h,
+                           mParentWnd,
+                           0,
+                           mHInstance,
+                           this);
+  if (!mPlugWnd)
+  {
+    DWORD error = GetLastError();
+    DBGMSG("IGraphicsWin::OpenWindow failed to create window for class %ls (error %lu)", className, error);
+    if (--wndClassRefCount == 0)
+    {
+      if (!UnregisterClassW(className, mHInstance))
+        DBGMSG("IGraphicsWin::OpenWindow failed to unregister class %ls after CreateWindow failure (error %lu)", className, GetLastError());
+    }
+    return nullptr;
+  }
 #if defined IGRAPHICS_VULKAN
   SetPlatformContext(mPlugWnd);
   if (!CreateVulkanContext())
   {
     DestroyWindow(mPlugWnd);
     mPlugWnd = nullptr;
+    if (--wndClassRefCount == 0)
+    {
+      if (!UnregisterClassW(className, mHInstance))
+        DBGMSG("IGraphicsWin::OpenWindow failed to unregister class %ls after Vulkan init failure (error %lu)", className, GetLastError());
+    }
+    DBGMSG("IGraphicsWin::OpenWindow failed to initialize Vulkan context for class %ls", className);
     return nullptr;
   }
   VulkanContext ctx;
-  ctx.instance = mVkInstance;
-  ctx.physicalDevice = mVkPhysicalDevice;
-  ctx.device = mVkDevice;
-  ctx.surface = mVkSurface;
-  ctx.swapchain = mVkSwapchain.handle;
-  ctx.queue = mPresentQueue;
-  ctx.queueFamily = mVkQueueFamily;
-  ctx.imageAvailableSemaphore = mImageAvailableSemaphore.handle;
-  ctx.renderFinishedSemaphore = mRenderFinishedSemaphore.handle;
-  ctx.inFlightFence = mInFlightFence.handle;
-  ctx.swapchainImages = &mVkSwapchainImages;
-  ctx.format = mVkFormat;
-  ctx.usageFlags = mVkSwapchainUsageFlags;
+  ctx.instance = VulkanInstance();
+  ctx.physicalDevice = VulkanPhysicalDevice();
+  ctx.device = VulkanDevice();
+  ctx.surface = VulkanSurface();
+  ctx.swapchain = VulkanSwapchain().handle;
+  ctx.queue = VulkanQueue();
+  ctx.queueFamily = VulkanQueueFamily();
+  ctx.imageAvailableSemaphore = VulkanImageAvailableSemaphore().handle;
+  ctx.renderFinishedSemaphore = VulkanRenderFinishedSemaphore().handle;
+  ctx.inFlightFence = VulkanInFlightFence().handle;
+  ctx.swapchainImages = &VulkanSwapchainImages();
+  ctx.format = VulkanFormat();
+  ctx.usageFlags = VulkanSwapchainUsageFlags();
+#if IGRAPHICS_SANDBOX_LOGGING
+  ctx.loggerContext = &mVulkanLoggerContext;
+#endif
   OnViewInitialized(&ctx);
 #else
   HDC dc = GetDC(mPlugWnd);
@@ -1675,14 +1890,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     RegisterTouchWindow(mPlugWnd, 0);
   }
 
-  if (!mPlugWnd && --wndClassRefCount == 0)
-  {
-    UnregisterClassW(className, mHInstance);
-  }
-  else
-  {
-    SetAllControlsDirty();
-  }
+  SetAllControlsDirty();
 
   if (mPlugWnd && TooltipsEnabled())
   {
@@ -1802,7 +2010,7 @@ void IGraphicsWin::CloseWindow()
     if (mVSYNCEnabled)
       StopVBlankThread();
     else
-      KillTimer(mPlugWnd, IPLUG_TIMER_ID);
+      StopDisplayTimer();
 
 #if defined IGRAPHICS_GL
     HDC currentDC = wglGetCurrentDC();
@@ -1890,7 +2098,8 @@ void IGraphicsWin::CloseWindow()
     const wchar_t* className = WndClassName();
     if (--wndClassRefCount == 0)
     {
-      UnregisterClassW(className, mHInstance);
+      if (!UnregisterClassW(className, mHInstance))
+        DBGMSG("IGraphicsWin::CloseWindow failed to unregister class %ls (error %lu)", className, GetLastError());
     }
   }
 }

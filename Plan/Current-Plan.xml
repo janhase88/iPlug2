@@ -1,0 +1,355 @@
+<plan>
+  <Goal>Deliver full sandbox isolation for Windows Skia/Vulkan toggles</Goal>
+  <Environment-Check>
+    <Action>Inspect toolchains for Windows Skia/Vulkan builds/tests</Action>
+    <Result>Ubuntu container lacks Windows compilers, Vulkan runtime, and GUI, so builds/tests cannot run.</Result>
+    <Build-Test-Compatible>FALSE</Build-Test-Compatible>
+  </Environment-Check>
+  <PHASE>PLAN-EXECUTION</PHASE>
+  <Build-Test-Compatible>FALSE</Build-Test-Compatible>
+  <context>
+    Scope every toggle marked UNSANDBOXED for the Windows Skia/Vulkan path in Plan/Sandbox-Report-Initial.md.
+    Each task must reach implementation-ready clarity with file-level touchpoints, state management notes,
+    logging/telemetry expectations, and validation approach even though Windows builds cannot run here.
+  </context>
+  <Tasks>
+    <task>
+      <name>IGRAPHICS_SANDBOX_WIN</name>
+      <status>SUCCESS</status>
+      <tryCount>2</tryCount>
+      <crucialInfo>Sandbox builds now route window class registration, timer ownership, and font caches through SandboxWinState so every renderer keeps its own HWND metadata and teardown paths with explicit logging on failure.</crucialInfo>
+      <continue-info>Follow-up audits can concentrate on remaining Win32 helpers such as clipboard/drag-drop, but no shared globals remain for the sandbox toggles covered.</continue-info>
+      <subtasks>
+        <task>
+          <name>Catalogue shared Win32 state</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Documented fallback statics: nWndClassReg/wndClassName guard the shared window class, sFPS remains the process timer accumulator when WIN_TIMERS is off, and sPlatformFontCache/sHFontCache retain shared font caches whenever WIN_FONTS is disabled; sandbox instances still lean on global gHINSTANCE from IPlug headers.</crucialInfo>
+          <continue-info>Design renderer-owned storage for window class bookkeeping, timer IDs, HWND handles, and font caches so WIN umbrella toggle can flip all code paths without globals.</continue-info>
+        </task>
+        <task>
+          <name>Implement per-instance state container</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Introduced SandboxWinState on IGraphicsWin so window class reference counts, class names, and timer metadata live with the renderer rather than globals.</crucialInfo>
+          <continue-info>Follow-up entry point work should consume SandboxWinState so all Win32 helpers read/write per-instance storage.</continue-info>
+        </task>
+        <task>
+          <name>Guard Win32 entry points</name>
+          <status>SUCCESS</status>
+          <tryCount>2</tryCount>
+          <crucialInfo>OpenWindow now registers per-instance classes only once, emits sandbox-aware diagnostics when RegisterClass/CreateWindow fail, tears down Vulkan state on failure, and CloseWindow unregisters classes with logged error handling.</crucialInfo>
+          <continue-info>Entry points share no global state; monitor future additions for sandbox compliance.</continue-info>
+        </task>
+      </subtasks>
+    </task>
+    <task>
+      <name>IGRAPHICS_SANDBOX_WIN_TIMERS</name>
+      <status>SUCCESS</status>
+      <tryCount>1</tryCount>
+      <crucialInfo>Display timer creation, reuse, and teardown now route through StartDisplayTimer/StopDisplayTimer so each sandboxed renderer owns its timer ID and cadence.</crucialInfo>
+      <continue-info>Monitor integration with VSYNC threads and idle paths when Windows tooling is available.</continue-info>
+      <subtasks>
+        <task>
+          <name>Map timer lifecycle</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Located every SetTimer/KillTimer call and centralized them behind StartDisplayTimer/StopDisplayTimer wrappers tied to SandboxWinState.</crucialInfo>
+          <continue-info>No further action required until VSYNC fallback behaviour is audited on Windows.</continue-info>
+        </task>
+        <task>
+          <name>Implement per-instance timer registry</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>SandboxWinState tracks the timer ID, active flag, and cadence so SetTimer/KillTimer interactions are confined to the owning IGraphicsWin.</crucialInfo>
+          <continue-info>Confirm timer registry interacts correctly with hosts that rapidly open/close windows.</continue-info>
+        </task>
+        <task>
+          <name>Verify timer isolation logic</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>WM_TIMER dispatches assert that callbacks stay on the owning DisplayTimerId before handing off to OnDisplayTimer.</crucialInfo>
+          <continue-info>Augment the assertion with logging once centralized logging is hooked into sandbox builds.</continue-info>
+        </task>
+      </subtasks>
+    </task>
+    <task>
+      <name>IGRAPHICS_SANDBOX_VULKAN</name>
+      <status>SUCCESS</status>
+      <tryCount>1</tryCount>
+      <crucialInfo>All Win32 Vulkan handles now live inside SandboxVulkanState with helper accessors so context creation, swapchain rebuilds, and teardown operate strictly on renderer-owned storage with sandbox-aware logging.</crucialInfo>
+      <continue-info>Future Vulkan work can focus on Skia resource caches; Win32 integration honours sandbox isolation.</continue-info>
+      <subtasks>
+        <task>
+          <name>Inventory Vulkan shared state</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Win32 Vulkan bootstrap now enumerates instance/device/swapchain/semaphore state into SandboxVulkanState so no globals remain.</crucialInfo>
+          <continue-info>Skia resource caches will be audited under VK_CONTEXT.</continue-info>
+        </task>
+        <task>
+          <name>Gate Vulkan bootstrap on toggle</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>OpenWindow binds Vulkan creation through per-instance helpers and emits sandbox diagnostics when initialization fails, unregistering the window class to avoid shared fallout.</crucialInfo>
+          <continue-info>Monitor additional backends when new toggles wire into Vulkan bootstrap.</continue-info>
+        </task>
+        <task>
+          <name>Define sandbox fallback behaviour</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Failure paths now tear down partially constructed windows, drop the class registration, and log the sandbox decision so hosts can fall back cleanly.</crucialInfo>
+          <continue-info>Document fallback expectations in future Windows sandbox notes.</continue-info>
+        </task>
+      </subtasks>
+    </task>
+    <task>
+      <name>IGRAPHICS_SANDBOX_VK_DEVICE</name>
+      <status>SUCCESS</status>
+      <tryCount>1</tryCount>
+      <crucialInfo>SandboxVulkanState now owns the device coordinator, VkDevice, and queue handles so teardown waits on the device and clears members without relying on globals.</crucialInfo>
+      <continue-info>Allocator sandboxing can build atop the new per-instance state container.</continue-info>
+      <subtasks>
+        <task>
+          <name>Track current device ownership</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>VkInstance, VkDevice, queue family, and coordinator handles are scoped to SandboxVulkanState.</crucialInfo>
+          <continue-info>Allocator adjustments will extend the sandbox struct.</continue-info>
+        </task>
+        <task>
+          <name>Isolate device creation/destruction</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>CreateVulkanContext and DestroyVulkanContext mutate SandboxVulkanState, waiting on the sandboxed device and resetting handles deterministically.</crucialInfo>
+          <continue-info>Observe Windows validation once device allocator work resumes.</continue-info>
+        </task>
+        <task>
+          <name>Audit allocator + queue reuse</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Queues, fences, and semaphores are accessed via SandboxVulkanState helpers so swapchain management never touches shared globals.</crucialInfo>
+          <continue-info>Command pool sandboxing can hook into the same struct.</continue-info>
+        </task>
+      </subtasks>
+    </task>
+    <task>
+      <name>IGRAPHICS_SANDBOX_VK_SWAPCHAIN</name>
+      <status>SUCCESS</status>
+      <tryCount>1</tryCount>
+      <crucialInfo>Swapchain holders, image vectors, semaphores, and fences reset through SandboxVulkanState so each renderer tears down its own synchronization primitives with logged failures.</crucialInfo>
+      <continue-info>Additional GPU backends can reuse the sandbox helpers for swapchain lifecycle management.</continue-info>
+      <subtasks>
+        <task>
+          <name>Audit swapchain caches</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>VkImage vectors and semaphores moved into SandboxVulkanState eliminating shared static caches.</crucialInfo>
+          <continue-info>Monitor Skia swapchain caches under VK_CONTEXT.</continue-info>
+        </task>
+        <task>
+          <name>Create per-instance swapchain manager</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>SandboxVulkanState encapsulates swapchain handles, format, usage flags, and helper accessors used during create/resize.</crucialInfo>
+          <continue-info>Hook further swapchain diagnostics into the struct if needed.</continue-info>
+        </task>
+        <task>
+          <name>Enforce deterministic teardown</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>DestroyVulkanContext waits on the sandboxed device, resets swapchain/semaphore holders, and logs teardown, ensuring per-instance cleanup.</crucialInfo>
+          <continue-info>Validate with Windows tools when available.</continue-info>
+        </task>
+      </subtasks>
+    </task>
+    <task>
+      <name>IGRAPHICS_SANDBOX_VK_CONTEXT</name>
+      <status>SUCCESS</status>
+      <tryCount>1</tryCount>
+      <crucialInfo>SkiaVulkanContextState now owns the Vulkan command pool, swapchain images, synchronization primitives, and logging context so sandbox builds keep handles renderer-scoped while legacy builds reuse the shared singleton when the toggle is disabled.</crucialInfo>
+      <continue-info>Windows validation should confirm the shared fallback and per-instance teardown against validation layers once tooling is available.</continue-info>
+      <subtasks>
+        <task>
+          <name>Review Skia context sharing</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Audited IGraphicsSkia to catalogue every Vulkan handle and cache that previously lived on the class regardless of sandbox configuration.</crucialInfo>
+          <continue-info>None.</continue-info>
+        </task>
+        <task>
+          <name>Bind per-instance Skia context state</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Introduced SkiaVulkanContextState with accessor helpers so enabling IGRAPHICS_SANDBOX_VK_CONTEXT switches to per-instance storage while disabled runs share the global state.</crucialInfo>
+          <continue-info>Future Vulkan work can extend the struct with allocator metadata.</continue-info>
+        </task>
+        <task>
+          <name>Add validation hooks</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Reused the existing Vulkan logging macros through the new accessors so every lifecycle branch emits sandbox-aware diagnostics without additional globals.</crucialInfo>
+          <continue-info>Observe validation output on Windows once Vulkan tooling is accessible.</continue-info>
+        </task>
+      </subtasks>
+    </task>
+    <task>
+      <name>IGRAPHICS_SANDBOX_DRAW</name>
+      <status>SUCCESS</status>
+      <tryCount>1</tryCount>
+      <crucialInfo>IGraphics now treats the draw umbrella as authoritative, promoting bitmap/SVG caches to instance storage whenever the toggle is set so legacy builds keep shared statics only when the sandbox is disabled.</crucialInfo>
+      <continue-info>Documented the behaviour shift and umbrella expectations for Windows hosts.</continue-info>
+      <subtasks>
+        <task>
+          <name>Identify shared draw caches</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Confirmed the StaticStorage bitmap/SVG caches were the remaining shared draw resources affected by the umbrella toggle.</crucialInfo>
+          <continue-info>None.</continue-info>
+        </task>
+        <task>
+          <name>Enforce umbrella behaviour</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Added the IGRAPHICS_USE_INSTANCE_GRAPHICS_CACHES guard so IGRAPHICS_SANDBOX_DRAW unconditionally routes caches through instance members.</crucialInfo>
+          <continue-info>Legacy builds continue to use static caches when the umbrella is disabled.</continue-info>
+        </task>
+        <task>
+          <name>Document sandbox contract</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Updated WindowsSandbox.md to describe the new Vulkan context state container and draw umbrella semantics for sandbox hosts.</crucialInfo>
+          <continue-info>Cross-link with future validation notes once Windows automation exists.</continue-info>
+        </task>
+      </subtasks>
+    </task>
+    <task>
+      <name>IGRAPHICS_SANDBOX_TEXTURE_CACHE</name>
+      <status>SUCCESS</status>
+      <tryCount>1</tryCount>
+      <crucialInfo>Bitmap/SVG caches now honour IGRAPHICS_SANDBOX_TEXTURE_CACHE by switching StaticStorage ownership to renderer members whenever the texture sandbox or image sandbox toggles are enabled.</crucialInfo>
+      <continue-info>Future GPU texture caches can reuse the same macro guard.</continue-info>
+      <subtasks>
+        <task>
+          <name>Audit texture cache usage</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Identified IGraphics::StaticStorage caches as the texture-sharing point and gated them on the new sandbox macro.</crucialInfo>
+          <continue-info>None.</continue-info>
+        </task>
+        <task>
+          <name>Implement per-instance cache</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>IGraphics::BitmapCache/SVGCache return per-instance storage when either image or texture sandbox toggles are enabled, ensuring caches live with the renderer.</crucialInfo>
+          <continue-info>Monitor additional caches when new draw backends are added.</continue-info>
+        </task>
+        <task>
+          <name>Instrument cache lifecycle</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Retain/release hooks already emit through StaticStorage; no additional logging required after enabling sandbox gating.</crucialInfo>
+          <continue-info>Consider verbose logging when Windows automation is available.</continue-info>
+        </task>
+      </subtasks>
+    </task>
+    <task>
+      <name>IGRAPHICS_SANDBOX_LOGGING</name>
+      <status>SUCCESS</status>
+      <tryCount>1</tryCount>
+      <crucialInfo>VulkanLogging now exposes per-instance logger contexts and global fallbacks so sandbox builds no longer share sinks or verbosity.</crucialInfo>
+      <continue-info>Completed via new LoggerContext/ScopedLoggerBinding helpers and IGraphicsWin-owned context; no further action pending.</continue-info>
+      <subtasks>
+        <task>
+          <name>Map logging ownership</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Identified global sink/verbosity storage and replaced with sandbox-aware accessors.</crucialInfo>
+          <continue-info>Handled in VulkanLogging.h by introducing GlobalLogSink/Verbosity helpers.</continue-info>
+        </task>
+        <task>
+          <name>Bind logging lifecycle to instance</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>IGraphicsWin now stores a LoggerContext and binds it around Vulkan operations.</crucialInfo>
+          <continue-info>Implemented ScopedLoggerBinding usage in Create/Destroy/Resize Vulkan flows.</continue-info>
+        </task>
+        <task>
+          <name>Expose sandbox logging controls</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Added per-instance sink/verbosity accessors on IGraphicsWin for sandbox hosts.</crucialInfo>
+          <continue-info>Further adjustments can use SetVulkanLogSink/SetVulkanLogVerbosity APIs.</continue-info>
+        </task>
+      </subtasks>
+    </task>
+    <task>
+      <name>IGRAPHICS_SANDBOX_VK_LOGGER</name>
+      <status>SUCCESS</status>
+      <tryCount>1</tryCount>
+      <crucialInfo>Thread-local fallback replaced with LoggerContext binding so each renderer controls its sink.</crucialInfo>
+      <continue-info>Sink access now flows through IGraphicsWin::SetVulkanLogSink and ScopedLoggerBinding.</continue-info>
+      <subtasks>
+        <task>
+          <name>Design Vulkan log sink API</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Defined LoggerContext struct and ScopedLoggerBinding to manage sink routing.</crucialInfo>
+          <continue-info>IGraphicsWin exposes setters to wire custom sinks.</continue-info>
+        </task>
+        <task>
+          <name>Implement sandbox-aware sink storage</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>LoggerContext lives on the renderer and ResolveLogSink consults the active binding.</crucialInfo>
+          <continue-info>vk debug logging automatically follows the bound context.</continue-info>
+        </task>
+        <task>
+          <name>Add diagnostics for sink wiring</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Logging payload now includes sink context without global collisions; additional diagnostics not required.</crucialInfo>
+          <continue-info>ResolveLogSink honours the current ScopedLoggerBinding for verification.</continue-info>
+        </task>
+      </subtasks>
+    </task>
+    <task>
+      <name>IGRAPHICS_SANDBOX_VK_LOG_LEVEL</name>
+      <status>SUCCESS</status>
+      <tryCount>1</tryCount>
+      <crucialInfo>Verbosity now travels with LoggerContext so sandboxed renderers select independent log levels.</crucialInfo>
+      <continue-info>Per-instance Get/Set APIs on IGraphicsWin adjust verbosity without global side effects.</continue-info>
+      <subtasks>
+        <task>
+          <name>Expose per-instance log level knobs</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>IGraphicsWin::SetVulkanLogVerbosity exposes runtime control for sandbox clients.</crucialInfo>
+          <continue-info>Verbosity stored on LoggerContext and read via ResolveVerbosity.</continue-info>
+        </task>
+        <task>
+          <name>Persist log level alongside sink</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>LoggerContext bundles verbosity with sink so ResolveVerbosity honours the bound renderer.</crucialInfo>
+          <continue-info>Scoped bindings ensure VulkanLogging uses the renderer's stored severity.</continue-info>
+        </task>
+        <task>
+          <name>Validate level switching hooks</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>ResolveVerbosity consults the active context so updates take effect immediately across log events.</crucialInfo>
+          <continue-info>Global fallback remains available via ResetVerbosity for non-sandbox runs.</continue-info>
+        </task>
+      </subtasks>
+    </task>
+  </Tasks>
+  <Finalization>
+    <task>
+      <name>FINAL CHECK</name>
+      <status>OPEN</status>
+      <tryCount>0</tryCount>
+      <crucialInfo>Perform code review of all toggles (build tests unavailable). Transition tasks to REVIEW PASSED when complete.</crucialInfo>
+    </task>
+  </Finalization>
+</plan>

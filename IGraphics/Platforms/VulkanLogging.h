@@ -72,7 +72,7 @@ inline void DefaultLogSink(const char* message)
   DBGMSG("%s", message);
 }
 
-inline LogSink& LogSinkSlot()
+inline LogSink& GlobalLogSink()
 {
 #if IGRAPHICS_SANDBOX_VK_LOGGER
   thread_local LogSink sink = DefaultLogSink;
@@ -82,15 +82,105 @@ inline LogSink& LogSinkSlot()
   return sink;
 }
 
+inline Verbosity& GlobalVerbosity()
+{
+  static Verbosity verbosity = kConfiguredVerbosity;
+  return verbosity;
+}
+
+#if IGRAPHICS_SANDBOX_LOGGING
+struct LoggerContext
+{
+  LogSink sink = DefaultLogSink;
+  Verbosity verbosity = kConfiguredVerbosity;
+};
+
+inline const LoggerContext*& LoggerContextSlot()
+{
+  thread_local const LoggerContext* context = nullptr;
+  return context;
+}
+
+inline const LoggerContext* PushLoggerContext(const LoggerContext* context)
+{
+  auto& slot = LoggerContextSlot();
+  const LoggerContext* previous = slot;
+  slot = context;
+  return previous;
+}
+
+inline void PopLoggerContext(const LoggerContext* previous)
+{
+  LoggerContextSlot() = previous;
+}
+
+class ScopedLoggerBinding
+{
+public:
+  explicit ScopedLoggerBinding(const LoggerContext& context)
+    : mPrevious(PushLoggerContext(&context))
+  {
+  }
+
+  explicit ScopedLoggerBinding(const LoggerContext* context)
+    : mPrevious(PushLoggerContext(context))
+  {
+  }
+
+  ScopedLoggerBinding(const ScopedLoggerBinding&) = delete;
+  ScopedLoggerBinding& operator=(const ScopedLoggerBinding&) = delete;
+
+  ~ScopedLoggerBinding()
+  {
+    PopLoggerContext(mPrevious);
+  }
+
+private:
+  const LoggerContext* mPrevious = nullptr;
+};
+#endif
+
+inline Verbosity ResolveVerbosity()
+{
+#if IGRAPHICS_SANDBOX_LOGGING && IGRAPHICS_SANDBOX_VK_LOG_LEVEL
+  if (const LoggerContext* context = LoggerContextSlot())
+  {
+    return context->verbosity;
+  }
+#endif
+  return GlobalVerbosity();
+}
+
+inline LogSink ResolveLogSink()
+{
+#if IGRAPHICS_SANDBOX_LOGGING && IGRAPHICS_SANDBOX_VK_LOGGER
+  if (const LoggerContext* context = LoggerContextSlot())
+  {
+    return context->sink ? context->sink : DefaultLogSink;
+  }
+#endif
+  return GlobalLogSink() ? GlobalLogSink() : DefaultLogSink;
+}
+
 inline void SetLogSinkForTesting(LogSink sink)
 {
   // Allow tests to divert structured log payloads without touching DBGMSG.
-  LogSinkSlot() = sink ? sink : DefaultLogSink;
+  GlobalLogSink() = sink ? sink : DefaultLogSink;
 }
 
 inline void ResetLogSink()
 {
-  LogSinkSlot() = DefaultLogSink;
+  GlobalLogSink() = DefaultLogSink;
+}
+
+inline void SetVerbosityForTesting(Verbosity verbosity)
+{
+  GlobalVerbosity() = verbosity;
+}
+
+inline void ResetVerbosity()
+{
+  GlobalVerbosity() = kConfiguredVerbosity;
 }
 
 inline std::string Escape(const std::string& text)
@@ -145,13 +235,14 @@ inline const char* ToString(Severity severity)
 
 inline bool ShouldEmit(Severity severity)
 {
+  const Verbosity verbosity = ResolveVerbosity();
   switch (severity)
   {
   case Severity::kError:
-    return kConfiguredVerbosity >= Verbosity::kError;
+    return verbosity >= Verbosity::kError;
   case Severity::kInfo:
   case Severity::kDebug:
-    return kConfiguredVerbosity >= Verbosity::kVerbose;
+    return verbosity >= Verbosity::kVerbose;
   }
   return false;
 }
@@ -210,7 +301,7 @@ inline void LogEvent(const char* event, const char* stage, Severity severity, st
   }
 
   payload.append("}\n");
-  if (LogSink sink = LogSinkSlot())
+  if (LogSink sink = ResolveLogSink())
   {
     sink(payload.c_str());
   }

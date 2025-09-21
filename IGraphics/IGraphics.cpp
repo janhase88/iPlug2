@@ -40,14 +40,20 @@ using VST3_API_BASE = iplug::IPlugVST3Controller;
 using namespace iplug;
 using namespace igraphics;
 
-#if !IGRAPHICS_SANDBOX_IMAGE_CACHE
+#if IGRAPHICS_SANDBOX_DRAW || IGRAPHICS_SANDBOX_IMAGE_CACHE || IGRAPHICS_SANDBOX_TEXTURE_CACHE
+#define IGRAPHICS_USE_INSTANCE_GRAPHICS_CACHES 1
+#else
+#define IGRAPHICS_USE_INSTANCE_GRAPHICS_CACHES 0
+#endif
+
+#if !IGRAPHICS_USE_INSTANCE_GRAPHICS_CACHES
 static StaticStorage<APIBitmap> sBitmapCache;
 static StaticStorage<SVGHolder> sSVGCache;
 #endif
 
 StaticStorage<APIBitmap>& IGraphics::BitmapCache()
 {
-#if IGRAPHICS_SANDBOX_IMAGE_CACHE
+#if IGRAPHICS_USE_INSTANCE_GRAPHICS_CACHES
   return mBitmapCache;
 #else
   return sBitmapCache;
@@ -56,7 +62,7 @@ StaticStorage<APIBitmap>& IGraphics::BitmapCache()
 
 StaticStorage<SVGHolder>& IGraphics::SVGCache()
 {
-#if IGRAPHICS_SANDBOX_IMAGE_CACHE
+#if IGRAPHICS_USE_INSTANCE_GRAPHICS_CACHES
   return mSVGCache;
 #else
   return sSVGCache;
@@ -72,7 +78,7 @@ IGraphics::IGraphics(IGEditorDelegate& dlg, int w, int h, int fps, float scale)
 , mMaxScale(DEFAULT_MAX_DRAW_SCALE)
 , mDelegate(&dlg)
 {
-#if !IGRAPHICS_SANDBOX_IMAGE_CACHE
+#if !IGRAPHICS_USE_INSTANCE_GRAPHICS_CACHES
   StaticStorage<APIBitmap>::Accessor bitmapStorage(BitmapCache());
   bitmapStorage.Retain();
   StaticStorage<SVGHolder>::Accessor svgStorage(SVGCache());
@@ -88,7 +94,7 @@ IGraphics::~IGraphics()
   mCursorHidden = false;
   RemoveAllControls();
     
-#if !IGRAPHICS_SANDBOX_IMAGE_CACHE
+#if !IGRAPHICS_USE_INSTANCE_GRAPHICS_CACHES
   StaticStorage<APIBitmap>::Accessor bitmapStorage(BitmapCache());
   bitmapStorage.Release();
   StaticStorage<SVGHolder>::Accessor svgStorage(SVGCache());

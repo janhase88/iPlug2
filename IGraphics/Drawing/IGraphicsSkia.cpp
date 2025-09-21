@@ -208,11 +208,121 @@ void ReleaseSkiaGpuResources(Context* context)
 
 #if defined IGRAPHICS_VULKAN
 
+#if !IGRAPHICS_SANDBOX_VK_CONTEXT
+IGraphicsSkia::SkiaVulkanContextState& IGraphicsSkia::SharedVulkanContext()
+{
+  static SkiaVulkanContextState sSharedContext{};
+  return sSharedContext;
+}
+#endif
+
+IGraphicsSkia::SkiaVulkanContextState& IGraphicsSkia::VulkanContext()
+{
+#if IGRAPHICS_SANDBOX_VK_CONTEXT
+  return mVulkanContext;
+#else
+  return SharedVulkanContext();
+#endif
+}
+
+const IGraphicsSkia::SkiaVulkanContextState& IGraphicsSkia::VulkanContext() const
+{
+#if IGRAPHICS_SANDBOX_VK_CONTEXT
+  return mVulkanContext;
+#else
+  return SharedVulkanContext();
+#endif
+}
+
+VkInstance& IGraphicsSkia::VKInstance() { return VulkanContext().instance; }
+const VkInstance& IGraphicsSkia::VKInstance() const { return VulkanContext().instance; }
+VkPhysicalDevice& IGraphicsSkia::VKPhysicalDevice() { return VulkanContext().physicalDevice; }
+const VkPhysicalDevice& IGraphicsSkia::VKPhysicalDevice() const { return VulkanContext().physicalDevice; }
+VkDevice& IGraphicsSkia::VKDevice() { return VulkanContext().device; }
+const VkDevice& IGraphicsSkia::VKDevice() const { return VulkanContext().device; }
+VkSurfaceKHR& IGraphicsSkia::VKSurface() { return VulkanContext().surface; }
+const VkSurfaceKHR& IGraphicsSkia::VKSurface() const { return VulkanContext().surface; }
+VkSwapchainKHR& IGraphicsSkia::VKSwapchain() { return VulkanContext().swapchain; }
+const VkSwapchainKHR& IGraphicsSkia::VKSwapchain() const { return VulkanContext().swapchain; }
+VkQueue& IGraphicsSkia::VKQueue() { return VulkanContext().queue; }
+const VkQueue& IGraphicsSkia::VKQueue() const { return VulkanContext().queue; }
+VkCommandPool& IGraphicsSkia::VKCommandPool() { return VulkanContext().commandPool; }
+const VkCommandPool& IGraphicsSkia::VKCommandPool() const { return VulkanContext().commandPool; }
+VkCommandBuffer& IGraphicsSkia::VKCommandBuffer() { return VulkanContext().commandBuffer; }
+const VkCommandBuffer& IGraphicsSkia::VKCommandBuffer() const { return VulkanContext().commandBuffer; }
+uint32_t& IGraphicsSkia::VKQueueFamily() { return VulkanContext().queueFamily; }
+const uint32_t& IGraphicsSkia::VKQueueFamily() const { return VulkanContext().queueFamily; }
+std::vector<VkImage>& IGraphicsSkia::VKSwapchainImages() { return VulkanContext().swapchainImages; }
+const std::vector<VkImage>& IGraphicsSkia::VKSwapchainImages() const { return VulkanContext().swapchainImages; }
+std::vector<VkImageLayout>& IGraphicsSkia::VKImageLayouts() { return VulkanContext().imageLayouts; }
+const std::vector<VkImageLayout>& IGraphicsSkia::VKImageLayouts() const { return VulkanContext().imageLayouts; }
+std::vector<sk_sp<SkSurface>>& IGraphicsSkia::VKSwapchainSurfaces() { return VulkanContext().swapchainSurfaces; }
+const std::vector<sk_sp<SkSurface>>& IGraphicsSkia::VKSwapchainSurfaces() const { return VulkanContext().swapchainSurfaces; }
+uint32_t& IGraphicsSkia::VKCurrentImage() { return VulkanContext().currentImage; }
+const uint32_t& IGraphicsSkia::VKCurrentImage() const { return VulkanContext().currentImage; }
+VkSemaphore& IGraphicsSkia::VKImageAvailableSemaphore() { return VulkanContext().imageAvailableSemaphore; }
+const VkSemaphore& IGraphicsSkia::VKImageAvailableSemaphore() const { return VulkanContext().imageAvailableSemaphore; }
+VkSemaphore& IGraphicsSkia::VKRenderFinishedSemaphore() { return VulkanContext().renderFinishedSemaphore; }
+const VkSemaphore& IGraphicsSkia::VKRenderFinishedSemaphore() const { return VulkanContext().renderFinishedSemaphore; }
+VkFence& IGraphicsSkia::VKInFlightFence() { return VulkanContext().inFlightFence; }
+const VkFence& IGraphicsSkia::VKInFlightFence() const { return VulkanContext().inFlightFence; }
+VkFormat& IGraphicsSkia::VKSwapchainFormat() { return VulkanContext().swapchainFormat; }
+const VkFormat& IGraphicsSkia::VKSwapchainFormat() const { return VulkanContext().swapchainFormat; }
+VkImageUsageFlags& IGraphicsSkia::VKSwapchainUsageFlags() { return VulkanContext().swapchainUsageFlags; }
+const VkImageUsageFlags& IGraphicsSkia::VKSwapchainUsageFlags() const { return VulkanContext().swapchainUsageFlags; }
+bool& IGraphicsSkia::VKSkipFrame() { return VulkanContext().skipFrame; }
+const bool& IGraphicsSkia::VKSkipFrame() const { return VulkanContext().skipFrame; }
+bool& IGraphicsSkia::VKSubmissionPending() { return VulkanContext().submissionPending; }
+const bool& IGraphicsSkia::VKSubmissionPending() const { return VulkanContext().submissionPending; }
+uint64_t& IGraphicsSkia::VKSwapchainVersion() { return VulkanContext().swapchainVersion; }
+const uint64_t& IGraphicsSkia::VKSwapchainVersion() const { return VulkanContext().swapchainVersion; }
+uint64_t& IGraphicsSkia::VKFrameVersion() { return VulkanContext().frameVersion; }
+const uint64_t& IGraphicsSkia::VKFrameVersion() const { return VulkanContext().frameVersion; }
+std::mutex& IGraphicsSkia::VKSwapchainMutex() { return VulkanContext().swapchainMutex; }
+const std::mutex& IGraphicsSkia::VKSwapchainMutex() const { return VulkanContext().swapchainMutex; }
+std::unordered_set<VkImage>& IGraphicsSkia::VKDebugImages() { return VulkanContext().debugImages; }
+const std::unordered_set<VkImage>& IGraphicsSkia::VKDebugImages() const { return VulkanContext().debugImages; }
+#if IGRAPHICS_SANDBOX_LOGGING
+const vulkanlog::LoggerContext*& IGraphicsSkia::VKLoggerContext() { return VulkanContext().loggerContext; }
+const vulkanlog::LoggerContext* const& IGraphicsSkia::VKLoggerContext() const { return VulkanContext().loggerContext; }
+#endif
+
+#define mVKInstance VKInstance()
+#define mVKPhysicalDevice VKPhysicalDevice()
+#define mVKDevice VKDevice()
+#define mVKSurface VKSurface()
+#define mVKSwapchain VKSwapchain()
+#define mVKQueue VKQueue()
+#define mVKCommandPool VKCommandPool()
+#define mVKCommandBuffer VKCommandBuffer()
+#define mVKQueueFamily VKQueueFamily()
+#define mVKSwapchainImages VKSwapchainImages()
+#define mVKImageLayouts VKImageLayouts()
+#define mVKSwapchainSurfaces VKSwapchainSurfaces()
+#define mVKCurrentImage VKCurrentImage()
+#define mVKImageAvailableSemaphore VKImageAvailableSemaphore()
+#define mVKRenderFinishedSemaphore VKRenderFinishedSemaphore()
+#define mVKInFlightFence VKInFlightFence()
+#define mVKSwapchainFormat VKSwapchainFormat()
+#define mVKSwapchainUsageFlags VKSwapchainUsageFlags()
+#define mVKSkipFrame VKSkipFrame()
+#define mVKSubmissionPending VKSubmissionPending()
+#define mVKSwapchainVersion VKSwapchainVersion()
+#define mVKFrameVersion VKFrameVersion()
+#define mVKSwapchainMutex VKSwapchainMutex()
+#define mVKDebugImages VKDebugImages()
+#if IGRAPHICS_SANDBOX_LOGGING
+  #define IGRAPHICS_SKIA_VK_BIND_LOGGER() const vulkanlog::ScopedLoggerBinding vulkanLoggerBinding(VKLoggerContext())
+#else
+  #define IGRAPHICS_SKIA_VK_BIND_LOGGER() ((void)0)
+#endif
+
 // Wrap and cache a Skia surface for the given swap-chain image if the existing cache entry
 // is invalid. The cache is keyed by the image index so the frame loop can reuse immutable
 // SkSurfaces across frames without paying the wrap cost on every BeginFrame.
 sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int width, int height, const GrVkImageInfo& imageInfo)
 {
+  IGRAPHICS_SKIA_VK_BIND_LOGGER();
   if (imageIndex >= mVKSwapchainSurfaces.size())
   {
     mVKSwapchainSurfaces.resize(mVKSwapchainImages.size());
@@ -287,6 +397,7 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
 // during steady-state rendering.
 VkCommandBuffer IGraphicsSkia::EnsureVulkanCommandBuffer()
 {
+  IGRAPHICS_SKIA_VK_BIND_LOGGER();
   if (mVKCommandPool == VK_NULL_HANDLE)
   {
     VkCommandPoolCreateInfo poolInfo{};
@@ -324,6 +435,7 @@ VkCommandBuffer IGraphicsSkia::EnsureVulkanCommandBuffer()
 
 bool IGraphicsSkia::PrepareCurrentSwapchainImageForFlush()
 {
+  IGRAPHICS_SKIA_VK_BIND_LOGGER();
   if (mVKDevice == VK_NULL_HANDLE || mVKQueue == VK_NULL_HANDLE)
     return false;
 
@@ -1052,6 +1164,9 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   mVKImageAvailableSemaphore = ctx->imageAvailableSemaphore;
   mVKRenderFinishedSemaphore = ctx->renderFinishedSemaphore;
   mVKInFlightFence = ctx->inFlightFence;
+#if IGRAPHICS_SANDBOX_LOGGING
+  VKLoggerContext() = ctx->loggerContext;
+#endif
 
   skgpu::VulkanBackendContext backendContext = {};
   backendContext.fGetProc = [](const char* name, VkInstance instance, VkDevice device) {
@@ -1085,6 +1200,7 @@ void IGraphicsSkia::OnViewDestroyed()
   mMTLLayer = nullptr;
   mMTLDevice = nullptr;
 #elif defined IGRAPHICS_VULKAN
+  IGRAPHICS_SKIA_VK_BIND_LOGGER();
   if (mGrContext)
   {
     bool preparedForFlush = PrepareCurrentSwapchainImageForFlush();
@@ -1138,6 +1254,9 @@ void IGraphicsSkia::OnViewDestroyed()
   mVKCurrentImage = kInvalidImageIndex;
   mVKSwapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
   mVKSubmissionPending = false;
+#if IGRAPHICS_SANDBOX_LOGGING
+  VKLoggerContext() = nullptr;
+#endif
   mVKSkipFrame = true;
 
   mGrContext = nullptr;
@@ -1147,6 +1266,7 @@ void IGraphicsSkia::OnViewDestroyed()
 #ifdef IGRAPHICS_VULKAN
 void IGraphicsSkia::SkipVKFrame()
 {
+  IGRAPHICS_SKIA_VK_BIND_LOGGER();
   IGRAPHICS_VK_LOG("SkipVKFrame",
                       "entry",
                       vulkanlog::Severity::kDebug,
@@ -1158,6 +1278,7 @@ void IGraphicsSkia::SkipVKFrame()
 }
 bool IGraphicsSkia::AssertValidSwapchainImage(VkImage image, const char* context)
 {
+  IGRAPHICS_SKIA_VK_BIND_LOGGER();
   if (image == VK_NULL_HANDLE)
   {
     IGRAPHICS_VK_LOG("AssertValidSwapchainImage",
@@ -1221,6 +1342,9 @@ bool IGraphicsSkia::AssertValidSwapchainImage(VkImage image, const char* context
 
 void IGraphicsSkia::DrawResize()
 {
+#if defined IGRAPHICS_VULKAN
+  IGRAPHICS_SKIA_VK_BIND_LOGGER();
+#endif
   ScopedGraphicsContext scopedGLContext{this};
   auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * GetScreenScale()));
   auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * GetScreenScale()));
@@ -1480,6 +1604,7 @@ void IGraphicsSkia::DrawResize()
 void IGraphicsSkia::BeginFrame()
 {
 #if defined IGRAPHICS_VULKAN
+  IGRAPHICS_SKIA_VK_BIND_LOGGER();
   std::unique_lock<std::mutex> lock(mVKSwapchainMutex);
   mVKFrameVersion = mVKSwapchainVersion;
   IGRAPHICS_VK_LOG("BeginFrame",
@@ -1951,6 +2076,7 @@ void IGraphicsSkia::EndFrame()
 #else // GPU
   #ifdef IGRAPHICS_VULKAN
 
+  IGRAPHICS_SKIA_VK_BIND_LOGGER();
   std::unique_lock<std::mutex> lock(mVKSwapchainMutex);
   IGRAPHICS_VK_LOG("EndFrame",
                       "entry",
@@ -2938,3 +3064,31 @@ const char* IGraphicsSkia::GetDrawingAPIStr()
   return "SKIA";
 #endif
 }
+
+#if defined IGRAPHICS_VULKAN
+#undef mVKInstance
+#undef mVKPhysicalDevice
+#undef mVKDevice
+#undef mVKSurface
+#undef mVKSwapchain
+#undef mVKQueue
+#undef mVKCommandPool
+#undef mVKCommandBuffer
+#undef mVKQueueFamily
+#undef mVKSwapchainImages
+#undef mVKImageLayouts
+#undef mVKSwapchainSurfaces
+#undef mVKCurrentImage
+#undef mVKImageAvailableSemaphore
+#undef mVKRenderFinishedSemaphore
+#undef mVKInFlightFence
+#undef mVKSwapchainFormat
+#undef mVKSwapchainUsageFlags
+#undef mVKSkipFrame
+#undef mVKSubmissionPending
+#undef mVKSwapchainVersion
+#undef mVKFrameVersion
+#undef mVKSwapchainMutex
+#undef mVKDebugImages
+#undef IGRAPHICS_SKIA_VK_BIND_LOGGER
+#endif

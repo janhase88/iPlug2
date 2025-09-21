@@ -1870,7 +1870,7 @@ private:
   IDisplayTickFunc mDisplayTickFunc = nullptr;
   IUIAppearanceChangedFunc mAppearanceChangedFunc = nullptr;
 
-#if IGRAPHICS_SANDBOX_IMAGE_CACHE
+#if IGRAPHICS_SANDBOX_DRAW || IGRAPHICS_SANDBOX_IMAGE_CACHE || IGRAPHICS_SANDBOX_TEXTURE_CACHE
   StaticStorage<APIBitmap> mBitmapCache;
   StaticStorage<SVGHolder> mSVGCache;
 #endif

@@ -11,6 +11,8 @@
     Scope every toggle marked UNSANDBOXED for the Windows Skia/Vulkan path in Plan/Sandbox-Report-Initial.md.
     Each task must reach implementation-ready clarity with file-level touchpoints, state management notes,
     logging/telemetry expectations, and validation approach even though Windows builds cannot run here.
+    New requirement: address the Skia/Vulkan compilation failures where ctx is undefined, VulkanContext usage
+    is mis-specified, and VkImage push_back arguments do not match, restoring a clean Windows build.
   </context>
   <Tasks>
     <task>
@@ -340,6 +342,40 @@
           <tryCount>1</tryCount>
           <crucialInfo>ResolveVerbosity consults the active context so updates take effect immediately across log events.</crucialInfo>
           <continue-info>Global fallback remains available via ResetVerbosity for non-sandbox runs.</continue-info>
+        </task>
+      </subtasks>
+    </task>
+    <task>
+      <name>FIX_VULKAN_CTX_COMPILATION_ERRORS</name>
+      <status>AWAIT-CHILDREN-TASK-SUCCESS</status>
+      <tryCount>3</tryCount>
+      <crucialInfo>Windows Skia/Vulkan builds fail because ctx is undefined throughout IGraphicsSkia Vulkan paths,
+      VulkanContext references use pointer-to-member syntax errors, Vulkan image vectors receive mismatched arguments,
+      and related helper declarations lack headers. Centralized the VulkanContext definition so both IGraphicsWin and
+      IGraphicsSkia see the same struct, then renamed it to PlatformVulkanContext with a compatibility alias so the
+      renderer can reference the shared state without triggering the VulkanContext() accessor collision.</crucialInfo>
+      <continue-info>Focus on authoring the remote validation recipe for Windows builds once the outstanding verification subtask completes.</continue-info>
+      <subtasks>
+        <task>
+          <name>Trace ctx data flow regression</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Identified that ctx originated from the Windows Vulkan bootstrap but the struct lived only in IGraphicsWin.h; promoted the definition into a shared Platforms/VulkanContext.h include consumed by both the window and Skia renderer to restore pointer scope.</crucialInfo>
+          <continue-info>Monitor additional sources (e.g. Linux Vulkan) in case they require the shared header during future work.</continue-info>
+        </task>
+        <task>
+          <name>Correct VulkanContext definitions</name>
+          <status>SUCCESS</status>
+          <tryCount>3</tryCount>
+          <crucialInfo>Shared header keeps the VkImage vector pointer and semaphore/fence handles consistent; struct now lives as PlatformVulkanContext with a legacy VulkanContext alias so downstream callers keep compiling while Skia disambiguates its accessor methods. Windows bootstrap now instantiates PlatformVulkanContext explicitly to avoid the VulkanContext() member accessor collisions that previously yielded pointer-to-member syntax errors.</crucialInfo>
+          <continue-info>Confirm that any additional Vulkan helpers include the shared header instead of re-declaring the struct.</continue-info>
+        </task>
+        <task>
+          <name>Verify Windows Skia/Vulkan compile</name>
+          <status>OPEN</status>
+          <tryCount>0</tryCount>
+          <crucialInfo>Create a code-review validation plan covering clang-cl/msvc builds since local toolchain unavailable; document assumptions.</crucialInfo>
+          <continue-info>Record steps/flags future agent must run to confirm once Windows environment is available.</continue-info>
         </task>
       </subtasks>
     </task>

@@ -1403,7 +1403,7 @@ bool IGraphicsWin::RecreateVulkanContext()
   DestroyVulkanContext();
   if (!CreateVulkanContext())
     return false;
-  VulkanContext ctx;
+  ::iplug::igraphics::PlatformVulkanContext ctx;
   ctx.instance = VulkanInstance();
   ctx.physicalDevice = VulkanPhysicalDevice();
   ctx.device = VulkanDevice();
@@ -1849,7 +1849,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     DBGMSG("IGraphicsWin::OpenWindow failed to initialize Vulkan context for class %ls", className);
     return nullptr;
   }
-  VulkanContext ctx;
+  ::iplug::igraphics::PlatformVulkanContext ctx;
   ctx.instance = VulkanInstance();
   ctx.physicalDevice = VulkanPhysicalDevice();
   ctx.device = VulkanDevice();

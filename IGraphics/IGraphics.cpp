@@ -195,6 +195,26 @@ void IGraphics::RemoveControl(int idx)
 
 void IGraphics::RemoveControl(IControl* pControl)
 {
+  if(!pControl)
+    return;
+
+  std::vector<IControl*> childControls;
+
+  if(auto* pContainer = pControl->As<IContainerBase>())
+  {
+    childControls.reserve(pContainer->NChildren());
+
+    pContainer->ForAllChildrenFunc([&](int, IControl* pChild) {
+      if(pChild)
+        childControls.push_back(pChild);
+    });
+  }
+
+  for(IControl* pChild : childControls)
+  {
+    RemoveControl(pChild);
+  }
+
   if(ControlIsCaptured(pControl))
     ReleaseMouseCapture();
   

@@ -381,19 +381,16 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
     return 0;
   }
   case WM_CANCELMODE: {
-    if (pGraphics->ControlIsCaptured())
+    if (pGraphics->ControlIsCaptured() || GetCapture() == hWnd)
       pGraphics->ReleaseMouseCapture();
 
     return 0;
   }
   case WM_CAPTURECHANGED: {
-    if (pGraphics->ControlIsCaptured())
-    {
-      const HWND newCapture = reinterpret_cast<HWND>(lParam);
+    const HWND newCapture = reinterpret_cast<HWND>(lParam);
 
-      if (newCapture != hWnd)
-        pGraphics->ReleaseMouseCapture();
-    }
+    if (newCapture != hWnd && (pGraphics->ControlIsCaptured() || GetCapture() == hWnd))
+      pGraphics->ReleaseMouseCapture();
 
     return 0;
   }
@@ -1756,7 +1753,7 @@ void IGraphicsWin::CloseWindow()
 {
   if (mPlugWnd)
   {
-    if (ControlIsCaptured())
+    if (ControlIsCaptured() || GetCapture() == mPlugWnd)
       ReleaseMouseCapture();
 
     if (mVSYNCEnabled)

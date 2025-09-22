@@ -171,6 +171,19 @@ void IGraphicsWin::OnDisplayTimer(int vBlankCount)
     return;
   }
 
+  if (HWND captureWnd = GetCapture())
+  {
+    if ((captureWnd != mPlugWnd) && !IsChild(mPlugWnd, captureWnd))
+    {
+      const HWND rootWnd = GetAncestor(mPlugWnd, GA_ROOT);
+
+      if (rootWnd && (captureWnd == rootWnd || IsChild(rootWnd, captureWnd)))
+      {
+        return;
+      }
+    }
+  }
+
   // TODO: move this... listen to the right messages in windows for screen resolution changes, etc.
   if (!GetCapture()) // workaround Windows issues with window sizing during mouse move
   {

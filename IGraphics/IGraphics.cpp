@@ -1077,36 +1077,46 @@ void IGraphics::OnMouseDown(const std::vector<IMouseInfo>& points)
   }
 }
 
+void IGraphics::FinishCaptureForTouch(ITouchID touchID, const IMouseInfo* pInfo)
+{
+  auto itr = mCapturedMap.find(touchID);
+
+  if (itr == mCapturedMap.end())
+    return;
+
+  IControl* pCapturedControl = itr->second;
+
+  if (pCapturedControl)
+  {
+    float x = pInfo ? pInfo->x : mCursorX;
+    float y = pInfo ? pInfo->y : mCursorY;
+    IMouseMod mod = pInfo ? pInfo->ms : IMouseMod(false, false, false, false, false, touchID);
+    mod.touchID = touchID;
+
+    pCapturedControl->OnMouseUp(x, y, mod);
+
+    const int nVals = pCapturedControl->NVals();
+
+    for (int v = 0; v < nVals; v++)
+    {
+      const int paramIdx = pCapturedControl->GetParamIdx(v);
+
+      if (paramIdx > kNoParameter)
+        GetDelegate()->EndInformHostOfParamChangeFromUI(paramIdx);
+    }
+  }
+
+  mCapturedMap.erase(itr);
+}
+
 void IGraphics::OnMouseUp(const std::vector<IMouseInfo>& points)
 {
 //  Trace("IGraphics::OnMouseUp", __LINE__, "x:%0.2f, y:%0.2f, mod:LRSCA: %i%i%i%i%i", x, y, mod.L, mod.R, mod.S, mod.C, mod.A);
-  
+
   if (ControlIsCaptured())
   {
-    for (auto& point : points)
-    {
-      float x = point.x;
-      float y = point.y;
-      const IMouseMod& mod = point.ms;
-      auto itr = mCapturedMap.find(mod.touchID);
-      
-      if(itr != mCapturedMap.end())
-      {
-        IControl* pCapturedControl = itr->second;
-      
-        pCapturedControl->OnMouseUp(x, y, mod);
-      
-        int nVals = pCapturedControl->NVals();
-
-        for (int v = 0; v < nVals; v++)
-        {
-          if (pCapturedControl->GetParamIdx(v) > kNoParameter)
-            GetDelegate()->EndInformHostOfParamChangeFromUI(pCapturedControl->GetParamIdx(v));
-        }
-        
-        mCapturedMap.erase(mod.touchID);
-      }
-    }
+    for (const auto& point : points)
+      FinishCaptureForTouch(point.ms.touchID, &point);
   }
 
   if (mResizingInProcess)
@@ -1303,7 +1313,18 @@ void IGraphics::OnDropMultiple(const std::vector<const char*>& paths, float x, f
 
 void IGraphics::ReleaseMouseCapture()
 {
-  mCapturedMap.clear();
+  if (ControlIsCaptured())
+  {
+    std::vector<ITouchID> touchIDs;
+    touchIDs.reserve(mCapturedMap.size());
+
+    for (const auto& capture : mCapturedMap)
+      touchIDs.push_back(capture.first);
+
+    for (auto touchID : touchIDs)
+      FinishCaptureForTouch(touchID);
+  }
+
   if (mCursorHidden)
     HideMouseCursor(false);
 }

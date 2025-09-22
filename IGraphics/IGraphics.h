@@ -1800,6 +1800,7 @@ protected:
   virtual float GetBackingPixelScale() const { return GetScreenScale() * GetDrawScale(); };
 
   IMatrix GetTransformMatrix() const { return mTransform; }
+  void FinishCaptureForTouch(ITouchID touchID, const IMouseInfo* pInfo = nullptr);
 #pragma mark -
 
 private:

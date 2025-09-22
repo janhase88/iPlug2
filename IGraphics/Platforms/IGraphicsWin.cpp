@@ -380,12 +380,24 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
     pGraphics->OnMouseOut();
     return 0;
   }
+  case WM_CAPTURECHANGED: {
+    if (pGraphics->ControlIsCaptured())
+    {
+      const HWND newCapture = reinterpret_cast<HWND>(lParam);
+
+      if (newCapture != hWnd)
+        pGraphics->ReleaseMouseCapture();
+    }
+
+    return 0;
+  }
   case WM_LBUTTONUP:
   case WM_RBUTTONUP: {
-    ReleaseCapture();
     IMouseInfo info = pGraphics->GetMouseInfo(lParam, wParam);
     std::vector<IMouseInfo> list{info};
     pGraphics->OnMouseUp(list);
+    if (GetCapture() == hWnd)
+      ReleaseCapture();
     return 0;
   }
   case WM_LBUTTONDBLCLK:
@@ -1732,6 +1744,9 @@ void IGraphicsWin::CloseWindow()
 {
   if (mPlugWnd)
   {
+    if (ControlIsCaptured())
+      ReleaseMouseCapture();
+
     if (mVSYNCEnabled)
       StopVBlankThread();
     else

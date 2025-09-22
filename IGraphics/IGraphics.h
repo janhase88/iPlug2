@@ -1417,19 +1417,22 @@ public:
   
   /** Check to see if any control is captured */
   bool ControlIsCaptured() const { return mCapturedMap.size() > 0; }
+
+  /** Debug helper to count captured controls */
+  size_t GetCaptureCount() const { return mCapturedMap.size(); }
   
   /** Check to see if the control is already captured
    * @return \c true is the control is already captured */
   bool ControlIsCaptured(IControl* pControl) const
   {
-    return std::find_if(std::begin(mCapturedMap), std::end(mCapturedMap), [pControl](auto&& press) { return press.second == pControl; }) != mCapturedMap.end();
+    return std::find_if(std::begin(mCapturedMap), std::end(mCapturedMap), [pControl](auto&& press) { return press.second.pControl == pControl; }) != mCapturedMap.end();
   }
 
   /** Populate a vector with the touchIDs active on pControl */
   void GetTouches(IControl* pControl, std::vector<ITouchID>& touchesOnThisControl) const
   {
     for (auto i = mCapturedMap.begin(), j = mCapturedMap.end(); i != j; ++i)
-      if (i->second == pControl)
+      if (i->second.pControl == pControl)
         touchesOnThisControl.push_back(i->first);
   }
   
@@ -1723,6 +1726,9 @@ protected:
    * @return APIBitmap* Drawing API bitmap abstraction */
   virtual APIBitmap* LoadAPIBitmap(const char* fileNameOrResID, int scale, EResourceLocation location, const char* ext) = 0;
 
+  virtual void PlatformReleaseMouseCapture() {}
+  virtual void PlatformOnCaptureFinished(ITouchID) {}
+
   /** Drawing API method to load a bitmap from binary data, called internally
    * @param name CString for the name of the resource
    * @param pData Raw pointer to the binary data
@@ -1800,6 +1806,7 @@ protected:
   virtual float GetBackingPixelScale() const { return GetScreenScale() * GetDrawScale(); };
 
   IMatrix GetTransformMatrix() const { return mTransform; }
+  void FinishCaptureForTouch(ITouchID touchID, const IMouseInfo* pInfo = nullptr);
 #pragma mark -
 
 private:
@@ -1838,7 +1845,14 @@ private:
   std::vector<EGestureType> mRegisteredGestures; // All the types of gesture registered with the graphics context
   IRECTList mGestureRegions; // Rectangular regions linked to gestures (excluding IControls)
   std::unordered_map<int, IGestureFunc> mGestureRegionFuncs; // Map of gesture region index to gesture function
-  std::unordered_map<ITouchID, IControl*> mCapturedMap; // associative array of touch ids to control pointers, the same control can be touched multiple times
+  struct CapturedControl
+  {
+    IControl* pControl = nullptr;
+    bool beganInformHost = false;
+    bool sawMouseDown = false;
+  };
+
+  std::unordered_map<ITouchID, CapturedControl> mCapturedMap; // associative array of touch ids to control pointers, the same control can be touched multiple times
   IControl* mMouseOver = nullptr;
   IControl* mInTextEntry = nullptr;
   IControl* mInPopupMenu = nullptr;

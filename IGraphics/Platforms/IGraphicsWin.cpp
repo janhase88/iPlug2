@@ -210,20 +210,15 @@ void IGraphicsWin::OnDisplayTimer(int vBlankCount)
       UpdateWindow(mPlugWnd);
       mParamEditMsg = kUpdate;
     }
-    else if (!hadPendingPaint)
+    else if (!hadPendingPaint && mVSYNCEnabled)
     {
-      UpdateWindow(mPlugWnd);
-
-      if (mVSYNCEnabled)
+      // Check and see if we are still in this frame.
+      curCount = mVBlankCount;
+      if (msgCount != curCount)
       {
-        // Check and see if we are still in this frame.
-        curCount = mVBlankCount;
-        if (msgCount != curCount)
-        {
-          // we are late, skip the next vblank to give us a breather.
-          mVBlankSkipUntil = curCount + 1;
-          // DBGMSG("vblank painting was late by %i frames.", (mVBlankSkipUntil - msgCount));
-        }
+        // we are late, skip the next vblank to give us a breather.
+        mVBlankSkipUntil = curCount + 1;
+        // DBGMSG("vblank painting was late by %i frames.", (mVBlankSkipUntil - msgCount));
       }
     }
   }

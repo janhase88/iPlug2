@@ -1251,7 +1251,10 @@ private:
    * @param bounds \todo
    * @param scale \todo */
   void Draw(const IRECT& bounds, float scale);
-  
+
+  /** Finish any capture for a specific touch/mouse interaction, notifying the control and host. */
+  void FinishCaptureForTouch(const IMouseInfo& info);
+
   /** \todo
    * @param pControl \todo
    * @param bounds \todo
@@ -1608,7 +1611,7 @@ public:
 
   /** Called when the platform loses mouse capture unexpectedly to finish outstanding gestures. */
   void HandleCaptureLoss();
-
+ 
   /** @return \c true if the context has mouse overs enabled */
   bool MouseOverEnabled() const { return mEnableMouseOver; }
 

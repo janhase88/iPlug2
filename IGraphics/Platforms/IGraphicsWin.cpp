@@ -386,7 +386,7 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 #ifndef NDEBUG
       DBGMSG("IGraphicsWin::WndProc() lost capture to %p\n", reinterpret_cast<void*>(HWND(lParam)));
 #endif
-      pGraphics->HandleCaptureLoss();
+      pGraphics->ReleaseMouseCapture();
     }
     return 0;
   }

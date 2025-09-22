@@ -1606,6 +1606,9 @@ public:
   /** Used to tell the graphics context to stop tracking mouse interaction with a control */
   void ReleaseMouseCapture();
 
+  /** Called when the platform loses mouse capture unexpectedly to finish outstanding gestures. */
+  void HandleCaptureLoss();
+
   /** @return \c true if the context has mouse overs enabled */
   bool MouseOverEnabled() const { return mEnableMouseOver; }
 

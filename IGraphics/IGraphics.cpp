@@ -1301,6 +1301,35 @@ void IGraphics::OnDropMultiple(const std::vector<const char*>& paths, float x, f
   if (pControl) pControl->OnDropMultiple(paths);
 }
 
+void IGraphics::HandleCaptureLoss()
+{
+  if (!ControlIsCaptured())
+    return;
+
+  std::vector<IMouseInfo> points;
+  points.reserve(mCapturedMap.size());
+
+  for (auto& capture : mCapturedMap)
+  {
+    IMouseInfo info;
+    info.x = mCursorX;
+    info.y = mCursorY;
+    info.ms = IMouseMod(false, false, false, false, false, capture.first);
+    points.push_back(info);
+  }
+
+#ifndef NDEBUG
+  DBGMSG("IGraphics::HandleCaptureLoss() releasing %zu capture(s)\n", points.size());
+#endif
+
+  OnMouseUp(points);
+
+  mCapturedMap.clear();
+
+  if (mCursorHidden)
+    HideMouseCursor(false);
+}
+
 void IGraphics::ReleaseMouseCapture()
 {
   mCapturedMap.clear();

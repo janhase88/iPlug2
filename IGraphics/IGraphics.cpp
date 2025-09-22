@@ -10,6 +10,8 @@
 
 #include "IGraphics.h"
 
+#include <cinttypes>
+
 #define NANOSVG_IMPLEMENTATION
 #pragma warning(disable:4244) // float conversion
 #include "nanosvg.h"
@@ -1088,6 +1090,10 @@ void IGraphics::OnMouseDown(const std::vector<IMouseInfo>& points)
         pCaptureInfo->sawMouseDown = true;
 
       pCapturedControl->OnMouseDown(x, y, mod);
+#ifndef NDEBUG
+      DBGMSG("IGraphics::OnMouseDown capture touch=%" PRIuPTR " tag=%d count=%zu\n", static_cast<uintptr_t>(mod.touchID),
+             pCapturedControl->GetTag(), mCapturedMap.size());
+#endif
     }
   }
 }
@@ -1101,6 +1107,12 @@ void IGraphics::FinishCaptureForTouch(ITouchID touchID, const IMouseInfo* pInfo)
 
   CapturedControl capture = itr->second;
   IControl* pCapturedControl = capture.pControl;
+
+#ifndef NDEBUG
+  DBGMSG("IGraphics::FinishCaptureForTouch begin touch=%" PRIuPTR " tag=%d beganHost=%d sawDown=%d count=%zu\n",
+         static_cast<uintptr_t>(touchID), pCapturedControl ? pCapturedControl->GetTag() : kNoTag, capture.beganInformHost,
+         capture.sawMouseDown, mCapturedMap.size());
+#endif
 
   if (pCapturedControl && capture.sawMouseDown)
   {
@@ -1125,7 +1137,14 @@ void IGraphics::FinishCaptureForTouch(ITouchID touchID, const IMouseInfo* pInfo)
     }
   }
 
+  PlatformOnCaptureFinished(touchID);
+
   mCapturedMap.erase(itr);
+
+#ifndef NDEBUG
+  DBGMSG("IGraphics::FinishCaptureForTouch end touch=%" PRIuPTR " remaining=%zu\n", static_cast<uintptr_t>(touchID),
+         mCapturedMap.size());
+#endif
 }
 
 void IGraphics::OnMouseUp(const std::vector<IMouseInfo>& points)
@@ -1164,9 +1183,14 @@ void IGraphics::OnTouchCancelled(const std::vector<IMouseInfo>& points)
       {
         IControl* pCapturedControl = itr->second.pControl;
         pCapturedControl->OnTouchCancelled(x, y, mod);
+        PlatformOnCaptureFinished(mod.touchID);
         mCapturedMap.erase(mod.touchID); // remove from captured list
-        
+
         //        DBGMSG("DEL - NCONTROLS captured = %lu\n", mCapturedMap.size());
+#ifndef NDEBUG
+        DBGMSG("IGraphics::OnTouchCancelled touch=%" PRIuPTR " tag=%d count=%zu\n", static_cast<uintptr_t>(mod.touchID),
+               pCapturedControl ? pCapturedControl->GetTag() : kNoTag, mCapturedMap.size());
+#endif
       }
     }
   }
@@ -1332,6 +1356,9 @@ void IGraphics::OnDropMultiple(const std::vector<const char*>& paths, float x, f
 
 void IGraphics::ReleaseMouseCapture()
 {
+#ifndef NDEBUG
+  DBGMSG("IGraphics::ReleaseMouseCapture begin captured=%d count=%zu\n", ControlIsCaptured(), mCapturedMap.size());
+#endif
   if (ControlIsCaptured())
   {
     std::vector<ITouchID> touchIDs;
@@ -1348,6 +1375,10 @@ void IGraphics::ReleaseMouseCapture()
     HideMouseCursor(false);
 
   PlatformReleaseMouseCapture();
+
+#ifndef NDEBUG
+  DBGMSG("IGraphics::ReleaseMouseCapture end captured=%d count=%zu\n", ControlIsCaptured(), mCapturedMap.size());
+#endif
 }
 
 int IGraphics::GetMouseControlIdx(float x, float y, bool mouseOver)
@@ -1435,10 +1466,14 @@ IControl* IGraphics::GetMouseControl(float x, float y, bool capture, bool mouseO
       if (alreadyCaptured && !pControl->GetWantsMultiTouch())
         return nullptr;
     }
-    
+
     mCapturedMap.insert(std::make_pair(touchID, CapturedControl{pControl, false}));
-    
+
 //    DBGMSG("ADD - NCONTROLS captured = %lu\n", mCapturedMap.size());
+#ifndef NDEBUG
+    DBGMSG("IGraphics::GetMouseControl capture touch=%" PRIuPTR " tag=%d count=%zu\n", static_cast<uintptr_t>(touchID),
+           pControl->GetTag(), mCapturedMap.size());
+#endif
   }
   
   if (mouseOver)

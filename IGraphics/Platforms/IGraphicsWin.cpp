@@ -26,6 +26,7 @@
 
 #include <VersionHelpers.h>
 #include <algorithm>
+#include <cinttypes>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -308,6 +309,10 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
     }
     SetFocus(hWnd); // Added to get keyboard focus again when user clicks in window
     SetCapture(hWnd);
+#ifndef NDEBUG
+    DBGMSG("IGraphicsWin::WndProc WM_*BUTTONDOWN hwnd=%p osCapture=%p count=%zu\n", hWnd, GetCapture(),
+           pGraphics->GetCaptureCount());
+#endif
     IMouseInfo info = pGraphics->GetMouseInfo(lParam, wParam);
     std::vector<IMouseInfo> list{info};
     pGraphics->OnMouseDown(list);
@@ -381,16 +386,45 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
     return 0;
   }
   case WM_CANCELMODE: {
-    if (pGraphics->ControlIsCaptured() || GetCapture() == hWnd)
+    const HWND osCapture = GetCapture();
+#ifndef NDEBUG
+    DBGMSG("IGraphicsWin::WndProc WM_CANCELMODE hwnd=%p osCapture=%p captured=%d count=%zu\n", hWnd, osCapture,
+           pGraphics->ControlIsCaptured(), pGraphics->GetCaptureCount());
+#endif
+    const bool hadCapture = pGraphics->ControlIsCaptured() || osCapture == hWnd;
+    if (hadCapture)
+    {
+#ifndef NDEBUG
+      DBGMSG("IGraphicsWin::WndProc WM_CANCELMODE calling ReleaseMouseCapture\n");
+#endif
       pGraphics->ReleaseMouseCapture();
+#ifndef NDEBUG
+      DBGMSG("IGraphicsWin::WndProc WM_CANCELMODE done osCapture=%p captured=%d count=%zu\n", GetCapture(),
+             pGraphics->ControlIsCaptured(), pGraphics->GetCaptureCount());
+#endif
+    }
 
     return 0;
   }
   case WM_CAPTURECHANGED: {
     const HWND newCapture = reinterpret_cast<HWND>(lParam);
 
-    if (newCapture != hWnd && (pGraphics->ControlIsCaptured() || GetCapture() == hWnd))
+    const bool hadCapture = (newCapture != hWnd) && (pGraphics->ControlIsCaptured() || GetCapture() == hWnd);
+#ifndef NDEBUG
+    DBGMSG("IGraphicsWin::WndProc WM_CAPTURECHANGED hwnd=%p new=%p osCapture=%p captured=%d count=%zu\n", hWnd, newCapture,
+           GetCapture(), pGraphics->ControlIsCaptured(), pGraphics->GetCaptureCount());
+#endif
+    if (hadCapture)
+    {
+#ifndef NDEBUG
+      DBGMSG("IGraphicsWin::WndProc WM_CAPTURECHANGED calling ReleaseMouseCapture\n");
+#endif
       pGraphics->ReleaseMouseCapture();
+#ifndef NDEBUG
+      DBGMSG("IGraphicsWin::WndProc WM_CAPTURECHANGED done osCapture=%p captured=%d count=%zu\n", GetCapture(),
+             pGraphics->ControlIsCaptured(), pGraphics->GetCaptureCount());
+#endif
+    }
 
     return 0;
   }
@@ -398,9 +432,17 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
   case WM_RBUTTONUP: {
     IMouseInfo info = pGraphics->GetMouseInfo(lParam, wParam);
     std::vector<IMouseInfo> list{info};
+#ifndef NDEBUG
+    DBGMSG("IGraphicsWin::WndProc WM_*BUTTONUP hwnd=%p osCapture=%p captured=%d count=%zu\n", hWnd, GetCapture(),
+           pGraphics->ControlIsCaptured(), pGraphics->GetCaptureCount());
+#endif
     pGraphics->OnMouseUp(list);
     if (GetCapture() == hWnd)
       ReleaseCapture();
+#ifndef NDEBUG
+    DBGMSG("IGraphicsWin::WndProc WM_*BUTTONUP done osCapture=%p captured=%d count=%zu\n", GetCapture(),
+           pGraphics->ControlIsCaptured(), pGraphics->GetCaptureCount());
+#endif
     return 0;
   }
   case WM_LBUTTONDBLCLK:
@@ -1015,7 +1057,33 @@ void IGraphicsWin::GetMouseLocation(float& x, float& y) const
 void IGraphicsWin::PlatformReleaseMouseCapture()
 {
   if (mPlugWnd && GetCapture() == mPlugWnd)
+  {
     ReleaseCapture();
+#ifndef NDEBUG
+    DBGMSG("IGraphicsWin::PlatformReleaseMouseCapture hwnd=%p\n", mPlugWnd);
+#endif
+  }
+}
+
+void IGraphicsWin::PlatformOnCaptureFinished(ITouchID touchID)
+{
+  auto itr = mDeltaCapture.find(touchID);
+
+  if (itr != mDeltaCapture.end())
+  {
+#ifndef NDEBUG
+    DBGMSG("IGraphicsWin::PlatformOnCaptureFinished touch=%" PRIuPTR " removing delta (size before=%zu)\n",
+           static_cast<uintptr_t>(touchID), mDeltaCapture.size());
+#endif
+    mDeltaCapture.erase(itr);
+  }
+#ifndef NDEBUG
+  else
+  {
+    DBGMSG("IGraphicsWin::PlatformOnCaptureFinished touch=%" PRIuPTR " delta missing (size=%zu)\n",
+           static_cast<uintptr_t>(touchID), mDeltaCapture.size());
+  }
+#endif
 }
 
 #ifdef IGRAPHICS_GL

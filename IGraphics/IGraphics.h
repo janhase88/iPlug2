@@ -1417,6 +1417,9 @@ public:
   
   /** Check to see if any control is captured */
   bool ControlIsCaptured() const { return mCapturedMap.size() > 0; }
+
+  /** Debug helper to count captured controls */
+  size_t GetCaptureCount() const { return mCapturedMap.size(); }
   
   /** Check to see if the control is already captured
    * @return \c true is the control is already captured */
@@ -1724,6 +1727,7 @@ protected:
   virtual APIBitmap* LoadAPIBitmap(const char* fileNameOrResID, int scale, EResourceLocation location, const char* ext) = 0;
 
   virtual void PlatformReleaseMouseCapture() {}
+  virtual void PlatformOnCaptureFinished(ITouchID) {}
 
   /** Drawing API method to load a bitmap from binary data, called internally
    * @param name CString for the name of the resource

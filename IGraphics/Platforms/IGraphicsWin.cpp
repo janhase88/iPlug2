@@ -308,14 +308,42 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
       return 0;
     }
     SetFocus(hWnd); // Added to get keyboard focus again when user clicks in window
-    SetCapture(hWnd);
-#ifndef NDEBUG
-    DBGMSG("IGraphicsWin::WndProc WM_*BUTTONDOWN hwnd=%p osCapture=%p count=%zu\n", hWnd, GetCapture(),
-           pGraphics->GetCaptureCount());
-#endif
+
     IMouseInfo info = pGraphics->GetMouseInfo(lParam, wParam);
     std::vector<IMouseInfo> list{info};
+
+#ifndef NDEBUG
+    const size_t captureCountBefore = pGraphics->GetCaptureCount();
+#endif
+
     pGraphics->OnMouseDown(list);
+
+    const bool hasCapture = pGraphics->ControlIsCaptured();
+    const bool osHasCapture = GetCapture() == hWnd;
+
+    if (hasCapture && !osHasCapture)
+    {
+      SetCapture(hWnd);
+#ifndef NDEBUG
+      DBGMSG("IGraphicsWin::WndProc WM_*BUTTONDOWN capture hwnd=%p osCapture=%p countBefore=%zu countAfter=%zu\n", hWnd,
+             GetCapture(), captureCountBefore, pGraphics->GetCaptureCount());
+#endif
+    }
+#ifndef NDEBUG
+    else
+    {
+      const char* reason = hasCapture ? "already-held" : "not-requested";
+      DBGMSG("IGraphicsWin::WndProc WM_*BUTTONDOWN no capture hwnd=%p osCapture=%p reason=%s countBefore=%zu countAfter=%zu\n",
+             hWnd, GetCapture(), reason, captureCountBefore, pGraphics->GetCaptureCount());
+    }
+#endif
+    if (!hasCapture && osHasCapture)
+    {
+      ReleaseCapture();
+#ifndef NDEBUG
+      DBGMSG("IGraphicsWin::WndProc WM_*BUTTONDOWN dropped stale capture hwnd=%p osCapture=%p\n", hWnd, GetCapture());
+#endif
+    }
     return 0;
   }
   case WM_SETCURSOR: {

@@ -88,6 +88,8 @@ public:
 
   void GetMouseLocation(float& x, float& y) const override;
 
+  void PlatformReleaseMouseCapture() override;
+
   EMsgBoxResult ShowMessageBox(const char* str, const char* title, EMsgBoxType type, IMsgBoxCompletionHandlerFunc completionHandler) override;
 
   void* OpenWindow(void* pParent) override;

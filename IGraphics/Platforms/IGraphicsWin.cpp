@@ -384,9 +384,6 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
     if (pGraphics->ControlIsCaptured())
       pGraphics->ReleaseMouseCapture();
 
-    if (GetCapture() == hWnd)
-      ReleaseCapture();
-
     return 0;
   }
   case WM_CAPTURECHANGED: {
@@ -1016,6 +1013,12 @@ void IGraphicsWin::GetMouseLocation(float& x, float& y) const
 
   x = p.x / scale;
   y = p.y / scale;
+}
+
+void IGraphicsWin::PlatformReleaseMouseCapture()
+{
+  if (mPlugWnd && GetCapture() == mPlugWnd)
+    ReleaseCapture();
 }
 
 #ifdef IGRAPHICS_GL
@@ -1755,9 +1758,6 @@ void IGraphicsWin::CloseWindow()
   {
     if (ControlIsCaptured())
       ReleaseMouseCapture();
-
-    if (GetCapture() == mPlugWnd)
-      ReleaseCapture();
 
     if (mVSYNCEnabled)
       StopVBlankThread();

@@ -1010,7 +1010,9 @@ void IGraphics::OnMouseDown(const std::vector<IMouseInfo>& points)
     const IMouseMod& mod = point.ms;
     
     IControl* pCapturedControl = GetMouseControl(x, y, true, false, mod.touchID);
-    
+    auto captureItr = mCapturedMap.find(mod.touchID);
+    CapturedControl* pCaptureInfo = captureItr != mCapturedMap.end() ? &captureItr->second : nullptr;
+
     if (pCapturedControl)
     {
       int nVals = pCapturedControl->NVals();
@@ -1066,10 +1068,20 @@ void IGraphics::OnMouseDown(const std::vector<IMouseInfo>& points)
       }
 #endif
 
+      bool beganInformHost = false;
       for (int v = 0; v < nVals; v++)
       {
         if (pCapturedControl->GetParamIdx(v) > kNoParameter)
+        {
+          if (!beganInformHost)
+          {
+            if (pCaptureInfo)
+              pCaptureInfo->beganInformHost = true;
+
+            beganInformHost = true;
+          }
           GetDelegate()->BeginInformHostOfParamChangeFromUI(pCapturedControl->GetParamIdx(v));
+        }
       }
 
       pCapturedControl->OnMouseDown(x, y, mod);
@@ -1084,7 +1096,8 @@ void IGraphics::FinishCaptureForTouch(ITouchID touchID, const IMouseInfo* pInfo)
   if (itr == mCapturedMap.end())
     return;
 
-  IControl* pCapturedControl = itr->second;
+  CapturedControl capture = itr->second;
+  IControl* pCapturedControl = capture.pControl;
 
   if (pCapturedControl)
   {
@@ -1095,14 +1108,17 @@ void IGraphics::FinishCaptureForTouch(ITouchID touchID, const IMouseInfo* pInfo)
 
     pCapturedControl->OnMouseUp(x, y, mod);
 
-    const int nVals = pCapturedControl->NVals();
-
-    for (int v = 0; v < nVals; v++)
+    if (capture.beganInformHost)
     {
-      const int paramIdx = pCapturedControl->GetParamIdx(v);
+      const int nVals = pCapturedControl->NVals();
 
-      if (paramIdx > kNoParameter)
-        GetDelegate()->EndInformHostOfParamChangeFromUI(paramIdx);
+      for (int v = 0; v < nVals; v++)
+      {
+        const int paramIdx = pCapturedControl->GetParamIdx(v);
+
+        if (paramIdx > kNoParameter)
+          GetDelegate()->EndInformHostOfParamChangeFromUI(paramIdx);
+      }
     }
   }
 
@@ -1143,7 +1159,7 @@ void IGraphics::OnTouchCancelled(const std::vector<IMouseInfo>& points)
       
       if(itr != mCapturedMap.end())
       {
-        IControl* pCapturedControl = itr->second;
+        IControl* pCapturedControl = itr->second.pControl;
         pCapturedControl->OnTouchCancelled(x, y, mod);
         mCapturedMap.erase(mod.touchID); // remove from captured list
         
@@ -1211,7 +1227,7 @@ void IGraphics::OnMouseDrag(const std::vector<IMouseInfo>& points)
       
       if (itr != mCapturedMap.end())
       {
-        IControl* pCapturedControl = itr->second;
+        IControl* pCapturedControl = itr->second.pControl;
 
         if (textEntry && pCapturedControl != textEntry)
             pCapturedControl = nullptr;
@@ -1327,6 +1343,8 @@ void IGraphics::ReleaseMouseCapture()
 
   if (mCursorHidden)
     HideMouseCursor(false);
+
+  PlatformReleaseMouseCapture();
 }
 
 int IGraphics::GetMouseControlIdx(float x, float y, bool mouseOver)
@@ -1370,11 +1388,11 @@ IControl* IGraphics::GetMouseControl(float x, float y, bool capture, bool mouseO
   IControl* pControl = nullptr;
 
   auto itr = mCapturedMap.find(touchID);
-  
+
   if(ControlIsCaptured() && itr != mCapturedMap.end())
   {
-    pControl = itr->second;
-    
+    pControl = itr->second.pControl;
+
     if(pControl)
       return pControl;
   }
@@ -1415,7 +1433,7 @@ IControl* IGraphics::GetMouseControl(float x, float y, bool capture, bool mouseO
         return nullptr;
     }
     
-    mCapturedMap.insert(std::make_pair(touchID, pControl));
+    mCapturedMap.insert(std::make_pair(touchID, CapturedControl{pControl, false}));
     
 //    DBGMSG("ADD - NCONTROLS captured = %lu\n", mCapturedMap.size());
   }

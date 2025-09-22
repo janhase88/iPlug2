@@ -26,6 +26,7 @@
 
 #include <VersionHelpers.h>
 #include <algorithm>
+#include <cinttypes>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -184,6 +185,8 @@ void IGraphicsWin::OnDisplayTimer(int vBlankCount)
   const float totalScale = GetTotalScale();
   if (IsDirty(rects))
   {
+    const bool hadPendingPaint = mPaintPending;
+
     SetAllControlsClean();
 
     for (int i = 0; i < rects.Size(); i++)
@@ -195,6 +198,8 @@ void IGraphicsWin::OnDisplayTimer(int vBlankCount)
       InvalidateRect(mPlugWnd, &r, FALSE);
     }
 
+    mPaintPending = true;
+
     if (mParamEditWnd)
     {
       IRECT notDirtyR = mEditRECT;
@@ -205,11 +210,8 @@ void IGraphicsWin::OnDisplayTimer(int vBlankCount)
       UpdateWindow(mPlugWnd);
       mParamEditMsg = kUpdate;
     }
-    else
+    else if (!hadPendingPaint)
     {
-      // Force a redraw right now
-      UpdateWindow(mPlugWnd);
-
       if (mVSYNCEnabled)
       {
         // Check and see if we are still in this frame.
@@ -307,10 +309,42 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
       return 0;
     }
     SetFocus(hWnd); // Added to get keyboard focus again when user clicks in window
-    SetCapture(hWnd);
+
     IMouseInfo info = pGraphics->GetMouseInfo(lParam, wParam);
     std::vector<IMouseInfo> list{info};
+
+#ifndef NDEBUG
+    const size_t captureCountBefore = pGraphics->GetCaptureCount();
+#endif
+
     pGraphics->OnMouseDown(list);
+
+    const bool hasCapture = pGraphics->ControlIsCaptured();
+    const bool osHasCapture = GetCapture() == hWnd;
+
+    if (hasCapture && !osHasCapture)
+    {
+      SetCapture(hWnd);
+#ifndef NDEBUG
+      DBGMSG("IGraphicsWin::WndProc WM_*BUTTONDOWN capture hwnd=%p osCapture=%p countBefore=%zu countAfter=%zu\n", hWnd,
+             GetCapture(), captureCountBefore, pGraphics->GetCaptureCount());
+#endif
+    }
+#ifndef NDEBUG
+    else
+    {
+      const char* reason = hasCapture ? "already-held" : "not-requested";
+      DBGMSG("IGraphicsWin::WndProc WM_*BUTTONDOWN no capture hwnd=%p osCapture=%p reason=%s countBefore=%zu countAfter=%zu\n",
+             hWnd, GetCapture(), reason, captureCountBefore, pGraphics->GetCaptureCount());
+    }
+#endif
+    if (!hasCapture && osHasCapture)
+    {
+      ReleaseCapture();
+#ifndef NDEBUG
+      DBGMSG("IGraphicsWin::WndProc WM_*BUTTONDOWN dropped stale capture hwnd=%p osCapture=%p\n", hWnd, GetCapture());
+#endif
+    }
     return 0;
   }
   case WM_SETCURSOR: {
@@ -380,12 +414,64 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
     pGraphics->OnMouseOut();
     return 0;
   }
+  case WM_CANCELMODE: {
+    const HWND osCapture = GetCapture();
+#ifndef NDEBUG
+    DBGMSG("IGraphicsWin::WndProc WM_CANCELMODE hwnd=%p osCapture=%p captured=%d count=%zu\n", hWnd, osCapture,
+           pGraphics->ControlIsCaptured(), pGraphics->GetCaptureCount());
+#endif
+    const bool hadCapture = pGraphics->ControlIsCaptured() || osCapture == hWnd;
+    if (hadCapture)
+    {
+#ifndef NDEBUG
+      DBGMSG("IGraphicsWin::WndProc WM_CANCELMODE calling ReleaseMouseCapture\n");
+#endif
+      pGraphics->ReleaseMouseCapture();
+#ifndef NDEBUG
+      DBGMSG("IGraphicsWin::WndProc WM_CANCELMODE done osCapture=%p captured=%d count=%zu\n", GetCapture(),
+             pGraphics->ControlIsCaptured(), pGraphics->GetCaptureCount());
+#endif
+    }
+
+    return 0;
+  }
+  case WM_CAPTURECHANGED: {
+    const HWND newCapture = reinterpret_cast<HWND>(lParam);
+
+    const bool hadCapture = (newCapture != hWnd) && (pGraphics->ControlIsCaptured() || GetCapture() == hWnd);
+#ifndef NDEBUG
+    DBGMSG("IGraphicsWin::WndProc WM_CAPTURECHANGED hwnd=%p new=%p osCapture=%p captured=%d count=%zu\n", hWnd, newCapture,
+           GetCapture(), pGraphics->ControlIsCaptured(), pGraphics->GetCaptureCount());
+#endif
+    if (hadCapture)
+    {
+#ifndef NDEBUG
+      DBGMSG("IGraphicsWin::WndProc WM_CAPTURECHANGED calling ReleaseMouseCapture\n");
+#endif
+      pGraphics->ReleaseMouseCapture();
+#ifndef NDEBUG
+      DBGMSG("IGraphicsWin::WndProc WM_CAPTURECHANGED done osCapture=%p captured=%d count=%zu\n", GetCapture(),
+             pGraphics->ControlIsCaptured(), pGraphics->GetCaptureCount());
+#endif
+    }
+
+    return 0;
+  }
   case WM_LBUTTONUP:
   case WM_RBUTTONUP: {
-    ReleaseCapture();
     IMouseInfo info = pGraphics->GetMouseInfo(lParam, wParam);
     std::vector<IMouseInfo> list{info};
+#ifndef NDEBUG
+    DBGMSG("IGraphicsWin::WndProc WM_*BUTTONUP hwnd=%p osCapture=%p captured=%d count=%zu\n", hWnd, GetCapture(),
+           pGraphics->ControlIsCaptured(), pGraphics->GetCaptureCount());
+#endif
     pGraphics->OnMouseUp(list);
+    if (GetCapture() == hWnd)
+      ReleaseCapture();
+#ifndef NDEBUG
+    DBGMSG("IGraphicsWin::WndProc WM_*BUTTONUP done osCapture=%p captured=%d count=%zu\n", GetCapture(),
+           pGraphics->ControlIsCaptured(), pGraphics->GetCaptureCount());
+#endif
     return 0;
   }
   case WM_LBUTTONDBLCLK:
@@ -431,11 +517,17 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
     pGraphics->mDeferInvalidation = false;
     if (WINDOWPOS* wp = reinterpret_cast<WINDOWPOS*>(lParam))
     {
-      if (!(wp->flags & SWP_NOMOVE))
+      if (!(wp->flags & SWP_NOSIZE))
       {
         pGraphics->SetAllControlsDirty();
         InvalidateRect(hWnd, nullptr, FALSE);
       }
+#ifndef NDEBUG
+      else if (!(wp->flags & SWP_NOMOVE))
+      {
+        DBGMSG("IGraphicsWin::WndProc WM_WINDOWPOSCHANGED move-only hwnd=%p\n", hWnd);
+      }
+#endif
     }
     break;
   }
@@ -555,6 +647,7 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
   }
   case WM_PAINT: {
     const float scale = pGraphics->GetTotalScale();
+    pGraphics->mPaintPending = false;
     auto addDrawRect = [pGraphics, scale](IRECTList& rects, RECT r) {
       IRECT ir(r.left, r.top, r.right, r.bottom);
       ir.Scale(1.f / scale);
@@ -995,6 +1088,38 @@ void IGraphicsWin::GetMouseLocation(float& x, float& y) const
 
   x = p.x / scale;
   y = p.y / scale;
+}
+
+void IGraphicsWin::PlatformReleaseMouseCapture()
+{
+  if (mPlugWnd && GetCapture() == mPlugWnd)
+  {
+    ReleaseCapture();
+#ifndef NDEBUG
+    DBGMSG("IGraphicsWin::PlatformReleaseMouseCapture hwnd=%p\n", mPlugWnd);
+#endif
+  }
+}
+
+void IGraphicsWin::PlatformOnCaptureFinished(ITouchID touchID)
+{
+  auto itr = mDeltaCapture.find(touchID);
+
+  if (itr != mDeltaCapture.end())
+  {
+#ifndef NDEBUG
+    DBGMSG("IGraphicsWin::PlatformOnCaptureFinished touch=%" PRIuPTR " removing delta (size before=%zu)\n",
+           static_cast<uintptr_t>(touchID), mDeltaCapture.size());
+#endif
+    mDeltaCapture.erase(itr);
+  }
+#ifndef NDEBUG
+  else
+  {
+    DBGMSG("IGraphicsWin::PlatformOnCaptureFinished touch=%" PRIuPTR " delta missing (size=%zu)\n",
+           static_cast<uintptr_t>(touchID), mDeltaCapture.size());
+  }
+#endif
 }
 
 #ifdef IGRAPHICS_GL
@@ -1732,6 +1857,9 @@ void IGraphicsWin::CloseWindow()
 {
   if (mPlugWnd)
   {
+    if (ControlIsCaptured() || GetCapture() == mPlugWnd)
+      ReleaseMouseCapture();
+
     if (mVSYNCEnabled)
       StopVBlankThread();
     else

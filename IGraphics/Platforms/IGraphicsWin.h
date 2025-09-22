@@ -88,6 +88,9 @@ public:
 
   void GetMouseLocation(float& x, float& y) const override;
 
+  void PlatformReleaseMouseCapture() override;
+  void PlatformOnCaptureFinished(ITouchID touchID) override;
+
   EMsgBoxResult ShowMessageBox(const char* str, const char* title, EMsgBoxType type, IMsgBoxCompletionHandlerFunc completionHandler) override;
 
   void* OpenWindow(void* pParent) override;
@@ -224,6 +227,7 @@ private:
   int mVBlankSkipUntil = 0;                    // support for skipping vblank notification if the last callback took  too long.  This helps keep the message pump clear in the case of overload.
   bool mVSYNCEnabled = false;
   bool mDeferInvalidation = false;
+  bool mPaintPending = false;
 
   const IParam* mEditParam = nullptr;
   IText mEditText;

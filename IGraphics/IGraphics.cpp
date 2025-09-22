@@ -1084,6 +1084,9 @@ void IGraphics::OnMouseDown(const std::vector<IMouseInfo>& points)
         }
       }
 
+      if (pCaptureInfo)
+        pCaptureInfo->sawMouseDown = true;
+
       pCapturedControl->OnMouseDown(x, y, mod);
     }
   }
@@ -1099,7 +1102,7 @@ void IGraphics::FinishCaptureForTouch(ITouchID touchID, const IMouseInfo* pInfo)
   CapturedControl capture = itr->second;
   IControl* pCapturedControl = capture.pControl;
 
-  if (pCapturedControl)
+  if (pCapturedControl && capture.sawMouseDown)
   {
     float x = pInfo ? pInfo->x : mCursorX;
     float y = pInfo ? pInfo->y : mCursorY;

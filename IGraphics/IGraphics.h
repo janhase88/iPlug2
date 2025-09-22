@@ -1845,6 +1845,7 @@ private:
   {
     IControl* pControl = nullptr;
     bool beganInformHost = false;
+    bool sawMouseDown = false;
   };
 
   std::unordered_map<ITouchID, CapturedControl> mCapturedMap; // associative array of touch ids to control pointers, the same control can be touched multiple times

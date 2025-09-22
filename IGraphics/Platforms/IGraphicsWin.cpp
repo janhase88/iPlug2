@@ -380,6 +380,15 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
     pGraphics->OnMouseOut();
     return 0;
   }
+  case WM_CANCELMODE: {
+    if (pGraphics->ControlIsCaptured())
+      pGraphics->ReleaseMouseCapture();
+
+    if (GetCapture() == hWnd)
+      ReleaseCapture();
+
+    return 0;
+  }
   case WM_CAPTURECHANGED: {
     if (pGraphics->ControlIsCaptured())
     {
@@ -1746,6 +1755,9 @@ void IGraphicsWin::CloseWindow()
   {
     if (ControlIsCaptured())
       ReleaseMouseCapture();
+
+    if (GetCapture() == mPlugWnd)
+      ReleaseCapture();
 
     if (mVSYNCEnabled)
       StopVBlankThread();

@@ -166,10 +166,7 @@ void IGraphicsWin::OnDisplayTimer(int vBlankCount)
     return; // TODO: check this!
   }
 
-  if (mDeferInvalidation)
-  {
-    return;
-  }
+  const bool deferInvalidation = mDeferInvalidation;
 
   // TODO: move this... listen to the right messages in windows for screen resolution changes, etc.
   if (!GetCapture()) // workaround Windows issues with window sizing during mouse move
@@ -187,6 +184,9 @@ void IGraphicsWin::OnDisplayTimer(int vBlankCount)
   {
     SetAllControlsClean();
 
+    const bool hadPendingPaint = mPaintPending;
+    bool postedInvalidation = false;
+
     for (int i = 0; i < rects.Size(); i++)
     {
       IRECT dirtyR = rects.Get(i);
@@ -194,7 +194,16 @@ void IGraphicsWin::OnDisplayTimer(int vBlankCount)
       dirtyR.PixelAlign();
       RECT r = {(LONG)dirtyR.L, (LONG)dirtyR.T, (LONG)dirtyR.R, (LONG)dirtyR.B};
       InvalidateRect(mPlugWnd, &r, FALSE);
+      postedInvalidation = true;
     }
+
+    if (!postedInvalidation)
+    {
+      return;
+    }
+
+    mPaintPending = true;
+    const bool shouldSynchronouslyUpdate = !deferInvalidation && !hadPendingPaint;
 
     if (mParamEditWnd)
     {
@@ -203,23 +212,29 @@ void IGraphicsWin::OnDisplayTimer(int vBlankCount)
       notDirtyR.PixelAlign();
       RECT r2 = {(LONG)notDirtyR.L, (LONG)notDirtyR.T, (LONG)notDirtyR.R, (LONG)notDirtyR.B};
       ValidateRect(mPlugWnd, &r2); // make sure we dont redraw the edit box area
-      UpdateWindow(mPlugWnd);
-      mParamEditMsg = kUpdate;
+      if (shouldSynchronouslyUpdate)
+      {
+        UpdateWindow(mPlugWnd);
+        mParamEditMsg = kUpdate;
+      }
     }
     else
     {
-      // Force a redraw right now
-      UpdateWindow(mPlugWnd);
-
-      if (mVSYNCEnabled)
+      if (shouldSynchronouslyUpdate)
       {
-        // Check and see if we are still in this frame.
-        curCount = mVBlankCount;
-        if (msgCount != curCount)
+        // Force a redraw right now
+        UpdateWindow(mPlugWnd);
+
+        if (mVSYNCEnabled)
         {
-          // we are late, skip the next vblank to give us a breather.
-          mVBlankSkipUntil = curCount + 1;
-          // DBGMSG("vblank painting was late by %i frames.", (mVBlankSkipUntil - msgCount));
+          // Check and see if we are still in this frame.
+          curCount = mVBlankCount;
+          if (msgCount != curCount)
+          {
+            // we are late, skip the next vblank to give us a breather.
+            mVBlankSkipUntil = curCount + 1;
+            // DBGMSG("vblank painting was late by %i frames.", (mVBlankSkipUntil - msgCount));
+          }
         }
       }
     }
@@ -706,6 +721,8 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
     // we are just going to get another WM_PAINT to handle.  Bad!  It also exibits the odd property
     // that windows will be popped under the window.
     ValidateRect(hWnd, 0);
+
+    pGraphics->mPaintPending = false;
 
     DeleteObject(region);
 

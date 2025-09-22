@@ -382,10 +382,15 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
   }
   case WM_LBUTTONUP:
   case WM_RBUTTONUP: {
-    ReleaseCapture();
     IMouseInfo info = pGraphics->GetMouseInfo(lParam, wParam);
     std::vector<IMouseInfo> list{info};
     pGraphics->OnMouseUp(list);
+    ReleaseCapture();
+    return 0;
+  }
+  case WM_CAPTURECHANGED: {
+    // Preserve the captured control until OnMouseUp() completes so that
+    // EndInformHostOfParamChangeFromUI() is triggered as expected.
     return 0;
   }
   case WM_LBUTTONDBLCLK:

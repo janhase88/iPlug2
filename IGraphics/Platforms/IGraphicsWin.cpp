@@ -212,6 +212,8 @@ void IGraphicsWin::OnDisplayTimer(int vBlankCount)
     }
     else if (!hadPendingPaint)
     {
+      UpdateWindow(mPlugWnd);
+
       if (mVSYNCEnabled)
       {
         // Check and see if we are still in this frame.

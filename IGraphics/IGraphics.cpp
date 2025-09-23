@@ -98,7 +98,14 @@ void IGraphics::Resize(int w, int h, float scale, bool needsPlatformResize)
   if (w == Width() && h == Height() && scale == GetDrawScale()) return;
   
   //DBGMSG("resize %i, resize %i, scale %f\n", w, h, scale);
-  ReleaseMouseCapture();
+
+  // Host-driven resizes (or programmatic layout changes) should flush any active
+  // mouse capture so controls see a matching release, but the corner-resizer
+  // drag depends on keeping capture alive until the gesture completes.  Skip
+  // the release while a resize gesture is in progress so the OS keeps routing
+  // mouse-move events to the resizer control.
+  if (!mResizingInProcess)
+    ReleaseMouseCapture();
 
   mDrawScale = scale;
   mWidth = w;

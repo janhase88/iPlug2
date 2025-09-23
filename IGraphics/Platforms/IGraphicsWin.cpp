@@ -417,10 +417,23 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
   }
   case WM_CANCELMODE: {
     const HWND osCapture = GetCapture();
+    const bool resizing = pGraphics->GetResizingInProcess() && pGraphics->ControlIsCaptured();
 #ifndef NDEBUG
-    DBGMSG("IGraphicsWin::WndProc WM_CANCELMODE hwnd=%p osCapture=%p captured=%d count=%zu\n", hWnd, osCapture,
-           pGraphics->ControlIsCaptured(), pGraphics->GetCaptureCount());
+    DBGMSG("IGraphicsWin::WndProc WM_CANCELMODE hwnd=%p osCapture=%p captured=%d resizing=%d count=%zu\n", hWnd, osCapture,
+           pGraphics->ControlIsCaptured(), resizing, pGraphics->GetCaptureCount());
 #endif
+    if (resizing)
+    {
+      if (osCapture != hWnd)
+      {
+        SetCapture(hWnd);
+#ifndef NDEBUG
+        DBGMSG("IGraphicsWin::WndProc WM_CANCELMODE restoring capture hwnd=%p\n", hWnd);
+#endif
+      }
+      return 0;
+    }
+
     const bool hadCapture = pGraphics->ControlIsCaptured() || osCapture == hWnd;
     if (hadCapture)
     {
@@ -438,12 +451,21 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
   }
   case WM_CAPTURECHANGED: {
     const HWND newCapture = reinterpret_cast<HWND>(lParam);
+    const bool resizing = pGraphics->GetResizingInProcess() && pGraphics->ControlIsCaptured();
+#ifndef NDEBUG
+    DBGMSG("IGraphicsWin::WndProc WM_CAPTURECHANGED hwnd=%p new=%p osCapture=%p captured=%d resizing=%d count=%zu\n", hWnd,
+           newCapture, GetCapture(), pGraphics->ControlIsCaptured(), resizing, pGraphics->GetCaptureCount());
+#endif
+    if (resizing && newCapture != hWnd)
+    {
+      SetCapture(hWnd);
+#ifndef NDEBUG
+      DBGMSG("IGraphicsWin::WndProc WM_CAPTURECHANGED restoring capture hwnd=%p new=%p\n", hWnd, newCapture);
+#endif
+      return 0;
+    }
 
     const bool hadCapture = (newCapture != hWnd) && (pGraphics->ControlIsCaptured() || GetCapture() == hWnd);
-#ifndef NDEBUG
-    DBGMSG("IGraphicsWin::WndProc WM_CAPTURECHANGED hwnd=%p new=%p osCapture=%p captured=%d count=%zu\n", hWnd, newCapture,
-           GetCapture(), pGraphics->ControlIsCaptured(), pGraphics->GetCaptureCount());
-#endif
     if (hadCapture)
     {
 #ifndef NDEBUG

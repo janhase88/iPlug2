@@ -45,6 +45,7 @@ struct WinVulkanDeviceSnapshot
   VkQueue presentQueue = VK_NULL_HANDLE;
   uint32_t queueFamily = 0;
   bool validationLayerEnabled = false;
+  uint64_t generation = 0;
 };
 
 class WinVulkanDeviceCoordinator
@@ -56,8 +57,8 @@ public:
   WinVulkanDeviceCoordinator(const WinVulkanDeviceCoordinator&) = delete;
   WinVulkanDeviceCoordinator& operator=(const WinVulkanDeviceCoordinator&) = delete;
 
-  VkResult Initialize(const WinVulkanDeviceRequest& request, WinVulkanDeviceSnapshot& outSnapshot);
-  void Teardown();
+  VkResult Initialize(const WinVulkanDeviceRequest& request, WinVulkanDeviceSnapshot& outSnapshot, uint64_t& outGeneration);
+  void Teardown(uint64_t generation = 0);
   bool IsInitialized() const { return mInitialized; }
   const WinVulkanDeviceSnapshot& Snapshot() const { return mSnapshot; }
 
@@ -70,6 +71,8 @@ private:
 
   bool mInitialized = false;
   WinVulkanDeviceSnapshot mSnapshot{};
+  uint64_t mGenerationCounter = 0;
+  uint64_t mSnapshotGeneration = 0;
 };
 
 namespace winvk
@@ -84,15 +87,20 @@ inline WinVulkanDeviceCoordinator::~WinVulkanDeviceCoordinator()
   Teardown();
 }
 
-inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequest& request, WinVulkanDeviceSnapshot& outSnapshot)
+inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequest& request,
+                                                       WinVulkanDeviceSnapshot& outSnapshot,
+                                                       uint64_t& outGeneration)
 {
   if (mInitialized)
   {
     outSnapshot = mSnapshot;
+    outGeneration = mSnapshotGeneration;
     return VK_SUCCESS;
   }
 
   ResetSnapshot();
+  mSnapshotGeneration = 0;
+  outGeneration = 0;
 
   VkResult res = CreateInstance(request);
   if (res != VK_SUCCESS)
@@ -139,12 +147,20 @@ inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequ
   }
 
   mInitialized = true;
+  mSnapshotGeneration = ++mGenerationCounter;
+  mSnapshot.generation = mSnapshotGeneration;
   outSnapshot = mSnapshot;
+  outGeneration = mSnapshotGeneration;
   return VK_SUCCESS;
 }
 
-inline void WinVulkanDeviceCoordinator::Teardown()
+inline void WinVulkanDeviceCoordinator::Teardown(uint64_t generation)
 {
+  if (generation != 0 && generation != mSnapshotGeneration)
+  {
+    return;
+  }
+
   if (!mInitialized && mSnapshot.instance == VK_NULL_HANDLE && mSnapshot.device == VK_NULL_HANDLE)
   {
     return;
@@ -155,16 +171,17 @@ inline void WinVulkanDeviceCoordinator::Teardown()
   const VkDevice device = mSnapshot.device;
 
   mInitialized = false;
+  mSnapshotGeneration = 0;
   ResetSnapshot();
-
-  if (device != VK_NULL_HANDLE)
-  {
-    vkDestroyDevice(device, nullptr);
-  }
 
   if (surface != VK_NULL_HANDLE && instance != VK_NULL_HANDLE)
   {
     vkDestroySurfaceKHR(instance, surface, nullptr);
+  }
+
+  if (device != VK_NULL_HANDLE)
+  {
+    vkDestroyDevice(device, nullptr);
   }
 
   if (instance != VK_NULL_HANDLE)
@@ -394,6 +411,7 @@ inline void WinVulkanDeviceCoordinator::ResetSnapshot()
   mSnapshot.presentQueue = VK_NULL_HANDLE;
   mSnapshot.queueFamily = 0;
   mSnapshot.validationLayerEnabled = false;
+  mSnapshot.generation = 0;
 }
 
 END_IGRAPHICS_NAMESPACE

@@ -22,6 +22,7 @@
 
 #include <string>
 #include <vector>
+#include <cstdint>
 
 #ifdef IGRAPHICS_VULKAN
   #define VK_USE_PLATFORM_WIN32_KHR
@@ -182,6 +183,7 @@ private:
   void ActivateVulkanContext();
   void DeactivateVulkanContext();
   WinVulkanDeviceCoordinator mVulkanDeviceCoordinator;
+  uint64_t mVulkanDeviceGeneration = 0;
   VkInstance mVkInstance = VK_NULL_HANDLE;
   VkPhysicalDevice mVkPhysicalDevice = VK_NULL_HANDLE;
   VkDevice mVkDevice = VK_NULL_HANDLE;

@@ -1253,14 +1253,15 @@ bool IGraphicsWin::CreateVulkanContext()
 #endif
 
   WinVulkanDeviceSnapshot snapshot{};
-  VkResult res = mVulkanDeviceCoordinator.Initialize(request, snapshot);
+  uint64_t generation = 0;
+  VkResult res = mVulkanDeviceCoordinator.Initialize(request, snapshot, generation);
   if (res != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("CreateVulkanContext",
                         "deviceCoordinator",
                         vulkanlog::Severity::kError,
                         vulkanlog::MakeField("vkResult", static_cast<int>(res)));
-    mVulkanDeviceCoordinator.Teardown();
+    mVulkanDeviceCoordinator.Teardown(generation);
     return false;
   }
 
@@ -1270,6 +1271,7 @@ bool IGraphicsWin::CreateVulkanContext()
   mVkSurface = snapshot.surface;
   mPresentQueue = snapshot.presentQueue;
   mVkQueueFamily = snapshot.queueFamily;
+  mVulkanDeviceGeneration = generation;
 
   VkSurfaceCapabilitiesKHR caps{};
   res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(mVkPhysicalDevice, mVkSurface, &caps);
@@ -1353,7 +1355,7 @@ void IGraphicsWin::DestroyVulkanContext()
   mVkFormat = VK_FORMAT_B8G8R8A8_UNORM;
   mVkSwapchainUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-  mVulkanDeviceCoordinator.Teardown();
+  mVulkanDeviceCoordinator.Teardown(mVulkanDeviceGeneration);
 
   mVkInstance = VK_NULL_HANDLE;
   mVkPhysicalDevice = VK_NULL_HANDLE;
@@ -1362,6 +1364,7 @@ void IGraphicsWin::DestroyVulkanContext()
   mPresentQueue = VK_NULL_HANDLE;
   mVkQueueFamily = 0;
   mVkSwapchain.device = VK_NULL_HANDLE;
+  mVulkanDeviceGeneration = 0;
 }
 
 bool IGraphicsWin::RecreateVulkanContext()

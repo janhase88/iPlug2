@@ -205,21 +205,30 @@ void IGraphicsWin::OnDisplayTimer(int vBlankCount)
   {
     const bool hadPendingPaint = mPaintPending;
 
-    SetAllControlsClean();
+    // If a frame is already queued we intentionally skip clearing the dirty
+    // state so the next timer tick coalesces to the freshest invalid region
+    // instead of stretching the pending WM_PAINT to include every dropped
+    // frame.
 
-    for (int i = 0; i < rects.Size(); i++)
-    {
-      IRECT dirtyR = rects.Get(i);
-      dirtyR.Scale(totalScale);
-      dirtyR.PixelAlign();
-      RECT r = {(LONG)dirtyR.L, (LONG)dirtyR.T, (LONG)dirtyR.R, (LONG)dirtyR.B};
-      InvalidateRect(mPlugWnd, &r, FALSE);
-    }
+    auto invalidateDirtyRects = [&](const IRECTList& dirtyRects) {
+      SetAllControlsClean();
 
-    mPaintPending = true;
+      for (int i = 0; i < dirtyRects.Size(); i++)
+      {
+        IRECT dirtyR = dirtyRects.Get(i);
+        dirtyR.Scale(totalScale);
+        dirtyR.PixelAlign();
+        RECT r = {(LONG)dirtyR.L, (LONG)dirtyR.T, (LONG)dirtyR.R, (LONG)dirtyR.B};
+        InvalidateRect(mPlugWnd, &r, FALSE);
+      }
+    };
 
     if (mParamEditWnd)
     {
+      invalidateDirtyRects(rects);
+
+      mPaintPending = true;
+
       IRECT notDirtyR = mEditRECT;
       notDirtyR.Scale(totalScale);
       notDirtyR.PixelAlign();
@@ -230,6 +239,10 @@ void IGraphicsWin::OnDisplayTimer(int vBlankCount)
     }
     else if (!hadPendingPaint)
     {
+      invalidateDirtyRects(rects);
+
+      mPaintPending = true;
+
       PostMessage(mPlugWnd, WM_PAINT, 0, 0);
 
       if (mVSYNCEnabled)

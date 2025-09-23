@@ -73,6 +73,7 @@ private:
   WinVulkanDeviceSnapshot mSnapshot{};
   uint64_t mGenerationCounter = 0;
   uint64_t mSnapshotGeneration = 0;
+  uint32_t mActiveClients = 0;
 };
 
 namespace winvk
@@ -93,6 +94,7 @@ inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequ
 {
   if (mInitialized)
   {
+    ++mActiveClients;
     outSnapshot = mSnapshot;
     outGeneration = mSnapshotGeneration;
     return VK_SUCCESS;
@@ -101,6 +103,7 @@ inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequ
   ResetSnapshot();
   mSnapshotGeneration = 0;
   outGeneration = 0;
+  mActiveClients = 0;
 
   VkResult res = CreateInstance(request);
   if (res != VK_SUCCESS)
@@ -151,6 +154,7 @@ inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequ
   mSnapshot.generation = mSnapshotGeneration;
   outSnapshot = mSnapshot;
   outGeneration = mSnapshotGeneration;
+  mActiveClients = 1;
   return VK_SUCCESS;
 }
 
@@ -166,12 +170,27 @@ inline void WinVulkanDeviceCoordinator::Teardown(uint64_t generation)
     return;
   }
 
+  if (generation == 0)
+  {
+    mActiveClients = 0;
+  }
+  else if (mActiveClients > 0)
+  {
+    --mActiveClients;
+  }
+
+  if (mActiveClients > 0)
+  {
+    return;
+  }
+
   const VkInstance instance = mSnapshot.instance;
   const VkSurfaceKHR surface = mSnapshot.surface;
   const VkDevice device = mSnapshot.device;
 
   mInitialized = false;
   mSnapshotGeneration = 0;
+  mActiveClients = 0;
   ResetSnapshot();
 
   if (surface != VK_NULL_HANDLE && instance != VK_NULL_HANDLE)

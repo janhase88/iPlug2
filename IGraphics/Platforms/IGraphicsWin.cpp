@@ -1355,7 +1355,14 @@ void IGraphicsWin::DestroyVulkanContext()
   mVkFormat = VK_FORMAT_B8G8R8A8_UNORM;
   mVkSwapchainUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-  mVulkanDeviceCoordinator.Teardown(mVulkanDeviceGeneration);
+  if (mVulkanDeviceGeneration != 0)
+  {
+    mVulkanDeviceCoordinator.Teardown(mVulkanDeviceGeneration);
+  }
+  else if (mVkInstance || mVkDevice)
+  {
+    mVulkanDeviceCoordinator.Teardown();
+  }
 
   mVkInstance = VK_NULL_HANDLE;
   mVkPhysicalDevice = VK_NULL_HANDLE;

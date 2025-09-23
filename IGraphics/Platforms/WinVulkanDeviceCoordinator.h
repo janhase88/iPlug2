@@ -51,7 +51,7 @@ struct WinVulkanDeviceSnapshot
 class WinVulkanDeviceCoordinator
 {
 public:
-  WinVulkanDeviceCoordinator() = default;
+  WinVulkanDeviceCoordinator();
   ~WinVulkanDeviceCoordinator();
 
   WinVulkanDeviceCoordinator(const WinVulkanDeviceCoordinator&) = delete;
@@ -59,21 +59,30 @@ public:
 
   VkResult Initialize(const WinVulkanDeviceRequest& request, WinVulkanDeviceSnapshot& outSnapshot, uint64_t& outGeneration);
   void Teardown(uint64_t generation = 0);
-  bool IsInitialized() const { return mInitialized; }
-  const WinVulkanDeviceSnapshot& Snapshot() const { return mSnapshot; }
+  bool IsInitialized() const { return mState->initialized; }
+  const WinVulkanDeviceSnapshot& Snapshot() const { return mState->snapshot; }
 
 private:
+  struct SharedState
+  {
+    bool initialized = false;
+    WinVulkanDeviceSnapshot snapshot{};
+    uint64_t generationCounter = 0;
+    uint64_t snapshotGeneration = 0;
+    uint32_t activeClients = 0;
+  };
+
+  static SharedState& Shared();
+
   VkResult CreateInstance(const WinVulkanDeviceRequest& request);
   VkResult CreateSurface(const WinVulkanDeviceRequest& request);
   VkResult SelectPhysicalDevice(const WinVulkanDeviceRequest& request);
   VkResult CreateLogicalDevice();
   void ResetSnapshot();
 
-  bool mInitialized = false;
-  WinVulkanDeviceSnapshot mSnapshot{};
-  uint64_t mGenerationCounter = 0;
-  uint64_t mSnapshotGeneration = 0;
-  uint32_t mActiveClients = 0;
+  SharedState* mState = nullptr;
+  bool mClientRegistered = false;
+  uint64_t mClientGeneration = 0;
 };
 
 namespace winvk
@@ -83,27 +92,45 @@ static const std::array<const char*, 2> kRequiredInstanceExtensions{{"VK_KHR_sur
 static const std::array<const char*, 1> kRequiredDeviceExtensions{{VK_KHR_SWAPCHAIN_EXTENSION_NAME}};
 }
 
+inline WinVulkanDeviceCoordinator::SharedState& WinVulkanDeviceCoordinator::Shared()
+{
+  static SharedState state{};
+  return state;
+}
+
+inline WinVulkanDeviceCoordinator::WinVulkanDeviceCoordinator()
+  : mState(&Shared())
+{
+}
+
 inline WinVulkanDeviceCoordinator::~WinVulkanDeviceCoordinator()
 {
-  Teardown();
+  if (mClientRegistered)
+  {
+    Teardown(mClientGeneration);
+  }
 }
 
 inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequest& request,
                                                        WinVulkanDeviceSnapshot& outSnapshot,
                                                        uint64_t& outGeneration)
 {
-  if (mInitialized)
+  SharedState& state = *mState;
+
+  if (state.initialized)
   {
-    ++mActiveClients;
-    outSnapshot = mSnapshot;
-    outGeneration = mSnapshotGeneration;
+    ++state.activeClients;
+    outSnapshot = state.snapshot;
+    outGeneration = state.snapshotGeneration;
+    mClientRegistered = true;
+    mClientGeneration = outGeneration;
     return VK_SUCCESS;
   }
 
   ResetSnapshot();
-  mSnapshotGeneration = 0;
+  state.snapshotGeneration = 0;
   outGeneration = 0;
-  mActiveClients = 0;
+  state.activeClients = 0;
 
   VkResult res = CreateInstance(request);
   if (res != VK_SUCCESS)
@@ -149,48 +176,66 @@ inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequ
     return res;
   }
 
-  mInitialized = true;
-  mSnapshotGeneration = ++mGenerationCounter;
-  mSnapshot.generation = mSnapshotGeneration;
-  outSnapshot = mSnapshot;
-  outGeneration = mSnapshotGeneration;
-  mActiveClients = 1;
+  state.initialized = true;
+  state.snapshotGeneration = ++state.generationCounter;
+  state.snapshot.generation = state.snapshotGeneration;
+  outSnapshot = state.snapshot;
+  outGeneration = state.snapshotGeneration;
+  state.activeClients = 1;
+  mClientRegistered = true;
+  mClientGeneration = outGeneration;
   return VK_SUCCESS;
 }
 
 inline void WinVulkanDeviceCoordinator::Teardown(uint64_t generation)
 {
-  if (generation != 0 && generation != mSnapshotGeneration)
+  SharedState& state = *mState;
+
+  if (generation != 0 && generation != state.snapshotGeneration)
   {
     return;
   }
 
-  if (!mInitialized && mSnapshot.instance == VK_NULL_HANDLE && mSnapshot.device == VK_NULL_HANDLE)
+  if (!state.initialized && state.snapshot.instance == VK_NULL_HANDLE && state.snapshot.device == VK_NULL_HANDLE)
   {
     return;
   }
 
   if (generation == 0)
   {
-    mActiveClients = 0;
+    if (state.activeClients > 0)
+    {
+      return;
+    }
+    mClientRegistered = false;
+    mClientGeneration = 0;
   }
-  else if (mActiveClients > 0)
+  else
   {
-    --mActiveClients;
+    if (state.activeClients > 0)
+    {
+      --state.activeClients;
+    }
+
+    if (mClientRegistered && mClientGeneration == generation)
+    {
+      mClientRegistered = false;
+      mClientGeneration = 0;
+    }
   }
 
-  if (mActiveClients > 0)
+  if (state.activeClients > 0)
   {
     return;
   }
 
-  const VkInstance instance = mSnapshot.instance;
-  const VkSurfaceKHR surface = mSnapshot.surface;
-  const VkDevice device = mSnapshot.device;
+  const VkInstance instance = state.snapshot.instance;
+  const VkSurfaceKHR surface = state.snapshot.surface;
+  const VkDevice device = state.snapshot.device;
 
-  mInitialized = false;
-  mSnapshotGeneration = 0;
-  mActiveClients = 0;
+  state.initialized = false;
+  state.snapshotGeneration = 0;
+  state.activeClients = 0;
   ResetSnapshot();
 
   if (surface != VK_NULL_HANDLE && instance != VK_NULL_HANDLE)
@@ -211,6 +256,7 @@ inline void WinVulkanDeviceCoordinator::Teardown(uint64_t generation)
 
 inline VkResult WinVulkanDeviceCoordinator::CreateInstance(const WinVulkanDeviceRequest& request)
 {
+  SharedState& state = *mState;
   VkApplicationInfo appInfo{};
   appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
   appInfo.pApplicationName = "iPlug2";
@@ -247,16 +293,16 @@ inline VkResult WinVulkanDeviceCoordinator::CreateInstance(const WinVulkanDevice
   {
     instanceInfo.enabledLayerCount = 1;
     instanceInfo.ppEnabledLayerNames = &winvk::kValidationLayerName;
-    mSnapshot.validationLayerEnabled = true;
+    state.snapshot.validationLayerEnabled = true;
   }
   else
   {
     instanceInfo.enabledLayerCount = 0;
     instanceInfo.ppEnabledLayerNames = nullptr;
-    mSnapshot.validationLayerEnabled = false;
+    state.snapshot.validationLayerEnabled = false;
   }
 
-  return vkCreateInstance(&instanceInfo, nullptr, &mSnapshot.instance);
+  return vkCreateInstance(&instanceInfo, nullptr, &state.snapshot.instance);
 }
 
 inline VkResult WinVulkanDeviceCoordinator::CreateSurface(const WinVulkanDeviceRequest& request)
@@ -265,20 +311,21 @@ inline VkResult WinVulkanDeviceCoordinator::CreateSurface(const WinVulkanDeviceR
   surfaceInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
   surfaceInfo.hinstance = request.instanceHandle;
   surfaceInfo.hwnd = request.windowHandle;
-  return vkCreateWin32SurfaceKHR(mSnapshot.instance, &surfaceInfo, nullptr, &mSnapshot.surface);
+  return vkCreateWin32SurfaceKHR(mState->snapshot.instance, &surfaceInfo, nullptr, &mState->snapshot.surface);
 }
 
 inline VkResult WinVulkanDeviceCoordinator::SelectPhysicalDevice(const WinVulkanDeviceRequest& request)
 {
+  SharedState& state = *mState;
   uint32_t gpuCount = 0;
-  VkResult res = vkEnumeratePhysicalDevices(mSnapshot.instance, &gpuCount, nullptr);
+  VkResult res = vkEnumeratePhysicalDevices(state.snapshot.instance, &gpuCount, nullptr);
   if (res != VK_SUCCESS || gpuCount == 0)
   {
     return (gpuCount == 0) ? VK_ERROR_INITIALIZATION_FAILED : res;
   }
 
   std::vector<VkPhysicalDevice> devices(gpuCount);
-  res = vkEnumeratePhysicalDevices(mSnapshot.instance, &gpuCount, devices.data());
+  res = vkEnumeratePhysicalDevices(state.snapshot.instance, &gpuCount, devices.data());
   if (res != VK_SUCCESS)
   {
     return res;
@@ -314,7 +361,7 @@ inline VkResult WinVulkanDeviceCoordinator::SelectPhysicalDevice(const WinVulkan
     for (uint32_t i = 0; i < queueCount; ++i)
     {
       VkBool32 presentSupport = VK_FALSE;
-      if (vkGetPhysicalDeviceSurfaceSupportKHR(device, i, mSnapshot.surface, &presentSupport) == VK_SUCCESS &&
+      if (vkGetPhysicalDeviceSurfaceSupportKHR(device, i, state.snapshot.surface, &presentSupport) == VK_SUCCESS &&
           (queues[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) && presentSupport)
       {
         queueIndex = i;
@@ -363,20 +410,22 @@ inline VkResult WinVulkanDeviceCoordinator::SelectPhysicalDevice(const WinVulkan
     return VK_ERROR_INITIALIZATION_FAILED;
   }
 
-  mSnapshot.physicalDevice = selectedDevice;
-  mSnapshot.queueFamily = selectedQueueFamily;
+  state.snapshot.physicalDevice = selectedDevice;
+  state.snapshot.queueFamily = selectedQueueFamily;
   return VK_SUCCESS;
 }
 
 inline VkResult WinVulkanDeviceCoordinator::CreateLogicalDevice()
 {
-  if (mSnapshot.physicalDevice == VK_NULL_HANDLE)
+  SharedState& state = *mState;
+
+  if (state.snapshot.physicalDevice == VK_NULL_HANDLE)
   {
     return VK_ERROR_INITIALIZATION_FAILED;
   }
 
   VkPhysicalDeviceFeatures supportedFeatures;
-  vkGetPhysicalDeviceFeatures(mSnapshot.physicalDevice, &supportedFeatures);
+  vkGetPhysicalDeviceFeatures(state.snapshot.physicalDevice, &supportedFeatures);
 
   VkPhysicalDeviceFeatures enabledFeatures{};
   enabledFeatures.samplerAnisotropy = supportedFeatures.samplerAnisotropy;
@@ -386,7 +435,7 @@ inline VkResult WinVulkanDeviceCoordinator::CreateLogicalDevice()
   float queuePriority = 1.f;
   VkDeviceQueueCreateInfo queueInfo{};
   queueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-  queueInfo.queueFamilyIndex = mSnapshot.queueFamily;
+  queueInfo.queueFamilyIndex = state.snapshot.queueFamily;
   queueInfo.queueCount = 1;
   queueInfo.pQueuePriorities = &queuePriority;
 
@@ -399,7 +448,7 @@ inline VkResult WinVulkanDeviceCoordinator::CreateLogicalDevice()
   deviceInfo.pEnabledFeatures = &enabledFeatures;
 
 #if !defined(NDEBUG)
-  if (mSnapshot.validationLayerEnabled)
+  if (state.snapshot.validationLayerEnabled)
   {
     deviceInfo.enabledLayerCount = 1;
     deviceInfo.ppEnabledLayerNames = &winvk::kValidationLayerName;
@@ -411,26 +460,27 @@ inline VkResult WinVulkanDeviceCoordinator::CreateLogicalDevice()
     deviceInfo.ppEnabledLayerNames = nullptr;
   }
 
-  VkResult res = vkCreateDevice(mSnapshot.physicalDevice, &deviceInfo, nullptr, &mSnapshot.device);
+  VkResult res = vkCreateDevice(state.snapshot.physicalDevice, &deviceInfo, nullptr, &state.snapshot.device);
   if (res != VK_SUCCESS)
   {
     return res;
   }
 
-  vkGetDeviceQueue(mSnapshot.device, mSnapshot.queueFamily, 0, &mSnapshot.presentQueue);
+  vkGetDeviceQueue(state.snapshot.device, state.snapshot.queueFamily, 0, &state.snapshot.presentQueue);
   return VK_SUCCESS;
 }
 
 inline void WinVulkanDeviceCoordinator::ResetSnapshot()
 {
-  mSnapshot.instance = VK_NULL_HANDLE;
-  mSnapshot.physicalDevice = VK_NULL_HANDLE;
-  mSnapshot.device = VK_NULL_HANDLE;
-  mSnapshot.surface = VK_NULL_HANDLE;
-  mSnapshot.presentQueue = VK_NULL_HANDLE;
-  mSnapshot.queueFamily = 0;
-  mSnapshot.validationLayerEnabled = false;
-  mSnapshot.generation = 0;
+  WinVulkanDeviceSnapshot& snapshot = mState->snapshot;
+  snapshot.instance = VK_NULL_HANDLE;
+  snapshot.physicalDevice = VK_NULL_HANDLE;
+  snapshot.device = VK_NULL_HANDLE;
+  snapshot.surface = VK_NULL_HANDLE;
+  snapshot.presentQueue = VK_NULL_HANDLE;
+  snapshot.queueFamily = 0;
+  snapshot.validationLayerEnabled = false;
+  snapshot.generation = 0;
 }
 
 END_IGRAPHICS_NAMESPACE

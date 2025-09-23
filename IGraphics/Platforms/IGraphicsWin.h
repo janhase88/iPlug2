@@ -23,6 +23,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <atomic>
 
 #ifdef IGRAPHICS_VULKAN
   #define VK_USE_PLATFORM_WIN32_KHR
@@ -154,8 +155,9 @@ private:
   bool mOLEInited = false;
 
   /** Called either in response to WM_TIMER tick or user message WM_VBLANK, triggered by VSYNC thread
-   * @param vBlankCount will allow redraws to get paced by the vblank message. Passing 0 is a WM_TIMER fallback. */
-  void OnDisplayTimer(int vBlankCount = 0);
+   * @param vBlankCount will allow redraws to get paced by the vblank message. Passing 0 is a WM_TIMER fallback.
+   * @param fromVBlankMessage distinguishes real WM_VBLANK deliveries from the WM_TIMER fallback. */
+  void OnDisplayTimer(DWORD vBlankCount = 0, bool fromVBlankMessage = false);
 
   enum EParamEditMsg
   {
@@ -226,6 +228,10 @@ private:
   volatile bool mVBlankShutdown = false;       // Flag to indiciate that the vsync thread should shutdown
   HANDLE mVBlankThread = INVALID_HANDLE_VALUE; // ID of thread.
   volatile DWORD mVBlankCount = 0;             // running count of vblank events since the start of the window.
+  std::atomic<bool> mVBlankMessagePending{false}; // true while a WM_VBLANK message is outstanding on the UI queue
+  std::atomic<DWORD> mQueuedVBlank{0};         // newest vblank counter queued for delivery to the UI thread
+  std::atomic<DWORD> mPendingSyncVBlank{0};    // newest tick awaiting a fallback WM_VBLANK send when PostMessageW fails
+  DWORD mLastProcessedVBlank = 0;              // last WM_VBLANK tick serviced by the UI thread
   int mVBlankSkipUntil = 0;                    // support for skipping vblank notification if the last callback took  too long.  This helps keep the message pump clear in the case of overload.
   bool mVSYNCEnabled = false;
   bool mDeferInvalidation = false;

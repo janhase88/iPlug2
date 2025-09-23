@@ -120,7 +120,7 @@ void IGraphicsWin::DestroyEditWindow()
   }
 }
 
-void IGraphicsWin::OnDisplayTimer(int vBlankCount)
+void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
 {
   // Check the message vblank with the current one to see if we are way behind. If so, then throw these away.
   DWORD msgCount = vBlankCount;
@@ -128,20 +128,70 @@ void IGraphicsWin::OnDisplayTimer(int vBlankCount)
 
   if (mVSYNCEnabled)
   {
-    // skip until the actual vblank is at a certain number.
-    if (mVBlankSkipUntil != 0 && mVBlankSkipUntil > mVBlankCount)
+    const bool hasVBlankMessage = fromVBlankMessage;
+
+    auto drainVBlankMessages = [&](DWORD count) {
+      DWORD newest = std::max<DWORD>(count, mQueuedVBlank.load(std::memory_order_relaxed));
+      MSG msg;
+      while (PeekMessageW(&msg, mPlugWnd, WM_VBLANK, WM_VBLANK, PM_REMOVE))
+      {
+        const DWORD observed = static_cast<DWORD>(msg.wParam);
+        if (observed > newest)
+        {
+          newest = observed;
+        }
+      }
+
+      curCount = mVBlankCount;
+
+      if (newest > curCount)
+      {
+        newest = curCount;
+      }
+
+      return newest;
+    };
+
+    if (hasVBlankMessage)
     {
+      msgCount = drainVBlankMessages(msgCount);
+    }
+
+    // skip until the actual vblank is at a certain number.
+    if (mVBlankSkipUntil != 0 && mVBlankSkipUntil > curCount)
+    {
+      if (hasVBlankMessage)
+      {
+        mLastProcessedVBlank = std::max<DWORD>(mLastProcessedVBlank, msgCount);
+        mVBlankMessagePending.store(false, std::memory_order_release);
+      }
       return;
     }
 
     mVBlankSkipUntil = 0;
 
-    if (msgCount != curCount)
+    if (hasVBlankMessage)
     {
-      // we are late, just skip it until we can get a message soon after the vblank event.
-      // DBGMSG("vblank is late by %i frames.  Skipping.", (mVBlankCount - msgCount));
-      return;
+      if (static_cast<int32_t>(msgCount - mLastProcessedVBlank) <= 0)
+      {
+        // The counter can wrap to zero; compare using signed arithmetic so wrapped ticks still
+        // look "new" while duplicates remain filtered out.
+        mLastProcessedVBlank = std::max<DWORD>(mLastProcessedVBlank, msgCount);
+        mVBlankMessagePending.store(false, std::memory_order_release);
+        return;
+      }
+
+      mLastProcessedVBlank = msgCount;
+      mVBlankMessagePending.store(false, std::memory_order_release);
     }
+    else
+    {
+      mLastProcessedVBlank = curCount;
+    }
+  }
+  else if (msgCount == 0)
+  {
+    mLastProcessedVBlank = curCount;
   }
 
   if (mParamEditWnd && mParamEditMsg != kNone)
@@ -285,12 +335,12 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
   switch (msg)
   {
   case WM_VBLANK:
-    pGraphics->OnDisplayTimer(wParam);
+    pGraphics->OnDisplayTimer(static_cast<DWORD>(wParam), true);
     return 0;
 
   case WM_TIMER:
     if (wParam == IPLUG_TIMER_ID)
-      pGraphics->OnDisplayTimer(0);
+      pGraphics->OnDisplayTimer(0, false);
 
     return 0;
 
@@ -2846,6 +2896,10 @@ void IGraphicsWin::StartVBlankThread(HWND hWnd)
 {
   mVBlankWindow = hWnd;
   mVBlankShutdown = false;
+  mVBlankMessagePending.store(false, std::memory_order_relaxed);
+  mQueuedVBlank.store(0, std::memory_order_relaxed);
+  mPendingSyncVBlank.store(0, std::memory_order_relaxed);
+  mLastProcessedVBlank = 0;
   DWORD threadId = 0;
   mVBlankThread = ::CreateThread(NULL, 0, VBlankRun, this, 0, &threadId);
 }
@@ -3023,8 +3077,62 @@ DWORD IGraphicsWin::OnVBlankRun()
 
 void IGraphicsWin::VBlankNotify()
 {
-  mVBlankCount++;
-  ::PostMessageW(mVBlankWindow, WM_VBLANK, mVBlankCount, 0);
+  if (!mVBlankWindow)
+  {
+    return;
+  }
+
+  const DWORD latestCount = ++mVBlankCount;
+  mQueuedVBlank.store(latestCount, std::memory_order_relaxed);
+
+  if (mVBlankMessagePending.exchange(true, std::memory_order_acq_rel))
+  {
+    return;
+  }
+
+  DWORD dispatchCount = mQueuedVBlank.load(std::memory_order_relaxed);
+
+  if (::PostMessageW(mVBlankWindow, WM_VBLANK, dispatchCount, 0))
+  {
+    mPendingSyncVBlank.store(0, std::memory_order_relaxed);
+    return;
+  }
+
+  const DWORD postError = GetLastError();
+  DWORD coalescedCount = dispatchCount;
+
+  if (postError == ERROR_NOT_ENOUGH_QUOTA)
+  {
+    // Windows drops WM_VBLANK posts when the message queue is saturated. Remember the freshest
+    // tick so the fallback still delivers the newest frame once the UI thread catches up.
+    DWORD observed = mPendingSyncVBlank.load(std::memory_order_relaxed);
+    while (observed < dispatchCount
+           && !mPendingSyncVBlank.compare_exchange_weak(observed, dispatchCount, std::memory_order_relaxed,
+                                                        std::memory_order_relaxed))
+    {
+    }
+
+    const DWORD pendingSyncCount = mPendingSyncVBlank.load(std::memory_order_relaxed);
+    coalescedCount = std::max<DWORD>(pendingSyncCount, mQueuedVBlank.load(std::memory_order_relaxed));
+    DBGMSG("IGraphicsWin::VBlankNotify PostMessageW queue full, sending WM_VBLANK via SendNotifyMessageW (count=%lu, coalesced=%lu)\n",
+           static_cast<unsigned long>(latestCount), static_cast<unsigned long>(coalescedCount));
+  }
+  else
+  {
+    coalescedCount = std::max<DWORD>(coalescedCount, mQueuedVBlank.load(std::memory_order_relaxed));
+    DBGMSG("IGraphicsWin::VBlankNotify PostMessageW failed (error=%lu), using SendNotifyMessageW (count=%lu)\n",
+           static_cast<unsigned long>(postError), static_cast<unsigned long>(coalescedCount));
+  }
+
+  // Use SendNotifyMessageW so the VSYNC worker never blocks the UI thread while the queue is saturated.
+  if (!::SendNotifyMessageW(mVBlankWindow, WM_VBLANK, coalescedCount, 0))
+  {
+    const DWORD notifyError = GetLastError();
+    DBGMSG("IGraphicsWin::VBlankNotify SendNotifyMessageW failed (error=%lu)\n", static_cast<unsigned long>(notifyError));
+    mVBlankMessagePending.store(false, std::memory_order_release);
+  }
+
+  mPendingSyncVBlank.store(0, std::memory_order_relaxed);
 }
 
 #ifndef NO_IGRAPHICS

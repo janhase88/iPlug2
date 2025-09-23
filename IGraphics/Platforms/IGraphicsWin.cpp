@@ -210,6 +210,10 @@ void IGraphicsWin::OnDisplayTimer(int vBlankCount)
       UpdateWindow(mPlugWnd);
       mParamEditMsg = kUpdate;
     }
+    else if (GetResizingInProcess())
+    {
+      UpdateWindow(mPlugWnd);
+    }
     else if (!hadPendingPaint && mVSYNCEnabled)
     {
       // Check and see if we are still in this frame.

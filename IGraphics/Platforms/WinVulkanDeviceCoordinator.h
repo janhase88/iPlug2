@@ -157,14 +157,14 @@ inline void WinVulkanDeviceCoordinator::Teardown()
   mInitialized = false;
   ResetSnapshot();
 
-  if (device != VK_NULL_HANDLE)
-  {
-    vkDestroyDevice(device, nullptr);
-  }
-
   if (surface != VK_NULL_HANDLE && instance != VK_NULL_HANDLE)
   {
     vkDestroySurfaceKHR(instance, surface, nullptr);
+  }
+
+  if (device != VK_NULL_HANDLE)
+  {
+    vkDestroyDevice(device, nullptr);
   }
 
   if (instance != VK_NULL_HANDLE)

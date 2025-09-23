@@ -2874,6 +2874,7 @@ void IGraphicsWin::StartVBlankThread(HWND hWnd)
 {
   mVBlankWindow = hWnd;
   mVBlankShutdown = false;
+  mPendingSyncVBlank.store(0, std::memory_order_relaxed);
   mLastProcessedVBlank = 0;
   DWORD threadId = 0;
   mVBlankThread = ::CreateThread(NULL, 0, VBlankRun, this, 0, &threadId);
@@ -3052,8 +3053,46 @@ DWORD IGraphicsWin::OnVBlankRun()
 
 void IGraphicsWin::VBlankNotify()
 {
-  mVBlankCount++;
-  ::PostMessageW(mVBlankWindow, WM_VBLANK, mVBlankCount, 0);
+  if (!mVBlankWindow)
+  {
+    return;
+  }
+
+  const DWORD latestCount = ++mVBlankCount;
+
+  if (::PostMessageW(mVBlankWindow, WM_VBLANK, latestCount, 0))
+  {
+    mPendingSyncVBlank.store(0, std::memory_order_relaxed);
+    return;
+  }
+
+  const DWORD postError = GetLastError();
+  DWORD coalescedCount = latestCount;
+
+  if (postError == ERROR_NOT_ENOUGH_QUOTA)
+  {
+    // Windows drops WM_VBLANK posts when the message queue is saturated. Remember the freshest
+    // tick so the synchronous path paints the newest frame once the UI thread catches up.
+    DWORD observed = mPendingSyncVBlank.load(std::memory_order_relaxed);
+    while (observed < latestCount
+           && !mPendingSyncVBlank.compare_exchange_weak(observed, latestCount, std::memory_order_relaxed,
+                                                        std::memory_order_relaxed))
+    {
+    }
+
+    coalescedCount = mPendingSyncVBlank.load(std::memory_order_relaxed);
+    DBGMSG("IGraphicsWin::VBlankNotify PostMessageW queue full, sending WM_VBLANK synchronously (count=%lu, coalesced=%lu)\n",
+           static_cast<unsigned long>(latestCount), static_cast<unsigned long>(coalescedCount));
+  }
+  else
+  {
+    DBGMSG("IGraphicsWin::VBlankNotify PostMessageW failed (error=%lu), sending WM_VBLANK synchronously (count=%lu)\n",
+           static_cast<unsigned long>(postError), static_cast<unsigned long>(latestCount));
+  }
+
+  ::SendMessageW(mVBlankWindow, WM_VBLANK, coalescedCount, 0);
+
+  mPendingSyncVBlank.store(0, std::memory_order_relaxed);
 }
 
 #ifndef NO_IGRAPHICS

@@ -130,9 +130,31 @@ void IGraphicsWin::OnDisplayTimer(int vBlankCount)
   {
     const bool hasVBlankMessage = msgCount != 0;
 
+    auto drainVBlankMessages = [&](DWORD count) {
+      DWORD newest = std::max<DWORD>(count, mQueuedVBlank.load(std::memory_order_relaxed));
+      MSG msg;
+      while (PeekMessageW(&msg, mPlugWnd, WM_VBLANK, WM_VBLANK, PM_REMOVE))
+      {
+        const DWORD observed = static_cast<DWORD>(msg.wParam);
+        if (observed > newest)
+        {
+          newest = observed;
+        }
+      }
+
+      curCount = mVBlankCount;
+
+      if (newest > curCount)
+      {
+        newest = curCount;
+      }
+
+      return newest;
+    };
+
     if (hasVBlankMessage)
     {
-      msgCount = std::max<DWORD>(msgCount, mQueuedVBlank.load(std::memory_order_relaxed));
+      msgCount = drainVBlankMessages(msgCount);
     }
 
     // skip until the actual vblank is at a certain number.
@@ -155,23 +177,6 @@ void IGraphicsWin::OnDisplayTimer(int vBlankCount)
         mLastProcessedVBlank = std::max<DWORD>(mLastProcessedVBlank, msgCount);
         mVBlankMessagePending.store(false, std::memory_order_release);
         return;
-      }
-
-      MSG msg;
-      while (PeekMessageW(&msg, mPlugWnd, WM_VBLANK, WM_VBLANK, PM_REMOVE))
-      {
-        const DWORD latest = static_cast<DWORD>(msg.wParam);
-        if (latest > msgCount)
-        {
-          msgCount = latest;
-        }
-      }
-
-      curCount = mVBlankCount;
-
-      if (msgCount > curCount)
-      {
-        msgCount = curCount;
       }
 
       mLastProcessedVBlank = msgCount;

@@ -131,7 +131,7 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
     const bool hasVBlankMessage = fromVBlankMessage;
 
     auto drainVBlankMessages = [&](DWORD count) {
-      DWORD newest = std::max<DWORD>(count, mQueuedVBlank.load(std::memory_order_relaxed));
+      DWORD newest = std::max<DWORD>(count, mQueuedVBlank.load(std::memory_order_acquire));
       MSG msg;
       while (PeekMessageW(&msg, mPlugWnd, WM_VBLANK, WM_VBLANK, PM_REMOVE))
       {
@@ -3083,18 +3083,18 @@ void IGraphicsWin::VBlankNotify()
   }
 
   const DWORD latestCount = ++mVBlankCount;
-  mQueuedVBlank.store(latestCount, std::memory_order_relaxed);
+  mQueuedVBlank.store(latestCount, std::memory_order_release);
 
   if (mVBlankMessagePending.exchange(true, std::memory_order_acq_rel))
   {
     return;
   }
 
-  DWORD dispatchCount = mQueuedVBlank.load(std::memory_order_relaxed);
+  DWORD dispatchCount = mQueuedVBlank.load(std::memory_order_acquire);
 
   if (::PostMessageW(mVBlankWindow, WM_VBLANK, dispatchCount, 0))
   {
-    mPendingSyncVBlank.store(0, std::memory_order_relaxed);
+    mPendingSyncVBlank.store(0, std::memory_order_release);
     return;
   }
 
@@ -3105,21 +3105,21 @@ void IGraphicsWin::VBlankNotify()
   {
     // Windows drops WM_VBLANK posts when the message queue is saturated. Remember the freshest
     // tick so the fallback still delivers the newest frame once the UI thread catches up.
-    DWORD observed = mPendingSyncVBlank.load(std::memory_order_relaxed);
+    DWORD observed = mPendingSyncVBlank.load(std::memory_order_acquire);
     while (observed < dispatchCount
-           && !mPendingSyncVBlank.compare_exchange_weak(observed, dispatchCount, std::memory_order_relaxed,
-                                                        std::memory_order_relaxed))
+           && !mPendingSyncVBlank.compare_exchange_weak(observed, dispatchCount, std::memory_order_acq_rel,
+                                                        std::memory_order_acquire))
     {
     }
 
-    const DWORD pendingSyncCount = mPendingSyncVBlank.load(std::memory_order_relaxed);
-    coalescedCount = std::max<DWORD>(pendingSyncCount, mQueuedVBlank.load(std::memory_order_relaxed));
+    const DWORD pendingSyncCount = mPendingSyncVBlank.load(std::memory_order_acquire);
+    coalescedCount = std::max<DWORD>(pendingSyncCount, mQueuedVBlank.load(std::memory_order_acquire));
     DBGMSG("IGraphicsWin::VBlankNotify PostMessageW queue full, sending WM_VBLANK via SendNotifyMessageW (count=%lu, coalesced=%lu)\n",
            static_cast<unsigned long>(latestCount), static_cast<unsigned long>(coalescedCount));
   }
   else
   {
-    coalescedCount = std::max<DWORD>(coalescedCount, mQueuedVBlank.load(std::memory_order_relaxed));
+    coalescedCount = std::max<DWORD>(coalescedCount, mQueuedVBlank.load(std::memory_order_acquire));
     DBGMSG("IGraphicsWin::VBlankNotify PostMessageW failed (error=%lu), using SendNotifyMessageW (count=%lu)\n",
            static_cast<unsigned long>(postError), static_cast<unsigned long>(coalescedCount));
   }
@@ -3132,7 +3132,7 @@ void IGraphicsWin::VBlankNotify()
     mVBlankMessagePending.store(false, std::memory_order_release);
   }
 
-  mPendingSyncVBlank.store(0, std::memory_order_relaxed);
+  mPendingSyncVBlank.store(0, std::memory_order_release);
 }
 
 #ifndef NO_IGRAPHICS

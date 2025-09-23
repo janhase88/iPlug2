@@ -150,23 +150,27 @@ inline void WinVulkanDeviceCoordinator::Teardown()
     return;
   }
 
-  if (mSnapshot.device != VK_NULL_HANDLE)
-  {
-    vkDestroyDevice(mSnapshot.device, nullptr);
-  }
+  const VkInstance instance = mSnapshot.instance;
+  const VkSurfaceKHR surface = mSnapshot.surface;
+  const VkDevice device = mSnapshot.device;
 
-  if (mSnapshot.surface != VK_NULL_HANDLE && mSnapshot.instance != VK_NULL_HANDLE)
-  {
-    vkDestroySurfaceKHR(mSnapshot.instance, mSnapshot.surface, nullptr);
-  }
-
-  if (mSnapshot.instance != VK_NULL_HANDLE)
-  {
-    vkDestroyInstance(mSnapshot.instance, nullptr);
-  }
-
-  ResetSnapshot();
   mInitialized = false;
+  ResetSnapshot();
+
+  if (device != VK_NULL_HANDLE)
+  {
+    vkDestroyDevice(device, nullptr);
+  }
+
+  if (surface != VK_NULL_HANDLE && instance != VK_NULL_HANDLE)
+  {
+    vkDestroySurfaceKHR(instance, surface, nullptr);
+  }
+
+  if (instance != VK_NULL_HANDLE)
+  {
+    vkDestroyInstance(instance, nullptr);
+  }
 }
 
 inline VkResult WinVulkanDeviceCoordinator::CreateInstance(const WinVulkanDeviceRequest& request)

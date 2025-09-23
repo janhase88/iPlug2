@@ -98,7 +98,8 @@ void IGraphics::Resize(int w, int h, float scale, bool needsPlatformResize)
   if (w == Width() && h == Height() && scale == GetDrawScale()) return;
   
   //DBGMSG("resize %i, resize %i, scale %f\n", w, h, scale);
-  ReleaseMouseCapture();
+  if (!mResizingInProcess)
+    ReleaseMouseCapture();
 
   mDrawScale = scale;
   mWidth = w;
@@ -2068,7 +2069,9 @@ void IGraphics::CreatePopupMenu(IControl& control, IPopupMenu& menu, const IRECT
 void IGraphics::EndDragResize()
 {
   mResizingInProcess = false;
-  
+
+  ReleaseMouseCapture();
+
   if (GetResizerMode() == EUIResizerMode::Scale)
   {
     // If scaling up we may want to load in high DPI bitmaps if scale > 1.

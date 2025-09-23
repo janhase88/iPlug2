@@ -173,7 +173,12 @@ void IGraphicsWin::OnDisplayTimer(int vBlankCount)
 
   if (HWND captureWnd = GetCapture())
   {
-    if ((captureWnd != mPlugWnd) && !IsChild(mPlugWnd, captureWnd))
+    if (captureWnd == mPlugWnd)
+    {
+      if (!ControlIsCaptured())
+        return;
+    }
+    else if (!IsChild(mPlugWnd, captureWnd))
     {
       const HWND rootWnd = GetAncestor(mPlugWnd, GA_ROOT);
 

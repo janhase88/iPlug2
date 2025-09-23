@@ -123,25 +123,53 @@ void IGraphicsWin::DestroyEditWindow()
 void IGraphicsWin::OnDisplayTimer(int vBlankCount)
 {
   // Check the message vblank with the current one to see if we are way behind. If so, then throw these away.
-  DWORD msgCount = vBlankCount;
+  DWORD msgCount = static_cast<DWORD>(vBlankCount);
   DWORD curCount = mVBlankCount;
 
   if (mVSYNCEnabled)
   {
     // skip until the actual vblank is at a certain number.
-    if (mVBlankSkipUntil != 0 && mVBlankSkipUntil > mVBlankCount)
+    if (mVBlankSkipUntil != 0 && mVBlankSkipUntil > curCount)
     {
       return;
     }
 
     mVBlankSkipUntil = 0;
 
-    if (msgCount != curCount)
+    if (msgCount != 0)
     {
-      // we are late, just skip it until we can get a message soon after the vblank event.
-      // DBGMSG("vblank is late by %i frames.  Skipping.", (mVBlankCount - msgCount));
-      return;
+      if (msgCount <= mLastProcessedVBlank)
+      {
+        return;
+      }
+
+      MSG msg;
+      while (PeekMessageW(&msg, mPlugWnd, WM_VBLANK, WM_VBLANK, PM_REMOVE))
+      {
+        const DWORD latest = static_cast<DWORD>(msg.wParam);
+        if (latest > msgCount)
+        {
+          msgCount = latest;
+        }
+      }
+
+      curCount = mVBlankCount;
+
+      if (msgCount > curCount)
+      {
+        msgCount = curCount;
+      }
+
+      mLastProcessedVBlank = msgCount ? msgCount : curCount;
     }
+    else
+    {
+      mLastProcessedVBlank = curCount;
+    }
+  }
+  else if (msgCount == 0)
+  {
+    mLastProcessedVBlank = curCount;
   }
 
   if (mParamEditWnd && mParamEditMsg != kNone)
@@ -2846,6 +2874,7 @@ void IGraphicsWin::StartVBlankThread(HWND hWnd)
 {
   mVBlankWindow = hWnd;
   mVBlankShutdown = false;
+  mLastProcessedVBlank = 0;
   DWORD threadId = 0;
   mVBlankThread = ::CreateThread(NULL, 0, VBlankRun, this, 0, &threadId);
 }

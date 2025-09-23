@@ -75,14 +75,15 @@ private:
   static SharedState& Shared();
 
   VkResult CreateInstance(const WinVulkanDeviceRequest& request);
-  VkResult CreateSurface(const WinVulkanDeviceRequest& request);
-  VkResult SelectPhysicalDevice(const WinVulkanDeviceRequest& request);
+  VkResult CreateSurface(const WinVulkanDeviceRequest& request, VkSurfaceKHR& outSurface);
+  VkResult SelectPhysicalDevice(const WinVulkanDeviceRequest& request, VkSurfaceKHR surface);
   VkResult CreateLogicalDevice();
   void ResetSnapshot();
 
   SharedState* mState = nullptr;
   bool mClientRegistered = false;
   uint64_t mClientGeneration = 0;
+  VkSurfaceKHR mClientSurface = VK_NULL_HANDLE;
 };
 
 namespace winvk
@@ -105,9 +106,9 @@ inline WinVulkanDeviceCoordinator::WinVulkanDeviceCoordinator()
 
 inline WinVulkanDeviceCoordinator::~WinVulkanDeviceCoordinator()
 {
-  if (mClientRegistered)
+  if (mClientRegistered || mClientSurface != VK_NULL_HANDLE)
   {
-    Teardown(mClientGeneration);
+    Teardown(mClientRegistered ? mClientGeneration : 0);
   }
 }
 
@@ -117,13 +118,44 @@ inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequ
 {
   SharedState& state = *mState;
 
+  VkSurfaceKHR surface = VK_NULL_HANDLE;
+
   if (state.initialized)
   {
+    VkResult res = CreateSurface(request, surface);
+    if (res != VK_SUCCESS)
+    {
+      IGRAPHICS_VK_LOG("WinVulkanDeviceCoordinator.Initialize",
+                       "vkCreateWin32SurfaceKHR",
+                       vulkanlog::Severity::kError,
+                       vulkanlog::MakeField("vkResult", static_cast<int>(res)));
+      return res;
+    }
+
+    VkBool32 presentSupport = VK_FALSE;
+    res = vkGetPhysicalDeviceSurfaceSupportKHR(state.snapshot.physicalDevice,
+                                               state.snapshot.queueFamily,
+                                               surface,
+                                               &presentSupport);
+    if (res != VK_SUCCESS || presentSupport != VK_TRUE)
+    {
+      if (res == VK_SUCCESS)
+        res = VK_ERROR_INITIALIZATION_FAILED;
+      vkDestroySurfaceKHR(state.snapshot.instance, surface, nullptr);
+      IGRAPHICS_VK_LOG("WinVulkanDeviceCoordinator.Initialize",
+                       "vkGetPhysicalDeviceSurfaceSupportKHR",
+                       vulkanlog::Severity::kError,
+                       vulkanlog::MakeField("vkResult", static_cast<int>(res)));
+      return res;
+    }
+
     ++state.activeClients;
     outSnapshot = state.snapshot;
+    outSnapshot.surface = surface;
     outGeneration = state.snapshotGeneration;
     mClientRegistered = true;
     mClientGeneration = outGeneration;
+    mClientSurface = surface;
     return VK_SUCCESS;
   }
 
@@ -131,6 +163,7 @@ inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequ
   state.snapshotGeneration = 0;
   outGeneration = 0;
   state.activeClients = 0;
+  mClientSurface = VK_NULL_HANDLE;
 
   VkResult res = CreateInstance(request);
   if (res != VK_SUCCESS)
@@ -143,7 +176,7 @@ inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequ
     return res;
   }
 
-  res = CreateSurface(request);
+  res = CreateSurface(request, surface);
   if (res != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("WinVulkanDeviceCoordinator.Initialize",
@@ -154,13 +187,14 @@ inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequ
     return res;
   }
 
-  res = SelectPhysicalDevice(request);
+  res = SelectPhysicalDevice(request, surface);
   if (res != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("WinVulkanDeviceCoordinator.Initialize",
                         "selectPhysicalDevice",
                         vulkanlog::Severity::kError,
                         vulkanlog::MakeField("vkResult", static_cast<int>(res)));
+    vkDestroySurfaceKHR(state.snapshot.instance, surface, nullptr);
     Teardown();
     return res;
   }
@@ -172,6 +206,7 @@ inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequ
                         "vkCreateDevice",
                         vulkanlog::Severity::kError,
                         vulkanlog::MakeField("vkResult", static_cast<int>(res)));
+    vkDestroySurfaceKHR(state.snapshot.instance, surface, nullptr);
     Teardown();
     return res;
   }
@@ -180,10 +215,12 @@ inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequ
   state.snapshotGeneration = ++state.generationCounter;
   state.snapshot.generation = state.snapshotGeneration;
   outSnapshot = state.snapshot;
+  outSnapshot.surface = surface;
   outGeneration = state.snapshotGeneration;
   state.activeClients = 1;
   mClientRegistered = true;
   mClientGeneration = outGeneration;
+  mClientSurface = surface;
   return VK_SUCCESS;
 }
 
@@ -191,38 +228,68 @@ inline void WinVulkanDeviceCoordinator::Teardown(uint64_t generation)
 {
   SharedState& state = *mState;
 
-  if (generation != 0 && generation != state.snapshotGeneration)
+  if (generation != 0 && mClientRegistered && generation != mClientGeneration)
   {
     return;
   }
 
-  if (!state.initialized && state.snapshot.instance == VK_NULL_HANDLE && state.snapshot.device == VK_NULL_HANDLE)
+  VkSurfaceKHR clientSurface = mClientSurface;
+  if (clientSurface != VK_NULL_HANDLE && state.snapshot.instance != VK_NULL_HANDLE)
   {
-    return;
+    vkDestroySurfaceKHR(state.snapshot.instance, clientSurface, nullptr);
   }
+  mClientSurface = VK_NULL_HANDLE;
 
   if (generation == 0)
   {
+    if (mClientRegistered)
+    {
+      if (state.activeClients > 0)
+      {
+        --state.activeClients;
+      }
+      mClientRegistered = false;
+      mClientGeneration = 0;
+    }
+
     if (state.activeClients > 0)
     {
       return;
     }
-    mClientRegistered = false;
-    mClientGeneration = 0;
-  }
-  else
-  {
-    if (state.activeClients > 0)
+
+    const VkInstance instance = state.snapshot.instance;
+    const VkDevice device = state.snapshot.device;
+
+    state.initialized = false;
+    state.snapshotGeneration = 0;
+    state.activeClients = 0;
+    ResetSnapshot();
+
+    if (device != VK_NULL_HANDLE)
     {
-      --state.activeClients;
+      vkDestroyDevice(device, nullptr);
     }
 
-    if (mClientRegistered && mClientGeneration == generation)
+    if (instance != VK_NULL_HANDLE)
     {
-      mClientRegistered = false;
-      mClientGeneration = 0;
+      vkDestroyInstance(instance, nullptr);
     }
+
+    return;
   }
+
+  if (!mClientRegistered || generation != mClientGeneration)
+  {
+    return;
+  }
+
+  if (state.activeClients > 0)
+  {
+    --state.activeClients;
+  }
+
+  mClientRegistered = false;
+  mClientGeneration = 0;
 
   if (state.activeClients > 0)
   {
@@ -230,18 +297,12 @@ inline void WinVulkanDeviceCoordinator::Teardown(uint64_t generation)
   }
 
   const VkInstance instance = state.snapshot.instance;
-  const VkSurfaceKHR surface = state.snapshot.surface;
   const VkDevice device = state.snapshot.device;
 
   state.initialized = false;
   state.snapshotGeneration = 0;
   state.activeClients = 0;
   ResetSnapshot();
-
-  if (surface != VK_NULL_HANDLE && instance != VK_NULL_HANDLE)
-  {
-    vkDestroySurfaceKHR(instance, surface, nullptr);
-  }
 
   if (device != VK_NULL_HANDLE)
   {
@@ -305,16 +366,16 @@ inline VkResult WinVulkanDeviceCoordinator::CreateInstance(const WinVulkanDevice
   return vkCreateInstance(&instanceInfo, nullptr, &state.snapshot.instance);
 }
 
-inline VkResult WinVulkanDeviceCoordinator::CreateSurface(const WinVulkanDeviceRequest& request)
+inline VkResult WinVulkanDeviceCoordinator::CreateSurface(const WinVulkanDeviceRequest& request, VkSurfaceKHR& outSurface)
 {
   VkWin32SurfaceCreateInfoKHR surfaceInfo{};
   surfaceInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
   surfaceInfo.hinstance = request.instanceHandle;
   surfaceInfo.hwnd = request.windowHandle;
-  return vkCreateWin32SurfaceKHR(mState->snapshot.instance, &surfaceInfo, nullptr, &mState->snapshot.surface);
+  return vkCreateWin32SurfaceKHR(mState->snapshot.instance, &surfaceInfo, nullptr, &outSurface);
 }
 
-inline VkResult WinVulkanDeviceCoordinator::SelectPhysicalDevice(const WinVulkanDeviceRequest& request)
+inline VkResult WinVulkanDeviceCoordinator::SelectPhysicalDevice(const WinVulkanDeviceRequest& request, VkSurfaceKHR surface)
 {
   SharedState& state = *mState;
   uint32_t gpuCount = 0;
@@ -361,7 +422,7 @@ inline VkResult WinVulkanDeviceCoordinator::SelectPhysicalDevice(const WinVulkan
     for (uint32_t i = 0; i < queueCount; ++i)
     {
       VkBool32 presentSupport = VK_FALSE;
-      if (vkGetPhysicalDeviceSurfaceSupportKHR(device, i, state.snapshot.surface, &presentSupport) == VK_SUCCESS &&
+      if (vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport) == VK_SUCCESS &&
           (queues[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) && presentSupport)
       {
         queueIndex = i;

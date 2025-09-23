@@ -184,7 +184,6 @@ void IGraphicsWin::OnDisplayTimer(int vBlankCount)
   {
     SetAllControlsClean();
 
-    const bool hadPendingPaint = mPaintPending;
     bool postedInvalidation = false;
 
     for (int i = 0; i < rects.Size(); i++)
@@ -202,8 +201,11 @@ void IGraphicsWin::OnDisplayTimer(int vBlankCount)
       return;
     }
 
-    mPaintPending = true;
-    const bool shouldSynchronouslyUpdate = !deferInvalidation && !hadPendingPaint;
+    const bool hadQueuedPaint = mPaintPending;
+    const bool paintQueued = GetUpdateRect(mPlugWnd, nullptr, FALSE) != 0;
+    mPaintPending = paintQueued || hadQueuedPaint;
+    const bool hasPendingPaint = postedInvalidation || mPaintPending;
+    const bool shouldSynchronouslyUpdate = !deferInvalidation && !hasPendingPaint;
 
     if (mParamEditWnd)
     {

@@ -3114,22 +3114,30 @@ void IGraphicsWin::VBlankNotify()
 
     const DWORD pendingSyncCount = mPendingSyncVBlank.load(std::memory_order_acquire);
     coalescedCount = std::max<DWORD>(pendingSyncCount, mQueuedVBlank.load(std::memory_order_acquire));
-    DBGMSG("IGraphicsWin::VBlankNotify PostMessageW queue full, sending WM_VBLANK via SendNotifyMessageW (count=%lu, coalesced=%lu)\n",
+    DBGMSG("IGraphicsWin::VBlankNotify PostMessageW queue full, sending WM_VBLANK via SendMessageTimeoutW (count=%lu, coalesced=%lu)\n",
            static_cast<unsigned long>(latestCount), static_cast<unsigned long>(coalescedCount));
   }
   else
   {
     coalescedCount = std::max<DWORD>(coalescedCount, mQueuedVBlank.load(std::memory_order_acquire));
-    DBGMSG("IGraphicsWin::VBlankNotify PostMessageW failed (error=%lu), using SendNotifyMessageW (count=%lu)\n",
+    DBGMSG("IGraphicsWin::VBlankNotify PostMessageW failed (error=%lu), using SendMessageTimeoutW (count=%lu)\n",
            static_cast<unsigned long>(postError), static_cast<unsigned long>(coalescedCount));
   }
 
-  // Use SendNotifyMessageW so the VSYNC worker never blocks the UI thread while the queue is saturated.
-  if (!::SendNotifyMessageW(mVBlankWindow, WM_VBLANK, coalescedCount, 0))
+  DWORD_PTR sendResult = 0;
+  constexpr UINT kSendTimeoutMs = 16;
+
+  if (!::SendMessageTimeoutW(mVBlankWindow, WM_VBLANK, coalescedCount, 0,
+                             SMTO_ABORTIFHUNG | SMTO_NOTIMEOUTIFNOTHUNG, kSendTimeoutMs, &sendResult))
   {
-    const DWORD notifyError = GetLastError();
-    DBGMSG("IGraphicsWin::VBlankNotify SendNotifyMessageW failed (error=%lu)\n", static_cast<unsigned long>(notifyError));
+    DWORD notifyError = GetLastError();
+    if (notifyError == 0)
+    {
+      notifyError = ERROR_TIMEOUT;
+    }
+    DBGMSG("IGraphicsWin::VBlankNotify SendMessageTimeoutW failed (error=%lu)\n", static_cast<unsigned long>(notifyError));
     mVBlankMessagePending.store(false, std::memory_order_release);
+    return;
   }
 
   mPendingSyncVBlank.store(0, std::memory_order_release);

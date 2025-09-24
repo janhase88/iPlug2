@@ -66,6 +66,7 @@
 
 #include <string>
 #include <map>
+#include <memory>
 
 using namespace iplug;
 using namespace igraphics;
@@ -105,9 +106,12 @@ IGraphicsNanoVG::Bitmap::Bitmap(IGraphicsNanoVG* pGraphics, NVGcontext* pContext
   mGraphics = pGraphics;
   mVG = pContext;
   mFBO = nvgCreateFramebuffer(pContext, width, height, 0);
-  
+
+  if (!mFBO)
+    return;
+
   nvgBindFramebuffer(mFBO);
-  
+
 #ifdef IGRAPHICS_METAL
   mnvgClearWithColor(mVG, nvgRGBAf(0, 0, 0, 0));
 #else
@@ -134,7 +138,7 @@ IGraphicsNanoVG::Bitmap::~Bitmap()
   {
     if(mFBO)
       mGraphics->DeleteFBO(mFBO);
-    else
+    else if(GetBitmap())
       nvgDeleteImage(mVG, GetBitmap());
   }
 }
@@ -371,20 +375,25 @@ APIBitmap* IGraphicsNanoVG::LoadAPIBitmap(const char* name, const void* pData, i
 
 APIBitmap* IGraphicsNanoVG::CreateAPIBitmap(int width, int height, float scale, double drawScale, bool cacheable, int MSAASampleCount/*placeholder: only implemented for skia*/)
 {
-  if (mInDraw)
+  const bool wasDrawing = mInDraw;
+
+  if (wasDrawing)
   {
     nvgEndFrame(mVG);
   }
-  
-  APIBitmap* pAPIBitmap = new Bitmap(this, mVG, width, height, scale, drawScale);
 
-  if (mInDraw)
+  std::unique_ptr<Bitmap> bitmap(new Bitmap(this, mVG, width, height, scale, drawScale));
+
+  if (wasDrawing)
   {
     nvgBindFramebuffer(mMainFrameBuffer); // begin main frame buffer update
     nvgBeginFrame(mVG, WindowWidth(), WindowHeight(), GetScreenScale());
   }
-  
-  return pAPIBitmap;
+
+  if (!bitmap->GetBitmap())
+    return nullptr;
+
+  return bitmap.release();
 }
 
 void IGraphicsNanoVG::GetLayerBitmapData(const ILayerPtr& layer, RawBitmapData& data)
@@ -762,9 +771,14 @@ bool IGraphicsNanoVG::LoadAPIFont(const char* fontID, const PlatformFontPtr& fon
 
 void IGraphicsNanoVG::UpdateLayer()
 {
-  if (mLayers.empty())
+  nvgEndFrame(mVG);
+
+  const bool hasLayer = !mLayers.empty();
+  const ILayer* pLayer = hasLayer ? mLayers.top() : nullptr;
+  const APIBitmap* pBitmap = pLayer ? pLayer->GetAPIBitmap() : nullptr;
+
+  if (!hasLayer || !pBitmap)
   {
-    nvgEndFrame(mVG);
 #ifdef IGRAPHICS_GL
     glViewport(0, 0, WindowWidth() * GetScreenScale(), WindowHeight() * GetScreenScale());
 #endif
@@ -773,12 +787,11 @@ void IGraphicsNanoVG::UpdateLayer()
   }
   else
   {
-    nvgEndFrame(mVG);
 #ifdef IGRAPHICS_GL
     const double scale = GetBackingPixelScale();
     glViewport(0, 0, mLayers.top()->Bounds().W() * scale, mLayers.top()->Bounds().H() * scale);
 #endif
-    nvgBindFramebuffer(dynamic_cast<const Bitmap*>(mLayers.top()->GetAPIBitmap())->GetFBO());
+    nvgBindFramebuffer(dynamic_cast<const Bitmap*>(pBitmap)->GetFBO());
     nvgBeginFrame(mVG, mLayers.top()->Bounds().W() * GetDrawScale(), mLayers.top()->Bounds().H() * GetDrawScale(), GetScreenScale());
   }
 }

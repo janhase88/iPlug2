@@ -2089,7 +2089,8 @@ void IGraphics::StartLayer(IControl* pControl, const IRECT& r, bool cacheable, i
   const int w = static_cast<int>(std::ceil(pixelBackingScale * std::ceil(alignedBounds.W())));
   const int h = static_cast<int>(std::ceil(pixelBackingScale * std::ceil(alignedBounds.H())));
 
-  PushLayer(new ILayer(CreateAPIBitmap(w, h, GetScreenScale(), GetDrawScale(), cacheable, MSAASampleCount), alignedBounds, pControl, pControl ? pControl->GetRECT() : IRECT()));
+  APIBitmap* pBitmap = CreateAPIBitmap(w, h, GetScreenScale(), GetDrawScale(), cacheable, MSAASampleCount);
+  PushLayer(new ILayer(pBitmap, alignedBounds, pControl, pControl ? pControl->GetRECT() : IRECT()));
 }
 
 void IGraphics::ResumeLayer(ILayerPtr& layer)
@@ -2152,6 +2153,9 @@ bool IGraphics::CheckLayer(const ILayerPtr& layer)
 
 void IGraphics::DrawLayer(const ILayerPtr& layer, const IBlend* pBlend)
 {
+  if (!layer || !layer->GetAPIBitmap())
+    return;
+
   PathTransformSave();
   PathTransformReset();
   DrawBitmap(layer->GetBitmap(), layer->Bounds(), 0, 0, pBlend);
@@ -2160,6 +2164,9 @@ void IGraphics::DrawLayer(const ILayerPtr& layer, const IBlend* pBlend)
 
 void IGraphics::DrawFittedLayer(const ILayerPtr& layer, const IRECT& bounds, const IBlend* pBlend)
 {
+  if (!layer || !layer->GetAPIBitmap())
+    return;
+
   IBitmap bitmap = layer->GetBitmap();
   IRECT layerBounds = layer->Bounds();
   PathTransformSave();
@@ -2172,6 +2179,9 @@ void IGraphics::DrawFittedLayer(const ILayerPtr& layer, const IRECT& bounds, con
 
 void IGraphics::DrawRotatedLayer(const ILayerPtr& layer, double angle)
 {
+  if (!layer || !layer->GetAPIBitmap())
+    return;
+
   PathTransformSave();
   PathTransformReset();
   IBitmap bitmap = layer->GetBitmap();

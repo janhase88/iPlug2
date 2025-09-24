@@ -2650,7 +2650,13 @@ APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, do
   return new Bitmap(std::move(surface), width, height, scale, drawScale);
 }
 
-void IGraphicsSkia::UpdateLayer() { mCanvas = mLayers.empty() ? mSurface->getCanvas() : mLayers.top()->GetAPIBitmap()->GetBitmap()->mSurface->getCanvas(); }
+void IGraphicsSkia::UpdateLayer()
+{
+  if (mLayers.empty() || !mLayers.top()->GetAPIBitmap())
+    mCanvas = mSurface->getCanvas();
+  else
+    mCanvas = mLayers.top()->GetAPIBitmap()->GetBitmap()->mSurface->getCanvas();
+}
 
 static size_t CalcRowBytes(int width)
 {

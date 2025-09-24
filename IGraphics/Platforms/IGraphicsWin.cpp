@@ -124,7 +124,7 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
 {
   // Check the message vblank with the current one to see if we are way behind. If so, then throw these away.
   DWORD msgCount = vBlankCount;
-  DWORD curCount = mVBlankCount;
+  DWORD curCount = mVBlankCount.load(std::memory_order_acquire);
 
   if (mVSYNCEnabled)
   {
@@ -142,7 +142,7 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
         }
       }
 
-      curCount = mVBlankCount;
+      curCount = mVBlankCount.load(std::memory_order_acquire);
 
       if (newest > curCount)
       {
@@ -267,7 +267,7 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
     else if (!hadPendingPaint && mVSYNCEnabled)
     {
       // Check and see if we are still in this frame.
-      curCount = mVBlankCount;
+      curCount = mVBlankCount.load(std::memory_order_acquire);
       if (msgCount != curCount)
       {
         // we are late, skip the next vblank to give us a breather.
@@ -2896,6 +2896,7 @@ void IGraphicsWin::StartVBlankThread(HWND hWnd)
 {
   mVBlankWindow = hWnd;
   mVBlankShutdown = false;
+  mVBlankCount.store(0, std::memory_order_relaxed);
   mVBlankMessagePending.store(false, std::memory_order_relaxed);
   mQueuedVBlank.store(0, std::memory_order_relaxed);
   mPendingSyncVBlank.store(0, std::memory_order_relaxed);
@@ -3082,7 +3083,7 @@ void IGraphicsWin::VBlankNotify()
     return;
   }
 
-  const DWORD latestCount = ++mVBlankCount;
+  const DWORD latestCount = mVBlankCount.fetch_add(1, std::memory_order_acq_rel) + 1;
   mQueuedVBlank.store(latestCount, std::memory_order_release);
 
   if (mVBlankMessagePending.exchange(true, std::memory_order_acq_rel))

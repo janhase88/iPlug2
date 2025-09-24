@@ -227,7 +227,7 @@ private:
   HWND mVBlankWindow = 0;                      // Window to post messages to for every vsync
   volatile bool mVBlankShutdown = false;       // Flag to indiciate that the vsync thread should shutdown
   HANDLE mVBlankThread = INVALID_HANDLE_VALUE; // ID of thread.
-  volatile DWORD mVBlankCount = 0;             // running count of vblank events since the start of the window.
+  std::atomic<DWORD> mVBlankCount{0};          // running count of vblank events since the start of the window.
   std::atomic<bool> mVBlankMessagePending{false}; // true while a WM_VBLANK message is outstanding on the UI queue
   std::atomic<DWORD> mQueuedVBlank{0};         // newest vblank counter queued for delivery to the UI thread
   std::atomic<DWORD> mPendingSyncVBlank{0};    // newest tick awaiting a fallback WM_VBLANK send when PostMessageW fails

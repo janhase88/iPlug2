@@ -3086,8 +3086,48 @@ void IGraphicsWin::VBlankNotify()
   const DWORD latestCount = mVBlankCount.fetch_add(1, std::memory_order_acq_rel) + 1;
   mQueuedVBlank.store(latestCount, std::memory_order_release);
 
+  auto sendVBlankSynchronously = [&](DWORD coalescedCount, const char* reasonTag) {
+    DWORD_PTR sendResult = 0;
+    constexpr UINT kSendTimeoutMs = 16;
+
+    // Use SMTO_NORMAL so the worker respects the short timeout instead of waiting indefinitely
+    // while the UI thread is busy. SMTO_ABORTIFHUNG avoids blocking shutdown when the window is
+    // already closing.
+    if (!::SendMessageTimeoutW(mVBlankWindow, WM_VBLANK, coalescedCount, 0,
+                               SMTO_ABORTIFHUNG | SMTO_NORMAL, kSendTimeoutMs, &sendResult))
+    {
+      DWORD notifyError = GetLastError();
+      if (notifyError == 0)
+      {
+        notifyError = ERROR_TIMEOUT;
+      }
+      DBGMSG("IGraphicsWin::VBlankNotify SendMessageTimeoutW failed (%s, error=%lu)\n", reasonTag,
+             static_cast<unsigned long>(notifyError));
+      mVBlankMessagePending.store(false, std::memory_order_release);
+      return false;
+    }
+
+    mPendingSyncVBlank.store(0, std::memory_order_release);
+    return true;
+  };
+
   if (mVBlankMessagePending.exchange(true, std::memory_order_acq_rel))
   {
+    // A WM_VBLANK is already queued. Promote the freshest counter to a synchronous delivery so the
+    // UI thread catches up without waiting for the backlog to drain.
+    DWORD observed = mPendingSyncVBlank.load(std::memory_order_acquire);
+    while (observed < latestCount
+           && !mPendingSyncVBlank.compare_exchange_weak(observed, latestCount, std::memory_order_acq_rel,
+                                                        std::memory_order_acquire))
+    {
+    }
+
+    const DWORD pendingSyncCount = mPendingSyncVBlank.load(std::memory_order_acquire);
+    const DWORD coalescedCount = std::max<DWORD>(pendingSyncCount, mQueuedVBlank.load(std::memory_order_acquire));
+
+    DBGMSG("IGraphicsWin::VBlankNotify WM_VBLANK pending, sending latest tick via SendMessageTimeoutW (count=%lu, coalesced=%lu)\n",
+           static_cast<unsigned long>(latestCount), static_cast<unsigned long>(coalescedCount));
+    sendVBlankSynchronously(coalescedCount, "pending WM_VBLANK");
     return;
   }
 
@@ -3125,26 +3165,7 @@ void IGraphicsWin::VBlankNotify()
            static_cast<unsigned long>(postError), static_cast<unsigned long>(coalescedCount));
   }
 
-  DWORD_PTR sendResult = 0;
-  constexpr UINT kSendTimeoutMs = 16;
-
-  // Use SMTO_NORMAL so the worker respects the short timeout instead of waiting indefinitely
-  // while the UI thread is busy. SMTO_ABORTIFHUNG avoids blocking shutdown when the window is
-  // already closing.
-  if (!::SendMessageTimeoutW(mVBlankWindow, WM_VBLANK, coalescedCount, 0,
-                             SMTO_ABORTIFHUNG | SMTO_NORMAL, kSendTimeoutMs, &sendResult))
-  {
-    DWORD notifyError = GetLastError();
-    if (notifyError == 0)
-    {
-      notifyError = ERROR_TIMEOUT;
-    }
-    DBGMSG("IGraphicsWin::VBlankNotify SendMessageTimeoutW failed (error=%lu)\n", static_cast<unsigned long>(notifyError));
-    mVBlankMessagePending.store(false, std::memory_order_release);
-    return;
-  }
-
-  mPendingSyncVBlank.store(0, std::memory_order_release);
+  sendVBlankSynchronously(coalescedCount, "PostMessageW fallback");
 }
 
 #ifndef NO_IGRAPHICS

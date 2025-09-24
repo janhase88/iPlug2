@@ -3086,7 +3086,7 @@ void IGraphicsWin::VBlankNotify()
   const DWORD latestCount = mVBlankCount.fetch_add(1, std::memory_order_acq_rel) + 1;
   mQueuedVBlank.store(latestCount, std::memory_order_release);
 
-  auto sendVBlankSynchronously = [&](DWORD coalescedCount, const char* reasonTag) {
+  auto sendVBlankSynchronously = [&](DWORD coalescedCount, const char* reasonTag, bool releasePendingOnFailure) {
     DWORD_PTR sendResult = 0;
     constexpr UINT kSendTimeoutMs = 16;
 
@@ -3103,7 +3103,13 @@ void IGraphicsWin::VBlankNotify()
       }
       DBGMSG("IGraphicsWin::VBlankNotify SendMessageTimeoutW failed (%s, error=%lu)\n", reasonTag,
              static_cast<unsigned long>(notifyError));
-      mVBlankMessagePending.store(false, std::memory_order_release);
+      if (releasePendingOnFailure)
+      {
+        // When no WM_VBLANK is outstanding on the queue (e.g. PostMessageW failed), allow the
+        // worker to retry delivery on the next tick. Otherwise keep the flag set so we do not
+        // enqueue duplicate WM_VBLANK messages while the UI thread is still draining backlog.
+        mVBlankMessagePending.store(false, std::memory_order_release);
+      }
       return false;
     }
 
@@ -3127,7 +3133,7 @@ void IGraphicsWin::VBlankNotify()
 
     DBGMSG("IGraphicsWin::VBlankNotify WM_VBLANK pending, sending latest tick via SendMessageTimeoutW (count=%lu, coalesced=%lu)\n",
            static_cast<unsigned long>(latestCount), static_cast<unsigned long>(coalescedCount));
-    sendVBlankSynchronously(coalescedCount, "pending WM_VBLANK");
+    sendVBlankSynchronously(coalescedCount, "pending WM_VBLANK", /*releasePendingOnFailure=*/false);
     return;
   }
 
@@ -3165,7 +3171,7 @@ void IGraphicsWin::VBlankNotify()
            static_cast<unsigned long>(postError), static_cast<unsigned long>(coalescedCount));
   }
 
-  sendVBlankSynchronously(coalescedCount, "PostMessageW fallback");
+  sendVBlankSynchronously(coalescedCount, "PostMessageW fallback", /*releasePendingOnFailure=*/true);
 }
 
 #ifndef NO_IGRAPHICS

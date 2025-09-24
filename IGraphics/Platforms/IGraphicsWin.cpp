@@ -3127,8 +3127,11 @@ void IGraphicsWin::VBlankNotify()
   DWORD_PTR sendResult = 0;
   constexpr UINT kSendTimeoutMs = 16;
 
+  // Use SMTO_NORMAL so the worker respects the short timeout instead of waiting indefinitely
+  // while the UI thread is busy. SMTO_ABORTIFHUNG avoids blocking shutdown when the window is
+  // already closing.
   if (!::SendMessageTimeoutW(mVBlankWindow, WM_VBLANK, coalescedCount, 0,
-                             SMTO_ABORTIFHUNG | SMTO_NOTIMEOUTIFNOTHUNG, kSendTimeoutMs, &sendResult))
+                             SMTO_ABORTIFHUNG | SMTO_NORMAL, kSendTimeoutMs, &sendResult))
   {
     DWORD notifyError = GetLastError();
     if (notifyError == 0)

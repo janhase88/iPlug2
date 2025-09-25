@@ -26,7 +26,6 @@
 
 #include <VersionHelpers.h>
 #include <algorithm>
-#include <cinttypes>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -126,16 +125,7 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
   // Check the message vblank with the current one to see if we are way behind. If so, then throw these away.
   DWORD msgCount = vBlankCount;
   DWORD curCount = mVBlankCount.load(std::memory_order_acquire);
-  const DWORD queuedCount = mQueuedVBlank.load(std::memory_order_acquire);
-  const DWORD pendingSync = mPendingSyncVBlank.load(std::memory_order_acquire);
-  const bool pendingMessage = mVBlankMessagePending.load(std::memory_order_acquire);
   const bool hadPendingPaint = mPaintPending.load(std::memory_order_acquire);
-
-  DBGMSG("IGraphicsWin::OnDisplayTimer enter msg=%lu cur=%lu queued=%lu pendingSync=%lu last=%lu skipUntil=%lu pendingMsg=%d fromMsg=%d hadPaint=%d\n",
-         static_cast<unsigned long>(msgCount), static_cast<unsigned long>(curCount), static_cast<unsigned long>(queuedCount),
-         static_cast<unsigned long>(pendingSync), static_cast<unsigned long>(mLastProcessedVBlank),
-         static_cast<unsigned long>(mVBlankSkipUntil), static_cast<int>(pendingMessage), static_cast<int>(fromVBlankMessage),
-         static_cast<int>(hadPendingPaint));
 
   if (mVSYNCEnabled)
   {
@@ -144,7 +134,6 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
     auto drainVBlankMessages = [&](DWORD count) {
       DWORD newest = std::max<DWORD>(count, mQueuedVBlank.load(std::memory_order_acquire));
       MSG msg;
-      int drained = 0;
       while (PeekMessageW(&msg, mPlugWnd, WM_VBLANK, WM_VBLANK, PM_REMOVE))
       {
         const DWORD observed = static_cast<DWORD>(msg.wParam);
@@ -152,7 +141,6 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
         {
           newest = observed;
         }
-        ++drained;
       }
 
       curCount = mVBlankCount.load(std::memory_order_acquire);
@@ -161,9 +149,6 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
       {
         newest = curCount;
       }
-
-      DBGMSG("IGraphicsWin::OnDisplayTimer drained %d WM_VBLANK messages newest=%lu cur=%lu\n", drained,
-             static_cast<unsigned long>(newest), static_cast<unsigned long>(curCount));
 
       return newest;
     };
@@ -176,15 +161,10 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
     // skip until the actual vblank is at a certain number.
     if (mVBlankSkipUntil != 0 && mVBlankSkipUntil > curCount)
     {
-      DBGMSG("IGraphicsWin::OnDisplayTimer skipping until %lu (cur=%lu, msg=%lu)\n",
-             static_cast<unsigned long>(mVBlankSkipUntil), static_cast<unsigned long>(curCount),
-             static_cast<unsigned long>(msgCount));
       if (hasVBlankMessage)
       {
         mLastProcessedVBlank = std::max<DWORD>(mLastProcessedVBlank, msgCount);
         mVBlankMessagePending.store(false, std::memory_order_release);
-        DBGMSG("IGraphicsWin::OnDisplayTimer cleared pending flag after skip last=%lu\n",
-               static_cast<unsigned long>(mLastProcessedVBlank));
       }
       return;
     }
@@ -199,26 +179,20 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
         // look "new" while duplicates remain filtered out.
         mLastProcessedVBlank = std::max<DWORD>(mLastProcessedVBlank, msgCount);
         mVBlankMessagePending.store(false, std::memory_order_release);
-        DBGMSG("IGraphicsWin::OnDisplayTimer duplicate/older tick msg=%lu last=%lu (pending cleared)\n",
-               static_cast<unsigned long>(msgCount), static_cast<unsigned long>(mLastProcessedVBlank));
         return;
       }
 
       mLastProcessedVBlank = msgCount;
       mVBlankMessagePending.store(false, std::memory_order_release);
-      DBGMSG("IGraphicsWin::OnDisplayTimer processing WM_VBLANK msg=%lu last=%lu\n",
-             static_cast<unsigned long>(msgCount), static_cast<unsigned long>(mLastProcessedVBlank));
     }
     else
     {
       mLastProcessedVBlank = curCount;
-      DBGMSG("IGraphicsWin::OnDisplayTimer timer fallback cur=%lu\n", static_cast<unsigned long>(curCount));
     }
   }
   else if (msgCount == 0)
   {
     mLastProcessedVBlank = curCount;
-    DBGMSG("IGraphicsWin::OnDisplayTimer timer-only backend cur=%lu\n", static_cast<unsigned long>(curCount));
   }
 
   if (mParamEditWnd && mParamEditMsg != kNone)
@@ -276,7 +250,6 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
     if (!mPaintPending.exchange(true, std::memory_order_acq_rel))
     {
       sPendingPaintCount.fetch_add(1, std::memory_order_acq_rel);
-      DBGMSG("IGraphicsWin::OnDisplayTimer marked paint pending (global=%d)\n", sPendingPaintCount.load(std::memory_order_acquire));
     }
 
     if (mParamEditWnd)
@@ -301,7 +274,6 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
       {
         // we are late, skip the next vblank to give us a breather.
         mVBlankSkipUntil = curCount + 1;
-        // DBGMSG("vblank painting was late by %i frames.", (mVBlankSkipUntil - msgCount));
       }
     }
   }
@@ -393,10 +365,6 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
     IMouseInfo info = pGraphics->GetMouseInfo(lParam, wParam);
     std::vector<IMouseInfo> list{info};
 
-#ifndef NDEBUG
-    const size_t captureCountBefore = pGraphics->GetCaptureCount();
-#endif
-
     pGraphics->OnMouseDown(list);
 
     const bool hasCapture = pGraphics->ControlIsCaptured();
@@ -405,25 +373,10 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
     if (hasCapture && !osHasCapture)
     {
       SetCapture(hWnd);
-#ifndef NDEBUG
-      DBGMSG("IGraphicsWin::WndProc WM_*BUTTONDOWN capture hwnd=%p osCapture=%p countBefore=%zu countAfter=%zu\n", hWnd,
-             GetCapture(), captureCountBefore, pGraphics->GetCaptureCount());
-#endif
     }
-#ifndef NDEBUG
-    else
-    {
-      const char* reason = hasCapture ? "already-held" : "not-requested";
-      DBGMSG("IGraphicsWin::WndProc WM_*BUTTONDOWN no capture hwnd=%p osCapture=%p reason=%s countBefore=%zu countAfter=%zu\n",
-             hWnd, GetCapture(), reason, captureCountBefore, pGraphics->GetCaptureCount());
-    }
-#endif
     if (!hasCapture && osHasCapture)
     {
       ReleaseCapture();
-#ifndef NDEBUG
-      DBGMSG("IGraphicsWin::WndProc WM_*BUTTONDOWN dropped stale capture hwnd=%p osCapture=%p\n", hWnd, GetCapture());
-#endif
     }
     return 0;
   }
@@ -497,18 +450,11 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
   case WM_CANCELMODE: {
     const HWND osCapture = GetCapture();
     const bool resizing = pGraphics->GetResizingInProcess() && pGraphics->ControlIsCaptured();
-#ifndef NDEBUG
-    DBGMSG("IGraphicsWin::WndProc WM_CANCELMODE hwnd=%p osCapture=%p captured=%d resizing=%d count=%zu\n", hWnd, osCapture,
-           pGraphics->ControlIsCaptured(), resizing, pGraphics->GetCaptureCount());
-#endif
     if (resizing)
     {
       if (osCapture != hWnd)
       {
         SetCapture(hWnd);
-#ifndef NDEBUG
-        DBGMSG("IGraphicsWin::WndProc WM_CANCELMODE restoring capture hwnd=%p\n", hWnd);
-#endif
       }
       return 0;
     }
@@ -516,14 +462,7 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
     const bool hadCapture = pGraphics->ControlIsCaptured() || osCapture == hWnd;
     if (hadCapture)
     {
-#ifndef NDEBUG
-      DBGMSG("IGraphicsWin::WndProc WM_CANCELMODE calling ReleaseMouseCapture\n");
-#endif
       pGraphics->ReleaseMouseCapture();
-#ifndef NDEBUG
-      DBGMSG("IGraphicsWin::WndProc WM_CANCELMODE done osCapture=%p captured=%d count=%zu\n", GetCapture(),
-             pGraphics->ControlIsCaptured(), pGraphics->GetCaptureCount());
-#endif
     }
 
     return 0;
@@ -531,30 +470,16 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
   case WM_CAPTURECHANGED: {
     const HWND newCapture = reinterpret_cast<HWND>(lParam);
     const bool resizing = pGraphics->GetResizingInProcess() && pGraphics->ControlIsCaptured();
-#ifndef NDEBUG
-    DBGMSG("IGraphicsWin::WndProc WM_CAPTURECHANGED hwnd=%p new=%p osCapture=%p captured=%d resizing=%d count=%zu\n", hWnd,
-           newCapture, GetCapture(), pGraphics->ControlIsCaptured(), resizing, pGraphics->GetCaptureCount());
-#endif
     if (resizing && newCapture != hWnd)
     {
       SetCapture(hWnd);
-#ifndef NDEBUG
-      DBGMSG("IGraphicsWin::WndProc WM_CAPTURECHANGED restoring capture hwnd=%p new=%p\n", hWnd, newCapture);
-#endif
       return 0;
     }
 
     const bool hadCapture = (newCapture != hWnd) && (pGraphics->ControlIsCaptured() || GetCapture() == hWnd);
     if (hadCapture)
     {
-#ifndef NDEBUG
-      DBGMSG("IGraphicsWin::WndProc WM_CAPTURECHANGED calling ReleaseMouseCapture\n");
-#endif
       pGraphics->ReleaseMouseCapture();
-#ifndef NDEBUG
-      DBGMSG("IGraphicsWin::WndProc WM_CAPTURECHANGED done osCapture=%p captured=%d count=%zu\n", GetCapture(),
-             pGraphics->ControlIsCaptured(), pGraphics->GetCaptureCount());
-#endif
     }
 
     return 0;
@@ -563,17 +488,9 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
   case WM_RBUTTONUP: {
     IMouseInfo info = pGraphics->GetMouseInfo(lParam, wParam);
     std::vector<IMouseInfo> list{info};
-#ifndef NDEBUG
-    DBGMSG("IGraphicsWin::WndProc WM_*BUTTONUP hwnd=%p osCapture=%p captured=%d count=%zu\n", hWnd, GetCapture(),
-           pGraphics->ControlIsCaptured(), pGraphics->GetCaptureCount());
-#endif
     pGraphics->OnMouseUp(list);
     if (GetCapture() == hWnd)
       ReleaseCapture();
-#ifndef NDEBUG
-    DBGMSG("IGraphicsWin::WndProc WM_*BUTTONUP done osCapture=%p captured=%d count=%zu\n", GetCapture(),
-           pGraphics->ControlIsCaptured(), pGraphics->GetCaptureCount());
-#endif
     return 0;
   }
   case WM_LBUTTONDBLCLK:
@@ -624,12 +541,6 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
         pGraphics->SetAllControlsDirty();
         InvalidateRect(hWnd, nullptr, FALSE);
       }
-#ifndef NDEBUG
-      else if (!(wp->flags & SWP_NOMOVE))
-      {
-        DBGMSG("IGraphicsWin::WndProc WM_WINDOWPOSCHANGED move-only hwnd=%p\n", hWnd);
-      }
-#endif
     }
     break;
   }
@@ -755,11 +666,6 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
       if (previous <= 0)
       {
         IGraphicsWin::sPendingPaintCount.store(0, std::memory_order_release);
-        DBGMSG("IGraphicsWin::WndProc WM_PAINT detected stale counter, resetting global pending to 0\n");
-      }
-      else
-      {
-        DBGMSG("IGraphicsWin::WndProc WM_PAINT cleared pending flag (global=%d)\n", previous - 1);
       }
     }
     auto addDrawRect = [pGraphics, scale](IRECTList& rects, RECT r) {
@@ -1217,9 +1123,6 @@ void IGraphicsWin::PlatformReleaseMouseCapture()
   if (mPlugWnd && GetCapture() == mPlugWnd)
   {
     ReleaseCapture();
-#ifndef NDEBUG
-    DBGMSG("IGraphicsWin::PlatformReleaseMouseCapture hwnd=%p\n", mPlugWnd);
-#endif
   }
 }
 
@@ -1229,19 +1132,8 @@ void IGraphicsWin::PlatformOnCaptureFinished(ITouchID touchID)
 
   if (itr != mDeltaCapture.end())
   {
-#ifndef NDEBUG
-    DBGMSG("IGraphicsWin::PlatformOnCaptureFinished touch=%" PRIuPTR " removing delta (size before=%zu)\n",
-           static_cast<uintptr_t>(touchID), mDeltaCapture.size());
-#endif
     mDeltaCapture.erase(itr);
   }
-#ifndef NDEBUG
-  else
-  {
-    DBGMSG("IGraphicsWin::PlatformOnCaptureFinished touch=%" PRIuPTR " delta missing (size=%zu)\n",
-           static_cast<uintptr_t>(touchID), mDeltaCapture.size());
-  }
-#endif
 }
 
 #ifdef IGRAPHICS_GL
@@ -2965,11 +2857,6 @@ void IGraphicsWin::StopVBlankThread()
       if (previous <= 0)
       {
         sPendingPaintCount.store(0, std::memory_order_release);
-        DBGMSG("IGraphicsWin::StopVBlankThread cleared stale paint flag (global=0)\n");
-      }
-      else
-      {
-        DBGMSG("IGraphicsWin::StopVBlankThread cleared paint pending (global=%d)\n", previous - 1);
       }
     }
 
@@ -3150,24 +3037,13 @@ void IGraphicsWin::VBlankNotify()
   const DWORD latestCount = mVBlankCount.fetch_add(1, std::memory_order_acq_rel) + 1;
   mQueuedVBlank.store(latestCount, std::memory_order_release);
 
-  const bool pendingBefore = mVBlankMessagePending.load(std::memory_order_acquire);
-  const DWORD queuedBefore = mQueuedVBlank.load(std::memory_order_acquire);
-  const DWORD pendingSyncBefore = mPendingSyncVBlank.load(std::memory_order_acquire);
-
-  DBGMSG("IGraphicsWin::VBlankNotify tick=%lu pendingBefore=%d queuedBefore=%lu pendingSyncBefore=%lu window=%p\n",
-         static_cast<unsigned long>(latestCount), static_cast<int>(pendingBefore), static_cast<unsigned long>(queuedBefore),
-         static_cast<unsigned long>(pendingSyncBefore), mVBlankWindow);
-
   const int pendingPaints = sPendingPaintCount.load(std::memory_order_acquire);
   if (pendingPaints > 0)
   {
-    DBGMSG("IGraphicsWin::VBlankNotify paint pending, deferring WM_VBLANK dispatch (latest=%lu queued=%lu global=%d local=%d)\n",
-           static_cast<unsigned long>(latestCount), static_cast<unsigned long>(queuedBefore), pendingPaints,
-           static_cast<int>(mPaintPending.load(std::memory_order_acquire)));
     return;
   }
 
-  auto sendVBlankSynchronously = [&](DWORD coalescedCount, const char* reasonTag, bool releasePendingOnFailure) {
+  auto sendVBlankSynchronously = [&](DWORD coalescedCount, bool releasePendingOnFailure) {
     DWORD_PTR sendResult = 0;
     constexpr UINT kSendTimeoutMs = 16;
 
@@ -3175,15 +3051,13 @@ void IGraphicsWin::VBlankNotify()
     // while the UI thread is busy. SMTO_ABORTIFHUNG avoids blocking shutdown when the window is
     // already closing.
     if (!::SendMessageTimeoutW(mVBlankWindow, WM_VBLANK, coalescedCount, 0,
-                               SMTO_ABORTIFHUNG | SMTO_NORMAL, kSendTimeoutMs, &sendResult))
+                                SMTO_ABORTIFHUNG | SMTO_NORMAL, kSendTimeoutMs, &sendResult))
     {
       DWORD notifyError = GetLastError();
       if (notifyError == 0)
       {
         notifyError = ERROR_TIMEOUT;
       }
-      DBGMSG("IGraphicsWin::VBlankNotify SendMessageTimeoutW failed (%s, error=%lu)\n", reasonTag,
-             static_cast<unsigned long>(notifyError));
       if (releasePendingOnFailure)
       {
         // When no WM_VBLANK is outstanding on the queue (e.g. PostMessageW failed), allow the
@@ -3195,8 +3069,6 @@ void IGraphicsWin::VBlankNotify()
     }
 
     mPendingSyncVBlank.store(0, std::memory_order_release);
-    DBGMSG("IGraphicsWin::VBlankNotify SendMessageTimeoutW succeeded (%s, count=%lu result=%lu)\n", reasonTag,
-           static_cast<unsigned long>(coalescedCount), static_cast<unsigned long>(sendResult));
     return true;
   };
 
@@ -3214,20 +3086,15 @@ void IGraphicsWin::VBlankNotify()
     const DWORD pendingSyncCount = mPendingSyncVBlank.load(std::memory_order_acquire);
     const DWORD coalescedCount = std::max<DWORD>(pendingSyncCount, mQueuedVBlank.load(std::memory_order_acquire));
 
-    DBGMSG("IGraphicsWin::VBlankNotify WM_VBLANK pending, sending latest tick via SendMessageTimeoutW (count=%lu, coalesced=%lu)\n",
-           static_cast<unsigned long>(latestCount), static_cast<unsigned long>(coalescedCount));
-    sendVBlankSynchronously(coalescedCount, "pending WM_VBLANK", /*releasePendingOnFailure=*/false);
+    sendVBlankSynchronously(coalescedCount, /*releasePendingOnFailure=*/false);
     return;
   }
 
   DWORD dispatchCount = mQueuedVBlank.load(std::memory_order_acquire);
 
-  DBGMSG("IGraphicsWin::VBlankNotify posting WM_VBLANK count=%lu\n", static_cast<unsigned long>(dispatchCount));
-
   if (::PostMessageW(mVBlankWindow, WM_VBLANK, dispatchCount, 0))
   {
     mPendingSyncVBlank.store(0, std::memory_order_release);
-    DBGMSG("IGraphicsWin::VBlankNotify PostMessageW succeeded count=%lu\n", static_cast<unsigned long>(dispatchCount));
     return;
   }
 
@@ -3247,19 +3114,12 @@ void IGraphicsWin::VBlankNotify()
 
     const DWORD pendingSyncCount = mPendingSyncVBlank.load(std::memory_order_acquire);
     coalescedCount = std::max<DWORD>(pendingSyncCount, mQueuedVBlank.load(std::memory_order_acquire));
-    DBGMSG("IGraphicsWin::VBlankNotify PostMessageW queue full, sending WM_VBLANK via SendMessageTimeoutW (count=%lu, coalesced=%lu)\n",
-           static_cast<unsigned long>(latestCount), static_cast<unsigned long>(coalescedCount));
   }
   else
   {
     coalescedCount = std::max<DWORD>(coalescedCount, mQueuedVBlank.load(std::memory_order_acquire));
-    DBGMSG("IGraphicsWin::VBlankNotify PostMessageW failed (error=%lu), using SendMessageTimeoutW (count=%lu)\n",
-           static_cast<unsigned long>(postError), static_cast<unsigned long>(coalescedCount));
   }
-
-  DBGMSG("IGraphicsWin::VBlankNotify sending fallback tick=%lu releasePendingOnFailure=1\n",
-         static_cast<unsigned long>(coalescedCount));
-  sendVBlankSynchronously(coalescedCount, "PostMessageW fallback", /*releasePendingOnFailure=*/true);
+  sendVBlankSynchronously(coalescedCount, /*releasePendingOnFailure=*/true);
 }
 
 #ifndef NO_IGRAPHICS

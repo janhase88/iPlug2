@@ -128,11 +128,13 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
   const DWORD queuedCount = mQueuedVBlank.load(std::memory_order_acquire);
   const DWORD pendingSync = mPendingSyncVBlank.load(std::memory_order_acquire);
   const bool pendingMessage = mVBlankMessagePending.load(std::memory_order_acquire);
+  const bool hadPendingPaint = mPaintPending.load(std::memory_order_acquire);
 
-  DBGMSG("IGraphicsWin::OnDisplayTimer enter msg=%lu cur=%lu queued=%lu pendingSync=%lu last=%lu skipUntil=%lu pendingMsg=%d fromMsg=%d\n",
+  DBGMSG("IGraphicsWin::OnDisplayTimer enter msg=%lu cur=%lu queued=%lu pendingSync=%lu last=%lu skipUntil=%lu pendingMsg=%d fromMsg=%d hadPaint=%d\n",
          static_cast<unsigned long>(msgCount), static_cast<unsigned long>(curCount), static_cast<unsigned long>(queuedCount),
          static_cast<unsigned long>(pendingSync), static_cast<unsigned long>(mLastProcessedVBlank),
-         static_cast<unsigned long>(mVBlankSkipUntil), static_cast<int>(pendingMessage), static_cast<int>(fromVBlankMessage));
+         static_cast<unsigned long>(mVBlankSkipUntil), static_cast<int>(pendingMessage), static_cast<int>(fromVBlankMessage),
+         static_cast<int>(hadPendingPaint));
 
   if (mVSYNCEnabled)
   {
@@ -259,8 +261,6 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
   const float totalScale = GetTotalScale();
   if (IsDirty(rects))
   {
-    const bool hadPendingPaint = mPaintPending;
-
     SetAllControlsClean();
 
     for (int i = 0; i < rects.Size(); i++)
@@ -272,7 +272,7 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
       InvalidateRect(mPlugWnd, &r, FALSE);
     }
 
-    mPaintPending = true;
+    mPaintPending.store(true, std::memory_order_release);
 
     if (mParamEditWnd)
     {
@@ -744,7 +744,7 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
   }
   case WM_PAINT: {
     const float scale = pGraphics->GetTotalScale();
-    pGraphics->mPaintPending = false;
+    pGraphics->mPaintPending.store(false, std::memory_order_release);
     auto addDrawRect = [pGraphics, scale](IRECTList& rects, RECT r) {
       IRECT ir(r.left, r.top, r.right, r.bottom);
       ir.Scale(1.f / scale);
@@ -2925,6 +2925,7 @@ void IGraphicsWin::StartVBlankThread(HWND hWnd)
   mQueuedVBlank.store(0, std::memory_order_relaxed);
   mPendingSyncVBlank.store(0, std::memory_order_relaxed);
   mLastProcessedVBlank = 0;
+  mPaintPending.store(false, std::memory_order_relaxed);
   DWORD threadId = 0;
   mVBlankThread = ::CreateThread(NULL, 0, VBlankRun, this, 0, &threadId);
 }
@@ -3117,6 +3118,13 @@ void IGraphicsWin::VBlankNotify()
   DBGMSG("IGraphicsWin::VBlankNotify tick=%lu pendingBefore=%d queuedBefore=%lu pendingSyncBefore=%lu window=%p\n",
          static_cast<unsigned long>(latestCount), static_cast<int>(pendingBefore), static_cast<unsigned long>(queuedBefore),
          static_cast<unsigned long>(pendingSyncBefore), mVBlankWindow);
+
+  if (mPaintPending.load(std::memory_order_acquire))
+  {
+    DBGMSG("IGraphicsWin::VBlankNotify paint pending, deferring WM_VBLANK dispatch (latest=%lu queued=%lu)\n",
+           static_cast<unsigned long>(latestCount), static_cast<unsigned long>(queuedBefore));
+    return;
+  }
 
   auto sendVBlankSynchronously = [&](DWORD coalescedCount, const char* reasonTag, bool releasePendingOnFailure) {
     DWORD_PTR sendResult = 0;

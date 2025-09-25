@@ -232,10 +232,11 @@ private:
   std::atomic<DWORD> mQueuedVBlank{0};         // newest vblank counter queued for delivery to the UI thread
   std::atomic<DWORD> mPendingSyncVBlank{0};    // newest tick awaiting a fallback WM_VBLANK send when PostMessageW fails
   DWORD mLastProcessedVBlank = 0;              // last WM_VBLANK tick serviced by the UI thread
-  int mVBlankSkipUntil = 0;                    // support for skipping vblank notification if the last callback took  too long.  This helps keep the message pump clear in the case of overload.
+  int mVBlankSkipUntil = 0;                    // support for skipping vblank notification if the last callback took too long.
+                                              // This helps keep the message pump clear in the case of overload.
   bool mVSYNCEnabled = false;
   bool mDeferInvalidation = false;
-  bool mPaintPending = false;
+  std::atomic<bool> mPaintPending{false};
 
   const IParam* mEditParam = nullptr;
   IText mEditText;

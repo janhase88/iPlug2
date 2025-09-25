@@ -237,6 +237,7 @@ private:
   bool mVSYNCEnabled = false;
   bool mDeferInvalidation = false;
   std::atomic<bool> mPaintPending{false};
+  static std::atomic<int> sPendingPaintCount;
 
   const IParam* mEditParam = nullptr;
   IText mEditText;

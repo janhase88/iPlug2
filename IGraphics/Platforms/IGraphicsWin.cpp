@@ -71,6 +71,7 @@ typedef BOOL(WINAPI* PFNWGLSWAPINTERVALEXTPROC)(int interval);
 
 StaticStorage<IGraphicsWin::InstalledFont> IGraphicsWin::sPlatformFontCache;
 StaticStorage<HFontHolder> IGraphicsWin::sHFontCache;
+std::atomic<int> IGraphicsWin::sPendingPaintCount{0};
 
 #pragma mark - Mouse and tablet helpers
 
@@ -272,7 +273,11 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
       InvalidateRect(mPlugWnd, &r, FALSE);
     }
 
-    mPaintPending.store(true, std::memory_order_release);
+    if (!mPaintPending.exchange(true, std::memory_order_acq_rel))
+    {
+      sPendingPaintCount.fetch_add(1, std::memory_order_acq_rel);
+      DBGMSG("IGraphicsWin::OnDisplayTimer marked paint pending (global=%d)\n", sPendingPaintCount.load(std::memory_order_acquire));
+    }
 
     if (mParamEditWnd)
     {
@@ -744,7 +749,19 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
   }
   case WM_PAINT: {
     const float scale = pGraphics->GetTotalScale();
-    pGraphics->mPaintPending.store(false, std::memory_order_release);
+    if (pGraphics->mPaintPending.exchange(false, std::memory_order_acq_rel))
+    {
+      int previous = IGraphicsWin::sPendingPaintCount.fetch_sub(1, std::memory_order_acq_rel);
+      if (previous <= 0)
+      {
+        IGraphicsWin::sPendingPaintCount.store(0, std::memory_order_release);
+        DBGMSG("IGraphicsWin::WndProc WM_PAINT detected stale counter, resetting global pending to 0\n");
+      }
+      else
+      {
+        DBGMSG("IGraphicsWin::WndProc WM_PAINT cleared pending flag (global=%d)\n", previous - 1);
+      }
+    }
     auto addDrawRect = [pGraphics, scale](IRECTList& rects, RECT r) {
       IRECT ir(r.left, r.top, r.right, r.bottom);
       ir.Scale(1.f / scale);
@@ -997,6 +1014,14 @@ IGraphicsWin::~IGraphicsWin()
   StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
   fontStorage.Release();
   hfontStorage.Release();
+  if (mPaintPending.exchange(false, std::memory_order_acq_rel))
+  {
+    int previous = sPendingPaintCount.fetch_sub(1, std::memory_order_acq_rel);
+    if (previous <= 0)
+    {
+      sPendingPaintCount.store(0, std::memory_order_release);
+    }
+  }
   DestroyEditWindow();
   CloseWindow();
 }
@@ -2934,6 +2959,20 @@ void IGraphicsWin::StopVBlankThread()
 {
   if (mVBlankThread != INVALID_HANDLE_VALUE)
   {
+    if (mPaintPending.exchange(false, std::memory_order_acq_rel))
+    {
+      int previous = sPendingPaintCount.fetch_sub(1, std::memory_order_acq_rel);
+      if (previous <= 0)
+      {
+        sPendingPaintCount.store(0, std::memory_order_release);
+        DBGMSG("IGraphicsWin::StopVBlankThread cleared stale paint flag (global=0)\n");
+      }
+      else
+      {
+        DBGMSG("IGraphicsWin::StopVBlankThread cleared paint pending (global=%d)\n", previous - 1);
+      }
+    }
+
     mVBlankShutdown = true;
     ::WaitForSingleObject(mVBlankThread, 10000);
     mVBlankThread = INVALID_HANDLE_VALUE;
@@ -3119,10 +3158,12 @@ void IGraphicsWin::VBlankNotify()
          static_cast<unsigned long>(latestCount), static_cast<int>(pendingBefore), static_cast<unsigned long>(queuedBefore),
          static_cast<unsigned long>(pendingSyncBefore), mVBlankWindow);
 
-  if (mPaintPending.load(std::memory_order_acquire))
+  const int pendingPaints = sPendingPaintCount.load(std::memory_order_acquire);
+  if (pendingPaints > 0)
   {
-    DBGMSG("IGraphicsWin::VBlankNotify paint pending, deferring WM_VBLANK dispatch (latest=%lu queued=%lu)\n",
-           static_cast<unsigned long>(latestCount), static_cast<unsigned long>(queuedBefore));
+    DBGMSG("IGraphicsWin::VBlankNotify paint pending, deferring WM_VBLANK dispatch (latest=%lu queued=%lu global=%d local=%d)\n",
+           static_cast<unsigned long>(latestCount), static_cast<unsigned long>(queuedBefore), pendingPaints,
+           static_cast<int>(mPaintPending.load(std::memory_order_acquire)));
     return;
   }
 

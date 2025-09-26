@@ -135,10 +135,12 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
   DWORD msgCount = vBlankCount;
   DWORD curCount = mVBlankCount.load(std::memory_order_acquire);
   const bool hadPendingPaint = mPaintPending.load(std::memory_order_acquire);
+  bool hasVBlankMessage = false;
+  bool duplicateVBlank = false;
 
   if (mVSYNCEnabled)
   {
-    const bool hasVBlankMessage = fromVBlankMessage;
+    hasVBlankMessage = fromVBlankMessage;
 
     auto drainVBlankMessages = [&](DWORD count) {
       DWORD newest = std::max<DWORD>(count, mQueuedVBlank.load(std::memory_order_acquire));
@@ -187,11 +189,13 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
         // The counter can wrap to zero; compare using signed arithmetic so wrapped ticks still
         // look "new" while duplicates remain filtered out.
         mLastProcessedVBlank = std::max<DWORD>(mLastProcessedVBlank, msgCount);
-        mVBlankMessagePending.store(false, std::memory_order_release);
-        return;
+        duplicateVBlank = true;
+      }
+      else
+      {
+        mLastProcessedVBlank = msgCount;
       }
 
-      mLastProcessedVBlank = msgCount;
       mVBlankMessagePending.store(false, std::memory_order_release);
     }
     else
@@ -275,7 +279,7 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
     {
       UpdateWindow(mPlugWnd);
     }
-    else if (!hadPendingPaint && mVSYNCEnabled)
+    else if (!hadPendingPaint && mVSYNCEnabled && (!hasVBlankMessage || !duplicateVBlank))
     {
       // Check and see if we are still in this frame.
       curCount = mVBlankCount.load(std::memory_order_acquire);

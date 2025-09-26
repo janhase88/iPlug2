@@ -3034,9 +3034,6 @@ void IGraphicsWin::VBlankNotify()
     return;
   }
 
-  const DWORD latestCount = mVBlankCount.fetch_add(1, std::memory_order_acq_rel) + 1;
-  mQueuedVBlank.store(latestCount, std::memory_order_release);
-
   const int pendingPaints = sPendingPaintCount.load(std::memory_order_acquire);
   if (pendingPaints > 0)
   {
@@ -3045,9 +3042,15 @@ void IGraphicsWin::VBlankNotify()
     // even if a different instance is busy on the UI thread.
     if (mPaintPending.load(std::memory_order_acquire))
     {
+      // Do not advance the global vblank counter until this window finishes painting; otherwise
+      // the UI thread observes a newer count without receiving a WM_VBLANK and arms the skip
+      // throttle on every frame.
       return;
     }
   }
+
+  const DWORD latestCount = mVBlankCount.fetch_add(1, std::memory_order_acq_rel) + 1;
+  mQueuedVBlank.store(latestCount, std::memory_order_release);
 
   auto sendVBlankSynchronously = [&](DWORD coalescedCount, bool releasePendingOnFailure) {
     DWORD_PTR sendResult = 0;

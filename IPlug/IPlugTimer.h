@@ -22,8 +22,13 @@
 #include <cstring>
 #include <cmath>
 #include <functional>
+#include <atomic>
 #include "ptrlist.h"
 #include "mutex.h"
+
+#if defined OS_WIN
+#include <windows.h>
+#endif
 
 #include "IPlugPlatform.h"
 
@@ -76,11 +81,18 @@ public:
 
 private:
   static HWND EnsureMessageWindow();
+  static HANDLE EnsureTimerQueue();
   static LRESULT CALLBACK MessageWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+  static VOID CALLBACK TimerQueueCallback(PVOID param, BOOLEAN timerOrWaitFired);
   static WDL_Mutex sMutex;
   static HWND sMessageWindow;
+  static HANDLE sTimerQueue;
+  static const UINT kTimerMessage;
   static WDL_PtrList<Timer_impl> sTimers;
-  UINT_PTR mTimerID = 0;
+  HANDLE mTimerHandle = nullptr;
+  HWND mMessageWindow = nullptr;
+  std::atomic<bool> mRunning {false};
+  std::atomic<bool> mCallbackPending {false};
   ITimerFunction mTimerFunc;
 };
 #elif defined OS_WEB

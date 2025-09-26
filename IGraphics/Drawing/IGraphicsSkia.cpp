@@ -2245,7 +2245,15 @@ bool IGraphicsSkia::LoadAPIFont(const char* fontID, const PlatformFontPtr& font)
   Font* cached = storage.Find(fontID);
 
   if (cached)
+  {
+#if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
+    if (mTypefaceProvider && cached->mTypeface)
+    {
+      mTypefaceProvider->registerTypeface(cached->mTypeface, cached->mFamily);
+    }
+#endif
     return true;
+  }
 
   IFontDataPtr data = font->GetFontData();
 

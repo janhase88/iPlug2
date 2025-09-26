@@ -73,14 +73,15 @@ public:
   Timer_impl(ITimerFunction func, uint32_t intervalMs);
   ~Timer_impl();
   void Stop() override;
-  static void CALLBACK TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
-  
+
 private:
+  static HWND EnsureMessageWindow();
+  static LRESULT CALLBACK MessageWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
   static WDL_Mutex sMutex;
+  static HWND sMessageWindow;
   static WDL_PtrList<Timer_impl> sTimers;
-  UINT_PTR ID = 0;
+  UINT_PTR mTimerID = 0;
   ITimerFunction mTimerFunc;
-  uint32_t mIntervalMs;
 };
 #elif defined OS_WEB
 class Timer_impl : public Timer

@@ -69,19 +69,23 @@ Timer* Timer::Create(ITimerFunction func, uint32_t intervalMs)
 }
 
 WDL_Mutex Timer_impl::sMutex;
+HWND Timer_impl::sMessageWindow = nullptr;
 WDL_PtrList<Timer_impl> Timer_impl::sTimers;
 
 Timer_impl::Timer_impl(ITimerFunction func, uint32_t intervalMs)
 : mTimerFunc(func)
-, mIntervalMs(intervalMs)
-
 {
-  ID = SetTimer(0, 0, intervalMs, TimerProc); //TODO: timer ID correct?
-  
-  if (ID)
+  HWND hwnd = EnsureMessageWindow();
+
+  if (hwnd)
   {
-    WDL_MutexLock lock(&sMutex);
-    sTimers.Add(this);
+    mTimerID = SetTimer(hwnd, reinterpret_cast<UINT_PTR>(this), intervalMs, nullptr);
+
+    if (mTimerID)
+    {
+      WDL_MutexLock lock(&sMutex);
+      sTimers.Add(this);
+    }
   }
 }
 
@@ -92,29 +96,66 @@ Timer_impl::~Timer_impl()
 
 void Timer_impl::Stop()
 {
-  if (ID)
+  if (mTimerID)
   {
-    KillTimer(0, ID);
-    WDL_MutexLock lock(&sMutex);
-    sTimers.DeletePtr(this);
-    ID = 0;
+    if (sMessageWindow)
+      KillTimer(sMessageWindow, mTimerID);
+
+    {
+      WDL_MutexLock lock(&sMutex);
+      sTimers.DeletePtr(this);
+    }
+
+    mTimerID = 0;
   }
 }
 
-void CALLBACK Timer_impl::TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
+HWND Timer_impl::EnsureMessageWindow()
 {
+  if (sMessageWindow)
+    return sMessageWindow;
+
   WDL_MutexLock lock(&sMutex);
 
-  for (auto i = 0; i < sTimers.GetSize(); i++)
+  if (!sMessageWindow)
   {
-    Timer_impl* pTimer = sTimers.Get(i);
-    
-    if (pTimer->ID == idEvent)
-    {
-      pTimer->mTimerFunc(*pTimer);
-      return;
-    }
+    WNDCLASSW wc = {};
+    wc.lpfnWndProc = MessageWindowProc;
+    wc.hInstance = GetModuleHandle(nullptr);
+    wc.lpszClassName = L"iplug2_timer_window";
+
+    if (!RegisterClassW(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
+      return nullptr;
+
+    sMessageWindow = CreateWindowExW(0, wc.lpszClassName, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, wc.hInstance, nullptr);
   }
+
+  return sMessageWindow;
+}
+
+LRESULT CALLBACK Timer_impl::MessageWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+  if (msg == WM_TIMER)
+  {
+    auto* pTimer = reinterpret_cast<Timer_impl*>(wParam);
+
+    if (pTimer)
+    {
+      bool isActive = false;
+
+      {
+        WDL_MutexLock lock(&sMutex);
+        isActive = sTimers.Find(pTimer) >= 0;
+      }
+
+      if (isActive)
+        pTimer->mTimerFunc(*pTimer);
+    }
+
+    return 0;
+  }
+
+  return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 #elif defined OS_WEB
 Timer* Timer::Create(ITimerFunction func, uint32_t intervalMs)

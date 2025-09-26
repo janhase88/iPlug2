@@ -2826,29 +2826,42 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
 {
   StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
 
-  std::unique_ptr<InstalledFont> pFont;
   void* pFontMem = pData;
   int resSize = dataSize;
 
-  pFont = std::make_unique<InstalledFont>(pFontMem, resSize);
+  if (!pFontMem || resSize <= 0)
+    return nullptr;
 
-  if (pFontMem && pFont && pFont->IsValid())
+  InstalledFont* cachedFont = fontStorage.Find(fontID);
+
+  if (!cachedFont)
   {
-    IFontInfo fontInfo(pFontMem, resSize, 0);
-    WDL_String family = fontInfo.GetFamily();
-    int weight = fontInfo.IsBold() ? FW_BOLD : FW_REGULAR;
-    bool italic = fontInfo.IsItalic();
-    bool underline = fontInfo.IsUnderline();
+    std::unique_ptr<InstalledFont> newFont = std::make_unique<InstalledFont>(pFontMem, resSize);
 
-    HFONT font = GetHFont(family.Get(), weight, italic, underline);
+    if (!newFont || !newFont->IsValid())
+      return nullptr;
 
-    if (font)
-    {
-      fontStorage.Add(pFont.release(), fontID);
-      return PlatformFontPtr(new Font(font, "", false));
-    }
+    cachedFont = newFont.get();
+    fontStorage.Add(newFont.release(), fontID);
   }
 
+  IFontInfo fontInfo(pFontMem, resSize, 0);
+  WDL_String family = fontInfo.GetFamily();
+  int weight = fontInfo.IsBold() ? FW_BOLD : FW_REGULAR;
+  bool italic = fontInfo.IsItalic();
+  bool underline = fontInfo.IsUnderline();
+
+  HFONT font = GetHFont(family.Get(), weight, italic, underline);
+
+  if (font)
+  {
+    return PlatformFontPtr(new Font(font, "", false));
+  }
+
+  // If we reach here the font resource is already registered but CreateFont failed for the
+  // parsed family name (e.g. due to an unexpected style). Drop the cached entry so a later
+  // attempt can try to install again from source data and fall back to the system font.
+  fontStorage.Remove(cachedFont);
   return nullptr;
 }
 

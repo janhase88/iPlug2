@@ -13,6 +13,10 @@
 #include "IPlugPlatform.h"
 
 #include <windows.h>
+#include <cstdint>
+#include <cstring>
+#include <new>
+#include <vector>
 
 #include "IGraphicsPrivate.h"
 
@@ -24,29 +28,52 @@ BEGIN_IGRAPHICS_NAMESPACE
 class InstalledWinFont
 {
 public:
-  InstalledWinFont(void* data, int resSize)
+  InstalledWinFont(const void* data, int resSize)
   : mFontHandle(nullptr)
   {
-    if (data)
+    if (data && resSize > 0)
     {
-      DWORD numFonts = 0;
-      mFontHandle = AddFontMemResourceEx(data, resSize, NULL, &numFonts);
+      try
+      {
+        mFontData.resize(static_cast<size_t>(resSize));
+      }
+      catch (const std::bad_alloc&)
+      {
+        mFontData.clear();
+      }
+
+      if (!mFontData.empty())
+      {
+        std::memcpy(mFontData.data(), data, mFontData.size());
+
+        DWORD numFonts = 0;
+        mFontHandle = AddFontMemResourceEx(mFontData.data(), resSize, NULL, &numFonts);
+
+        if (!mFontHandle)
+        {
+          mFontData.clear();
+        }
+      }
     }
   }
-  
+
   ~InstalledWinFont()
   {
     if (IsValid())
       RemoveFontMemResourceEx(mFontHandle);
   }
-  
+
   InstalledWinFont(const InstalledWinFont&) = delete;
   InstalledWinFont& operator=(const InstalledWinFont&) = delete;
-    
+
   bool IsValid() const { return mFontHandle; }
-  
+
+  const void* GetData() const { return mFontData.empty() ? nullptr : mFontData.data(); }
+  size_t GetSize() const { return mFontData.size(); }
+
 private:
   HANDLE mFontHandle;
+  std::vector<uint8_t> mFontData;
 };
 
 struct HFontHolder

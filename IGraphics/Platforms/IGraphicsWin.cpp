@@ -2830,17 +2830,14 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
 {
   StaticStorage<InstalledFont>::Accessor fontStorage(sPlatformFontCache);
 
-  void* pFontMem = pData;
-  int resSize = dataSize;
-
-  if (!pFontMem || resSize <= 0)
+  if (!pData || dataSize <= 0)
     return nullptr;
 
   InstalledFont* cachedFont = fontStorage.Find(fontID);
 
   if (!cachedFont)
   {
-    std::unique_ptr<InstalledFont> newFont = std::make_unique<InstalledFont>(pFontMem, resSize);
+    std::unique_ptr<InstalledFont> newFont = std::make_unique<InstalledFont>(pData, dataSize);
 
     if (!newFont || !newFont->IsValid())
       return nullptr;
@@ -2849,7 +2846,16 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
     fontStorage.Add(newFont.release(), fontID);
   }
 
-  IFontInfo fontInfo(pFontMem, resSize, 0);
+  const void* cachedData = cachedFont->GetData();
+  const size_t cachedSize = cachedFont->GetSize();
+
+  if (!cachedData || cachedSize == 0)
+  {
+    fontStorage.Remove(cachedFont);
+    return nullptr;
+  }
+
+  IFontInfo fontInfo(cachedData, static_cast<uint32_t>(cachedSize), 0);
   WDL_String family = fontInfo.GetFamily();
   int weight = fontInfo.IsBold() ? FW_BOLD : FW_REGULAR;
   bool italic = fontInfo.IsItalic();

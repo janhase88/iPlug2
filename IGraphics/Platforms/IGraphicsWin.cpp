@@ -3040,7 +3040,13 @@ void IGraphicsWin::VBlankNotify()
   const int pendingPaints = sPendingPaintCount.load(std::memory_order_acquire);
   if (pendingPaints > 0)
   {
-    return;
+    // Only defer delivery while this specific editor is still working through a paint.
+    // Other plug-in windows must continue receiving WM_VBLANK so their controls can draw
+    // even if a different instance is busy on the UI thread.
+    if (mPaintPending.load(std::memory_order_acquire))
+    {
+      return;
+    }
   }
 
   auto sendVBlankSynchronously = [&](DWORD coalescedCount, bool releasePendingOnFailure) {

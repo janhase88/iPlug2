@@ -882,6 +882,16 @@ IGraphicsSkia::IGraphicsSkia(IGEditorDelegate& dlg, int w, int h, int fps, float
     mFontCollection->setDefaultFontManager(mFontMgr);
     mFontCollection->enableFontFallback();
   }
+
+  if (mTypefaceProvider)
+  {
+    storage.ForEach([this](Font* pFont) {
+      if (pFont && pFont->mTypeface)
+      {
+        mTypefaceProvider->registerTypeface(pFont->mTypeface, pFont->mFamily);
+      }
+    });
+  }
 #endif
 }
 

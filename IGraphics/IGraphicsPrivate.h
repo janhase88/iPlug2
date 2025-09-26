@@ -508,6 +508,9 @@ public:
     void Clear()                                              { return mStorage.Clear(); }
     void Retain()                                             { return mStorage.Retain(); }
     void Release()                                            { return mStorage.Release(); }
+
+    template <typename Func>
+    void ForEach(Func func)                                   { mStorage.ForEach(func); }
       
   private:
     StaticStorage& mStorage;
@@ -615,6 +618,15 @@ private:
   {
     if (--mCount == 0)
       Clear();
+  }
+
+  template <typename Func>
+  void ForEach(Func func)
+  {
+    for (int i = 0; i < mDatas.GetSize(); ++i)
+    {
+      func(mDatas.Get(i)->data.get());
+    }
   }
     
   int mCount = 0;

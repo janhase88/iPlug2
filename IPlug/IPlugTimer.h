@@ -45,6 +45,7 @@ struct Timer
   using ITimerFunction = std::function<void(Timer& t)>;
 
   static Timer* Create(ITimerFunction func, uint32_t intervalMs);
+  static void DispatchDueTimers();
   virtual ~Timer() {};
   virtual void Stop() = 0;
 };
@@ -74,13 +75,15 @@ public:
   ~Timer_impl();
   void Stop() override;
   static void CALLBACK TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
-  
+  static void DispatchDueTimers();
+
 private:
   static WDL_Mutex sMutex;
   static WDL_PtrList<Timer_impl> sTimers;
   UINT_PTR ID = 0;
   ITimerFunction mTimerFunc;
   uint32_t mIntervalMs;
+  uint64_t mNextTick = 0;
 };
 #elif defined OS_WEB
 class Timer_impl : public Timer

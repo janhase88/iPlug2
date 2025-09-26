@@ -20,6 +20,7 @@
 #include "IPlugParameter.h"
 #include "IPlugPaths.h"
 #include "IPopupMenuControl.h"
+#include "IPlugTimer.h"
 #if defined IGRAPHICS_VULKAN
   #include "VulkanLogging.h"
 #endif
@@ -122,6 +123,14 @@ void IGraphicsWin::DestroyEditWindow()
 
 void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
 {
+  struct IdleDispatchScope
+  {
+    ~IdleDispatchScope()
+    {
+      Timer::DispatchDueTimers();
+    }
+  } idleDispatchScope;
+
   // Check the message vblank with the current one to see if we are way behind. If so, then throw these away.
   DWORD msgCount = vBlankCount;
   DWORD curCount = mVBlankCount.load(std::memory_order_acquire);

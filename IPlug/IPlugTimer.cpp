@@ -15,6 +15,12 @@
 
 #include "IPlugTimer.h"
 
+#include <algorithm>
+
+#if defined OS_WIN
+  #include <windows.h>
+#endif
+
 using namespace iplug;
 
 #if defined OS_MAC || defined OS_IOS
@@ -77,11 +83,12 @@ Timer_impl::Timer_impl(ITimerFunction func, uint32_t intervalMs)
 
 {
   ID = SetTimer(0, 0, intervalMs, TimerProc); //TODO: timer ID correct?
-  
+
   if (ID)
   {
     WDL_MutexLock lock(&sMutex);
     sTimers.Add(this);
+    mNextTick = GetTickCount64() + std::max<uint32_t>(1, mIntervalMs);
   }
 }
 
@@ -98,22 +105,75 @@ void Timer_impl::Stop()
     WDL_MutexLock lock(&sMutex);
     sTimers.DeletePtr(this);
     ID = 0;
+    mNextTick = 0;
   }
 }
 
 void CALLBACK Timer_impl::TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
 {
   WDL_MutexLock lock(&sMutex);
+  const uint64_t now = GetTickCount64();
 
   for (auto i = 0; i < sTimers.GetSize(); i++)
   {
     Timer_impl* pTimer = sTimers.Get(i);
-    
+
     if (pTimer->ID == idEvent)
     {
+      if (now + 1ULL < pTimer->mNextTick)
+      {
+        return;
+      }
+
+      pTimer->mNextTick = now + std::max<uint32_t>(1, pTimer->mIntervalMs);
       pTimer->mTimerFunc(*pTimer);
       return;
     }
+  }
+}
+
+void Timer_impl::DispatchDueTimers()
+{
+  WDL_MutexLock lock(&sMutex);
+
+  if (sTimers.GetSize() == 0)
+  {
+    return;
+  }
+
+  const uint64_t now = GetTickCount64();
+
+  for (int i = 0; i < sTimers.GetSize();)
+  {
+    Timer_impl* pTimer = sTimers.Get(i);
+
+    if (!pTimer || pTimer->ID == 0)
+    {
+      ++i;
+      continue;
+    }
+
+    if (now + 1ULL < pTimer->mNextTick)
+    {
+      ++i;
+      continue;
+    }
+
+    pTimer->mNextTick = now + std::max<uint32_t>(1, pTimer->mIntervalMs);
+    Timer_impl* dispatched = pTimer;
+    pTimer->mTimerFunc(*pTimer);
+
+    if (i >= sTimers.GetSize())
+    {
+      break;
+    }
+
+    if (sTimers.Get(i) == dispatched)
+    {
+      ++i;
+    }
+    // If the timer removed itself, the next element has shifted into index i, so
+    // continue without incrementing to process the new occupant.
   }
 }
 #elif defined OS_WEB
@@ -144,3 +204,12 @@ void Timer_impl::TimerProc(void* userData)
   itimer->mTimerFunc(*itimer);
 }
 #endif
+
+void Timer::DispatchDueTimers()
+{
+#if defined OS_WIN
+  Timer_impl::DispatchDueTimers();
+#else
+  // Other platforms deliver timers via their native run loops.
+#endif
+}

@@ -883,15 +883,6 @@ IGraphicsSkia::IGraphicsSkia(IGEditorDelegate& dlg, int w, int h, int fps, float
     mFontCollection->enableFontFallback();
   }
 
-  if (mTypefaceProvider)
-  {
-    storage.ForEach([this](Font* pFont) {
-      if (pFont && pFont->mTypeface)
-      {
-        mTypefaceProvider->registerTypeface(pFont->mTypeface, pFont->mFamily);
-      }
-    });
-  }
 #endif
 }
 
@@ -2255,7 +2246,15 @@ bool IGraphicsSkia::LoadAPIFont(const char* fontID, const PlatformFontPtr& font)
   Font* cached = storage.Find(fontID);
 
   if (cached)
+  {
+#if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
+    if (mTypefaceProvider)
+    {
+      mTypefaceProvider->registerTypeface(cached->mTypeface, cached->mFamily);
+    }
+#endif
     return true;
+  }
 
   IFontDataPtr data = font->GetFontData();
 

@@ -2756,17 +2756,43 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, const char* f
   switch (fontLocation)
   {
   case kAbsolutePath: {
-    HANDLE file = CreateFileW(UTF8AsUTF16(fullPath).Get(), GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    // Prefer any embedded copy of the font (e.g. when the plug-in bundles resources)
+    // before touching the filesystem, so multiple instances can share the same in-memory
+    // payload without fighting over the font file on disk.
+    const void* pResourceFont = LoadWinResource(fileNameOrResID, "ttf", resSize, GetWinModuleHandle());
+
+    if (!pResourceFont)
+    {
+      WDL_String resourceName(fileNameOrResID);
+      const char* baseName = resourceName.get_filepart();
+
+      if (baseName && baseName[0] != '\0' && strcmp(baseName, fileNameOrResID) != 0)
+      {
+        pResourceFont = LoadWinResource(baseName, "ttf", resSize, GetWinModuleHandle());
+      }
+    }
+
+    if (pResourceFont)
+      return LoadPlatformFont(fontID, const_cast<void*>(pResourceFont), resSize);
+
+    HANDLE file = CreateFileW(UTF8AsUTF16(fullPath).Get(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     PlatformFontPtr ret = nullptr;
-    if (file)
+    if (file != INVALID_HANDLE_VALUE)
     {
       HANDLE mapping = CreateFileMappingW(file, NULL, PAGE_READONLY, 0, 0, NULL);
       if (mapping)
       {
-        resSize = (int)GetFileSize(file, nullptr);
-        pFontMem = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
-        ret = LoadPlatformFont(fontID, pFontMem, resSize);
-        UnmapViewOfFile(pFontMem);
+        const DWORD mappedSize = GetFileSize(file, nullptr);
+        if (mappedSize != INVALID_FILE_SIZE && mappedSize > 0)
+        {
+          resSize = static_cast<int>(mappedSize);
+          pFontMem = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
+          if (pFontMem)
+          {
+            ret = LoadPlatformFont(fontID, pFontMem, resSize);
+            UnmapViewOfFile(pFontMem);
+          }
+        }
         CloseHandle(mapping);
       }
       CloseHandle(file);

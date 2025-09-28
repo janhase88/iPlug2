@@ -1169,6 +1169,11 @@ void IGraphicsSkia::DrawResize()
   ScopedGraphicsContext scopedGLContext{this};
   auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * GetScreenScale()));
   auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * GetScreenScale()));
+  const int previousSurfaceWidth = mSurface ? mSurface->width() : 0;
+  const int previousSurfaceHeight = mSurface ? mSurface->height() : 0;
+#if defined IGRAPHICS_VULKAN
+  const VkExtent2D previousSwapchainExtent = mVKSwapchainExtent;
+#endif
 #if defined IGRAPHICS_VULKAN
   IGRAPHICS_VK_LOG("DrawResize",
                       "begin",
@@ -1331,6 +1336,7 @@ void IGraphicsSkia::DrawResize()
                              vulkanlog::MakeField("height", h),
                              vulkanlog::MakeField("frameVersion", static_cast<uint64_t>(mVKFrameVersion)),
                              vulkanlog::MakeField("swapchainVersion", static_cast<uint64_t>(mVKSwapchainVersion)));
+        bool swapchainCreated = false;
         VkResult res = pWin->CreateOrResizeVulkanSwapchain(w,
                                                            h,
                                                            swapchain,
@@ -1348,26 +1354,29 @@ void IGraphicsSkia::DrawResize()
                                 "swapchainSuboptimal",
                                 vulkanlog::Severity::kInfo);
           }
-          mVKSwapchain = swapchain;
-          mVKSwapchainImages = images;
-          mVKSwapchainSurfaces.assign(mVKSwapchainImages.size(), nullptr);
-          mVKImageLayouts.assign(mVKSwapchainImages.size(), VK_IMAGE_LAYOUT_UNDEFINED);
-          mVKSwapchainFormat = format;
-          mVKSwapchainExtent = swapchainExtent;
-          if (swapchainExtent.width > 0 && swapchainExtent.height > 0)
+          if (!images.empty())
           {
-            surfaceWidth = static_cast<int>(swapchainExtent.width);
-            surfaceHeight = static_cast<int>(swapchainExtent.height);
-          }
-          mVKCurrentImage = kInvalidImageIndex;
-          mVKSkipFrame = true;
+            swapchainCreated = true;
+            mVKSwapchain = swapchain;
+            mVKSwapchainImages = images;
+            mVKSwapchainSurfaces.assign(mVKSwapchainImages.size(), nullptr);
+            mVKImageLayouts.assign(mVKSwapchainImages.size(), VK_IMAGE_LAYOUT_UNDEFINED);
+            mVKSwapchainFormat = format;
+            mVKSwapchainExtent = swapchainExtent;
+            if (swapchainExtent.width > 0 && swapchainExtent.height > 0)
+            {
+              surfaceWidth = static_cast<int>(swapchainExtent.width);
+              surfaceHeight = static_cast<int>(swapchainExtent.height);
+            }
+            mVKCurrentImage = kInvalidImageIndex;
+            mVKSkipFrame = true;
       #ifndef NDEBUG
-          IGRAPHICS_VK_LOG("DrawResize",
-                              "swapchainCreated",
-                              vulkanlog::Severity::kDebug,
-                              vulkanlog::MakeField("swapchainVersion", static_cast<uint64_t>(mVKSwapchainVersion)),
-                               vulkanlog::MakeField("imageCount", static_cast<uint64_t>(mVKSwapchainImages.size())));
-          PFN_vkSetDebugUtilsObjectNameEXT setName = reinterpret_cast<PFN_vkSetDebugUtilsObjectNameEXT>(vkGetDeviceProcAddr(mVKDevice, "vkSetDebugUtilsObjectNameEXT"));
+            IGRAPHICS_VK_LOG("DrawResize",
+                                "swapchainCreated",
+                                vulkanlog::Severity::kDebug,
+                                vulkanlog::MakeField("swapchainVersion", static_cast<uint64_t>(mVKSwapchainVersion)),
+                                 vulkanlog::MakeField("imageCount", static_cast<uint64_t>(mVKSwapchainImages.size())));
+            PFN_vkSetDebugUtilsObjectNameEXT setName = reinterpret_cast<PFN_vkSetDebugUtilsObjectNameEXT>(vkGetDeviceProcAddr(mVKDevice, "vkSetDebugUtilsObjectNameEXT"));
       #endif
       for (size_t i = 0; i < mVKSwapchainImages.size(); ++i)
       {
@@ -1392,16 +1401,12 @@ void IGraphicsSkia::DrawResize()
         }
   #endif
       }
-          if (mVKSwapchainImages.empty())
+          }
+          else
           {
             IGRAPHICS_VK_LOG_SIMPLE("DrawResize",
                                 "createOrResizeEmpty",
                                 vulkanlog::Severity::kError);
-            mVKSwapchain = VK_NULL_HANDLE;
-            ResetVulkanSwapchainCaches();
-            mSurface.reset();
-            mCanvas = nullptr;
-            return;
           }
         }
         else
@@ -1413,24 +1418,56 @@ void IGraphicsSkia::DrawResize()
           vkWaitForFences(mVKDevice, 1, &mVKInFlightFence, VK_TRUE, UINT64_MAX);
           vkResetFences(mVKDevice, 1, &mVKInFlightFence);
           vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // ensure fence signalled
+        }
+        if (!swapchainCreated)
+        {
           mVKSwapchain = VK_NULL_HANDLE;
           mVKSwapchainImages.clear();
           mVKCurrentImage = kInvalidImageIndex;
-          mSurface.reset();
           ResetVulkanSwapchainCaches();
-          mCanvas = nullptr;
+          mVKSwapchainExtent = {0, 0};
+          surfaceWidth = previousSurfaceWidth > 0 ? previousSurfaceWidth : surfaceWidth;
+          surfaceHeight = previousSurfaceHeight > 0 ? previousSurfaceHeight : surfaceHeight;
           mVKSkipFrame = true;
-          return;
         }
       }
     #endif
     }
   #endif
+    if (surfaceWidth <= 0 || surfaceHeight <= 0)
+    {
+#if defined IGRAPHICS_VULKAN
+      if (previousSwapchainExtent.width > 0 && previousSwapchainExtent.height > 0)
+      {
+        surfaceWidth = static_cast<int>(previousSwapchainExtent.width);
+        surfaceHeight = static_cast<int>(previousSwapchainExtent.height);
+      }
+#endif
+    }
+    if (surfaceWidth <= 0 || surfaceHeight <= 0)
+    {
+      surfaceWidth = std::max(1, previousSurfaceWidth > 0 ? previousSurfaceWidth : w);
+      surfaceHeight = std::max(1, previousSurfaceHeight > 0 ? previousSurfaceHeight : h);
+#if defined IGRAPHICS_VULKAN
+      mVKSkipFrame = true;
+#endif
+    }
     SkImageInfo info = SkImageInfo::MakeN32Premul(surfaceWidth, surfaceHeight);
     mSurface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info);
+#if defined IGRAPHICS_VULKAN
+    if (!mSurface)
+    {
+      IGRAPHICS_VK_LOG("DrawResize",
+                          "createRenderTargetFallback",
+                          vulkanlog::Severity::kError,
+                          vulkanlog::MakeField("width", surfaceWidth),
+                           vulkanlog::MakeField("height", surfaceHeight));
+      mSurface = SkSurfaces::Raster(info);
+    }
+#endif
   }
 #else
-  #ifdef OS_WIN
+#ifdef OS_WIN
   mSurface.reset();
 
   const size_t bmpSize = sizeof(BITMAPINFOHEADER) + (w * h * sizeof(uint32_t));
@@ -1456,6 +1493,10 @@ void IGraphicsSkia::DrawResize()
   {
     mCanvas = mSurface->getCanvas();
     mCanvas->save();
+  }
+  else
+  {
+    mCanvas = nullptr;
   }
 }
 

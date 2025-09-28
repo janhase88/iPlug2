@@ -1278,7 +1278,16 @@ bool IGraphicsWin::CreateVulkanContext()
 
   mVkSwapchain.device = mVkDevice;
   bool submissionPending = false;
-  res = CreateOrResizeVulkanSwapchain(caps.currentExtent.width, caps.currentExtent.height, mVkSwapchain.handle, mVkSwapchainImages, mVkFormat, mVkSwapchainUsageFlags, submissionPending, mVkSwapchainExtent);
+  bool swapchainSuboptimal = false;
+  res = CreateOrResizeVulkanSwapchain(caps.currentExtent.width,
+                                      caps.currentExtent.height,
+                                      mVkSwapchain.handle,
+                                      mVkSwapchainImages,
+                                      mVkFormat,
+                                      mVkSwapchainUsageFlags,
+                                      submissionPending,
+                                      mVkSwapchainExtent,
+                                      swapchainSuboptimal);
   if (res != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("CreateVulkanContext",
@@ -1287,6 +1296,12 @@ bool IGraphicsWin::CreateVulkanContext()
                         vulkanlog::MakeField("vkResult", static_cast<int>(res)));
     DestroyVulkanContext();
     return false;
+  }
+  if (swapchainSuboptimal)
+  {
+    IGRAPHICS_VK_LOG_SIMPLE("CreateVulkanContext",
+                        "swapchainSuboptimal",
+                        vulkanlog::Severity::kInfo);
   }
 
   VkSemaphoreCreateInfo semInfo{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
@@ -1392,8 +1407,15 @@ bool IGraphicsWin::RecreateVulkanContext()
   return true;
 }
 
-VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
-  uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format, VkImageUsageFlags& usage, bool& submissionPending, VkExtent2D& imageExtent)
+VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(uint32_t width,
+                                                     uint32_t height,
+                                                     VkSwapchainKHR& swapchain,
+                                                     std::vector<VkImage>& images,
+                                                     VkFormat& format,
+                                                     VkImageUsageFlags& usage,
+                                                     bool& submissionPending,
+                                                     VkExtent2D& imageExtent,
+                                                     bool& swapchainSuboptimal)
 {
   IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
                       "request",
@@ -1406,6 +1428,7 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
 
   mVkSwapchainExtent = {0, 0};
   imageExtent = {0, 0};
+  swapchainSuboptimal = false;
 
   VkResult res = VK_SUCCESS;
   if (mInFlightFence.handle)
@@ -1580,6 +1603,16 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
                        vulkanlog::MakeHandleField("oldSwapchain", vulkanlog::HandleToUint64(reinterpret_cast<uintptr_t>(mVkSwapchain.handle))));
 
   res = vkCreateSwapchainKHR(mVkDevice, &swapInfo, nullptr, &mVkSwapchain.handle);
+  if (res == VK_SUBOPTIMAL_KHR)
+  {
+    IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                        "vkCreateSwapchainKHR",
+                        vulkanlog::Severity::kInfo,
+                        vulkanlog::MakeField("vkResult", static_cast<int>(res)),
+                        vulkanlog::MakeField("suboptimal", true));
+    swapchainSuboptimal = true;
+    res = VK_SUCCESS;
+  }
   if (res != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",

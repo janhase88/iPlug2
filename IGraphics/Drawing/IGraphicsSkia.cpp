@@ -1315,6 +1315,7 @@ void IGraphicsSkia::DrawResize()
         std::vector<VkImage> images;
         VkFormat format = mVKSwapchainFormat;
         VkExtent2D swapchainExtent = mVKSwapchainExtent;
+        bool swapchainSuboptimal = false;
         IGRAPHICS_VK_LOG("DrawResize",
                             "requestSwapchainResize",
                             vulkanlog::Severity::kInfo,
@@ -1322,9 +1323,23 @@ void IGraphicsSkia::DrawResize()
                              vulkanlog::MakeField("height", h),
                              vulkanlog::MakeField("frameVersion", static_cast<uint64_t>(mVKFrameVersion)),
                              vulkanlog::MakeField("swapchainVersion", static_cast<uint64_t>(mVKSwapchainVersion)));
-        VkResult res = pWin->CreateOrResizeVulkanSwapchain(w, h, swapchain, images, format, mVKSwapchainUsageFlags, mVKSubmissionPending, swapchainExtent);
+        VkResult res = pWin->CreateOrResizeVulkanSwapchain(w,
+                                                           h,
+                                                           swapchain,
+                                                           images,
+                                                           format,
+                                                           mVKSwapchainUsageFlags,
+                                                           mVKSubmissionPending,
+                                                           swapchainExtent,
+                                                           swapchainSuboptimal);
         if (res == VK_SUCCESS)
         {
+          if (swapchainSuboptimal)
+          {
+            IGRAPHICS_VK_LOG_SIMPLE("DrawResize",
+                                "swapchainSuboptimal",
+                                vulkanlog::Severity::kInfo);
+          }
           mVKSwapchain = swapchain;
           mVKSwapchainImages = images;
           mVKSwapchainSurfaces.assign(mVKSwapchainImages.size(), nullptr);

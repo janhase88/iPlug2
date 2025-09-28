@@ -135,7 +135,15 @@ public:
   DWORD OnVBlankRun();
 
 #ifdef IGRAPHICS_VULKAN
-  VkResult CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format, VkImageUsageFlags& usage, bool& submissionPending, VkExtent2D& imageExtent);
+  VkResult CreateOrResizeVulkanSwapchain(uint32_t width,
+                                         uint32_t height,
+                                         VkSwapchainKHR& swapchain,
+                                         std::vector<VkImage>& images,
+                                         VkFormat& format,
+                                         VkImageUsageFlags& usage,
+                                         bool& submissionPending,
+                                         VkExtent2D& imageExtent,
+                                         bool& swapchainSuboptimal);
   bool RecreateVulkanContext();
 #endif
 

@@ -1278,7 +1278,7 @@ bool IGraphicsWin::CreateVulkanContext()
 
   mVkSwapchain.device = mVkDevice;
   bool submissionPending = false;
-  res = CreateOrResizeVulkanSwapchain(caps.currentExtent.width, caps.currentExtent.height, mVkSwapchain.handle, mVkSwapchainImages, mVkFormat, mVkSwapchainUsageFlags, submissionPending);
+  res = CreateOrResizeVulkanSwapchain(caps.currentExtent.width, caps.currentExtent.height, mVkSwapchain.handle, mVkSwapchainImages, mVkFormat, mVkSwapchainUsageFlags, submissionPending, mVkSwapchainExtent);
   if (res != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("CreateVulkanContext",
@@ -1345,6 +1345,7 @@ void IGraphicsWin::DestroyVulkanContext()
   mVkSwapchainImages.clear();
   mVkFormat = VK_FORMAT_B8G8R8A8_UNORM;
   mVkSwapchainUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  mVkSwapchainExtent = {0, 0};
 
   if (mVulkanDeviceGeneration != 0)
   {
@@ -1386,12 +1387,13 @@ bool IGraphicsWin::RecreateVulkanContext()
   ctx.swapchainImages = &mVkSwapchainImages;
   ctx.format = mVkFormat;
   ctx.usageFlags = mVkSwapchainUsageFlags;
+  ctx.swapchainExtent = mVkSwapchainExtent;
   OnViewInitialized(&ctx);
   return true;
 }
 
 VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
-  uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format, VkImageUsageFlags& usage, bool& submissionPending)
+  uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format, VkImageUsageFlags& usage, bool& submissionPending, VkExtent2D& imageExtent)
 {
   IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
                       "request",
@@ -1401,6 +1403,9 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
                        vulkanlog::MakeHandleField("previousSwapchain", vulkanlog::HandleToUint64(reinterpret_cast<uintptr_t>(mVkSwapchain.handle))));
   if (!mVkDevice || !mVkPhysicalDevice || !mVkSurface)
     return VK_ERROR_INITIALIZATION_FAILED;
+
+  mVkSwapchainExtent = {0, 0};
+  imageExtent = {0, 0};
 
   VkResult res = VK_SUCCESS;
   if (mInFlightFence.handle)
@@ -1631,6 +1636,8 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
   format = mVkFormat;
   usage = usageFlags;
   mVkSwapchainUsageFlags = usageFlags;
+  mVkSwapchainExtent = swapInfo.imageExtent;
+  imageExtent = mVkSwapchainExtent;
   swapchain = mVkSwapchain.handle;
   images = mVkSwapchainImages;
   return VK_SUCCESS;
@@ -1733,6 +1740,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   ctx.swapchainImages = &mVkSwapchainImages;
   ctx.format = mVkFormat;
   ctx.usageFlags = mVkSwapchainUsageFlags;
+  ctx.swapchainExtent = mVkSwapchainExtent;
   OnViewInitialized(&ctx);
 #else
   HDC dc = GetDC(mPlugWnd);

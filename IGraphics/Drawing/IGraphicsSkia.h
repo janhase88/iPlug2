@@ -263,6 +263,7 @@ private:
   VkFence mVKInFlightFence = VK_NULL_HANDLE;
   VkFormat mVKSwapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
   VkImageUsageFlags mVKSwapchainUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  VkExtent2D mVKSwapchainExtent{0, 0};
   bool mVKSkipFrame = false;
   bool mVKSubmissionPending = false;
   uint64_t mVKSwapchainVersion = 0;

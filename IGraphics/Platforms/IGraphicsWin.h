@@ -52,6 +52,7 @@ struct VulkanContext
   std::vector<VkImage>* swapchainImages = nullptr;
   VkFormat format = VK_FORMAT_B8G8R8A8_UNORM;
   VkImageUsageFlags usageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  VkExtent2D swapchainExtent{0, 0};
 };
 #endif
 
@@ -134,7 +135,7 @@ public:
   DWORD OnVBlankRun();
 
 #ifdef IGRAPHICS_VULKAN
-  VkResult CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format, VkImageUsageFlags& usage, bool& submissionPending);
+  VkResult CreateOrResizeVulkanSwapchain(uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format, VkImageUsageFlags& usage, bool& submissionPending, VkExtent2D& imageExtent);
   bool RecreateVulkanContext();
 #endif
 
@@ -199,6 +200,7 @@ private:
   std::vector<VkImage> mVkSwapchainImages;
   VkFormat mVkFormat = VK_FORMAT_B8G8R8A8_UNORM;
   VkImageUsageFlags mVkSwapchainUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  VkExtent2D mVkSwapchainExtent{0, 0};
 #endif
 
 #ifdef IGRAPHICS_GL

@@ -1602,8 +1602,16 @@ void IGraphicsSkia::BeginFrame()
     }
     else
     {
-      width = WindowWidth() * GetScreenScale();
-      height = WindowHeight() * GetScreenScale();
+      IGRAPHICS_VK_LOG("BeginFrame",
+                          "swapchainExtentUnavailable",
+                          vulkanlog::Severity::kInfo,
+                          vulkanlog::MakeHandleField("swapchain", vulkanlog::HandleToUint64(mVKSwapchain)),
+                          vulkanlog::MakeField("cachedWidth", static_cast<uint32_t>(mVKSwapchainExtent.width)),
+                          vulkanlog::MakeField("cachedHeight", static_cast<uint32_t>(mVKSwapchainExtent.height)));
+      mVKSkipFrame = true;
+      mVKCurrentImage = kInvalidImageIndex;
+      mScreenSurface.reset();
+      return;
     }
     if (width <= 0 || height <= 0)
     {

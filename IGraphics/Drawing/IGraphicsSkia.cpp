@@ -2734,52 +2734,78 @@ void IGraphicsSkia::SetClipRegion(const IRECT& r)
 
 APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, double drawScale, bool cacheable, int MSAASampleCount)
 {
+  const int clampedWidth = std::max(1, width);
+  const int clampedHeight = std::max(1, height);
+
   sk_sp<SkSurface> surface;
-  SkImageInfo info = SkImageInfo::MakeN32Premul(width, height);
+  SkImageInfo info = SkImageInfo::MakeN32Premul(clampedWidth, clampedHeight);
 
 #ifndef IGRAPHICS_CPU
-  if (cacheable)
+  if (!mGrContext)
+  {
+    surface = SkSurfaces::Raster(info);
+  }
+  else if (cacheable)
   {
     surface = SkSurfaces::Raster(info);
   }
   else
   {
-    bool supported = (MSAASampleCount != 0) && (mGrContext->maxSurfaceSampleCountForColorType(info.colorType()) >= MSAASampleCount);
+    const bool supportsMSAA = (MSAASampleCount > 0) &&
+                              (mGrContext->maxSurfaceSampleCountForColorType(info.colorType()) >= MSAASampleCount);
 
-    if (supported)
+    if (supportsMSAA)
     {
-      // SkDebugf("IGraphicsSkia: MSAA x4 reported as supported. Attempting new RenderTarget.\n");
       SkSurfaceProps surfaceProps(0, kUnknown_SkPixelGeometry);
       surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kNo, info, MSAASampleCount, kTopLeft_GrSurfaceOrigin, &surfaceProps);
 
-      if (!surface) // Budgeted MSAA
+      if (!surface)
       {
         surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info, MSAASampleCount, kTopLeft_GrSurfaceOrigin, &surfaceProps);
       }
 
-      if (!surface) // <-- DEFAULT ORIGINAL DRAWING, THIS DOES NOT FAIL
+      if (!surface)
       {
         surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info);
-      }
-
-      if (!surface) // If all GPU attempts (MSAA and non-MSAA) failed
-      {
-        surface = SkSurfaces::Raster(info);
       }
     }
     else
     {
-      // SkDebugf("IGraphicsSkia: MSAA x4 reported as NOT supported. Attempting original RenderTarget.\n");
       surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info);
+    }
+
+    if (!surface)
+    {
+#if defined IGRAPHICS_VULKAN
+      IGRAPHICS_VK_LOG("CreateAPIBitmap",
+                          "gpuSurfaceFallback",
+                          vulkanlog::Severity::kWarning,
+                          vulkanlog::MakeField("width", clampedWidth),
+                          vulkanlog::MakeField("height", clampedHeight),
+                          vulkanlog::MakeField("msaa", MSAASampleCount));
+#endif
+      surface = SkSurfaces::Raster(info);
     }
   }
 #else
   surface = SkSurfaces::Raster(info);
 #endif
 
+  if (!surface)
+  {
+#if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG("CreateAPIBitmap",
+                        "surfaceAllocationFailed",
+                        vulkanlog::Severity::kError,
+                        vulkanlog::MakeField("width", clampedWidth),
+                        vulkanlog::MakeField("height", clampedHeight));
+#endif
+    return nullptr;
+  }
+
   surface->getCanvas()->save();
 
-  return new Bitmap(std::move(surface), width, height, scale, drawScale);
+  return new Bitmap(std::move(surface), clampedWidth, clampedHeight, scale, drawScale);
 }
 
 void IGraphicsSkia::UpdateLayer() { mCanvas = mLayers.empty() ? mSurface->getCanvas() : mLayers.top()->GetAPIBitmap()->GetBitmap()->mSurface->getCanvas(); }

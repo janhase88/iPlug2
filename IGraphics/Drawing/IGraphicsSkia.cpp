@@ -1189,6 +1189,14 @@ void IGraphicsSkia::DrawResize()
                       vulkanlog::Severity::kDebug,
                       vulkanlog::MakeField("previous", static_cast<uint64_t>(previousSwapchainVersion)),
                        vulkanlog::MakeField("current", static_cast<uint64_t>(mVKSwapchainVersion)));
+#if defined OS_WIN
+  if (auto* pWinSync = static_cast<IGraphicsWin*>(this))
+  {
+    VkExtent2D winExtent = pWinSync->GetSwapchainExtent();
+    if (winExtent.width > 0 && winExtent.height > 0)
+      mVKSwapchainExtent = winExtent;
+  }
+#endif
   if (mVKDevice != VK_NULL_HANDLE)
   {
     bool fenceCompleted = !mVKSubmissionPending;
@@ -1524,8 +1532,50 @@ void IGraphicsSkia::BeginFrame()
       return;
     }
 
-    int width = (mVKSwapchainExtent.width > 0) ? static_cast<int>(mVKSwapchainExtent.width) : WindowWidth() * GetScreenScale();
-    int height = (mVKSwapchainExtent.height > 0) ? static_cast<int>(mVKSwapchainExtent.height) : WindowHeight() * GetScreenScale();
+    int width = 0;
+    int height = 0;
+#if defined OS_WIN
+    if (auto* pWin = static_cast<IGraphicsWin*>(this))
+    {
+      VkExtent2D winExtent = pWin->GetSwapchainExtent();
+      if (winExtent.width > 0 && winExtent.height > 0)
+      {
+        if (winExtent.width != mVKSwapchainExtent.width || winExtent.height != mVKSwapchainExtent.height)
+        {
+          IGRAPHICS_VK_LOG("BeginFrame",
+                               "syncSwapchainExtent",
+                               vulkanlog::Severity::kDebug,
+                               vulkanlog::MakeField("winWidth", static_cast<uint32_t>(winExtent.width)),
+                                vulkanlog::MakeField("winHeight", static_cast<uint32_t>(winExtent.height)),
+                                vulkanlog::MakeField("cachedWidth", static_cast<uint32_t>(mVKSwapchainExtent.width)),
+                                vulkanlog::MakeField("cachedHeight", static_cast<uint32_t>(mVKSwapchainExtent.height)));
+        }
+        mVKSwapchainExtent = winExtent;
+      }
+    }
+#endif
+    if (mVKSwapchainExtent.width > 0 && mVKSwapchainExtent.height > 0)
+    {
+      width = static_cast<int>(mVKSwapchainExtent.width);
+      height = static_cast<int>(mVKSwapchainExtent.height);
+    }
+    else
+    {
+      width = WindowWidth() * GetScreenScale();
+      height = WindowHeight() * GetScreenScale();
+    }
+    if (width <= 0 || height <= 0)
+    {
+      IGRAPHICS_VK_LOG("BeginFrame",
+                          "invalidSurfaceExtent",
+                          vulkanlog::Severity::kError,
+                          vulkanlog::MakeField("width", width),
+                           vulkanlog::MakeField("height", height));
+      mVKSkipFrame = true;
+      mVKCurrentImage = kInvalidImageIndex;
+      mScreenSurface.reset();
+      return;
+    }
     if (mVKSubmissionPending)
     {
       IGRAPHICS_VK_LOG("BeginFrame",

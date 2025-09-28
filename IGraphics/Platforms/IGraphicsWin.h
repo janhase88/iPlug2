@@ -144,6 +144,8 @@ public:
                                          bool& submissionPending,
                                          VkExtent2D& imageExtent,
                                          bool& swapchainSuboptimal);
+
+  VkExtent2D GetSwapchainExtent() const { return mVkSwapchainExtent; }
   bool RecreateVulkanContext();
 #endif
 

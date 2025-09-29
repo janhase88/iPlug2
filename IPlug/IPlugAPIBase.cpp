@@ -23,13 +23,17 @@
 
 #ifndef NO_IGRAPHICS
   #if defined(__has_include)
-    #if __has_include("IGraphics/IGraphics.h")
+    #if __has_include("../IGraphics/IGraphics.h")
+      #include "../IGraphics/IGraphics.h"
+    #elif __has_include("IGraphics/IGraphics.h")
       #include "IGraphics/IGraphics.h"
-    #elif __has_include("IGraphics.h")
+    #elif __has_include("../IGraphics.h")
+      #include "../IGraphics.h"
+    #else
       #include "IGraphics.h"
     #endif
   #else
-    #include "IGraphics.h"
+    #include "../IGraphics/IGraphics.h"
   #endif
 #endif
 
@@ -154,8 +158,8 @@ void IPlugAPIBase::SendParameterValueFromAPI(int paramIdx, double value, bool no
 
 void IPlugAPIBase::OnTimer(Timer& t)
 {
-  igraphics::IGraphics* pGraphics = nullptr;
-  igraphics::IGraphics::HostIdleTickInfo idleInfo;
+  IGraphics* pGraphics = nullptr;
+  IGraphics::HostIdleTickInfo idleInfo;
 
   if (HasUI())
   {

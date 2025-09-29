@@ -42,6 +42,7 @@
 #include <sstream>
 #include <limits>
 #include <thread>
+#include <utility>
 #include <vector>
 #include <wininet.h>
 
@@ -50,25 +51,12 @@
   #define CCSIZEOF_STRUCT(structname, member) (__builtin_offsetof(structname, member) + sizeof(((structname*)0)->member))
 #endif
 
-namespace iplug {
-namespace igraphics {
-
-struct VBlankSubscription
-{
-  IGraphicsWin* owner = nullptr;
-  HWND window = nullptr;
-  std::atomic<bool> active{false};
-};
-
-} // namespace igraphics
-} // namespace iplug
+using namespace iplug;
+using namespace igraphics;
 
 #pragma warning(disable : 4244) // Pointer size cast mismatch.
 #pragma warning(disable : 4312) // Pointer size cast mismatch.
 #pragma warning(disable : 4311) // Pointer size cast mismatch.
-
-using namespace iplug;
-using namespace igraphics;
 
 static int nWndClassReg = 0;
 static const wchar_t* wndClassName = L"IPlugWndClass";
@@ -83,25 +71,16 @@ static double sFPS = 0.0;
 #define WM_VBLANK (WM_USER + 1)
 #define WM_VBLANK_TICK WM_VBLANK
 
+struct VBlankSubscription
+{
+  IGraphicsWin* owner = nullptr;
+  HWND window = nullptr;
+  std::atomic<bool> active{false};
+};
+
 namespace
 {
 constexpr uint32_t kVBlankQueueDepthWarningMultiplier = 2;
-
-uint64_t SteadyClockMicros(const std::chrono::steady_clock::time_point& tp)
-{
-  return static_cast<uint64_t>(
-    std::chrono::duration_cast<std::chrono::microseconds>(tp.time_since_epoch()).count());
-}
-
-template <typename T>
-void AtomicMax(std::atomic<T>& target, T value)
-{
-  T current = target.load(std::memory_order_relaxed);
-  while (current < value
-         && !target.compare_exchange_weak(current, value, std::memory_order_release, std::memory_order_relaxed))
-  {
-  }
-}
 
 void RecordVBlankQueueDepthSample(uint32_t depth);
 void IncrementVBlankQueueWarnCount();
@@ -117,9 +96,6 @@ void RecordSchedulerSample(const IGraphicsWin::InstancePaintBudget::Snapshot& sn
                            bool forgivenessActive);
 #endif
 } // namespace
-
-namespace iplug {
-namespace igraphics {
 
 class VBlankDispatchWorker
 {
@@ -464,12 +440,6 @@ private:
   bool mHaveLastDispatchTimestamp = false;
 };
 
-} // namespace igraphics
-} // namespace iplug
-
-using namespace iplug;
-using namespace igraphics;
-
 #ifdef IGRAPHICS_GL3
 typedef HGLRC(WINAPI* PFNWGLCREATECONTEXTATTRIBSARBPROC)(HDC hDC, HGLRC hShareContext, const int* attribList);
   #define WGL_CONTEXT_MAJOR_VERSION_ARB 0x2091
@@ -791,6 +761,21 @@ void RecordSchedulerSample(const IGraphicsWin::InstancePaintBudget::Snapshot& sn
   telemetry.droppedVBlankTotal.store(droppedVBlank, std::memory_order_release);
 }
 #endif
+uint64_t SteadyClockMicros(const std::chrono::steady_clock::time_point& tp)
+{
+  return static_cast<uint64_t>(
+    std::chrono::duration_cast<std::chrono::microseconds>(tp.time_since_epoch()).count());
+}
+
+template <typename T>
+void AtomicMax(std::atomic<T>& target, T value)
+{
+  T current = target.load(std::memory_order_relaxed);
+  while (current < value
+         && !target.compare_exchange_weak(current, value, std::memory_order_release, std::memory_order_relaxed))
+  {
+  }
+}
 
 int HistogramBucketForCount(int count)
 {
@@ -897,7 +882,6 @@ void UpdatePaintBudgetCounters(const IGraphicsWin::InstancePaintBudget::Snapshot
   AtomicMax(telemetry.maxInflight, snapshot.pendingPaints);
   AtomicMax(telemetry.maxQueued, snapshot.queuedInvalidates);
 }
-} // namespace
 } // namespace
 
 #if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
@@ -1932,8 +1916,7 @@ void IGraphicsWin::ExitVBlankPaused(DWORD recoveredCount, ULONGLONG resumeTick)
                           schedulerlog::MakeField("pausedMs", static_cast<uint32_t>(sincePause)),
                           schedulerlog::MakeField("healthChecks", attempts),
                           schedulerlog::MakeField("drops", drops),
-                          schedulerlog::MakeField(
-                            "droppedTotal", mDroppedVBlank.load(std::memory_order_acquire))});
+                          schedulerlog::MakeField("droppedTotal", mDroppedVBlank.load(std::memory_order_acquire))});
 
   PublishPaintBudgetSnapshot("vblank.resume", "Resume", 0, nowTick, true);
 
@@ -2010,7 +1993,7 @@ void IGraphicsWin::PerformVBlankHealthCheck()
                             schedulerlog::MakeBoolField("durationThreshold", durationExceeded)});
   }
 
-  std::shared_ptr<VBlankSubscription> subscription;
+  std::shared_ptr<::VBlankSubscription> subscription;
   {
     std::lock_guard<std::mutex> lock(mVBlankSubscriptionMutex);
     subscription = mVBlankSubscription;
@@ -3419,9 +3402,10 @@ bool IGraphicsWin::ApplyIdlePacingModeString(const std::string& modeString, bool
                           schedulerlog::MakeStringField("previous", IdlePacingModeToString(previous)),
                           schedulerlog::MakeBoolField("fromConfig", fromConfig),
                           schedulerlog::MakeBoolField("changed", changed),
-                          schedulerlog::MakeStringField(
-                            "configPath",
-                            (fromConfig && mIdlePacingConfigPath.GetLength() > 0) ? mIdlePacingConfigPath.Get() : "")});
+                          schedulerlog::MakeStringField("configPath",
+                                                        (fromConfig && mIdlePacingConfigPath.GetLength() > 0)
+                                                          ? mIdlePacingConfigPath.Get()
+                                                          : ""))});
 #else
   (void) effective;
   (void) previous;
@@ -5379,7 +5363,7 @@ void IGraphicsWin::StartVBlankThread(HWND hWnd)
   auto subscription = VBlankDispatchWorker::Instance().Subscribe(this, hWnd);
   {
     std::lock_guard<std::mutex> lock(mVBlankSubscriptionMutex);
-    mVBlankSubscription = subscription;
+    mVBlankSubscription = std::move(subscription);
   }
   DWORD threadId = 0;
   mVBlankThread = ::CreateThread(NULL, 0, VBlankRun, this, 0, &threadId);
@@ -5395,7 +5379,7 @@ void IGraphicsWin::StopVBlankThread()
     }
 
     mVBlankShutdown = true;
-    std::shared_ptr<VBlankSubscription> subscription;
+    std::shared_ptr<::VBlankSubscription> subscription;
     {
       std::lock_guard<std::mutex> lock(mVBlankSubscriptionMutex);
       subscription = mVBlankSubscription;
@@ -5597,7 +5581,7 @@ void IGraphicsWin::VBlankNotify()
     return;
   }
 
-  std::shared_ptr<VBlankSubscription> subscription;
+  std::shared_ptr<::VBlankSubscription> subscription;
   {
     std::lock_guard<std::mutex> lock(mVBlankSubscriptionMutex);
     subscription = mVBlankSubscription;

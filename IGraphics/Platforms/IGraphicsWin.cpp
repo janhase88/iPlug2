@@ -568,9 +568,6 @@ bool ParseIdlePacingModeStringInternal(const std::string& value, EIdlePacingMode
   return false;
 }
 
-namespace
-{
-
 struct PaintBudgetTelemetryAccumulator
 {
   std::atomic<int> maxInflight{0};
@@ -893,8 +890,6 @@ void UpdatePaintBudgetCounters(const IGraphicsWin::InstancePaintBudget::Snapshot
   AtomicMax(telemetry.maxInflight, snapshot.pendingPaints);
   AtomicMax(telemetry.maxQueued, snapshot.queuedInvalidates);
 }
-} // namespace
-
 } // namespace
 
 } // namespace iplug::igraphics

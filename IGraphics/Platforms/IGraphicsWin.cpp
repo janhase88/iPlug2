@@ -51,9 +51,6 @@
   #define CCSIZEOF_STRUCT(structname, member) (__builtin_offsetof(structname, member) + sizeof(((structname*)0)->member))
 #endif
 
-using namespace iplug;
-using namespace igraphics;
-
 #pragma warning(disable : 4244) // Pointer size cast mismatch.
 #pragma warning(disable : 4312) // Pointer size cast mismatch.
 #pragma warning(disable : 4311) // Pointer size cast mismatch.
@@ -71,6 +68,9 @@ static double sFPS = 0.0;
 #define WM_VBLANK (WM_USER + 1)
 #define WM_VBLANK_TICK WM_VBLANK
 
+namespace iplug::igraphics
+{
+
 struct VBlankSubscription
 {
   IGraphicsWin* owner = nullptr;
@@ -87,6 +87,9 @@ void IncrementVBlankQueueWarnCount();
 void RecordVBlankDispatchSuccess();
 void RecordVBlankLatencySample(uint32_t latencyMicros);
 void UpdateVBlankDropTotal(uint32_t total);
+uint64_t SteadyClockMicros(const std::chrono::steady_clock::time_point& tp);
+template <typename T>
+void AtomicMax(std::atomic<T>& target, T value);
 
 #if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
 void RecordParamQueueTelemetry(int outstanding, schedulerlog::Severity severity);
@@ -439,6 +442,11 @@ private:
   std::chrono::steady_clock::time_point mLastDispatchTimestamp{};
   bool mHaveLastDispatchTimestamp = false;
 };
+
+} // namespace iplug::igraphics
+
+using namespace iplug;
+using namespace igraphics;
 
 #ifdef IGRAPHICS_GL3
 typedef HGLRC(WINAPI* PFNWGLCREATECONTEXTATTRIBSARBPROC)(HDC hDC, HGLRC hShareContext, const int* attribList);
@@ -1993,7 +2001,7 @@ void IGraphicsWin::PerformVBlankHealthCheck()
                             schedulerlog::MakeBoolField("durationThreshold", durationExceeded)});
   }
 
-  std::shared_ptr<::VBlankSubscription> subscription;
+  std::shared_ptr<VBlankSubscription> subscription;
   {
     std::lock_guard<std::mutex> lock(mVBlankSubscriptionMutex);
     subscription = mVBlankSubscription;
@@ -5379,7 +5387,7 @@ void IGraphicsWin::StopVBlankThread()
     }
 
     mVBlankShutdown = true;
-    std::shared_ptr<::VBlankSubscription> subscription;
+    std::shared_ptr<VBlankSubscription> subscription;
     {
       std::lock_guard<std::mutex> lock(mVBlankSubscriptionMutex);
       subscription = mVBlankSubscription;
@@ -5581,7 +5589,7 @@ void IGraphicsWin::VBlankNotify()
     return;
   }
 
-  std::shared_ptr<::VBlankSubscription> subscription;
+  std::shared_ptr<VBlankSubscription> subscription;
   {
     std::lock_guard<std::mutex> lock(mVBlankSubscriptionMutex);
     subscription = mVBlankSubscription;

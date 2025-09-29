@@ -158,11 +158,14 @@ void IPlugAPIBase::SendParameterValueFromAPI(int paramIdx, double value, bool no
 
 void IPlugAPIBase::OnTimer(Timer& t)
 {
-  IGraphics* pGraphics = nullptr;
-  IGraphics::HostIdleTickInfo idleInfo;
+#if !defined(NO_IGRAPHICS)
+  iplug::igraphics::IGraphics* pGraphics = nullptr;
+  iplug::igraphics::IGraphics::HostIdleTickInfo idleInfo{};
+#endif
 
   if (HasUI())
   {
+#if !defined(NO_IGRAPHICS)
     pGraphics = GetUI();
 
     if (pGraphics)
@@ -171,6 +174,7 @@ void IPlugAPIBase::OnTimer(Timer& t)
       idleInfo.midiQueueDepthBefore = static_cast<int>(mMidiMsgsFromProcessor.ElementsAvailable());
       idleInfo.sysexQueueDepthBefore = static_cast<int>(mSysExDataFromProcessor.ElementsAvailable());
     }
+#endif
 
 // VST3 ********************************************************************************
 #if defined VST3P_API || defined VST3_API
@@ -178,8 +182,10 @@ void IPlugAPIBase::OnTimer(Timer& t)
     {
       IMidiMsg msg;
       mMidiMsgsFromProcessor.Pop(msg);
+#if !defined(NO_IGRAPHICS)
       if (pGraphics)
         ++idleInfo.midiMessagesProcessed;
+#endif
 #ifdef VST3P_API // distributed
       TransmitMidiMsgFromProcessor(msg);
 #else
@@ -191,8 +197,10 @@ void IPlugAPIBase::OnTimer(Timer& t)
     {
       SysExData msg;
       mSysExDataFromProcessor.Pop(msg);
+#if !defined(NO_IGRAPHICS)
       if (pGraphics)
         ++idleInfo.sysexMessagesProcessed;
+#endif
 #ifdef VST3P_API // distributed
       TransmitSysExDataFromProcessor(msg);
 #else
@@ -205,8 +213,10 @@ void IPlugAPIBase::OnTimer(Timer& t)
     {
       ParamTuple p;
       mParamChangeFromProcessor.Pop(p);
+#if !defined(NO_IGRAPHICS)
       if (pGraphics)
         ++idleInfo.paramMessagesProcessed;
+#endif
       SendParameterValueFromDelegate(p.idx, p.value, false);
     }
 
@@ -214,8 +224,10 @@ void IPlugAPIBase::OnTimer(Timer& t)
     {
       IMidiMsg msg;
       mMidiMsgsFromProcessor.Pop(msg);
+#if !defined(NO_IGRAPHICS)
       if (pGraphics)
         ++idleInfo.midiMessagesProcessed;
+#endif
       SendMidiMsgFromDelegate(msg);
     }
 
@@ -223,8 +235,10 @@ void IPlugAPIBase::OnTimer(Timer& t)
     {
       SysExData msg;
       mSysExDataFromProcessor.Pop(msg);
+#if !defined(NO_IGRAPHICS)
       if (pGraphics)
         ++idleInfo.sysexMessagesProcessed;
+#endif
       SendSysexMsgFromDelegate({msg.mOffset, msg.mData, msg.mSize});
     }
 #endif
@@ -232,6 +246,7 @@ void IPlugAPIBase::OnTimer(Timer& t)
 
   OnIdle();
 
+#if !defined(NO_IGRAPHICS)
   if (pGraphics)
   {
     idleInfo.paramQueueDepthAfter = static_cast<int>(mParamChangeFromProcessor.ElementsAvailable());
@@ -250,6 +265,7 @@ void IPlugAPIBase::OnTimer(Timer& t)
 
     pGraphics->OnHostIdleTick(idleInfo);
   }
+#endif
 }
 
 void IPlugAPIBase::SendMidiMsgFromUI(const IMidiMsg& msg)

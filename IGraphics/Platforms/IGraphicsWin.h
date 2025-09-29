@@ -39,8 +39,6 @@
 #endif
 
 
-struct VBlankSubscription;
-
 BEGIN_IPLUG_NAMESPACE
 BEGIN_IGRAPHICS_NAMESPACE
 
@@ -277,7 +275,7 @@ private:
   void PerformVBlankHealthCheck();
   void RequestSwapchainSoftReset(ULONGLONG sincePauseMs);
 
-  friend class ::VBlankDispatchWorker;
+  friend class VBlankDispatchWorker;
 
   HWND mVBlankWindow = 0;                      // Window to post messages to for every vsync
   volatile bool mVBlankShutdown = false;       // Flag to indiciate that the vsync thread should shutdown
@@ -289,7 +287,7 @@ private:
   DWORD mLastProcessedVBlank = 0;              // last WM_VBLANK tick serviced by the UI thread
   int mVBlankSkipUntil = 0;                    // support for skipping vblank notification if the last callback took too long.
                                               // This helps keep the message pump clear in the case of overload.
-  std::shared_ptr<::VBlankSubscription> mVBlankSubscription; // worker registration for bounded WM_VBLANK dispatch
+  std::shared_ptr<VBlankSubscription> mVBlankSubscription; // worker registration for bounded WM_VBLANK dispatch
   mutable std::mutex mVBlankSubscriptionMutex;             // guards subscription access across threads
   std::atomic<uint32_t> mDroppedVBlank{0};     // number of ticks abandoned after exhausting retries
   std::atomic<bool> mVBlankPaused{false};

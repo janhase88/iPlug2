@@ -1162,7 +1162,7 @@ public:
 
   virtual void OnHostIdleTick(const HostIdleTickInfo& info)
   {
-    OnHostIdleTick();
+    DispatchLegacyHostIdleTick();
     (void) info;
   }
 
@@ -1922,8 +1922,22 @@ private:
   IKeyHandlerFunc mKeyHandlerFunc = nullptr;
   IDisplayTickFunc mDisplayTickFunc = nullptr;
   IUIAppearanceChangedFunc mAppearanceChangedFunc = nullptr;
-  
+
+  bool mDispatchingLegacyHostIdleTick = false;
+
 protected:
+  void DispatchLegacyHostIdleTick()
+  {
+    if (mDispatchingLegacyHostIdleTick)
+      return;
+
+    mDispatchingLegacyHostIdleTick = true;
+    this->IGraphics::OnHostIdleTick();
+    mDispatchingLegacyHostIdleTick = false;
+  }
+
+  bool IsDispatchingLegacyHostIdleTick() const { return mDispatchingLegacyHostIdleTick; }
+
   virtual void OnIdlePacingModeChanged(EIdlePacingMode mode) {}
 
   IGEditorDelegate* mDelegate;

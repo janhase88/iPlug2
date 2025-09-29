@@ -3106,6 +3106,9 @@ void IGraphicsWin::OnIdlePacingModeChanged(EIdlePacingMode mode)
 
 void IGraphicsWin::OnHostIdleTick()
 {
+  if (IsDispatchingLegacyHostIdleTick())
+    return;
+
   HostIdleTickInfo info{};
   OnHostIdleTick(info);
 }
@@ -3236,7 +3239,7 @@ void IGraphicsWin::OnHostIdleTick(const HostIdleTickInfo& info)
   (void) info;
 #endif
 
-  IGRAPHICS_DRAW_CLASS::OnHostIdleTick(info);
+  DispatchLegacyHostIdleTick();
 }
 
 void IGraphicsWin::InitializeIdlePacingConfiguration()

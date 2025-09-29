@@ -20,15 +20,29 @@
 #include "IPlugParameter.h"
 #include "IPlugPaths.h"
 #include "IPopupMenuControl.h"
+#include "SchedulerLogging.h"
 #if defined IGRAPHICS_VULKAN
   #include "VulkanLogging.h"
 #endif
 
 #include <VersionHelpers.h>
 #include <algorithm>
+#include <array>
+#include <cctype>
+#include <chrono>
+#include <cmath>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
+#include <fstream>
+#include <mutex>
+#include <random>
+#include <sstream>
+#include <limits>
+#include <thread>
+#include <vector>
 #include <wininet.h>
 
 #if defined __clang__
@@ -49,10 +63,372 @@ static double sFPS = 0.0;
 
 #define PARAM_EDIT_ID 99
 #define IPLUG_TIMER_ID 2
+#define IPLUG_VBLANK_HEALTH_TIMER_ID 3
 
 #define TOOLTIPWND_MAXWIDTH 250
 
 #define WM_VBLANK (WM_USER + 1)
+#define WM_VBLANK_TICK WM_VBLANK
+
+struct VBlankSubscription
+{
+  IGraphicsWin* owner = nullptr;
+  HWND window = nullptr;
+  std::atomic<bool> active{false};
+};
+
+namespace
+{
+constexpr uint32_t kVBlankQueueDepthWarningMultiplier = 2;
+
+void RecordVBlankQueueDepthSample(uint32_t depth);
+void IncrementVBlankQueueWarnCount();
+void RecordVBlankDispatchSuccess();
+void RecordVBlankLatencySample(uint32_t latencyMicros);
+void UpdateVBlankDropTotal(uint32_t total);
+
+#if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+void RecordParamQueueTelemetry(int outstanding, schedulerlog::Severity severity);
+void RecordSchedulerSample(const IGraphicsWin::InstancePaintBudget::Snapshot& snapshot,
+                           const IGraphicsWin::SchedulerState* scheduler,
+                           uint32_t droppedVBlank,
+                           bool forgivenessActive);
+#endif
+} // namespace
+
+class VBlankDispatchWorker
+{
+public:
+  static VBlankDispatchWorker& Instance()
+  {
+    static VBlankDispatchWorker sInstance;
+    return sInstance;
+  }
+
+  std::shared_ptr<VBlankSubscription> Subscribe(IGraphicsWin* owner, HWND window)
+  {
+    if (!owner || !window)
+      return {};
+
+    auto subscription = std::make_shared<VBlankSubscription>();
+    subscription->owner = owner;
+    subscription->window = window;
+    subscription->active.store(true, std::memory_order_release);
+
+    {
+      std::lock_guard<std::mutex> lock(mMutex);
+      EnsureThreadLocked();
+      ++mActiveSubscriptions;
+    }
+
+    mCond.notify_all();
+    return subscription;
+  }
+
+  void Unsubscribe(std::shared_ptr<VBlankSubscription> subscription)
+  {
+    if (!subscription)
+      return;
+
+    subscription->active.store(false, std::memory_order_release);
+
+    bool joinNeeded = false;
+
+    {
+      std::lock_guard<std::mutex> lock(mMutex);
+      if (mActiveSubscriptions > 0)
+        --mActiveSubscriptions;
+
+      if (mActiveSubscriptions == 0)
+      {
+        RequestStopLocked();
+        joinNeeded = true;
+      }
+    }
+
+    mCond.notify_all();
+
+    if (joinNeeded && mThread.joinable())
+    {
+      mThread.join();
+    }
+  }
+
+  bool QueueDispatch(const std::shared_ptr<VBlankSubscription>& subscription, DWORD dispatchCount)
+  {
+    if (!subscription)
+      return false;
+
+    DispatchRequest request;
+    request.subscription = subscription;
+    request.dispatchCount = dispatchCount;
+    request.attempt = 0;
+    request.due = std::chrono::steady_clock::now();
+    request.enqueuedAt = request.due;
+
+    uint32_t depth = 0;
+    uint32_t highWater = 0;
+    uint32_t activeSubscriptions = 0;
+    uint32_t threshold = 0;
+    bool emitWarn = false;
+
+    {
+      std::lock_guard<std::mutex> lock(mMutex);
+      if (!subscription->active.load(std::memory_order_acquire) || mShutdown)
+        return false;
+
+      mQueue.push_back(std::move(request));
+      depth = static_cast<uint32_t>(mQueue.size());
+      auto& stored = mQueue.back();
+      stored.queueDepthAtEnqueue = depth;
+      stored.activeSubscriptions = mActiveSubscriptions;
+      activeSubscriptions = std::max<uint32_t>(mActiveSubscriptions, 1);
+      threshold = activeSubscriptions * kVBlankQueueDepthWarningMultiplier;
+      if (depth > mQueueHighWater)
+      {
+        mQueueHighWater = depth;
+      }
+      highWater = mQueueHighWater;
+      if (depth > threshold && depth > mLastQueueWarnDepth)
+      {
+        emitWarn = true;
+        mLastQueueWarnDepth = depth;
+      }
+      mCond.notify_all();
+    }
+
+    RecordVBlankQueueDepthSample(depth);
+
+    if (emitWarn)
+    {
+      IncrementVBlankQueueWarnCount();
+      schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "worker", schedulerlog::Severity::kWarn,
+                             schedulerlog::MakeField("event", "queue_depth"),
+                             schedulerlog::MakeField("depth", depth),
+                             schedulerlog::MakeField("threshold", threshold),
+                             schedulerlog::MakeField("activeEditors", activeSubscriptions),
+                             schedulerlog::MakeField("highWater", highWater));
+    }
+
+    return true;
+  }
+
+private:
+  struct DispatchRequest
+  {
+    std::shared_ptr<VBlankSubscription> subscription;
+    DWORD dispatchCount = 0;
+    uint32_t attempt = 0;
+    std::chrono::steady_clock::time_point due{};
+    std::chrono::steady_clock::time_point enqueuedAt{};
+    uint32_t queueDepthAtEnqueue = 0;
+    uint32_t queueDepthAtDequeue = 0;
+    uint32_t activeSubscriptions = 0;
+  };
+
+  VBlankDispatchWorker()
+    : mRng(static_cast<uint32_t>(GetTickCount64()))
+  {
+  }
+
+  void EnsureThreadLocked()
+  {
+    if (!mThread.joinable())
+    {
+      mShutdown = false;
+      mThread = std::thread(&VBlankDispatchWorker::DispatchLoop, this);
+    }
+    else if (mShutdown)
+    {
+      mShutdown = false;
+    }
+  }
+
+  void RequestStopLocked()
+  {
+    mShutdown = true;
+  }
+
+  void DispatchLoop()
+  {
+    std::unique_lock<std::mutex> lock(mMutex);
+
+    while (true)
+    {
+      if (mShutdown && mQueue.empty())
+        break;
+
+      if (mQueue.empty())
+      {
+        mCond.wait(lock);
+        continue;
+      }
+
+      auto now = std::chrono::steady_clock::now();
+      DispatchRequest& next = mQueue.front();
+
+      if (next.due > now)
+      {
+        mCond.wait_until(lock, next.due);
+        continue;
+      }
+
+      DispatchRequest request = std::move(next);
+      request.queueDepthAtDequeue = static_cast<uint32_t>(mQueue.size());
+      mQueue.pop_front();
+
+      auto subscription = request.subscription;
+
+      lock.unlock();
+
+      bool shouldRetry = false;
+      if (subscription && subscription->active.load(std::memory_order_acquire))
+      {
+        shouldRetry = HandleDispatch(request);
+      }
+
+      lock.lock();
+
+      if (shouldRetry && !mShutdown)
+      {
+        uint32_t depth = 0;
+        uint32_t highWater = 0;
+        uint32_t activeSubscriptions = 0;
+        uint32_t threshold = 0;
+        bool emitWarn = false;
+
+        mQueue.push_back(std::move(request));
+        depth = static_cast<uint32_t>(mQueue.size());
+        auto& stored = mQueue.back();
+        if (stored.queueDepthAtEnqueue == 0)
+        {
+          stored.queueDepthAtEnqueue = depth;
+        }
+        if (stored.activeSubscriptions == 0)
+        {
+          stored.activeSubscriptions = mActiveSubscriptions;
+        }
+        activeSubscriptions = std::max<uint32_t>(mActiveSubscriptions, 1);
+        threshold = activeSubscriptions * kVBlankQueueDepthWarningMultiplier;
+        if (depth > mQueueHighWater)
+        {
+          mQueueHighWater = depth;
+        }
+        highWater = mQueueHighWater;
+        if (depth > threshold && depth > mLastQueueWarnDepth)
+        {
+          emitWarn = true;
+          mLastQueueWarnDepth = depth;
+        }
+        mCond.notify_all();
+
+        RecordVBlankQueueDepthSample(depth);
+
+        if (emitWarn)
+        {
+          IncrementVBlankQueueWarnCount();
+          schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "worker", schedulerlog::Severity::kWarn,
+                                 schedulerlog::MakeField("event", "queue_depth"),
+                                 schedulerlog::MakeField("depth", depth),
+                                 schedulerlog::MakeField("threshold", threshold),
+                                 schedulerlog::MakeField("activeEditors", activeSubscriptions),
+                                 schedulerlog::MakeField("highWater", highWater));
+        }
+      }
+    }
+  }
+
+  bool HandleDispatch(DispatchRequest& request)
+  {
+    auto subscription = request.subscription;
+    IGraphicsWin* owner = subscription ? subscription->owner : nullptr;
+    if (!owner || subscription->window == nullptr || owner->mVBlankShutdown)
+      return false;
+
+    DWORD dispatchCount = owner->mQueuedVBlank.load(std::memory_order_acquire);
+    if (dispatchCount == 0)
+      return false;
+    request.dispatchCount = dispatchCount;
+
+    if (::PostMessageW(subscription->window, WM_VBLANK_TICK, dispatchCount, 0))
+    {
+      owner->mPendingSyncVBlank.store(0, std::memory_order_release);
+      RecordVBlankDispatchSuccess();
+
+      const auto dispatchTime = std::chrono::steady_clock::now();
+      double sinceLastMs = 0.0;
+      if (mHaveLastDispatchTimestamp)
+      {
+        sinceLastMs = std::chrono::duration<double, std::milli>(dispatchTime - mLastDispatchTimestamp).count();
+      }
+      mLastDispatchTimestamp = dispatchTime;
+      mHaveLastDispatchTimestamp = true;
+
+      owner->RecordVBlankDispatchPosted(dispatchCount, SteadyClockMicros(request.enqueuedAt));
+
+      schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "worker", schedulerlog::Severity::kInfo,
+                             schedulerlog::MakeField("event", "dispatch"),
+                             schedulerlog::MakeField("count", request.dispatchCount),
+                             schedulerlog::MakeField("retryCount", request.attempt),
+                             schedulerlog::MakeField("queueDepth", request.queueDepthAtDequeue),
+                             schedulerlog::MakeField("enqueueDepth", request.queueDepthAtEnqueue),
+                             schedulerlog::MakeField("activeEditors", std::max<uint32_t>(request.activeSubscriptions, 1)),
+                             schedulerlog::MakeField("sinceLastMs", sinceLastMs));
+      return false;
+    }
+
+    const DWORD error = GetLastError();
+    ++request.attempt;
+
+    owner->mPendingSyncVBlank.store(dispatchCount, std::memory_order_release);
+
+    if (request.attempt == 1)
+    {
+      request.due = std::chrono::steady_clock::now();
+      return true;
+    }
+
+    if (request.attempt == 2)
+    {
+      std::uniform_int_distribution<int> jitterDist(0, 1);
+      request.due = std::chrono::steady_clock::now() + std::chrono::milliseconds(2 + jitterDist(mRng));
+      return true;
+    }
+
+    if (request.attempt == 3)
+    {
+      request.due = std::chrono::steady_clock::now() + std::chrono::milliseconds(5);
+      return true;
+    }
+
+    const uint32_t dropTotal = owner->mDroppedVBlank.fetch_add(1, std::memory_order_acq_rel) + 1;
+    UpdateVBlankDropTotal(dropTotal);
+    owner->mVBlankMessagePending.store(false, std::memory_order_release);
+    owner->mPendingSyncVBlank.store(0, std::memory_order_release);
+
+    schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "worker", schedulerlog::Severity::kWarn,
+                           schedulerlog::MakeField("event", "drop"),
+                           schedulerlog::MakeField("count", request.dispatchCount),
+                           schedulerlog::MakeField("error", error),
+                           schedulerlog::MakeField("droppedTotal", dropTotal));
+
+    owner->EnterVBlankPaused(request.dispatchCount, error);
+
+    return false;
+  }
+
+  std::mutex mMutex;
+  std::condition_variable mCond;
+  std::deque<DispatchRequest> mQueue;
+  std::thread mThread;
+  bool mShutdown = false;
+  uint32_t mActiveSubscriptions = 0;
+  std::mt19937 mRng;
+  uint32_t mQueueHighWater = 0;
+  uint32_t mLastQueueWarnDepth = 0;
+  std::chrono::steady_clock::time_point mLastDispatchTimestamp{};
+  bool mHaveLastDispatchTimestamp = false;
+};
 
 #ifdef IGRAPHICS_GL3
 typedef HGLRC(WINAPI* PFNWGLCREATECONTEXTATTRIBSARBPROC)(HDC hDC, HGLRC hShareContext, const int* attribList);
@@ -70,11 +446,1281 @@ typedef BOOL(WINAPI* PFNWGLSWAPINTERVALEXTPROC)(int interval);
 
 StaticStorage<IGraphicsWin::InstalledFont> IGraphicsWin::sPlatformFontCache;
 StaticStorage<HFontHolder> IGraphicsWin::sHFontCache;
-std::atomic<int> IGraphicsWin::sPendingPaintCount{0};
-
 #pragma mark - Mouse and tablet helpers
 
 extern float GetScaleForHWND(HWND hWnd);
+
+namespace
+{
+constexpr ULONGLONG kBurstCoolingWindowMs = 32ULL; // ~2 VSYNC intervals at 60Hz
+constexpr ULONGLONG kStaleDrainThresholdMs = 24ULL; // 1.5 VSYNC intervals
+constexpr UINT kVBlankHealthCheckIntervalMs = 15U;
+constexpr ULONGLONG kVBlankPauseSoftResetThresholdMs = 250ULL;
+constexpr uint32_t kVBlankHealthAlertAttemptThreshold = 6U;
+constexpr ULONGLONG kVBlankHealthAlertDurationMs = 180ULL;
+
+std::string TrimCopy(const std::string& value)
+{
+  size_t begin = 0;
+  size_t end = value.size();
+
+  while (begin < end && std::isspace(static_cast<unsigned char>(value[begin])))
+    ++begin;
+
+  while (end > begin && std::isspace(static_cast<unsigned char>(value[end - 1])))
+    --end;
+
+  return value.substr(begin, end - begin);
+}
+
+std::string ToLowerCopy(const std::string& value)
+{
+  std::string lowered(value);
+  std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return lowered;
+}
+
+const char* IdlePacingConfigStatusToString(IGraphicsWin::IdlePacingConfigStatus status)
+{
+  switch (status)
+  {
+    case IGraphicsWin::IdlePacingConfigStatus::kOk: return "ok";
+    case IGraphicsWin::IdlePacingConfigStatus::kFileMissing: return "file_missing";
+    case IGraphicsWin::IdlePacingConfigStatus::kMissingKey: return "missing_key";
+    case IGraphicsWin::IdlePacingConfigStatus::kInvalidValue: return "invalid_value";
+  }
+  return "unknown";
+}
+
+bool ExtractJsonStringForKey(const std::string& json, const std::string& key, std::string& valueOut)
+{
+  const std::string loweredJson = ToLowerCopy(json);
+  const std::string loweredKey = ToLowerCopy("\"" + key + "\"");
+
+  size_t keyPos = loweredJson.find(loweredKey);
+  if (keyPos == std::string::npos)
+    return false;
+
+  size_t colonPos = loweredJson.find(':', keyPos + loweredKey.size());
+  if (colonPos == std::string::npos)
+    return false;
+
+  size_t valueBegin = loweredJson.find_first_of("\"'", colonPos + 1);
+  if (valueBegin == std::string::npos)
+    return false;
+
+  const char quote = loweredJson[valueBegin];
+  size_t valueEnd = loweredJson.find(quote, valueBegin + 1);
+  if (valueEnd == std::string::npos)
+    return false;
+
+  valueOut = json.substr(valueBegin + 1, valueEnd - valueBegin - 1);
+  return true;
+}
+
+bool ParseIdlePacingModeStringInternal(const std::string& value, EIdlePacingMode& modeOut)
+{
+  const std::string trimmed = TrimCopy(value);
+  if (trimmed.empty())
+    return false;
+
+  const std::string lowered = ToLowerCopy(trimmed);
+
+  if (lowered == "legacy")
+  {
+    modeOut = EIdlePacingMode::Legacy;
+    return true;
+  }
+
+  if (lowered == "adaptive")
+  {
+    modeOut = EIdlePacingMode::Adaptive;
+    return true;
+  }
+
+  if (lowered == "locked60" || lowered == "locked60hz" || lowered == "locked_60hz")
+  {
+    modeOut = EIdlePacingMode::Locked60Hz;
+    return true;
+  }
+
+  return false;
+}
+
+namespace
+{
+
+struct PaintBudgetTelemetryAccumulator
+{
+  std::atomic<int> maxInflight{0};
+  std::atomic<int> maxQueued{0};
+  std::atomic<uint64_t> histogram[4];
+  std::atomic<uint64_t> samples{0};
+  std::atomic<uint32_t> vblankQueueHighWater{0};
+  std::atomic<uint32_t> vblankQueueWarnCount{0};
+  std::atomic<uint64_t> vblankDispatches{0};
+  std::atomic<uint32_t> vblankLatencyIndex{0};
+  std::atomic<uint32_t> vblankLatencySamples{0};
+  std::array<std::atomic<uint32_t>, IGraphicsWin::kVBlankLatencySampleCount> vblankLatencyUs;
+  std::atomic<uint32_t> schedulerSampleCursor{0};
+  std::atomic<uint32_t> schedulerSampleCount{0};
+  std::array<std::atomic<uint32_t>, IGraphicsWin::kSchedulerSampleWindow> queuedInvalidatesWindow;
+  std::array<std::atomic<uint32_t>, IGraphicsWin::kSchedulerSampleWindow> pendingPaintsWindow;
+  std::array<std::atomic<uint32_t>, IGraphicsWin::kSchedulerSampleWindow> pendingFlushWindow;
+  std::array<std::atomic<uint32_t>, IGraphicsWin::kSchedulerSampleWindow> idleStretchHundredthsWindow;
+  std::array<std::atomic<uint32_t>, IGraphicsWin::kSchedulerSampleWindow> paramQueueOutstandingWindow;
+  std::array<std::atomic<uint32_t>, IGraphicsWin::kSchedulerSampleWindow> droppedVBlankWindow;
+  std::array<std::atomic<uint32_t>, IGraphicsWin::kSchedulerSampleWindow> idleForgivenessWindow;
+  std::array<std::atomic<uint32_t>, IGraphicsWin::kSchedulerSampleWindow> idleTimerBehindWindow;
+  std::atomic<uint32_t> pendingFlushHighWater{0};
+  std::atomic<uint32_t> idleStretchHighWaterHundredths{100};
+  std::atomic<uint32_t> paramQueueHighWater{0};
+  std::atomic<uint32_t> paramQueueSampleCount{0};
+  std::atomic<uint32_t> paramQueueErrorSamples{0};
+  std::atomic<uint32_t> droppedVBlankTotal{0};
+
+  PaintBudgetTelemetryAccumulator()
+  {
+    for (auto& bucket : histogram)
+    {
+      bucket.store(0, std::memory_order_relaxed);
+    }
+
+    for (auto& sample : vblankLatencyUs)
+    {
+      sample.store(0, std::memory_order_relaxed);
+    }
+
+    for (auto& sample : queuedInvalidatesWindow)
+    {
+      sample.store(0, std::memory_order_relaxed);
+    }
+
+    for (auto& sample : pendingPaintsWindow)
+    {
+      sample.store(0, std::memory_order_relaxed);
+    }
+
+    for (auto& sample : pendingFlushWindow)
+    {
+      sample.store(0, std::memory_order_relaxed);
+    }
+
+    for (auto& sample : idleStretchHundredthsWindow)
+    {
+      sample.store(100, std::memory_order_relaxed);
+    }
+
+    for (auto& sample : paramQueueOutstandingWindow)
+    {
+      sample.store(0, std::memory_order_relaxed);
+    }
+
+    for (auto& sample : droppedVBlankWindow)
+    {
+      sample.store(0, std::memory_order_relaxed);
+    }
+
+    for (auto& sample : idleForgivenessWindow)
+    {
+      sample.store(0, std::memory_order_relaxed);
+    }
+
+    for (auto& sample : idleTimerBehindWindow)
+    {
+      sample.store(0, std::memory_order_relaxed);
+    }
+  }
+};
+
+PaintBudgetTelemetryAccumulator& PaintBudgetTelemetry()
+{
+  static PaintBudgetTelemetryAccumulator accumulator;
+  return accumulator;
+}
+
+void RecordVBlankQueueDepthSample(uint32_t depth)
+{
+  auto& telemetry = PaintBudgetTelemetry();
+  AtomicMax(telemetry.vblankQueueHighWater, depth);
+}
+
+void IncrementVBlankQueueWarnCount()
+{
+  PaintBudgetTelemetry().vblankQueueWarnCount.fetch_add(1, std::memory_order_acq_rel);
+}
+
+void RecordVBlankDispatchSuccess()
+{
+  PaintBudgetTelemetry().vblankDispatches.fetch_add(1, std::memory_order_acq_rel);
+}
+
+void RecordVBlankLatencySample(uint32_t latencyMicros)
+{
+  auto& telemetry = PaintBudgetTelemetry();
+  const uint32_t index = telemetry.vblankLatencyIndex.fetch_add(1, std::memory_order_acq_rel);
+  telemetry.vblankLatencyUs[index % IGraphicsWin::kVBlankLatencySampleCount].store(latencyMicros, std::memory_order_release);
+  const uint32_t sampleCount = std::min<uint32_t>(index + 1, static_cast<uint32_t>(IGraphicsWin::kVBlankLatencySampleCount));
+  AtomicMax(telemetry.vblankLatencySamples, sampleCount);
+}
+
+void UpdateVBlankDropTotal(uint32_t total)
+{
+  PaintBudgetTelemetry().droppedVBlankTotal.store(total, std::memory_order_release);
+}
+
+#if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+void RecordParamQueueTelemetry(int outstanding, schedulerlog::Severity severity)
+{
+  auto& telemetry = PaintBudgetTelemetry();
+  const uint32_t depth = static_cast<uint32_t>(std::max(outstanding, 0));
+  AtomicMax(telemetry.paramQueueHighWater, depth);
+  telemetry.paramQueueSampleCount.fetch_add(1, std::memory_order_acq_rel);
+  if (severity == schedulerlog::Severity::kError)
+  {
+    telemetry.paramQueueErrorSamples.fetch_add(1, std::memory_order_acq_rel);
+  }
+}
+
+void RecordSchedulerSample(const IGraphicsWin::InstancePaintBudget::Snapshot& snapshot,
+                           const IGraphicsWin::SchedulerState* scheduler,
+                           uint32_t droppedVBlank,
+                           bool forgivenessActive)
+{
+  auto& telemetry = PaintBudgetTelemetry();
+  const uint32_t cursor = telemetry.schedulerSampleCursor.fetch_add(1, std::memory_order_acq_rel);
+  const size_t slot = cursor % IGraphicsWin::kSchedulerSampleWindow;
+  const uint32_t sampleCount = std::min<uint32_t>(cursor + 1, static_cast<uint32_t>(IGraphicsWin::kSchedulerSampleWindow));
+  telemetry.schedulerSampleCount.store(sampleCount, std::memory_order_release);
+
+  telemetry.queuedInvalidatesWindow[slot].store(static_cast<uint32_t>(std::max(snapshot.queuedInvalidates, 0)),
+                                                std::memory_order_release);
+  telemetry.pendingPaintsWindow[slot].store(static_cast<uint32_t>(std::max(snapshot.pendingPaints, 0)),
+                                            std::memory_order_release);
+  telemetry.droppedVBlankWindow[slot].store(droppedVBlank, std::memory_order_release);
+  telemetry.idleForgivenessWindow[slot].store(forgivenessActive ? 1u : 0u, std::memory_order_release);
+
+  uint32_t pendingFlush = 0;
+  uint32_t idleStretchHundredths = 100;
+  uint32_t paramOutstanding = 0;
+  uint32_t timerBehind = 0;
+
+  if (scheduler)
+  {
+    pendingFlush = static_cast<uint32_t>(std::max(scheduler->pendingParamFlush, 0));
+    const double stretch = std::max(scheduler->idleStretchFactor, 0.0);
+    idleStretchHundredths = static_cast<uint32_t>(std::lround(stretch * 100.0));
+    paramOutstanding = static_cast<uint32_t>(std::max(scheduler->lastIdleOutstanding, 0));
+    timerBehind = scheduler->lastIdleTimerBehind ? 1u : 0u;
+    AtomicMax(telemetry.pendingFlushHighWater, pendingFlush);
+    AtomicMax(telemetry.idleStretchHighWaterHundredths, idleStretchHundredths);
+    AtomicMax(telemetry.paramQueueHighWater, paramOutstanding);
+  }
+
+  telemetry.pendingFlushWindow[slot].store(pendingFlush, std::memory_order_release);
+  telemetry.idleStretchHundredthsWindow[slot].store(idleStretchHundredths, std::memory_order_release);
+  telemetry.paramQueueOutstandingWindow[slot].store(paramOutstanding, std::memory_order_release);
+  telemetry.idleTimerBehindWindow[slot].store(timerBehind, std::memory_order_release);
+  telemetry.droppedVBlankTotal.store(droppedVBlank, std::memory_order_release);
+}
+#else
+void RecordParamQueueTelemetry(int, schedulerlog::Severity)
+{
+}
+
+void RecordSchedulerSample(const IGraphicsWin::InstancePaintBudget::Snapshot& snapshot,
+                           const void*,
+                           uint32_t droppedVBlank,
+                           bool forgivenessActive)
+{
+  auto& telemetry = PaintBudgetTelemetry();
+  const uint32_t cursor = telemetry.schedulerSampleCursor.fetch_add(1, std::memory_order_acq_rel);
+  const size_t slot = cursor % IGraphicsWin::kSchedulerSampleWindow;
+  const uint32_t sampleCount = std::min<uint32_t>(cursor + 1, static_cast<uint32_t>(IGraphicsWin::kSchedulerSampleWindow));
+  telemetry.schedulerSampleCount.store(sampleCount, std::memory_order_release);
+  telemetry.queuedInvalidatesWindow[slot].store(static_cast<uint32_t>(std::max(snapshot.queuedInvalidates, 0)),
+                                                std::memory_order_release);
+  telemetry.pendingPaintsWindow[slot].store(static_cast<uint32_t>(std::max(snapshot.pendingPaints, 0)),
+                                            std::memory_order_release);
+  telemetry.pendingFlushWindow[slot].store(0, std::memory_order_release);
+  telemetry.idleStretchHundredthsWindow[slot].store(100, std::memory_order_release);
+  telemetry.paramQueueOutstandingWindow[slot].store(0, std::memory_order_release);
+  telemetry.droppedVBlankWindow[slot].store(droppedVBlank, std::memory_order_release);
+  telemetry.idleForgivenessWindow[slot].store(forgivenessActive ? 1u : 0u, std::memory_order_release);
+  telemetry.idleTimerBehindWindow[slot].store(0, std::memory_order_release);
+  telemetry.droppedVBlankTotal.store(droppedVBlank, std::memory_order_release);
+}
+#endif
+uint64_t SteadyClockMicros(const std::chrono::steady_clock::time_point& tp)
+{
+  return static_cast<uint64_t>(
+    std::chrono::duration_cast<std::chrono::microseconds>(tp.time_since_epoch()).count());
+}
+
+template <typename T>
+void AtomicMax(std::atomic<T>& target, T value)
+{
+  T current = target.load(std::memory_order_relaxed);
+  while (current < value
+         && !target.compare_exchange_weak(current, value, std::memory_order_release, std::memory_order_relaxed))
+  {
+  }
+}
+
+int HistogramBucketForCount(int count)
+{
+  if (count <= 0)
+    return -1;
+  if (count <= 2)
+    return 0;
+  if (count <= 5)
+    return 1;
+  if (count <= 8)
+    return 2;
+  return 3;
+}
+
+RECT UnionRects(const std::vector<RECT>& rects)
+{
+  RECT result{0, 0, 0, 0};
+  if (rects.empty())
+  {
+    return result;
+  }
+
+  result = rects[0];
+  for (size_t idx = 1; idx < rects.size(); ++idx)
+  {
+    result.left = std::min(result.left, rects[idx].left);
+    result.top = std::min(result.top, rects[idx].top);
+    result.right = std::max(result.right, rects[idx].right);
+    result.bottom = std::max(result.bottom, rects[idx].bottom);
+  }
+  return result;
+}
+
+const char* DecisionKindLabel(IGraphicsWin::InstancePaintBudget::DecisionKind kind)
+{
+  using DecisionKind = IGraphicsWin::InstancePaintBudget::DecisionKind;
+  switch (kind)
+  {
+    case DecisionKind::kNeedsDrain:     return "NeedsDrain";
+    case DecisionKind::kBurstCooling:   return "BurstCooling";
+    case DecisionKind::kBudgetExceeded: return "BudgetExceeded";
+    case DecisionKind::kStaleDrain:     return "StaleDrain";
+    case DecisionKind::kTierEscalation: return "TierEscalation";
+    case DecisionKind::kDeferredFlush:  return "DeferredFlush";
+    case DecisionKind::kDrainComplete:  return "DrainComplete";
+    case DecisionKind::kNone:
+    default:
+      return "Idle";
+  }
+}
+
+#if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+const char* IdleStateLabel(IGraphicsWin::SchedulerState::ThrottleState state)
+{
+  using ThrottleState = IGraphicsWin::SchedulerState::ThrottleState;
+  switch (state)
+  {
+    case ThrottleState::kBurstCooling: return "BurstCooling";
+    case ThrottleState::kIdleCatchUp:  return "IdleCatchUp";
+    case ThrottleState::kNormal:
+    default:
+      return "Normal";
+  }
+}
+#endif
+
+schedulerlog::Severity SeverityForSnapshot(const IGraphicsWin::InstancePaintBudget::Snapshot& snapshot)
+{
+  const int budget = std::max(snapshot.budget, 1);
+  const int queued = snapshot.queuedInvalidates;
+  const bool overBudget = queued > (budget * 3) / 2;
+  if (overBudget && snapshot.overBudgetConsecutive > 2)
+  {
+    return schedulerlog::Severity::kWarn;
+  }
+
+  if (queued > budget * 2)
+  {
+    return schedulerlog::Severity::kWarn;
+  }
+
+  if (snapshot.needsDrain)
+  {
+    return schedulerlog::Severity::kInfo;
+  }
+
+  return schedulerlog::Severity::kDebug;
+}
+
+void RecordPaintBudgetHistogram(const IGraphicsWin::InstancePaintBudget::Snapshot& snapshot)
+{
+  auto& telemetry = PaintBudgetTelemetry();
+  const int bucket = HistogramBucketForCount(snapshot.lastDecisionRegionCount);
+  if (bucket >= 0 && bucket < 4)
+  {
+    telemetry.histogram[bucket].fetch_add(1, std::memory_order_relaxed);
+  }
+}
+
+void UpdatePaintBudgetCounters(const IGraphicsWin::InstancePaintBudget::Snapshot& snapshot)
+{
+  auto& telemetry = PaintBudgetTelemetry();
+  telemetry.samples.fetch_add(1, std::memory_order_relaxed);
+  AtomicMax(telemetry.maxInflight, snapshot.pendingPaints);
+  AtomicMax(telemetry.maxQueued, snapshot.queuedInvalidates);
+}
+} // namespace
+
+#if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+void IGraphicsWin::SchedulerState::Reset(EIdlePacingMode mode, ULONGLONG nowTick)
+{
+  throttleState = ThrottleState::kNormal;
+  idleStretchFactor = 1.0;
+  pendingParamFlush = 0;
+  forgivenessDeadlineTick = 0;
+  lastIdleTick = nowTick;
+  stateEnteredTick = nowTick;
+  lastIdleOutstanding = 0;
+  lastIdleParamDepthBefore = 0;
+  lastIdleParamDepthAfter = 0;
+  lastIdleProcessed = 0;
+  lastIdleElapsedMs = 0.0;
+  lastIdleTimerBehind = false;
+  lastIdleSampleTick = nowTick;
+  paramQueueAboveThresholdSince = 0;
+  paramQueueHighWater = 0;
+
+  switch (mode)
+  {
+    case EIdlePacingMode::Locked60Hz:
+      baseCadenceMs = kIdleCadenceLocked60Ms;
+      break;
+    case EIdlePacingMode::Adaptive:
+    case EIdlePacingMode::Legacy:
+    default:
+      baseCadenceMs = kIdleCadenceLegacyMs;
+      break;
+  }
+
+  idleCadenceTargetMs = baseCadenceMs;
+}
+
+void IGraphicsWin::InitializeIdleSchedulerState()
+{
+  ResetIdleSchedulerState(GetIdlePacingMode(), GetTickCount64());
+}
+
+void IGraphicsWin::ResetIdleSchedulerState(EIdlePacingMode mode, ULONGLONG nowTick)
+{
+  mSchedulerState.Reset(mode, nowTick);
+
+  schedulerlog::LogEvent(schedulerlog::kCategoryIdleState, "mode_reset", schedulerlog::Severity::kInfo,
+    {
+      schedulerlog::MakeStringField("mode", IdlePacingModeToString(mode)),
+      schedulerlog::MakeStringField("state", IdleStateLabel(mSchedulerState.throttleState)),
+      schedulerlog::MakeField("targetMs", mSchedulerState.idleCadenceTargetMs),
+      schedulerlog::MakeField("baseMs", mSchedulerState.baseCadenceMs)
+    });
+}
+
+int IGraphicsWin::ComputeIdleCadenceMs(double stretchFactor) const
+{
+  const double rawCadence = static_cast<double>(mSchedulerState.baseCadenceMs) * stretchFactor;
+  int target = static_cast<int>(std::lround(rawCadence));
+  const int minCadence = std::max(kIdleCadenceLocked60Ms, mSchedulerState.baseCadenceMs / 2);
+  const int maxCadence = std::max(mSchedulerState.baseCadenceMs * 3, mSchedulerState.baseCadenceMs);
+  target = std::clamp(target, minCadence, maxCadence);
+  return target;
+}
+
+void IGraphicsWin::EnterIdleState(SchedulerState::ThrottleState newState,
+                                  double stretchFactor,
+                                  const char* stage,
+                                  ULONGLONG nowTick,
+                                  std::initializer_list<schedulerlog::Field> extraFields)
+{
+  const SchedulerState::ThrottleState previousState = mSchedulerState.throttleState;
+  const double previousStretch = mSchedulerState.idleStretchFactor;
+
+  mSchedulerState.throttleState = newState;
+  mSchedulerState.idleStretchFactor = stretchFactor;
+  mSchedulerState.idleCadenceTargetMs = ComputeIdleCadenceMs(stretchFactor);
+  mSchedulerState.stateEnteredTick = nowTick;
+
+  const bool stateChanged = (previousState != newState) || (std::abs(previousStretch - stretchFactor) > 0.01);
+
+  if (!stateChanged && extraFields.size() == 0)
+  {
+    return;
+  }
+
+  std::vector<schedulerlog::Field> fields;
+  fields.reserve(8 + extraFields.size());
+  fields.push_back(schedulerlog::MakeStringField("mode", IdlePacingModeToString(GetIdlePacingMode())));
+  fields.push_back(schedulerlog::MakeStringField("state", IdleStateLabel(newState)));
+  fields.push_back(schedulerlog::MakeField("stretch", stretchFactor));
+  fields.push_back(schedulerlog::MakeField("targetMs", mSchedulerState.idleCadenceTargetMs));
+  fields.push_back(schedulerlog::MakeField("baseMs", mSchedulerState.baseCadenceMs));
+  fields.push_back(schedulerlog::MakeField("queuedInvalidates", mInstancePaintBudget.QueuedInvalidates()));
+  fields.push_back(schedulerlog::MakeField("pendingPaints", mInstancePaintBudget.PendingPaints()));
+  if (mSchedulerState.pendingParamFlush > 0)
+  {
+    fields.push_back(schedulerlog::MakeField("pendingParamFlush", mSchedulerState.pendingParamFlush));
+  }
+
+  for (const auto& extra : extraFields)
+  {
+    if (extra.key && extra.key[0] != '\0')
+    {
+      fields.push_back(extra);
+    }
+  }
+
+  schedulerlog::Severity severity = schedulerlog::Severity::kInfo;
+  if (newState == SchedulerState::ThrottleState::kBurstCooling)
+  {
+    severity = schedulerlog::Severity::kWarn;
+  }
+
+  schedulerlog::LogEvent(schedulerlog::kCategoryIdleState, stage ? stage : "state_change", severity, fields);
+}
+
+void IGraphicsWin::OnIdleThrottleTriggered(ULONGLONG nowTick, InstancePaintBudget::DecisionKind reason, int regionCount)
+{
+  if (GetIdlePacingMode() != EIdlePacingMode::Adaptive)
+  {
+    return;
+  }
+
+  mSchedulerState.pendingParamFlush = std::max(mSchedulerState.pendingParamFlush, 1);
+  mSchedulerState.forgivenessDeadlineTick = 0;
+
+  EnterIdleState(SchedulerState::ThrottleState::kBurstCooling,
+                 kBurstCoolingStretch,
+                 "burst_cooling",
+                 nowTick,
+                 {
+                   schedulerlog::MakeStringField("reason", DecisionKindLabel(reason)),
+                   schedulerlog::MakeField("regions", regionCount)
+                 });
+}
+
+void IGraphicsWin::OnIdleDrainComplete(ULONGLONG nowTick, int drainedRegions)
+{
+  if (GetIdlePacingMode() != EIdlePacingMode::Adaptive)
+  {
+    return;
+  }
+
+  const int pendingPaints = mInstancePaintBudget.PendingPaints();
+  const int queued = mInstancePaintBudget.QueuedInvalidates();
+  const int budget = std::max(mInstancePaintBudget.BudgetCeiling(), 1);
+  const bool belowHalfBudget = (pendingPaints <= std::max(1, budget / 2)) && (queued <= std::max(1, budget / 2));
+  const bool needsDrain = mInstancePaintBudget.NeedsDrain();
+
+  if (mSchedulerState.throttleState == SchedulerState::ThrottleState::kBurstCooling && belowHalfBudget && !needsDrain)
+  {
+    mSchedulerState.pendingParamFlush = std::max(mSchedulerState.pendingParamFlush, 1);
+    EnterIdleState(SchedulerState::ThrottleState::kIdleCatchUp,
+                   kIdleCatchUpStretch,
+                   "burst_recovered",
+                   nowTick,
+                   {
+                     schedulerlog::MakeField("drainedRegions", drainedRegions),
+                     schedulerlog::MakeField("pendingPaints", pendingPaints),
+                     schedulerlog::MakeField("queuedInvalidates", queued)
+                   });
+    return;
+  }
+
+  if (mSchedulerState.throttleState == SchedulerState::ThrottleState::kIdleCatchUp && needsDrain)
+  {
+    EnterIdleState(SchedulerState::ThrottleState::kBurstCooling,
+                   kBurstCoolingStretch,
+                   "catchup_reverted",
+                   nowTick,
+                   {
+                     schedulerlog::MakeField("pendingPaints", pendingPaints),
+                     schedulerlog::MakeField("queuedInvalidates", queued)
+                   });
+    return;
+  }
+
+  if (mSchedulerState.throttleState != SchedulerState::ThrottleState::kNormal && !needsDrain && pendingPaints == 0 && queued == 0)
+  {
+    mSchedulerState.pendingParamFlush = 0;
+    EnterIdleState(SchedulerState::ThrottleState::kNormal,
+                   1.0,
+                   "drain_idle",
+                   nowTick,
+                   {});
+  }
+}
+
+bool IGraphicsWin::MaybeExtendIdleForgiveness(ULONGLONG nowTick,
+                                              int requestMs,
+                                              const HostIdleTickInfo& info,
+                                              const char* reason,
+                                              schedulerlog::Severity severity)
+{
+  if (requestMs <= 0)
+  {
+    return false;
+  }
+
+  const int clamped = std::max(kIdleForgivenessMinMs, std::min(requestMs, kIdleForgivenessMaxMs));
+  const ULONGLONG candidate = nowTick + static_cast<ULONGLONG>(clamped);
+
+  if (candidate <= mSchedulerState.forgivenessDeadlineTick)
+  {
+    return false;
+  }
+
+  mSchedulerState.forgivenessDeadlineTick = candidate;
+
+  schedulerlog::LogEvent(schedulerlog::kCategoryIdleForgiveness, reason, severity,
+    {
+      schedulerlog::MakeField("durationMs", clamped),
+      schedulerlog::MakeField("deadlineTick", static_cast<uint64_t>(candidate)),
+      schedulerlog::MakeField("paramQueued", info.paramQueueDepthBefore),
+      schedulerlog::MakeField("paramProcessed", info.paramMessagesProcessed),
+      schedulerlog::MakeField("paramRemaining", info.paramQueueDepthAfter),
+      schedulerlog::MakeField("pendingFlush", std::max(mSchedulerState.pendingParamFlush, 0))
+    });
+
+  return true;
+}
+
+void IGraphicsWin::MaybeExpireIdleForgiveness(ULONGLONG nowTick,
+                                              bool forgivenessExtended,
+                                              const HostIdleTickInfo& info)
+{
+  if (forgivenessExtended)
+  {
+    return;
+  }
+
+  if (mSchedulerState.forgivenessDeadlineTick == 0)
+  {
+    return;
+  }
+
+  if (nowTick < mSchedulerState.forgivenessDeadlineTick)
+  {
+    return;
+  }
+
+  schedulerlog::LogEvent(schedulerlog::kCategoryIdleForgiveness, "expired", schedulerlog::Severity::kDebug,
+    {
+      schedulerlog::MakeField("deadlineTick", static_cast<uint64_t>(mSchedulerState.forgivenessDeadlineTick)),
+      schedulerlog::MakeField("paramQueued", info.paramQueueDepthAfter),
+      schedulerlog::MakeField("pendingFlush", std::max(mSchedulerState.pendingParamFlush, 0))
+    });
+
+  mSchedulerState.forgivenessDeadlineTick = 0;
+}
+#endif
+
+IGraphicsWin::SchedulerTelemetrySnapshot IGraphicsWin::GetSchedulerTelemetrySnapshot()
+{
+  SchedulerTelemetrySnapshot snapshot;
+  auto& telemetry = PaintBudgetTelemetry();
+  snapshot.maxInflight = telemetry.maxInflight.load(std::memory_order_acquire);
+  snapshot.maxQueued = telemetry.maxQueued.load(std::memory_order_acquire);
+  for (int i = 0; i < 4; ++i)
+  {
+    snapshot.histogram[i] = telemetry.histogram[i].load(std::memory_order_acquire);
+  }
+  snapshot.sampleCount = telemetry.samples.load(std::memory_order_acquire);
+  snapshot.vblankQueueHighWater = telemetry.vblankQueueHighWater.load(std::memory_order_acquire);
+  snapshot.vblankQueueWarnCount = telemetry.vblankQueueWarnCount.load(std::memory_order_acquire);
+  snapshot.vblankDispatches = telemetry.vblankDispatches.load(std::memory_order_acquire);
+  snapshot.vblankLatencySampleCount = telemetry.vblankLatencySamples.load(std::memory_order_acquire);
+  for (size_t i = 0; i < kVBlankLatencySampleCount; ++i)
+  {
+    const uint32_t micros = telemetry.vblankLatencyUs[i].load(std::memory_order_acquire);
+    snapshot.vblankLatencyMs[i] = static_cast<double>(micros) / 1000.0;
+  }
+  snapshot.pendingFlushHighWater = telemetry.pendingFlushHighWater.load(std::memory_order_acquire);
+  snapshot.idleStretchHighWaterHundredths = telemetry.idleStretchHighWaterHundredths.load(std::memory_order_acquire);
+  snapshot.paramQueueHighWater = telemetry.paramQueueHighWater.load(std::memory_order_acquire);
+  snapshot.paramQueueSampleCount = telemetry.paramQueueSampleCount.load(std::memory_order_acquire);
+  snapshot.paramQueueErrorSamples = telemetry.paramQueueErrorSamples.load(std::memory_order_acquire);
+  snapshot.droppedVBlankTotal = telemetry.droppedVBlankTotal.load(std::memory_order_acquire);
+  snapshot.schedulerSampleCursor = telemetry.schedulerSampleCursor.load(std::memory_order_acquire);
+  snapshot.schedulerSampleCount = telemetry.schedulerSampleCount.load(std::memory_order_acquire);
+  for (size_t i = 0; i < kSchedulerSampleWindow; ++i)
+  {
+    snapshot.queuedInvalidatesWindow[i] = telemetry.queuedInvalidatesWindow[i].load(std::memory_order_acquire);
+    snapshot.pendingPaintsWindow[i] = telemetry.pendingPaintsWindow[i].load(std::memory_order_acquire);
+    snapshot.pendingFlushWindow[i] = telemetry.pendingFlushWindow[i].load(std::memory_order_acquire);
+    snapshot.idleStretchHundredthsWindow[i] = telemetry.idleStretchHundredthsWindow[i].load(std::memory_order_acquire);
+    snapshot.paramQueueOutstandingWindow[i] = telemetry.paramQueueOutstandingWindow[i].load(std::memory_order_acquire);
+    snapshot.droppedVBlankWindow[i] = telemetry.droppedVBlankWindow[i].load(std::memory_order_acquire);
+    snapshot.idleForgivenessWindow[i] = telemetry.idleForgivenessWindow[i].load(std::memory_order_acquire);
+    snapshot.idleTimerBehindWindow[i] = telemetry.idleTimerBehindWindow[i].load(std::memory_order_acquire);
+  }
+  return snapshot;
+}
+
+void IGraphicsWin::ResetSchedulerTelemetrySnapshot()
+{
+  auto& telemetry = PaintBudgetTelemetry();
+  telemetry.maxInflight.store(0, std::memory_order_release);
+  telemetry.maxQueued.store(0, std::memory_order_release);
+  for (auto& bucket : telemetry.histogram)
+  {
+    bucket.store(0, std::memory_order_release);
+  }
+  telemetry.samples.store(0, std::memory_order_release);
+  telemetry.vblankQueueHighWater.store(0, std::memory_order_release);
+  telemetry.vblankQueueWarnCount.store(0, std::memory_order_release);
+  telemetry.vblankDispatches.store(0, std::memory_order_release);
+  telemetry.vblankLatencyIndex.store(0, std::memory_order_release);
+  telemetry.vblankLatencySamples.store(0, std::memory_order_release);
+  for (auto& sample : telemetry.vblankLatencyUs)
+  {
+    sample.store(0, std::memory_order_release);
+  }
+  telemetry.schedulerSampleCursor.store(0, std::memory_order_release);
+  telemetry.schedulerSampleCount.store(0, std::memory_order_release);
+  telemetry.pendingFlushHighWater.store(0, std::memory_order_release);
+  telemetry.idleStretchHighWaterHundredths.store(100, std::memory_order_release);
+  telemetry.paramQueueHighWater.store(0, std::memory_order_release);
+  telemetry.paramQueueSampleCount.store(0, std::memory_order_release);
+  telemetry.paramQueueErrorSamples.store(0, std::memory_order_release);
+  telemetry.droppedVBlankTotal.store(0, std::memory_order_release);
+  for (auto& sample : telemetry.queuedInvalidatesWindow)
+  {
+    sample.store(0, std::memory_order_release);
+  }
+  for (auto& sample : telemetry.pendingPaintsWindow)
+  {
+    sample.store(0, std::memory_order_release);
+  }
+  for (auto& sample : telemetry.pendingFlushWindow)
+  {
+    sample.store(0, std::memory_order_release);
+  }
+  for (auto& sample : telemetry.idleStretchHundredthsWindow)
+  {
+    sample.store(100, std::memory_order_release);
+  }
+  for (auto& sample : telemetry.paramQueueOutstandingWindow)
+  {
+    sample.store(0, std::memory_order_release);
+  }
+  for (auto& sample : telemetry.droppedVBlankWindow)
+  {
+    sample.store(0, std::memory_order_release);
+  }
+  for (auto& sample : telemetry.idleForgivenessWindow)
+  {
+    sample.store(0, std::memory_order_release);
+  }
+  for (auto& sample : telemetry.idleTimerBehindWindow)
+  {
+    sample.store(0, std::memory_order_release);
+  }
+}
+
+void IGraphicsWin::InstancePaintBudget::Configure(int widthPixels, int heightPixels)
+{
+  const int clampedWidth = std::max(widthPixels, 0);
+  const int clampedHeight = std::max(heightPixels, 0);
+  const int64_t pixels = static_cast<int64_t>(clampedWidth) * static_cast<int64_t>(clampedHeight);
+
+  if (pixels <= 0)
+  {
+    mSurfacePixels.store(0, std::memory_order_release);
+    mBudgetCeiling.store(3, std::memory_order_release);
+    return;
+  }
+
+  const int previousPixels = mSurfacePixels.load(std::memory_order_acquire);
+  if (previousPixels == pixels)
+  {
+    return;
+  }
+
+  mSurfacePixels.store(static_cast<int>(pixels), std::memory_order_release);
+
+  const double budget = 3.0 + std::ceil(static_cast<double>(pixels) / 1500000.0);
+  mBudgetCeiling.store(static_cast<int>(budget), std::memory_order_release);
+}
+
+void IGraphicsWin::InstancePaintBudget::Reset()
+{
+  mInflight.store(0, std::memory_order_release);
+  mQueuedInvalidates.store(0, std::memory_order_release);
+  mBudgetCeiling.store(3, std::memory_order_release);
+  mNeedsDrain.store(false, std::memory_order_release);
+  mBurstCooling.store(false, std::memory_order_release);
+  mBurstCoolingDeadline.store(0, std::memory_order_release);
+  mLastDrainTick.store(0, std::memory_order_release);
+  mSurfacePixels.store(0, std::memory_order_release);
+  mDeferredRegion = RECT{0, 0, 0, 0};
+  mHasDeferredRegion = false;
+  mOverBudgetConsecutive.store(0, std::memory_order_release);
+  mLastDecision.store(static_cast<int>(DecisionKind::kNone), std::memory_order_release);
+  mLastDecisionRegions.store(0, std::memory_order_release);
+  mLastDecisionWidth.store(0, std::memory_order_release);
+  mLastDecisionHeight.store(0, std::memory_order_release);
+  mLastDecisionTick.store(0, std::memory_order_release);
+}
+
+void IGraphicsWin::InstancePaintBudget::OnInvalidateScheduled(int regionCount)
+{
+  const int clamped = std::max(regionCount, 1);
+  mInflight.fetch_add(1, std::memory_order_acq_rel);
+  mQueuedInvalidates.fetch_add(clamped, std::memory_order_acq_rel);
+  mNeedsDrain.store(false, std::memory_order_release);
+}
+
+void IGraphicsWin::InstancePaintBudget::OnAdditionalInvalidationQueued(int regionCount)
+{
+  const int clamped = std::max(regionCount, 1);
+  mQueuedInvalidates.fetch_add(clamped, std::memory_order_acq_rel);
+}
+
+void IGraphicsWin::InstancePaintBudget::OnPaintCompleted(int drainedRegions, ULONGLONG nowTick)
+{
+  const int drained = std::max(drainedRegions, 1);
+
+  const int prevInflight = mInflight.fetch_sub(1, std::memory_order_acq_rel);
+  if (prevInflight <= 0)
+  {
+    mInflight.store(0, std::memory_order_release);
+  }
+
+  const int prevQueued = mQueuedInvalidates.fetch_sub(drained, std::memory_order_acq_rel);
+  if (prevQueued <= drained)
+  {
+    mQueuedInvalidates.store(0, std::memory_order_release);
+  }
+
+  UpdateLastDrainTick(nowTick);
+  ClearNeedsDrainIfRecovered();
+
+  const int budget = std::max(BudgetCeiling(), 1);
+  if (QueuedInvalidates() <= (budget / 2))
+  {
+    ClearBurstCooling();
+  }
+}
+
+int IGraphicsWin::InstancePaintBudget::PendingPaints() const
+{
+  return mInflight.load(std::memory_order_acquire);
+}
+
+int IGraphicsWin::InstancePaintBudget::QueuedInvalidates() const
+{
+  return mQueuedInvalidates.load(std::memory_order_acquire);
+}
+
+int IGraphicsWin::InstancePaintBudget::BudgetCeiling() const
+{
+  return mBudgetCeiling.load(std::memory_order_acquire);
+}
+
+bool IGraphicsWin::InstancePaintBudget::NeedsDrain() const
+{
+  return mNeedsDrain.load(std::memory_order_acquire);
+}
+
+bool IGraphicsWin::InstancePaintBudget::MarkNeedsDrain()
+{
+  const bool previous = mNeedsDrain.exchange(true, std::memory_order_acq_rel);
+  return !previous;
+}
+
+bool IGraphicsWin::InstancePaintBudget::ClearNeedsDrainIfRecovered()
+{
+  if ((QueuedInvalidates() < BudgetCeiling()) && (PendingPaints() < BudgetCeiling()))
+  {
+    const bool previous = mNeedsDrain.exchange(false, std::memory_order_acq_rel);
+    return previous;
+  }
+  return false;
+}
+
+bool IGraphicsWin::InstancePaintBudget::EngageBurstCooling(ULONGLONG deadlineTick)
+{
+  const bool wasActive = mBurstCooling.exchange(true, std::memory_order_acq_rel);
+  mBurstCoolingDeadline.store(deadlineTick, std::memory_order_release);
+  return !wasActive;
+}
+
+bool IGraphicsWin::InstancePaintBudget::BurstCoolingActive(ULONGLONG nowTick) const
+{
+  if (!mBurstCooling.load(std::memory_order_acquire))
+  {
+    return false;
+  }
+
+  const ULONGLONG deadline = mBurstCoolingDeadline.load(std::memory_order_acquire);
+  if (deadline == 0)
+  {
+    return true;
+  }
+
+  if (nowTick <= deadline)
+  {
+    return true;
+  }
+
+  // Deadline expired; clear burst cooling state lazily.
+  mBurstCooling.store(false, std::memory_order_release);
+  mBurstCoolingDeadline.store(0, std::memory_order_release);
+  return false;
+}
+
+bool IGraphicsWin::InstancePaintBudget::ClearBurstCooling()
+{
+  const bool wasActive = mBurstCooling.exchange(false, std::memory_order_acq_rel);
+  mBurstCoolingDeadline.store(0, std::memory_order_release);
+  return wasActive;
+}
+
+bool IGraphicsWin::InstancePaintBudget::ShouldThrottle(int additionalRegions, ULONGLONG nowTick, DecisionKind& outReason) const
+{
+  outReason = DecisionKind::kNone;
+
+  if (additionalRegions <= 0)
+  {
+    return false;
+  }
+
+  if (NeedsDrain())
+  {
+    outReason = DecisionKind::kNeedsDrain;
+    return true;
+  }
+
+  if (BurstCoolingActive(nowTick))
+  {
+    outReason = DecisionKind::kBurstCooling;
+    return true;
+  }
+
+  const int budget = BudgetCeiling();
+  const int queued = QueuedInvalidates();
+  const int inflight = PendingPaints();
+
+  if (queued + additionalRegions > budget)
+  {
+    outReason = DecisionKind::kBudgetExceeded;
+    return true;
+  }
+
+  const ULONGLONG lastDrain = mLastDrainTick.load(std::memory_order_acquire);
+  if (inflight > 0 && lastDrain != 0)
+  {
+    const ULONGLONG elapsed = nowTick - lastDrain;
+    if (elapsed > kStaleDrainThresholdMs)
+    {
+      outReason = DecisionKind::kStaleDrain;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+void IGraphicsWin::InstancePaintBudget::MergeDeferredRegion(const RECT& rect)
+{
+  if (!mHasDeferredRegion)
+  {
+    mDeferredRegion = rect;
+    mHasDeferredRegion = true;
+    return;
+  }
+
+  mDeferredRegion.left = std::min(mDeferredRegion.left, rect.left);
+  mDeferredRegion.top = std::min(mDeferredRegion.top, rect.top);
+  mDeferredRegion.right = std::max(mDeferredRegion.right, rect.right);
+  mDeferredRegion.bottom = std::max(mDeferredRegion.bottom, rect.bottom);
+}
+
+bool IGraphicsWin::InstancePaintBudget::ConsumeDeferredRegion(RECT& rectOut)
+{
+  if (!mHasDeferredRegion)
+  {
+    return false;
+  }
+
+  rectOut = mDeferredRegion;
+  mDeferredRegion = RECT{0, 0, 0, 0};
+  mHasDeferredRegion = false;
+  return true;
+}
+
+void IGraphicsWin::InstancePaintBudget::UpdateLastDrainTick(ULONGLONG nowTick)
+{
+  mLastDrainTick.store(nowTick, std::memory_order_release);
+}
+
+void IGraphicsWin::InstancePaintBudget::RecordDecision(DecisionKind kind, int regionCount, const RECT& unionRect, ULONGLONG timestamp)
+{
+  const int clampedCount = std::max(regionCount, 0);
+  const int width = std::max<LONG>(0, unionRect.right - unionRect.left);
+  const int height = std::max<LONG>(0, unionRect.bottom - unionRect.top);
+
+  mLastDecision.store(static_cast<int>(kind), std::memory_order_release);
+  mLastDecisionRegions.store(clampedCount, std::memory_order_release);
+  mLastDecisionWidth.store(width, std::memory_order_release);
+  mLastDecisionHeight.store(height, std::memory_order_release);
+  mLastDecisionTick.store(timestamp, std::memory_order_release);
+}
+
+IGraphicsWin::InstancePaintBudget::DecisionKind IGraphicsWin::InstancePaintBudget::LastDecision() const
+{
+  return static_cast<DecisionKind>(mLastDecision.load(std::memory_order_acquire));
+}
+
+int IGraphicsWin::InstancePaintBudget::LastDecisionRegionCount() const
+{
+  return mLastDecisionRegions.load(std::memory_order_acquire);
+}
+
+int IGraphicsWin::InstancePaintBudget::LastDecisionWidth() const
+{
+  return mLastDecisionWidth.load(std::memory_order_acquire);
+}
+
+int IGraphicsWin::InstancePaintBudget::LastDecisionHeight() const
+{
+  return mLastDecisionHeight.load(std::memory_order_acquire);
+}
+
+ULONGLONG IGraphicsWin::InstancePaintBudget::LastDecisionTick() const
+{
+  return mLastDecisionTick.load(std::memory_order_acquire);
+}
+
+int IGraphicsWin::InstancePaintBudget::OverBudgetConsecutive() const
+{
+  return mOverBudgetConsecutive.load(std::memory_order_acquire);
+}
+
+int IGraphicsWin::InstancePaintBudget::UpdateOverBudgetConsecutive(bool overBudget)
+{
+  if (overBudget)
+  {
+    return mOverBudgetConsecutive.fetch_add(1, std::memory_order_acq_rel) + 1;
+  }
+
+  mOverBudgetConsecutive.store(0, std::memory_order_release);
+  return 0;
+}
+
+int IGraphicsWin::UpdateOverBudgetTracking()
+{
+  const int budget = std::max(mInstancePaintBudget.BudgetCeiling(), 1);
+  const int queued = mInstancePaintBudget.QueuedInvalidates();
+  const bool overBudget = queued > (budget * 3) / 2;
+  return mInstancePaintBudget.UpdateOverBudgetConsecutive(overBudget);
+}
+
+void IGraphicsWin::PublishPaintBudgetSnapshot(const char* stage, const char* reason, int drainedRegions, ULONGLONG nowTick, bool recordHistogram)
+{
+  const int consecutive = UpdateOverBudgetTracking();
+
+  InstancePaintBudget::Snapshot snapshot;
+  mInstancePaintBudget.SnapshotState(snapshot);
+  snapshot.overBudgetConsecutive = consecutive;
+
+  const ULONGLONG now = (nowTick != 0) ? nowTick : GetTickCount64();
+  const ULONGLONG lastDrain = snapshot.lastDrainTick;
+  const uint64_t sinceDrain = (lastDrain != 0 && now >= lastDrain) ? static_cast<uint64_t>(now - lastDrain) : 0ULL;
+
+  if (stage)
+  {
+    schedulerlog::Severity severity = SeverityForSnapshot(snapshot);
+    const char* effectiveReason = reason ? reason : DecisionKindLabel(snapshot.lastDecision);
+    schedulerlog::LogEvent(schedulerlog::kCategoryPaintBudget, stage, severity,
+      {
+        schedulerlog::MakeStringField("reason", effectiveReason),
+        schedulerlog::MakeField("pendingPaints", snapshot.pendingPaints),
+        schedulerlog::MakeField("queuedInvalidates", snapshot.queuedInvalidates),
+        schedulerlog::MakeField("budget", snapshot.budget),
+        schedulerlog::MakeBoolField("needsDrain", snapshot.needsDrain),
+        schedulerlog::MakeBoolField("burstCooling", snapshot.burstCooling),
+        schedulerlog::MakeField("overBudgetConsecutive", snapshot.overBudgetConsecutive),
+        schedulerlog::MakeField("lastDrainMs", sinceDrain),
+        schedulerlog::MakeField("decisionRegions", snapshot.lastDecisionRegionCount),
+        schedulerlog::MakeField("decisionWidth", snapshot.lastDecisionWidth),
+        schedulerlog::MakeField("decisionHeight", snapshot.lastDecisionHeight),
+        schedulerlog::MakeField("drainedRegions", drainedRegions)
+      });
+  }
+
+  if (recordHistogram)
+  {
+    RecordPaintBudgetHistogram(snapshot);
+  }
+
+  UpdateSchedulerHUD(snapshot);
+}
+
+void IGraphicsWin::RefreshPaintBudgetHUD()
+{
+  const int consecutive = UpdateOverBudgetTracking();
+
+  InstancePaintBudget::Snapshot snapshot;
+  mInstancePaintBudget.SnapshotState(snapshot);
+  snapshot.overBudgetConsecutive = consecutive;
+
+  UpdatePaintBudgetCounters(snapshot);
+#if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+  const ULONGLONG nowTick = GetTickCount64();
+  const bool forgivenessActive =
+    (mSchedulerState.forgivenessDeadlineTick != 0 && nowTick < mSchedulerState.forgivenessDeadlineTick);
+  const uint32_t dropped = mDroppedVBlank.load(std::memory_order_acquire);
+  RecordSchedulerSample(snapshot, &mSchedulerState, dropped, forgivenessActive);
+#else
+  const uint32_t dropped = mDroppedVBlank.load(std::memory_order_acquire);
+  RecordSchedulerSample(snapshot, nullptr, dropped, false);
+#endif
+  UpdateSchedulerHUD(snapshot);
+}
+
+void IGraphicsWin::UpdateSchedulerHUD(const InstancePaintBudget::Snapshot& snapshot)
+{
+  if (!ShowingFPSDisplay())
+  {
+    UpdateFPSDisplaySupplementalText(nullptr, nullptr);
+    return;
+  }
+
+  const ULONGLONG nowTick = GetTickCount64();
+  WDL_String primary;
+  primary.SetFormatted(128, "Queued %d/%d Pending %d", snapshot.queuedInvalidates, snapshot.budget, snapshot.pendingPaints);
+
+  if (snapshot.needsDrain)
+  {
+    primary.Append(" !Drain");
+  }
+
+  if (snapshot.burstCooling)
+  {
+    primary.Append(" Burst");
+  }
+
+  if (snapshot.overBudgetConsecutive > 2)
+  {
+    primary.Append(" Over");
+  }
+
+#if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+  primary.Append(" ");
+  primary.AppendFormatted(64, "Idle %s", IdleStateLabel(mSchedulerState.throttleState));
+
+  if (GetIdlePacingMode() == EIdlePacingMode::Adaptive)
+  {
+    primary.AppendFormatted(64, " x%.1f", mSchedulerState.idleStretchFactor);
+    primary.AppendFormatted(64, " %dms", mSchedulerState.idleCadenceTargetMs);
+  }
+  else
+  {
+    primary.AppendFormatted(32, " %dms", mSchedulerState.baseCadenceMs);
+  }
+
+  const int pendingFlush = std::max(mSchedulerState.pendingParamFlush, 0);
+  const int outstanding = std::max(mSchedulerState.lastIdleOutstanding, 0);
+  if (pendingFlush > 0 || outstanding > 0)
+  {
+    primary.AppendFormatted(64, " Param %d", pendingFlush);
+    if (outstanding > 0)
+    {
+      primary.AppendFormatted(32, "/%d", outstanding);
+    }
+  }
+
+  if (mSchedulerState.lastIdleTimerBehind)
+  {
+    primary.Append(" Timer+");
+  }
+
+  if (mSchedulerState.forgivenessDeadlineTick != 0 && nowTick < mSchedulerState.forgivenessDeadlineTick)
+  {
+    const ULONGLONG remaining = mSchedulerState.forgivenessDeadlineTick - nowTick;
+    primary.AppendFormatted(48, " Forg %llums", static_cast<unsigned long long>(remaining));
+  }
+#endif
+
+  WDL_String secondary;
+
+  if (snapshot.lastDecision != InstancePaintBudget::DecisionKind::kNone)
+  {
+    const char* label = DecisionKindLabel(snapshot.lastDecision);
+
+    if (snapshot.lastDecisionRegionCount > 0 && snapshot.lastDecisionWidth > 0 && snapshot.lastDecisionHeight > 0)
+    {
+      secondary.SetFormatted(128, "%s %d@%dx%d", label, snapshot.lastDecisionRegionCount, snapshot.lastDecisionWidth, snapshot.lastDecisionHeight);
+    }
+    else if (snapshot.lastDecisionRegionCount > 0)
+    {
+      secondary.SetFormatted(128, "%s %d", label, snapshot.lastDecisionRegionCount);
+    }
+    else
+    {
+      secondary.Set(label);
+    }
+
+    if (snapshot.lastDecisionTick != 0 && nowTick >= snapshot.lastDecisionTick)
+    {
+      const ULONGLONG age = nowTick - snapshot.lastDecisionTick;
+      secondary.Append(" ");
+      secondary.AppendFormatted(32, "%llums", static_cast<unsigned long long>(age));
+    }
+  }
+
+  const uint32_t vblankQueued = mQueuedVBlank.load(std::memory_order_acquire);
+  const uint32_t vblankDrops = mDroppedVBlank.load(std::memory_order_acquire);
+  const bool vblankPaused = mVBlankPaused.load(std::memory_order_acquire);
+  WDL_String vblankLine;
+  vblankLine.SetFormatted(128, "VBlank q%u d%u", vblankQueued, vblankDrops);
+  if (vblankPaused)
+  {
+    vblankLine.Append(" Paused");
+  }
+
+  if (secondary.GetLength())
+  {
+    secondary.Append(" | ");
+    secondary.Append(vblankLine.Get());
+  }
+  else
+  {
+    secondary.Set(vblankLine.Get());
+  }
+
+  UpdateFPSDisplaySupplementalText(primary.GetLength() ? primary.Get() : nullptr,
+                                   secondary.GetLength() ? secondary.Get() : nullptr);
+}
+
+void IGraphicsWin::InstancePaintBudget::SnapshotState(Snapshot& out) const
+{
+  out.pendingPaints = PendingPaints();
+  out.queuedInvalidates = QueuedInvalidates();
+  out.budget = BudgetCeiling();
+  out.needsDrain = NeedsDrain();
+  out.burstCooling = mBurstCooling.load(std::memory_order_acquire);
+  out.lastDrainTick = mLastDrainTick.load(std::memory_order_acquire);
+  out.burstCoolingDeadline = mBurstCoolingDeadline.load(std::memory_order_acquire);
+  out.lastDecision = static_cast<DecisionKind>(mLastDecision.load(std::memory_order_acquire));
+  out.lastDecisionRegionCount = mLastDecisionRegions.load(std::memory_order_acquire);
+  out.lastDecisionWidth = mLastDecisionWidth.load(std::memory_order_acquire);
+  out.lastDecisionHeight = mLastDecisionHeight.load(std::memory_order_acquire);
+  out.lastDecisionTick = mLastDecisionTick.load(std::memory_order_acquire);
+  out.overBudgetConsecutive = mOverBudgetConsecutive.load(std::memory_order_acquire);
+  out.surfacePixels = mSurfacePixels.load(std::memory_order_acquire);
+}
 
 inline IMouseInfo IGraphicsWin::GetMouseInfo(LPARAM lParam, WPARAM wParam)
 {
@@ -107,6 +1753,44 @@ void IGraphicsWin::CheckTabletInput(UINT msg)
   }
 }
 
+void IGraphicsWin::FlushDeferredInvalidations()
+{
+  if (!mPlugWnd)
+  {
+    return;
+  }
+
+  if (mInstancePaintBudget.NeedsDrain())
+  {
+    return;
+  }
+
+  RECT deferredRect{};
+  if (!mInstancePaintBudget.ConsumeDeferredRegion(deferredRect))
+  {
+    return;
+  }
+
+  const ULONGLONG nowTick = GetTickCount64();
+
+  if (!mPaintPending.exchange(true, std::memory_order_acq_rel))
+  {
+    mInstancePaintBudget.OnInvalidateScheduled(1);
+  }
+  else
+  {
+    mInstancePaintBudget.OnAdditionalInvalidationQueued(1);
+  }
+
+  mInstancePaintBudget.MarkNeedsDrain();
+  mInstancePaintBudget.RecordDecision(InstancePaintBudget::DecisionKind::kDeferredFlush, 1, deferredRect, nowTick);
+  PublishPaintBudgetSnapshot("invalidate.flush", "DeferredFlush", 0, nowTick, true);
+#if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+  OnIdleThrottleTriggered(nowTick, InstancePaintBudget::DecisionKind::kDeferredFlush, 1);
+#endif
+  InvalidateRect(mPlugWnd, &deferredRect, FALSE);
+}
+
 void IGraphicsWin::DestroyEditWindow()
 {
   if (mParamEditWnd)
@@ -118,6 +1802,230 @@ void IGraphicsWin::DestroyEditWindow()
     DeleteObject(mEditFont);
     mEditFont = nullptr;
   }
+}
+
+void IGraphicsWin::RecordVBlankDispatchPosted(DWORD count, uint64_t enqueueMicros)
+{
+  const size_t slot = static_cast<size_t>(count % kVBlankLatencySampleCount);
+  mVBlankLatencyCounts[slot].store(count, std::memory_order_release);
+  mVBlankLatencyMicros[slot].store(enqueueMicros, std::memory_order_release);
+}
+
+void IGraphicsWin::RecordVBlankDispatchHandled(DWORD count, uint64_t handledMicros)
+{
+  const size_t slot = static_cast<size_t>(count % kVBlankLatencySampleCount);
+  const DWORD recordedCount = mVBlankLatencyCounts[slot].load(std::memory_order_acquire);
+  if (recordedCount != count)
+  {
+    return;
+  }
+
+  const uint64_t enqueuedMicros = mVBlankLatencyMicros[slot].load(std::memory_order_acquire);
+  if (enqueuedMicros == 0 || handledMicros <= enqueuedMicros)
+  {
+    return;
+  }
+
+  const uint64_t latencyMicros = handledMicros - enqueuedMicros;
+  const uint32_t clampedMicros = static_cast<uint32_t>(std::min<uint64_t>(latencyMicros, std::numeric_limits<uint32_t>::max()));
+  RecordVBlankLatencySample(clampedMicros);
+
+  const double latencyMs = static_cast<double>(latencyMicros) / 1000.0;
+  schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "ui", schedulerlog::Severity::kInfo,
+                         schedulerlog::MakeField("event", "ack"),
+                         schedulerlog::MakeField("count", count),
+                         schedulerlog::MakeField("latencyMs", latencyMs),
+                         schedulerlog::MakeField("pendingPaints", mInstancePaintBudget.PendingPaints()),
+                         schedulerlog::MakeField("queuedInvalidates", mInstancePaintBudget.QueuedInvalidates()));
+
+  mVBlankLatencyMicros[slot].store(0, std::memory_order_release);
+}
+
+void IGraphicsWin::EnterVBlankPaused(DWORD failedCount, DWORD errorCode)
+{
+  mPendingSyncVBlank.store(failedCount, std::memory_order_release);
+
+  const ULONGLONG nowTick = GetTickCount64();
+  const bool wasPaused = mVBlankPaused.exchange(true, std::memory_order_acq_rel);
+
+  if (!wasPaused)
+  {
+    mVBlankPausedSinceTick = nowTick;
+    mVBlankSoftResetIssued = false;
+    mVBlankConsecutiveDrops.store(1, std::memory_order_release);
+    mVBlankHealthCheckAttempts.store(0, std::memory_order_release);
+
+    schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "worker", schedulerlog::Severity::kWarn,
+                           schedulerlog::MakeField("event", "pause"),
+                           schedulerlog::MakeField("count", failedCount),
+                           schedulerlog::MakeField("error", static_cast<uint32_t>(errorCode)),
+                           schedulerlog::MakeField("droppedTotal", mDroppedVBlank.load(std::memory_order_acquire)));
+
+    PublishPaintBudgetSnapshot("vblank.pause", "Pause", 0, nowTick, true);
+  }
+  else
+  {
+    const uint32_t drops = mVBlankConsecutiveDrops.fetch_add(1, std::memory_order_acq_rel) + 1;
+    schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "worker", schedulerlog::Severity::kInfo,
+                           schedulerlog::MakeField("event", "pause_extend"),
+                           schedulerlog::MakeField("count", failedCount),
+                           schedulerlog::MakeField("error", static_cast<uint32_t>(errorCode)),
+                           schedulerlog::MakeField("drops", drops));
+  }
+
+  StartVBlankHealthTimer();
+}
+
+void IGraphicsWin::ExitVBlankPaused(DWORD recoveredCount, ULONGLONG resumeTick)
+{
+  if (!mVBlankPaused.exchange(false, std::memory_order_acq_rel))
+  {
+    return;
+  }
+
+  StopVBlankHealthTimer();
+
+  const ULONGLONG nowTick = (resumeTick != 0) ? resumeTick : GetTickCount64();
+  const ULONGLONG sincePause =
+    (mVBlankPausedSinceTick != 0 && nowTick >= mVBlankPausedSinceTick) ? (nowTick - mVBlankPausedSinceTick) : 0ULL;
+  const uint32_t attempts = mVBlankHealthCheckAttempts.load(std::memory_order_acquire);
+  const uint32_t drops = mVBlankConsecutiveDrops.exchange(0, std::memory_order_acq_rel);
+
+  schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "ui", schedulerlog::Severity::kInfo,
+                         schedulerlog::MakeField("event", "resume"),
+                         schedulerlog::MakeField("count", recoveredCount),
+                         schedulerlog::MakeField("pausedMs", static_cast<uint32_t>(sincePause)),
+                         schedulerlog::MakeField("healthChecks", attempts),
+                         schedulerlog::MakeField("drops", drops),
+                         schedulerlog::MakeField("droppedTotal", mDroppedVBlank.load(std::memory_order_acquire)));
+
+  PublishPaintBudgetSnapshot("vblank.resume", "Resume", 0, nowTick, true);
+
+  mVBlankPausedSinceTick = 0;
+  mVBlankSoftResetIssued = false;
+
+  FlushDeferredInvalidations();
+}
+
+void IGraphicsWin::StartVBlankHealthTimer()
+{
+  if (!mPlugWnd)
+  {
+    return;
+  }
+
+  if (!mVBlankHealthTimerActive.exchange(true, std::memory_order_acq_rel))
+  {
+    ::SetTimer(mPlugWnd, IPLUG_VBLANK_HEALTH_TIMER_ID, kVBlankHealthCheckIntervalMs, nullptr);
+  }
+}
+
+void IGraphicsWin::StopVBlankHealthTimer()
+{
+  if (!mPlugWnd)
+  {
+    mVBlankHealthTimerActive.store(false, std::memory_order_release);
+    return;
+  }
+
+  if (mVBlankHealthTimerActive.exchange(false, std::memory_order_acq_rel))
+  {
+    ::KillTimer(mPlugWnd, IPLUG_VBLANK_HEALTH_TIMER_ID);
+  }
+}
+
+void IGraphicsWin::PerformVBlankHealthCheck()
+{
+  if (!mVBlankPaused.load(std::memory_order_acquire))
+  {
+    StopVBlankHealthTimer();
+    return;
+  }
+
+  const ULONGLONG nowTick = GetTickCount64();
+  const ULONGLONG sincePause =
+    (mVBlankPausedSinceTick != 0 && nowTick >= mVBlankPausedSinceTick) ? (nowTick - mVBlankPausedSinceTick) : 0ULL;
+  const uint32_t attempt = mVBlankHealthCheckAttempts.fetch_add(1, std::memory_order_acq_rel) + 1;
+  const DWORD latest = mQueuedVBlank.load(std::memory_order_acquire);
+  const uint32_t drops = mVBlankConsecutiveDrops.load(std::memory_order_acquire);
+
+  schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "ui", schedulerlog::Severity::kInfo,
+                         schedulerlog::MakeField("event", "health_check"),
+                         schedulerlog::MakeField("attempt", attempt),
+                         schedulerlog::MakeField("sincePauseMs", static_cast<uint32_t>(sincePause)),
+                         schedulerlog::MakeField("latestCount", latest),
+                         schedulerlog::MakeField("drops", drops));
+
+  const bool attemptsExceeded = attempt >= kVBlankHealthAlertAttemptThreshold;
+  const bool durationExceeded = sincePause >= kVBlankHealthAlertDurationMs;
+  if (attemptsExceeded || durationExceeded)
+  {
+    schedulerlog::LogEvent(schedulerlog::kCategoryAlerts, "ui", schedulerlog::Severity::kError,
+                           schedulerlog::MakeField("event", "vblank_pause_alert"),
+                           schedulerlog::MakeField("attempt", attempt),
+                           schedulerlog::MakeField("sincePauseMs", static_cast<uint32_t>(sincePause)),
+                           schedulerlog::MakeField("latestCount", latest),
+                           schedulerlog::MakeField("drops", drops),
+                           schedulerlog::MakeBoolField("attemptThreshold", attemptsExceeded),
+                           schedulerlog::MakeBoolField("durationThreshold", durationExceeded));
+  }
+
+  auto subscription = std::atomic_load_explicit(&mVBlankSubscription, std::memory_order_acquire);
+  if (subscription && subscription->active.load(std::memory_order_acquire))
+  {
+    mPendingSyncVBlank.store(latest, std::memory_order_release);
+
+    bool queued = true;
+    if (!mVBlankMessagePending.exchange(true, std::memory_order_acq_rel))
+    {
+      queued = VBlankDispatchWorker::Instance().QueueDispatch(subscription, latest);
+      if (!queued)
+      {
+        mVBlankMessagePending.store(false, std::memory_order_release);
+      }
+    }
+
+    if (!queued)
+    {
+      schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "worker", schedulerlog::Severity::kWarn,
+                             schedulerlog::MakeField("event", "health_queue_fail"),
+                             schedulerlog::MakeField("count", latest));
+    }
+  }
+
+  if (!mVBlankSoftResetIssued && sincePause >= kVBlankPauseSoftResetThresholdMs)
+  {
+    RequestSwapchainSoftReset(sincePause);
+    mVBlankSoftResetIssued = true;
+  }
+}
+
+void IGraphicsWin::RequestSwapchainSoftReset(ULONGLONG sincePauseMs)
+{
+#if defined IGRAPHICS_VULKAN
+  if (!mVkDevice || mVkSwapchain.handle == VK_NULL_HANDLE)
+  {
+    schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "ui", schedulerlog::Severity::kInfo,
+                           schedulerlog::MakeField("event", "soft_reset_skipped"),
+                           schedulerlog::MakeField("reason", "no_swapchain"),
+                           schedulerlog::MakeField("pausedMs", static_cast<uint32_t>(sincePauseMs)));
+    return;
+  }
+
+  schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "ui", schedulerlog::Severity::kWarn,
+                         schedulerlog::MakeField("event", "soft_reset_request"),
+                         schedulerlog::MakeField("pausedMs", static_cast<uint32_t>(sincePauseMs)));
+
+  const bool recreated = RecreateVulkanContext();
+  schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "ui", recreated ? schedulerlog::Severity::kInfo : schedulerlog::Severity::kError,
+                         schedulerlog::MakeField("event", recreated ? "soft_reset_complete" : "soft_reset_failed"),
+                         schedulerlog::MakeField("pausedMs", static_cast<uint32_t>(sincePauseMs)));
+#else
+  schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "ui", schedulerlog::Severity::kInfo,
+                         schedulerlog::MakeField("event", "soft_reset_skipped"),
+                         schedulerlog::MakeField("reason", "backend_not_supported"),
+                         schedulerlog::MakeField("pausedMs", static_cast<uint32_t>(sincePauseMs)));
+#endif
 }
 
 void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
@@ -184,6 +2092,9 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
 
       mLastProcessedVBlank = msgCount;
       mVBlankMessagePending.store(false, std::memory_order_release);
+      const uint64_t handledMicros = SteadyClockMicros(std::chrono::steady_clock::now());
+      RecordVBlankDispatchHandled(msgCount, handledMicros);
+      ExitVBlankPaused(msgCount, GetTickCount64());
     }
     else
     {
@@ -238,18 +2149,164 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
   {
     SetAllControlsClean();
 
-    for (int i = 0; i < rects.Size(); i++)
+    const int surfaceWidth = std::max<int>(1, static_cast<int>(std::ceil(WindowWidth() * totalScale)));
+    const int surfaceHeight = std::max<int>(1, static_cast<int>(std::ceil(WindowHeight() * totalScale)));
+    mInstancePaintBudget.Configure(surfaceWidth, surfaceHeight);
+
+    RECT surfaceRect{0, 0, surfaceWidth, surfaceHeight};
+    std::vector<RECT> batchedRects;
+    batchedRects.reserve(rects.Size());
+
+    const double surfaceArea = static_cast<double>(surfaceWidth) * static_cast<double>(surfaceHeight);
+    const double tier2AreaThreshold = surfaceArea * 0.35;
+
+    RECT smallUnion{0, 0, 0, 0};
+    bool hasSmallUnion = false;
+    bool escalateTier1 = false;
+    bool escalateTier2 = false;
+
+    for (int i = 0; i < rects.Size(); ++i)
     {
       IRECT dirtyR = rects.Get(i);
       dirtyR.Scale(totalScale);
       dirtyR.PixelAlign();
+
       RECT r = {(LONG)dirtyR.L, (LONG)dirtyR.T, (LONG)dirtyR.R, (LONG)dirtyR.B};
-      InvalidateRect(mPlugWnd, &r, FALSE);
+      const double width = static_cast<double>(std::max<LONG>(0, r.right - r.left));
+      const double height = static_cast<double>(std::max<LONG>(0, r.bottom - r.top));
+      const double area = width * height;
+
+      if (area <= 4096.0)
+      {
+        if (!hasSmallUnion)
+        {
+          smallUnion = r;
+          hasSmallUnion = true;
+        }
+        else
+        {
+          smallUnion.left = std::min(smallUnion.left, r.left);
+          smallUnion.top = std::min(smallUnion.top, r.top);
+          smallUnion.right = std::max(smallUnion.right, r.right);
+          smallUnion.bottom = std::max(smallUnion.bottom, r.bottom);
+        }
+        continue;
+      }
+
+      if (area >= tier2AreaThreshold || width >= (surfaceWidth - 2) || height >= (surfaceHeight - 2))
+      {
+        escalateTier2 = true;
+        break;
+      }
+
+      batchedRects.push_back(r);
+      if (batchedRects.size() > 4)
+      {
+        escalateTier1 = true;
+      }
     }
 
-    if (!mPaintPending.exchange(true, std::memory_order_acq_rel))
+    if (escalateTier2)
     {
-      sPendingPaintCount.fetch_add(1, std::memory_order_acq_rel);
+      batchedRects.clear();
+      batchedRects.push_back(surfaceRect);
+    }
+    else
+    {
+      if (hasSmallUnion)
+      {
+        batchedRects.push_back(smallUnion);
+      }
+
+      if (escalateTier1 && batchedRects.size() > 1)
+      {
+        RECT merged = batchedRects[0];
+        for (size_t idx = 1; idx < batchedRects.size(); ++idx)
+        {
+          merged.left = std::min(merged.left, batchedRects[idx].left);
+          merged.top = std::min(merged.top, batchedRects[idx].top);
+          merged.right = std::max(merged.right, batchedRects[idx].right);
+          merged.bottom = std::max(merged.bottom, batchedRects[idx].bottom);
+        }
+        batchedRects.clear();
+        batchedRects.push_back(merged);
+      }
+    }
+
+    if (batchedRects.empty())
+    {
+      batchedRects.push_back(surfaceRect);
+    }
+
+    const int additionalRegions = static_cast<int>(batchedRects.size());
+    const ULONGLONG nowTick = GetTickCount64();
+    InstancePaintBudget::DecisionKind throttleReason = InstancePaintBudget::DecisionKind::kNone;
+    const bool shouldThrottle = mInstancePaintBudget.ShouldThrottle(additionalRegions, nowTick, throttleReason);
+    const bool throttle = shouldThrottle && hadPendingPaint;
+    const RECT telemetryRect = UnionRects(batchedRects);
+
+    if (throttle)
+    {
+      for (const RECT& rect : batchedRects)
+      {
+        mInstancePaintBudget.MergeDeferredRegion(rect);
+      }
+
+      mInstancePaintBudget.MarkNeedsDrain();
+      mInstancePaintBudget.EngageBurstCooling(nowTick + kBurstCoolingWindowMs);
+      mInstancePaintBudget.RecordDecision(throttleReason, additionalRegions, telemetryRect, nowTick);
+      PublishPaintBudgetSnapshot("invalidate.defer", DecisionKindLabel(throttleReason), 0, nowTick, true);
+#if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+      OnIdleThrottleTriggered(nowTick, throttleReason, additionalRegions);
+#endif
+    }
+    else
+    {
+      const bool scheduledPaint = !mPaintPending.exchange(true, std::memory_order_acq_rel);
+      if (scheduledPaint)
+      {
+        mInstancePaintBudget.OnInvalidateScheduled(additionalRegions);
+      }
+      else
+      {
+        mInstancePaintBudget.OnAdditionalInvalidationQueued(additionalRegions);
+      }
+
+      for (const RECT& rect : batchedRects)
+      {
+        InvalidateRect(mPlugWnd, &rect, FALSE);
+      }
+
+      if (escalateTier2)
+      {
+        mInstancePaintBudget.MarkNeedsDrain();
+        mInstancePaintBudget.EngageBurstCooling(nowTick + kBurstCoolingWindowMs);
+        mInstancePaintBudget.RecordDecision(InstancePaintBudget::DecisionKind::kTierEscalation, additionalRegions, telemetryRect, nowTick);
+        PublishPaintBudgetSnapshot("invalidate.escalate", "TierEscalation", 0, nowTick, true);
+#if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+        OnIdleThrottleTriggered(nowTick, InstancePaintBudget::DecisionKind::kTierEscalation, additionalRegions);
+#endif
+      }
+      else if (additionalRegions > mInstancePaintBudget.BudgetCeiling())
+      {
+        mInstancePaintBudget.MarkNeedsDrain();
+        mInstancePaintBudget.RecordDecision(InstancePaintBudget::DecisionKind::kBudgetExceeded, additionalRegions, telemetryRect, nowTick);
+        PublishPaintBudgetSnapshot("invalidate.markDrain", "BudgetExceeded", 0, nowTick, true);
+#if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+        OnIdleThrottleTriggered(nowTick, InstancePaintBudget::DecisionKind::kBudgetExceeded, additionalRegions);
+#endif
+      }
+      else if (escalateTier1)
+      {
+        if (mInstancePaintBudget.EngageBurstCooling(nowTick + kBurstCoolingWindowMs))
+        {
+          mInstancePaintBudget.RecordDecision(InstancePaintBudget::DecisionKind::kBurstCooling, additionalRegions, telemetryRect, nowTick);
+          PublishPaintBudgetSnapshot("invalidate.burstcooling", "BurstCooling", 0, nowTick, true);
+#if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+          OnIdleThrottleTriggered(nowTick, InstancePaintBudget::DecisionKind::kBurstCooling, additionalRegions);
+#endif
+        }
+      }
     }
 
     if (mParamEditWnd)
@@ -277,6 +2334,7 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
       }
     }
   }
+  RefreshPaintBudgetHUD();
   return;
 }
 
@@ -342,6 +2400,8 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
   case WM_TIMER:
     if (wParam == IPLUG_TIMER_ID)
       pGraphics->OnDisplayTimer(0, false);
+    else if (wParam == IPLUG_VBLANK_HEALTH_TIMER_ID)
+      pGraphics->PerformVBlankHealthCheck();
 
     return 0;
 
@@ -660,14 +2720,7 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
   }
   case WM_PAINT: {
     const float scale = pGraphics->GetTotalScale();
-    if (pGraphics->mPaintPending.exchange(false, std::memory_order_acq_rel))
-    {
-      int previous = IGraphicsWin::sPendingPaintCount.fetch_sub(1, std::memory_order_acq_rel);
-      if (previous <= 0)
-      {
-        IGraphicsWin::sPendingPaintCount.store(0, std::memory_order_release);
-      }
-    }
+    const bool hadPaintPending = pGraphics->mPaintPending.exchange(false, std::memory_order_acq_rel);
     auto addDrawRect = [pGraphics, scale](IRECTList& rects, RECT r) {
       IRECT ir(r.left, r.top, r.right, r.bottom);
       ir.Scale(1.f / scale);
@@ -677,6 +2730,25 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
     HRGN region = CreateRectRgn(0, 0, 0, 0);
     int regionType = GetUpdateRgn(hWnd, region, FALSE);
+
+    int drainedRegionCount = 0;
+    RECT drainedBounds{0, 0, 0, 0};
+    bool hasDrainedBounds = false;
+
+    auto updateBounds = [&](const RECT& r) {
+      if (!hasDrainedBounds)
+      {
+        drainedBounds = r;
+        hasDrainedBounds = true;
+      }
+      else
+      {
+        drainedBounds.left = std::min(drainedBounds.left, r.left);
+        drainedBounds.top = std::min(drainedBounds.top, r.top);
+        drainedBounds.right = std::max(drainedBounds.right, r.right);
+        drainedBounds.bottom = std::max(drainedBounds.bottom, r.bottom);
+      }
+    };
 
     if ((regionType == COMPLEXREGION) || (regionType == SIMPLEREGION))
     {
@@ -688,14 +2760,21 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
       if (regionType == COMPLEXREGION && GetRegionData(region, bufferSize, regionData))
       {
         for (int i = 0; i < regionData->rdh.nCount; i++)
-          addDrawRect(rects, *(((RECT*)regionData->Buffer) + i));
+        {
+          RECT r = *(((RECT*)regionData->Buffer) + i);
+          addDrawRect(rects, r);
+          updateBounds(r);
+        }
       }
       else
       {
         RECT r;
         GetRgnBox(region, &r);
         addDrawRect(rects, r);
+        updateBounds(r);
       }
+
+      drainedRegionCount = std::max(rects.Size(), 1);
 
 #if defined IGRAPHICS_GL || defined IGRAPHICS_VULKAN //|| IGRAPHICS_D2D
       PAINTSTRUCT ps;
@@ -734,6 +2813,19 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
     // we are just going to get another WM_PAINT to handle.  Bad!  It also exibits the odd property
     // that windows will be popped under the window.
     ValidateRect(hWnd, 0);
+
+    if (hadPaintPending)
+    {
+      const ULONGLONG nowTick = GetTickCount64();
+      pGraphics->mInstancePaintBudget.OnPaintCompleted(drainedRegionCount, nowTick);
+      RECT decisionRect = hasDrainedBounds ? drainedBounds : RECT{0, 0, 0, 0};
+      pGraphics->mInstancePaintBudget.RecordDecision(InstancePaintBudget::DecisionKind::kDrainComplete, drainedRegionCount, decisionRect, nowTick);
+      pGraphics->PublishPaintBudgetSnapshot("paint.completed", "DrainComplete", drainedRegionCount, nowTick, true);
+#if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+      pGraphics->OnIdleDrainComplete(nowTick, drainedRegionCount);
+#endif
+      pGraphics->FlushDeferredInvalidations();
+    }
 
     DeleteObject(region);
 
@@ -912,6 +3004,11 @@ IGraphicsWin::IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float s
 #ifndef IGRAPHICS_DISABLE_VSYNC
   mVSYNCEnabled = IsWindows8OrGreater();
 #endif
+
+  InitializeIdlePacingConfiguration();
+#if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+  InitializeIdleSchedulerState();
+#endif
 }
 
 IGraphicsWin::~IGraphicsWin()
@@ -922,11 +3019,7 @@ IGraphicsWin::~IGraphicsWin()
   hfontStorage.Release();
   if (mPaintPending.exchange(false, std::memory_order_acq_rel))
   {
-    int previous = sPendingPaintCount.fetch_sub(1, std::memory_order_acq_rel);
-    if (previous <= 0)
-    {
-      sPendingPaintCount.store(0, std::memory_order_release);
-    }
+    mInstancePaintBudget.OnPaintCompleted(1, GetTickCount64());
   }
   DestroyEditWindow();
   CloseWindow();
@@ -945,6 +3038,364 @@ static void GetWindowSize(HWND pWnd, int* pW, int* pH)
   {
     *pW = *pH = 0;
   }
+}
+
+void IGraphicsWin::OnIdlePacingModeChanged(EIdlePacingMode mode)
+{
+  IGRAPHICS_DRAW_CLASS::OnIdlePacingModeChanged(mode);
+#if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+  schedulerlog::LogEvent(schedulerlog::kCategoryRollout, mIdlePacingModeFromConfig ? "config" : "runtime",
+                         schedulerlog::Severity::kInfo,
+                         schedulerlog::MakeField("event", "mode_changed"),
+                         schedulerlog::MakeStringField("mode", IdlePacingModeToString(mode)),
+                         schedulerlog::MakeField("hwnd", reinterpret_cast<uintptr_t>(mPlugWnd)),
+                         schedulerlog::MakeBoolField("fromConfig", mIdlePacingModeFromConfig));
+  ResetIdleSchedulerState(mode, GetTickCount64());
+#endif
+}
+
+void IGraphicsWin::OnHostIdleTick()
+{
+  HostIdleTickInfo info{};
+  OnHostIdleTick(info);
+}
+
+void IGraphicsWin::OnHostIdleTick(const HostIdleTickInfo& info)
+{
+#if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+  const ULONGLONG now = GetTickCount64();
+  mSchedulerState.lastIdleTick = now;
+
+  const int forgivenessRequestMs = ConsumeIdleForgivenessRequest();
+  bool forgivenessExtended = false;
+
+  const int queueBefore = std::max(info.paramQueueDepthBefore, 0);
+  const int queueAfter = std::max(info.paramQueueDepthAfter, 0);
+  const int backlogBefore = std::max(queueBefore, info.paramMessagesProcessed);
+  const int outstanding = std::max(backlogBefore, queueAfter);
+
+  mSchedulerState.lastIdleOutstanding = outstanding;
+  mSchedulerState.lastIdleParamDepthBefore = info.paramQueueDepthBefore;
+  mSchedulerState.lastIdleParamDepthAfter = info.paramQueueDepthAfter;
+  mSchedulerState.lastIdleProcessed = info.paramMessagesProcessed;
+  mSchedulerState.lastIdleElapsedMs = info.elapsedMs;
+  mSchedulerState.lastIdleTimerBehind = info.timerFellBehind;
+  mSchedulerState.lastIdleSampleTick = now;
+  mSchedulerState.paramQueueHighWater = std::max(mSchedulerState.paramQueueHighWater, outstanding);
+
+  schedulerlog::Severity queueSeverity = schedulerlog::Severity::kDebug;
+  uint32_t overThresholdMs = 0;
+
+  if (outstanding > 0)
+  {
+    queueSeverity = schedulerlog::Severity::kInfo;
+  }
+
+  if (outstanding > kParamQueueWarnThreshold)
+  {
+    if (mSchedulerState.paramQueueAboveThresholdSince == 0)
+    {
+      mSchedulerState.paramQueueAboveThresholdSince = now;
+    }
+
+    if (now >= mSchedulerState.paramQueueAboveThresholdSince)
+    {
+      const ULONGLONG duration = now - mSchedulerState.paramQueueAboveThresholdSince;
+      overThresholdMs = static_cast<uint32_t>(std::min<ULONGLONG>(duration, std::numeric_limits<uint32_t>::max()));
+      if (outstanding > kParamQueueErrorThreshold && duration >= static_cast<ULONGLONG>(kParamQueueErrorWindowMs))
+      {
+        queueSeverity = schedulerlog::Severity::kError;
+      }
+      else
+      {
+        queueSeverity = schedulerlog::Severity::kWarn;
+      }
+    }
+  }
+  else
+  {
+    mSchedulerState.paramQueueAboveThresholdSince = 0;
+  }
+
+  schedulerlog::LogEvent(schedulerlog::kCategoryParamQueueDepth, "idle_tick", queueSeverity,
+                         schedulerlog::MakeField("outstanding", outstanding),
+                         schedulerlog::MakeField("depthBefore", queueBefore),
+                         schedulerlog::MakeField("depthAfter", queueAfter),
+                         schedulerlog::MakeField("processed", info.paramMessagesProcessed),
+                         schedulerlog::MakeField("elapsedMs", info.elapsedMs),
+                         schedulerlog::MakeBoolField("timerFellBehind", info.timerFellBehind),
+                         schedulerlog::MakeField("overThresholdMs", overThresholdMs),
+                         schedulerlog::MakeField("highWater", mSchedulerState.paramQueueHighWater));
+  RecordParamQueueTelemetry(outstanding, queueSeverity);
+
+  if (GetIdlePacingMode() == EIdlePacingMode::Adaptive)
+  {
+    if (outstanding > 0)
+    {
+      mSchedulerState.pendingParamFlush = std::max(mSchedulerState.pendingParamFlush, outstanding);
+      const int windowMs = std::max(forgivenessRequestMs, kIdleForgivenessDefaultMs);
+      forgivenessExtended |= MaybeExtendIdleForgiveness(now, windowMs, info, "queue_backlog");
+    }
+    else if (forgivenessRequestMs > 0)
+    {
+      forgivenessExtended |= MaybeExtendIdleForgiveness(now, forgivenessRequestMs, info, "requested");
+    }
+
+    if (!forgivenessExtended && info.timerFellBehind && info.elapsedMs > 0.0)
+    {
+      const int stretchMs = std::max(static_cast<int>(std::lround(info.elapsedMs)), kIdleForgivenessMinMs);
+      forgivenessExtended |= MaybeExtendIdleForgiveness(now, stretchMs, info, "timer_stretch", schedulerlog::Severity::kDebug);
+    }
+
+    if (info.paramMessagesProcessed > 0 && mSchedulerState.pendingParamFlush > 0)
+    {
+      const int processed = std::max(info.paramMessagesProcessed, 0);
+      mSchedulerState.pendingParamFlush = std::max(0, mSchedulerState.pendingParamFlush - processed);
+    }
+    else if (info.paramMessagesProcessed == 0 && outstanding == 0 && mSchedulerState.pendingParamFlush > 0)
+    {
+      --mSchedulerState.pendingParamFlush;
+    }
+
+    if (mSchedulerState.throttleState == SchedulerState::ThrottleState::kIdleCatchUp)
+    {
+      if (mSchedulerState.pendingParamFlush <= 0)
+      {
+        EnterIdleState(SchedulerState::ThrottleState::kNormal, 1.0, "catchup_complete", now, {});
+      }
+    }
+    else if (mSchedulerState.throttleState == SchedulerState::ThrottleState::kBurstCooling)
+    {
+      if (!mInstancePaintBudget.NeedsDrain() &&
+          mInstancePaintBudget.PendingPaints() == 0 &&
+          mInstancePaintBudget.QueuedInvalidates() == 0)
+      {
+        mSchedulerState.pendingParamFlush = 0;
+        EnterIdleState(SchedulerState::ThrottleState::kNormal, 1.0, "burst_idle", now, {});
+      }
+    }
+
+    if (outstanding == 0 && mSchedulerState.pendingParamFlush <= 0 && forgivenessRequestMs == 0)
+    {
+      MaybeExpireIdleForgiveness(now, forgivenessExtended, info);
+    }
+  }
+#else
+  (void) info;
+#endif
+
+  IGRAPHICS_DRAW_CLASS::OnHostIdleTick(info);
+}
+
+void IGraphicsWin::InitializeIdlePacingConfiguration()
+{
+  if (mIdlePacingModeInitialized)
+    return;
+
+#if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+  if (mIdlePacingConfigPath.GetLength() == 0)
+  {
+    WDL_String basePath;
+    AppSupportPath(basePath, false);
+
+    if (basePath.GetLength() > 0)
+    {
+      WDL_String resolved(basePath);
+      const int lastIndex = resolved.GetLength() - 1;
+      const char lastChar = resolved.Get()[lastIndex];
+      if (lastChar != '\\' && lastChar != '/')
+      {
+        resolved.Append("\\");
+      }
+      resolved.Append("iPlug2\\IPlugSettings.json");
+      mIdlePacingConfigPath.Set(resolved.Get());
+    }
+  }
+
+  if (mIdlePacingConfigPath.GetLength() > 0)
+  {
+    LoadIdlePacingModeFromConfigFile(mIdlePacingConfigPath.Get());
+  }
+#endif
+
+  mIdlePacingModeInitialized = true;
+}
+
+void IGraphicsWin::RefreshIdlePacingModeFromDefaultConfig()
+{
+#if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+  if (!mIdlePacingModeInitialized)
+  {
+    InitializeIdlePacingConfiguration();
+    return;
+  }
+
+  if (mIdlePacingConfigPath.GetLength() > 0)
+  {
+    LoadIdlePacingModeFromConfigFile(mIdlePacingConfigPath.Get());
+  }
+#else
+  DBGMSG("IGraphicsWin: idle pacing configuration refresh ignored because experimental scheduler is disabled\n");
+#endif
+}
+
+void IGraphicsWin::LoadIdlePacingModeFromConfigFile(const char* filePath)
+{
+#if !IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+  (void) filePath;
+  return;
+#else
+  if (!filePath || !filePath[0])
+    return;
+
+  EIdlePacingMode parsed = EIdlePacingMode::Legacy;
+  const IdlePacingConfigStatus status = ParseIdlePacingModeFromSettings(filePath, parsed);
+  if (status != IdlePacingConfigStatus::kOk)
+  {
+    schedulerlog::LogEvent(schedulerlog::kCategoryRollout, "config", schedulerlog::Severity::kWarn,
+                           schedulerlog::MakeField("event", "config_load_failed"),
+                           schedulerlog::MakeStringField("path", filePath),
+                           schedulerlog::MakeStringField("status", IdlePacingConfigStatusToString(status)));
+    return;
+  }
+
+  mIdlePacingConfigPath.Set(filePath);
+  mIdlePacingModeFromConfig = true;
+  if (!ApplyIdlePacingModeString(IdlePacingModeToString(parsed), true))
+  {
+    schedulerlog::LogEvent(schedulerlog::kCategoryRollout, "config", schedulerlog::Severity::kWarn,
+                           schedulerlog::MakeField("event", "config_apply_failed"),
+                           schedulerlog::MakeStringField("path", filePath));
+    return;
+  }
+
+  schedulerlog::LogEvent(schedulerlog::kCategoryRollout, "config", schedulerlog::Severity::kInfo,
+                         schedulerlog::MakeField("event", "config_applied"),
+                         schedulerlog::MakeStringField("path", filePath),
+                         schedulerlog::MakeStringField("mode", IdlePacingModeToString(parsed)));
+
+  DBGMSG("IGraphicsWin: idle pacing mode set to %s from %s\n", IdlePacingModeToString(parsed), filePath);
+#endif
+}
+
+IGraphicsWin::IdlePacingConfigStatus IGraphicsWin::ParseIdlePacingModeFromSettings(const char* path,
+                                                                                  EIdlePacingMode& modeOut) const
+{
+#if !IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+  (void) path;
+  (void) modeOut;
+  return IdlePacingConfigStatus::kFileMissing;
+#else
+  if (!path || !path[0])
+    return IdlePacingConfigStatus::kFileMissing;
+
+  std::ifstream stream(UTF8AsUTF16(path).Get());
+  if (!stream.is_open())
+    return IdlePacingConfigStatus::kFileMissing;
+
+  std::stringstream buffer;
+  buffer << stream.rdbuf();
+  std::string contents = buffer.str();
+
+  std::string extracted;
+  if (!ExtractJsonStringForKey(contents, "idlePacingMode", extracted))
+    return IdlePacingConfigStatus::kMissingKey;
+
+  if (!ParseIdlePacingModeStringInternal(extracted, modeOut))
+    return IdlePacingConfigStatus::kInvalidValue;
+
+  return IdlePacingConfigStatus::kOk;
+#endif
+}
+
+bool IGraphicsWin::ApplyIdlePacingModeString(const std::string& modeString, bool fromConfig)
+{
+  EIdlePacingMode parsed = EIdlePacingMode::Legacy;
+  if (!ParseIdlePacingModeStringInternal(modeString, parsed))
+  {
+    schedulerlog::LogEvent(schedulerlog::kCategoryRollout, fromConfig ? "config" : "runtime",
+                           schedulerlog::Severity::kWarn,
+                           schedulerlog::MakeField("event", "mode_parse_failed"),
+                           schedulerlog::MakeField("input", modeString));
+    DBGMSG("IGraphicsWin: unrecognised idle pacing mode '%s'\n", modeString.c_str());
+    return false;
+  }
+
+#if !IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+  if (parsed != EIdlePacingMode::Legacy)
+  {
+    schedulerlog::LogEvent(schedulerlog::kCategoryRollout, fromConfig ? "config" : "runtime",
+                           schedulerlog::Severity::kWarn,
+                           schedulerlog::MakeField("event", "mode_rejected_disabled"),
+                           schedulerlog::MakeField("requested", modeString));
+    DBGMSG("IGraphicsWin: requested idle pacing mode '%s' ignored because experimental scheduler is disabled\n", modeString.c_str());
+    parsed = EIdlePacingMode::Legacy;
+  }
+#endif
+
+  const EIdlePacingMode previous = GetIdlePacingMode();
+  if (!fromConfig)
+  {
+    mIdlePacingModeFromConfig = false;
+  }
+
+  SetIdlePacingMode(parsed);
+  const EIdlePacingMode effective = GetIdlePacingMode();
+  const bool changed = (effective != previous);
+
+#if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+  const schedulerlog::Severity severity = changed ? schedulerlog::Severity::kInfo : schedulerlog::Severity::kDebug;
+  schedulerlog::LogEvent(schedulerlog::kCategoryRollout, fromConfig ? "config" : "runtime", severity,
+                         schedulerlog::MakeField("event", changed ? "mode_applied" : "mode_unchanged"),
+                         schedulerlog::MakeField("requested", modeString),
+                         schedulerlog::MakeStringField("effective", IdlePacingModeToString(effective)),
+                         schedulerlog::MakeStringField("previous", IdlePacingModeToString(previous)),
+                         schedulerlog::MakeBoolField("fromConfig", fromConfig),
+                         schedulerlog::MakeBoolField("changed", changed),
+                         schedulerlog::MakeStringField("configPath",
+                                                       (fromConfig && mIdlePacingConfigPath.GetLength() > 0)
+                                                         ? mIdlePacingConfigPath.Get()
+                                                         : ""));
+#else
+  (void) effective;
+  (void) previous;
+  (void) changed;
+#endif
+
+  DBGMSG("IGraphicsWin: idle pacing mode set to %s\n", IdlePacingModeToString(parsed));
+  return true;
+}
+
+bool IGraphicsWin::ApplySchedulerConsoleCommand(const char* command)
+{
+  if (!command)
+    return false;
+
+  std::string trimmed = TrimCopy(command);
+  if (trimmed.empty())
+    return false;
+
+  std::string lowered = ToLowerCopy(trimmed);
+
+  if (lowered == "sched_idle_legacy")
+    return ApplyIdlePacingModeString("legacy");
+
+  if (lowered == "sched_idle_adaptive")
+    return ApplyIdlePacingModeString("adaptive");
+
+  if (lowered == "sched_idle_locked60" || lowered == "sched_idle_locked60hz")
+    return ApplyIdlePacingModeString("locked60");
+
+  const std::string directive = "sched.idle.mode";
+  if (lowered.rfind(directive, 0) == 0)
+  {
+    std::string argument = trimmed.substr(directive.size());
+    size_t valueStart = argument.find_first_not_of(" \t=:");
+    std::string value = valueStart == std::string::npos ? std::string{} : argument.substr(valueStart);
+    return ApplyIdlePacingModeString(value);
+  }
+
+  return false;
 }
 
 static bool IsChildWindow(HWND pWnd)
@@ -2843,6 +5294,24 @@ void IGraphicsWin::StartVBlankThread(HWND hWnd)
   mPendingSyncVBlank.store(0, std::memory_order_relaxed);
   mLastProcessedVBlank = 0;
   mPaintPending.store(false, std::memory_order_relaxed);
+  mInstancePaintBudget.Reset();
+  mDroppedVBlank.store(0, std::memory_order_relaxed);
+  StopVBlankHealthTimer();
+  mVBlankPaused.store(false, std::memory_order_release);
+  mVBlankConsecutiveDrops.store(0, std::memory_order_release);
+  mVBlankHealthCheckAttempts.store(0, std::memory_order_release);
+  mVBlankPausedSinceTick = 0;
+  mVBlankSoftResetIssued = false;
+  for (auto& entry : mVBlankLatencyCounts)
+  {
+    entry.store(0, std::memory_order_relaxed);
+  }
+  for (auto& entry : mVBlankLatencyMicros)
+  {
+    entry.store(0, std::memory_order_relaxed);
+  }
+  auto subscription = VBlankDispatchWorker::Instance().Subscribe(this, hWnd);
+  std::atomic_store_explicit(&mVBlankSubscription, subscription, std::memory_order_release);
   DWORD threadId = 0;
   mVBlankThread = ::CreateThread(NULL, 0, VBlankRun, this, 0, &threadId);
 }
@@ -2853,14 +5322,20 @@ void IGraphicsWin::StopVBlankThread()
   {
     if (mPaintPending.exchange(false, std::memory_order_acq_rel))
     {
-      int previous = sPendingPaintCount.fetch_sub(1, std::memory_order_acq_rel);
-      if (previous <= 0)
-      {
-        sPendingPaintCount.store(0, std::memory_order_release);
-      }
+      mInstancePaintBudget.OnPaintCompleted(1, GetTickCount64());
     }
 
     mVBlankShutdown = true;
+    auto subscription = std::atomic_load_explicit(&mVBlankSubscription, std::memory_order_acquire);
+    VBlankDispatchWorker::Instance().Unsubscribe(subscription);
+    std::atomic_store_explicit(&mVBlankSubscription, std::shared_ptr<VBlankSubscription>{}, std::memory_order_release);
+    mVBlankMessagePending.store(false, std::memory_order_release);
+    mPendingSyncVBlank.store(0, std::memory_order_release);
+    StopVBlankHealthTimer();
+    mVBlankPaused.store(false, std::memory_order_release);
+    mVBlankConsecutiveDrops.store(0, std::memory_order_release);
+    mVBlankHealthCheckAttempts.store(0, std::memory_order_release);
+    mVBlankSoftResetIssued = false;
     ::WaitForSingleObject(mVBlankThread, 10000);
     mVBlankThread = INVALID_HANDLE_VALUE;
     mVBlankWindow = 0;
@@ -3029,7 +5504,7 @@ DWORD IGraphicsWin::OnVBlankRun()
 
 void IGraphicsWin::VBlankNotify()
 {
-  if (!mVBlankWindow)
+  if (!mVBlankWindow || mVBlankShutdown)
   {
     return;
   }
@@ -3037,89 +5512,44 @@ void IGraphicsWin::VBlankNotify()
   const DWORD latestCount = mVBlankCount.fetch_add(1, std::memory_order_acq_rel) + 1;
   mQueuedVBlank.store(latestCount, std::memory_order_release);
 
-  const int pendingPaints = sPendingPaintCount.load(std::memory_order_acquire);
+  const int pendingPaints = mInstancePaintBudget.PendingPaints();
   if (pendingPaints > 0)
   {
     return;
   }
 
-  auto sendVBlankSynchronously = [&](DWORD coalescedCount, bool releasePendingOnFailure) {
-    DWORD_PTR sendResult = 0;
-    constexpr UINT kSendTimeoutMs = 16;
+  if (mVBlankPaused.load(std::memory_order_acquire))
+  {
+    mPendingSyncVBlank.store(latestCount, std::memory_order_release);
+    return;
+  }
 
-    // Use SMTO_NORMAL so the worker respects the short timeout instead of waiting indefinitely
-    // while the UI thread is busy. SMTO_ABORTIFHUNG avoids blocking shutdown when the window is
-    // already closing.
-    if (!::SendMessageTimeoutW(mVBlankWindow, WM_VBLANK, coalescedCount, 0,
-                                SMTO_ABORTIFHUNG | SMTO_NORMAL, kSendTimeoutMs, &sendResult))
-    {
-      DWORD notifyError = GetLastError();
-      if (notifyError == 0)
-      {
-        notifyError = ERROR_TIMEOUT;
-      }
-      if (releasePendingOnFailure)
-      {
-        // When no WM_VBLANK is outstanding on the queue (e.g. PostMessageW failed), allow the
-        // worker to retry delivery on the next tick. Otherwise keep the flag set so we do not
-        // enqueue duplicate WM_VBLANK messages while the UI thread is still draining backlog.
-        mVBlankMessagePending.store(false, std::memory_order_release);
-      }
-      return false;
-    }
-
-    mPendingSyncVBlank.store(0, std::memory_order_release);
-    return true;
-  };
+  auto subscription = std::atomic_load_explicit(&mVBlankSubscription, std::memory_order_acquire);
+  if (!subscription || !subscription->active.load(std::memory_order_acquire))
+  {
+    return;
+  }
 
   if (mVBlankMessagePending.exchange(true, std::memory_order_acq_rel))
   {
-    // A WM_VBLANK is already queued. Promote the freshest counter to a synchronous delivery so the
-    // UI thread catches up without waiting for the backlog to drain.
     DWORD observed = mPendingSyncVBlank.load(std::memory_order_acquire);
     while (observed < latestCount
            && !mPendingSyncVBlank.compare_exchange_weak(observed, latestCount, std::memory_order_acq_rel,
                                                         std::memory_order_acquire))
     {
     }
-
-    const DWORD pendingSyncCount = mPendingSyncVBlank.load(std::memory_order_acquire);
-    const DWORD coalescedCount = std::max<DWORD>(pendingSyncCount, mQueuedVBlank.load(std::memory_order_acquire));
-
-    sendVBlankSynchronously(coalescedCount, /*releasePendingOnFailure=*/false);
     return;
   }
 
-  DWORD dispatchCount = mQueuedVBlank.load(std::memory_order_acquire);
+  mPendingSyncVBlank.store(0, std::memory_order_release);
 
-  if (::PostMessageW(mVBlankWindow, WM_VBLANK, dispatchCount, 0))
+  if (!VBlankDispatchWorker::Instance().QueueDispatch(subscription, latestCount))
   {
-    mPendingSyncVBlank.store(0, std::memory_order_release);
-    return;
+    mVBlankMessagePending.store(false, std::memory_order_release);
+    schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "worker", schedulerlog::Severity::kWarn,
+                           schedulerlog::MakeField("event", "queue_fail"),
+                           schedulerlog::MakeField("count", latestCount));
   }
-
-  const DWORD postError = GetLastError();
-  DWORD coalescedCount = dispatchCount;
-
-  if (postError == ERROR_NOT_ENOUGH_QUOTA)
-  {
-    // Windows drops WM_VBLANK posts when the message queue is saturated. Remember the freshest
-    // tick so the fallback still delivers the newest frame once the UI thread catches up.
-    DWORD observed = mPendingSyncVBlank.load(std::memory_order_acquire);
-    while (observed < dispatchCount
-           && !mPendingSyncVBlank.compare_exchange_weak(observed, dispatchCount, std::memory_order_acq_rel,
-                                                        std::memory_order_acquire))
-    {
-    }
-
-    const DWORD pendingSyncCount = mPendingSyncVBlank.load(std::memory_order_acquire);
-    coalescedCount = std::max<DWORD>(pendingSyncCount, mQueuedVBlank.load(std::memory_order_acquire));
-  }
-  else
-  {
-    coalescedCount = std::max<DWORD>(coalescedCount, mQueuedVBlank.load(std::memory_order_acquire));
-  }
-  sendVBlankSynchronously(coalescedCount, /*releasePendingOnFailure=*/true);
 }
 
 #ifndef NO_IGRAPHICS

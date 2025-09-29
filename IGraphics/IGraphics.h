@@ -51,6 +51,7 @@
 
 #include "nanosvg.h"
 
+#include <atomic>
 #include <stack>
 #include <memory>
 #include <vector>
@@ -1132,6 +1133,41 @@ public:
   * @return The draw scale * screen scale */
   float GetTotalScale() const { return mDrawScale * mScreenScale; }
 
+  /** Configure idle pacing behaviour for the platform scheduler */
+  void SetIdlePacingMode(EIdlePacingMode mode);
+
+  /** @return Current idle pacing configuration requested by the host */
+  EIdlePacingMode GetIdlePacingMode() const { return mIdlePacingMode; }
+
+  /** @return Human-readable string for an idle pacing mode */
+  static const char* IdlePacingModeToString(EIdlePacingMode mode);
+
+  /** Called whenever the host-driven idle timer runs on the UI thread */
+  struct HostIdleTickInfo
+  {
+    double elapsedMs = 0.0;
+    int paramQueueDepthBefore = 0;
+    int paramQueueDepthAfter = 0;
+    int paramMessagesProcessed = 0;
+    int midiQueueDepthBefore = 0;
+    int midiQueueDepthAfter = 0;
+    int midiMessagesProcessed = 0;
+    int sysexQueueDepthBefore = 0;
+    int sysexQueueDepthAfter = 0;
+    int sysexMessagesProcessed = 0;
+    bool timerFellBehind = false;
+  };
+
+  virtual void OnHostIdleTick() {}
+
+  virtual void OnHostIdleTick(const HostIdleTickInfo& info)
+  {
+    OnHostIdleTick();
+    (void) info;
+  }
+
+  void RequestIdleForgiveness(int durationMs);
+
   /** Gets the nearest backing pixel aligned rect to the input IRECT
     * @param r The IRECT to snap
     * @return The IRECT nearest to the input IRECT that is aligned exactly to backing pixels */
@@ -1360,7 +1396,10 @@ public:
   /** Shows a control to display the frame rate of drawing
    * @param enable \c true to show */
   void ShowFPSDisplay(bool enable);
-  
+
+  /** Update supplemental text rendered inside the performance display overlay */
+  void UpdateFPSDisplaySupplementalText(const char* primary, const char* secondary);
+
   /** @return \c true if performance display is shown */
   bool ShowingFPSDisplay() { return mPerfDisplay != nullptr; }
   
@@ -1718,6 +1757,9 @@ public:
   void ClearGestureRegions();
 
 protected:
+  int ConsumeIdleForgivenessRequest();
+
+  std::atomic<int> mIdleForgivenessRequestMs{0};
   /** Drawing API method to load a bitmap, called internally
    * @param fileNameOrResID A CString absolute path or resource ID
    * @param scale Integer to identify the scale of the resource, for multi-scale bitmaps
@@ -1841,6 +1883,7 @@ private:
   float mDrawScale = 1.f; // scale deviation from  default width and height i.e stretching the UI by dragging bottom right hand corner
 
   int mIdleTicks = 0;
+  EIdlePacingMode mIdlePacingMode = EIdlePacingMode::Legacy;
   
   std::vector<EGestureType> mRegisteredGestures; // All the types of gesture registered with the graphics context
   IRECTList mGestureRegions; // Rectangular regions linked to gestures (excluding IControls)
@@ -1881,6 +1924,8 @@ private:
   IUIAppearanceChangedFunc mAppearanceChangedFunc = nullptr;
   
 protected:
+  virtual void OnIdlePacingModeChanged(EIdlePacingMode mode) {}
+
   IGEditorDelegate* mDelegate;
   bool mCursorHidden = false;
   bool mCursorLock = false;

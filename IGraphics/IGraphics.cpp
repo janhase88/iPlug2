@@ -89,6 +89,57 @@ void IGraphics::SetScreenScale(float scale)
   DrawResize();
 }
 
+const char* IGraphics::IdlePacingModeToString(EIdlePacingMode mode)
+{
+  const int modeIndex = static_cast<int>(mode);
+  constexpr int kModeCount = static_cast<int>(sizeof(kIdlePacingModeStrs) / sizeof(kIdlePacingModeStrs[0]));
+
+  if (modeIndex < 0 || modeIndex >= kModeCount)
+    return "Unknown";
+
+  return kIdlePacingModeStrs[modeIndex];
+}
+
+void IGraphics::SetIdlePacingMode(EIdlePacingMode mode)
+{
+#if !IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+  if (mode != EIdlePacingMode::Legacy)
+  {
+    DBGMSG("IGraphics: ignoring idle pacing request for %s because IGRAPHICS_SCHED_IDLE_EXPERIMENTAL=0\n",
+           IdlePacingModeToString(mode));
+  }
+  mode = EIdlePacingMode::Legacy;
+#endif
+
+  if (mode == mIdlePacingMode)
+    return;
+
+  mIdlePacingMode = mode;
+
+  if (mDelegate)
+  {
+    mDelegate->OnIdlePacingChanged(mode);
+  }
+
+  OnIdlePacingModeChanged(mode);
+}
+
+void IGraphics::RequestIdleForgiveness(int durationMs)
+{
+  if (durationMs <= 0)
+    return;
+
+  if (durationMs > 1000)
+    durationMs = 1000;
+
+  mIdleForgivenessRequestMs.store(durationMs, std::memory_order_release);
+}
+
+int IGraphics::ConsumeIdleForgivenessRequest()
+{
+  return mIdleForgivenessRequestMs.exchange(0, std::memory_order_acq_rel);
+}
+
 void IGraphics::Resize(int w, int h, float scale, bool needsPlatformResize)
 {
   GetDelegate()->ConstrainEditorResize(w, h);
@@ -457,7 +508,7 @@ void IGraphics::ShowFPSDisplay(bool enable)
       {
         mPerfDisplayBounds = GetBounds().GetPadded(-10).GetFromTLHC(200, 50);
       }
-      
+
       mPerfDisplay = std::make_unique<IFPSDisplayControl>(mPerfDisplayBounds);
       mPerfDisplay->SetDelegate(*GetDelegate());
     }
@@ -469,6 +520,14 @@ void IGraphics::ShowFPSDisplay(bool enable)
   }
 
   SetAllControlsDirty();
+}
+
+void IGraphics::UpdateFPSDisplaySupplementalText(const char* primary, const char* secondary)
+{
+  if (mPerfDisplay)
+  {
+    mPerfDisplay->SetSupplementalText(primary, secondary);
+  }
 }
 
 IControl* IGraphics::GetControlWithTag(int ctrlTag) const

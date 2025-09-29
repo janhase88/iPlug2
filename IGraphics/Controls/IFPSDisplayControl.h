@@ -70,6 +70,12 @@ public:
     mBuffer[mReadPos] = frameTime;
   }
 
+  void SetSupplementalText(const char* primary, const char* secondary)
+  {
+    mSupplementalTop.Set(primary ? primary : "");
+    mSupplementalBottom.Set(secondary ? secondary : "");
+  }
+
   void Draw(IGraphics& g) override
   {
     float avg = 0.f;
@@ -154,6 +160,22 @@ public:
       str.SetFormatted(32, "%.2f ms", avg * 1000.0f);
       g.DrawText(mTopLabelText, str.Get(), padded);
     }
+
+    if (mSupplementalTop.GetLength())
+    {
+      IRECT topRect = padded;
+      topRect.T += 14.f;
+      topRect.B = topRect.T + 16.f;
+      g.DrawText(mSupplementalText, mSupplementalTop.Get(), topRect);
+    }
+
+    if (mSupplementalBottom.GetLength())
+    {
+      IRECT bottomRect = padded;
+      bottomRect.B -= 14.f;
+      bottomRect.T = bottomRect.B - 16.f;
+      g.DrawText(mSupplementalText, mSupplementalBottom.Get(), bottomRect);
+    }
   }
 private:
   int mStyle;
@@ -166,6 +188,9 @@ private:
   IText mAPILabelText = IText(14, GetColor(kFR), DEFAULT_FONT, EAlign::Near, EVAlign::Top);
   IText mTopLabelText = IText(18, GetColor(kFR), DEFAULT_FONT, EAlign::Far, EVAlign::Top);
   IText mBottomLabelText = IText(15, GetColor(kFR), DEFAULT_FONT, EAlign::Far, EVAlign::Bottom);
+  IText mSupplementalText = IText(13, GetColor(kFR), DEFAULT_FONT, EAlign::Near, EVAlign::Middle);
+  WDL_String mSupplementalTop;
+  WDL_String mSupplementalBottom;
 };
 
 END_IGRAPHICS_NAMESPACE

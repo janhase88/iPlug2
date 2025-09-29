@@ -13,6 +13,7 @@
 #include <memory>
 
 #include "IPlugEditorDelegate.h"
+#include "IGraphicsConstants.h"
 
 /**
  * @file
@@ -78,6 +79,9 @@ public:
 
   /** Get a const pointer to the IGraphics context */
   const IGraphics* GetUI() const { return mGraphics.get(); };
+
+  /** Called when the idle pacing mode changes via configuration or console command */
+  virtual void OnIdlePacingChanged(EIdlePacingMode) {}
 
   /** Serializes the size and scale of the IGraphics.
    * @param chunk The output chunk to serialize to. Will append data if the chunk has already been started.

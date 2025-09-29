@@ -1,0 +1,815 @@
+<plan>
+  <Goal>Refactor, optimize, and harden the Windows VST3 Vulkan/Skia rendering path to remain responsive under multi-instance hosting without clogging WM_PAINT queues while preserving OnIdle behavior.</Goal>
+
+  <Environment-Check>
+    <Action>Inspect available toolchains and OS support for building Windows-targeted VST3 binaries with Vulkan/Skia backends.</Action>
+    <Observation>Container is Ubuntu Linux without MinGW/Windows SDK; Vulkan headers and Skia builds require additional setup; Steinberg VST3 SDK build steps expect Windows toolchain for HWND integration tests.</Observation>
+    <Conclusion>Cannot execute representative Windows builds or GUI automation locally.</Conclusion>
+    <Build-Test-Compatible>FALSE</Build-Test-Compatible>
+  </Environment-Check>
+
+  <PHASE>PLAN-EXECUTION</PHASE>
+  <Build-Test-Compatible>FALSE</Build-Test-Compatible>
+  <context>
+    Focus areas: IGraphicsWin message dispatch (WM_PAINT, WM_VBLANK, timers), Vulkan/Skia surface lifecycle, and multi-instance coordination within VST3 hosts. Refinement emphasizes isolating per-instance state, bounding queue pressure, and defining validation signals for code-review-only verification.
+  </context>
+
+  <DesignReference><![CDATA[
+# Windows VST3 Vulkan/Skia Hardening Plan
+
+## Objectives
+- Keep editor rendering responsive when several plugin instances share the same host process.
+- Prevent WM_PAINT and WM_VBLANK traffic from starving the UI message queue under heavy redraw load.
+- Preserve deterministic OnIdle cadence so UI-to-DSP synchronization (parameter flush, telemetry) remains intact.
+- Harden Vulkan/Skia resource lifecycle to survive rapid attach/detach and resize events triggered by hosts.
+
+## Phase 1 – Deep Dive & Telemetry Baseline
+1. **Audit render scheduling pipeline**
+   - Trace how `IGraphicsWin::WndProc` invalidates regions and toggles `mPaintPending`/`InstancePaintBudget` before the WM_PAINT dispatch.【F:IGraphics/Platforms/IGraphicsWin.cpp†L214-L270】
+   - Map WM_PAINT execution, including BeginPaint usage for GL/Vulkan backends and swapchain guard that skips work when the device is torn down.【F:IGraphics/Platforms/IGraphicsWin.cpp†L661-L736】
+   - Record how the VBlank worker posts WM_VBLANK or falls back to synchronous sends when the queue is saturated, noting ERROR_NOT_ENOUGH_QUOTA handling.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3040-L3116】
+2. **Inspect VST3 hosting contract**
+   - Review `IPlugVST3View` attachment and resize flow so window parenting and scale changes are captured in the plan.【F:IPlug/VST3/IPlugVST3_View.h†L44-L120】
+   - Identify where OnIdle ultimately triggers via the UI timer pump in `IPlugAPIBase::OnTimer` to ensure future changes keep the call frequency predictable.【F:IPlug/IPlugAPIBase.cpp†L132-L202】
+3. **Add diagnostic hooks (non-invasive)**
+   - Prototype per-instance telemetry toggles (e.g., compile-time logging macros) to capture WM_VBLANK coalescing, paint duration, queue depth, and OnIdle delta without spamming release builds.
+   - Scope shared resources (static swapchain counters, device coordinator) per plug-in instance to understand contention points.
+
+## Phase 2 – Scheduling & Queue Management Strategy
+1. **Per-instance paint budgeting**
+   - Introduce an `InstancePaintBudget` owned by each `IGraphicsWin` that tracks `inflightPaints`, `queuedInvalidates`, and `lastDrainTick` using atomics so WM_PAINT throttling stays per-window instead of global.
+   - Maintain a lightweight global aggregate (`gPaintBudgetSnapshot`) that records the max in-flight paints across all instances for telemetry without blocking per-instance counters; sample once per VSYNC to keep contention negligible.
+   - Gate `InvalidateRect` bursts by batching dirty regions and enforcing max outstanding paints per window to cap WM_PAINT pressure.
+   - Provide a cooperative backpressure protocol: if `queuedInvalidates` exceeds the per-instance budget, coalesce rectangles locally and schedule a deferred flush through `PostMessageW` so that the host queue keeps flowing.
+   - Reset per-instance counters on host-driven resizes/detach by calling a shared helper before swapchain destruction, ensuring stale budget data never blocks repaint after topology changes.
+
+   ### Counter lifecycle and integration points
+   - **Invalidate path:**
+     1. `IGraphicsWin::InvalidateRect` increments `queuedInvalidates`. When the increment crosses the budget threshold, it toggles a `NeedsDrain` flag and skips the actual Windows invalidation until a drain pass runs.
+     2. Budget thresholds scale with surface area and DPI (e.g., base budget of 3 + `ceil(width*height / 1.5e6)`), keeping small editors responsive while preventing 4K panels from flooding the queue.
+   - **Drain path (WM_PAINT / WM_VBLANK):**
+     1. Upon entering WM_PAINT, `queuedInvalidates` is decremented for each region drained and `inflightPaints` increments until the swap/present finishes; once BeginPaint/EndPaint completes, `inflightPaints` decrements.
+     2. The `NeedsDrain` flag clears only after both counters fall below the budget, guaranteeing a quiescent window before new bursts resume.
+   - **Global snapshot:**
+     1. The VSYNC worker copies per-instance `inflightPaints` into `gPaintBudgetSnapshot` under a try-lock-free pass. Results drive telemetry and heuristics (e.g., reducing timer cadence) without touching local counters.
+     2. When aggregate load spikes past a configurable watermark, emit a diagnostic log and request voluntary frame skipping instead of starving WM_PAINT.
+
+   ### Failure handling & diagnostics
+   - Expose debug logging that prints counter deltas each time `NeedsDrain` flips or the aggregate watermark triggers, allowing review-only verification to confirm throttling decisions without instrumented builds.
+   - Surface counter values through the existing `/IGRAPHICS/SCHED` debug category so QA can query budgets during manual verification sessions.
+   - Capture the timestamp of the last successful drain in `lastDrainTick` and warn if it exceeds 2× the expected VSYNC period, signaling that further throttling or fallback behavior should engage.
+
+   ### Dirty-region batching & burst dampening heuristics
+   - **Region coalescing tiers:**
+     - Tier 0 (animation noise): merge invalidations smaller than 64×64 px that arrive within the same frame into a single `HRGN` per DPI bucket so particle or meter updates cost one WM_PAINT.
+     - Tier 1 (control groups): when more than four regions overlap the same control stack (e.g., faders), collapse them into the widget's bounding box and set a `CoalescedSince` timestamp so repeated merges during drags remain bounded.
+     - Tier 2 (surface churn): for large edits (e.g., host-driven resize), immediately elevate to a full-surface invalidation, mark `NeedsDrain`, and defer fresh invalidates until the resize-driven drain completes, preventing death-by-a-thousand-rectangles after DPI changes.
+   - **Budget-aware queueing:**
+     - Track `queuedInvalidates` growth rate; if the slope exceeds `budget / 2` per VSYNC, request a one-frame WM_VBLANK skip so the main thread can drain before more invalidations post.
+     - When `inflightPaints` is non-zero and the drain timestamp is older than 1.5× VSYNC, flip the instance into a "burst cooling" state that throttles further `InvalidateRect` calls to every other idle tick.
+   - **Coordination with host timers:**
+     - Pause non-critical animation timers while in burst cooling and resume once the drain clears to avoid OnIdle starvation.
+     - For plug-ins that require continuous animation (e.g., oscilloscopes), expose an opt-out flag that keeps animation running but enforces a maximum of two pending invalidations.
+
+   ### Instrumentation & operator review flow
+   - Emit a structured log record (`PaintBudget.Decision`) each time batching escalates tiers or burst cooling engages, including `queuedInvalidates`, `inflightPaints`, and the coalesced region dimensions so reviewers can validate behaviour from logs alone.
+   - Add a debug HUD toggle (reusing the existing `IGRAPHICS/DEBUG` overlay) that prints per-instance budget state and the most recent coalesced region count in the corner of the editor for manual QA sessions.
+   - Surface aggregated counters through the planned telemetry snapshot (`gPaintBudgetSnapshot`) with histogram buckets for coalesced batch sizes; store under a new `Scheduler.PaintBudget` category for correlation with WM_VBLANK telemetry.
+   - Document a checklist for manual reviewers: open three heavy editors, trigger DPI resize, observe `PaintBudget.Decision` logs reaching Tier 2, confirm burst cooling toggles off within two VSYNC intervals, and ensure OnIdle callbacks continue at ≥80% of nominal cadence.
+2. **Robust WM_VBLANK delivery**
+   - Convert synchronous `SendMessageTimeoutW` fallback into a bounded retry strategy with jitter to keep the UI responsive even when several editors saturate the queue.
+   - Promote latest vblank counts using lock-free queues instead of atomic compare/exchange loops to simplify coalescing.
+
+   ### Asynchronous worker & bounded retry ladder
+   - Replace the single hidden-window timer with a dedicated `VBlankDispatchWorker` running on a `std::jthread` (or thread-pool task where available) that waits on a condition variable fed by `DXGI`/`VK_KHR_win32_surface` callbacks. Each wake publishes a monotonically increasing sequence number and pushes work into a lock-free MPSC queue consumed by the UI thread.
+   - The worker posts a lightweight `WM_VBLANK_TICK` to each interested editor via `PostMessageW`. On failure it backs off using a capped ladder: immediate retry, 2 ms jittered delay, 5 ms delay, then it abandons the tick and increments a `droppedVBlank` counter. Abandoned ticks trigger the fallback pause protocol below to prevent live-lock.
+   - Ensure the worker exits cleanly during plugin teardown by setting a `Shutdown` flag and draining outstanding queue entries before joining the thread. This avoids dangling WM_VBLANK posts when hosts rapidly destroy editors.
+   - Maintain per-editor subscription tokens so that paused or hidden editors can be unsubscribed without affecting other instances, eliminating the current global `sWaitingForVBlank` bottleneck.
+
+   ### Queue-depth telemetry & watchdog hooks
+   - Emit a `Sched.VBlankDispatch` structured log on every tick containing: `sequenceId`, time since previous tick, retry count, and the number of editors that successfully received the message. Include `droppedVBlank` totals when retries exhaust so reviewers can confirm the ladder is working.
+   - Track queue depth by counting outstanding entries in the MPSC queue; expose a high-water mark metric and log whenever depth exceeds two VSYNC periods. This highlights when the UI thread is lagging behind the worker.
+   - Sample `PostMessageW` latency by timestamping when the worker enqueues a dispatch versus when the editor handles `WM_VBLANK_TICK`. Record the delta inside the editor and push it into a ring buffer exported through the telemetry snapshot to correlate with WM_PAINT throttling data.
+   - Add a watchdog timer in the worker that fires if no editor acknowledges a tick for 100 ms. When triggered, emit a warning log and request a diagnostic burst (forcing the next tick to include verbose instrumentation) so manual reviewers can observe the stall.
+
+   ### Fallback pause and recovery protocol
+   - When the retry ladder exhausts, mark the affected editor as `VBlankPaused` and notify it through a control message. The editor should temporarily halt animations that depend on VSYNC while keeping OnIdle callbacks active.
+   - While paused, schedule a periodic (every 15 ms) health check that attempts to resend a vblank tick. Once acknowledged, clear `VBlankPaused`, emit a `Sched.VBlankRecovered` log, and immediately resynchronize paint budgets by forcing a single WM_PAINT if dirty regions remain.
+   - If an editor remains paused for more than 250 ms, request a soft reset of its swapchain state machine (without destroying the Vulkan device) to ensure stale presentation fences are cleared before resuming dispatch.
+   - Provide host-visible telemetry via the debug HUD showing `VBlankPaused` editors, retry counts, and recovery timestamps so QA can validate behavior without kernel tracing.
+3. **Main-thread pacing integration**
+   - Align `mVBlankSkipUntil` logic with host-provided idle callbacks so we can skip frames intentionally when CPU load is high without halting OnIdle.
+   - Provide a tunable throttle (configurable via IGraphics settings) for maximum WM_PAINT frequency per instance.
+
+   ### Idle timer ↔ paint throttle state model
+   - Track a shared `SchedulerState` per instance capturing `LastIdleTick`, `IdleCadenceTarget`, `ThrottleState` (Normal, BurstCooling, IdleCatchUp), and `PendingParamFlush`. This state machine advances inside both the WM_PAINT drain loop and the OnIdle handler so either path can release backpressure without racing global timers.
+   - When `InstancePaintBudget::NeedsDrain` asserts, transition into `BurstCooling` and stretch the OnIdle cadence to every other VSYNC (e.g., from 50 Hz to 25 Hz) by gating timer reschedules through `IdleCadenceTarget`. Store the stretch factor so host telemetry can confirm the applied slowdown.
+   - Once WM_PAINT drains below half budget or a health-check WM_VBLANK tick lands, flip to `IdleCatchUp` for one interval: temporarily double OnIdle frequency (clamped to 60 Hz) until `PendingParamFlush` clears, ensuring parameter queues drain after throttling.
+   - Emit a `Sched.IdleState` log whenever the state machine transitions, including timestamps and the active stretch factor, so reviewers can confirm idle pacing changes without tracing timers.
+
+   ### Render/parameter queue coordination
+   - Couple `PendingParamFlush` to both UI and DSP queues: increment when UI edits enqueue automation or when DSP pushes new telemetry, and decrement when `OnIdle` dispatch confirms delivery. This prevents the scheduler from leaving automation stuck during aggressive paint throttling.
+   - Allow OnIdle handlers to request a "latency forgiveness" window by setting `IdleForgivenessUntil` when they detect backlog (e.g., >10 parameter messages). While active, the paint throttle continues, but idle ticks run at the nominal cadence so stateful editors (sequencers, meters) stay in sync.
+   - Surface queue depth snapshots through `Scheduler.ParamQueueDepth` telemetry aligned with `PaintBudget.Decision` records; manual reviewers can correlate spikes in invalidations with parameter flush delays to judge whether coordination works.
+   - Require WM_PAINT exits to call a lightweight `SignalIdle()` helper that nudges the idle timer if it has been stretched beyond 1.5× target cadence, preventing starvation when bursts resolve during host silence.
+
+   ### Host opt-in / opt-out controls
+   - Expose two configuration layers: a compile-time `IGRAPHICS_SCHED_IDLE_EXPERIMENTAL` flag guarding the new state machine, and a runtime `EIdlePacingMode` enum (`Legacy`, `Adaptive`, `Locked60Hz`) toggled via API and developer console.
+   - For conservative hosts, document how to force `Legacy` mode so OnIdle cadence matches historical behavior; this disables burst cooling interactions but retains telemetry so regressions can still be observed.
+   - When hosts opt into `Adaptive`, publish the current pacing mode through the debug HUD and include it in crash dumps/telemetry headers so QA can verify the intended mode was active during manual runs.
+   - Provide a host callback (`OnIdlePacingChanged`) that fires whenever the enum changes, allowing DAWs with their own schedulers to realign automation timers or opt out if unexpected pacing is detected.
+
+## Phase 3 – Vulkan/Skia Resource Hardening
+1. **Swapchain lifecycle guards**
+   - Ensure `CreateOrResizeVulkanSwapchain` and `RecreateVulkanContext` tolerate rapid size churn by serializing resize requests and clearing pending WM_PAINT before destroying surfaces.【F:IGraphics/Platforms/IGraphicsWin.cpp†L1221-L1356】
+   - Cache per-host Vulkan capabilities so repeated device coordination across instances does not thrash adapter selection.
+2. **Skia GPU surface reuse**
+   - Plan for Skia to reuse command buffers per frame and release them when WM_PAINT backlog is detected, preventing GPU queue overflow.
+   - Introduce defensive checks before calling `SwapBuffers`/present to ensure presentation occurs only after successful draw scheduling.
+3. **Failure fallback paths**
+   - When `PostMessageW` fails or swapchain is lost, immediately schedule a soft-reset routine that reinitializes contexts outside of WM_PAINT to avoid re-entrancy.
+
+## Phase 4 – Validation & Rollout
+1. **Manual scenario matrix**
+   - Maintain the following host × configuration coverage table. Each row should be executed with at least two simultaneous editor instances unless noted otherwise.
+
+     | Host | Graphics Mode | DPI | GPU Class | Notes |
+     | --- | --- | --- | --- | --- |
+     | Cubase 13 | Win32 GDI host window | 100% / 200% | Integrated Intel Xe | Baseline for WM_PAINT flood cases; verify timer sharing between editors. |
+     | Cubase 13 | Win32 GDI host window | 150% | Nvidia RTX | Focus on swapchain recreation when moving between monitors. |
+     | Studio One 6 | Per-monitor DPI aware | 100% / 200% | AMD RDNA | Exercises host idle callback differences; confirm `IdleForgiveness` behaviour. |
+     | Reaper 7 | Mixed DPI (primary 125%, secondary 175%) | 125% ↔ 175% | Nvidia GTX | Attach/detach editors rapidly while automation runs. |
+     | Bitwig 5 | Borderless HWND | 100% | Intel Xe | Single-instance smoke test for fallback toggles and HUD visibility. |
+     | Standalone test harness | Forced HiDPI off | 100% | Any | Reference environment for regression monitoring scripts. |
+
+   - For each host scenario, document observed `Sched.IdleState` transitions, paint budget tiers, and WM_VBLANK retry counts in the validation logbook.
+   - Window lifecycle checks: for every host above, perform five rapid open/close cycles, a resize sweep from 70% to 200% window size, and a simulated device loss (disable/enable GPU via Device Manager or mock call) while telemetry capture runs.
+2. **Telemetry review gates**
+   - Introduce a validation telemetry matrix aligning log categories with severity levels:
+     - `/IGRAPHICS/SCHED` — default **INFO**, escalate to **WARN** automatically when `queuedInvalidates` exceeds 150% of budget for >2 frames.
+     - `Sched.VBlankDispatch` — default **DEBUG**, promote to **INFO** for QA builds to ensure retry ladders are visible.
+     - `Sched.IdleState` — default **INFO**; emit **WARN** when `IdleCatchUp` persists longer than 3 intervals.
+     - `Scheduler.PaintBudget` snapshot — exported via telemetry pipeline; include histogram buckets (0–2, 3–5, 6–8, 9+ outstanding regions).
+     - `Scheduler.ParamQueueDepth` — default **DEBUG**; flag **ERROR** when queue depth >16 for more than 100 ms.
+   - Sampling cadence and retention:
+     - Capture per-instance counters (`queuedInvalidates`, `inflightPaints`, `PendingParamFlush`, `droppedVBlank`, `IdleStretchFactor`) every VSYNC tick, retaining a 120-sample sliding window per editor.
+     - Persist aggregate metrics (max queue depth, average WM_VBLANK latency, OnIdle jitter stddev) at the end of each scenario run and attach to manual test report.
+     - Annotate logs with host identifier, GPU, and DPI mode to simplify cross-run comparisons.
+   - Review procedure:
+     - During manual verification, inspectors should correlate spikes in `Scheduler.PaintBudget` with `Sched.VBlankDispatch` retries; mismatches indicate instrumentation gaps.
+     - Confirm OnIdle cadence by measuring the delta between consecutive `Sched.IdleState` entries; variance must stay within ±20% except during intentional burst cooling.
+3. **Incremental rollout plan**
+   - Feature flags and fallback toggles:
+     - Compile-time: `IGRAPHICS_SCHED_IDLE_EXPERIMENTAL` (new scheduler) default **ON** for internal builds, **OFF** for release until rollout milestone reached.
+     - Runtime: expose `EIdlePacingMode` via configuration file (`IPlugSettings.json`) and developer console command `sched.idle.mode`. Provide command aliases `sched_idle_legacy`, `sched_idle_adaptive`, `sched_idle_locked60`.
+     - Emergency rollback: maintain legacy scheduler entry points (guarded by `#if`) and allow runtime downgrade by writing `Legacy` into the configuration and forcing a host-triggered `OnIdlePacingChanged` callback.
+   - Staging & QA checkpoints:
+     - **Checkpoint A — Internal QA**: run Cubase + Studio One scenarios with telemetry HUD enabled; sign-off requires zero `ERROR` severity logs and `Scheduler.ParamQueueDepth` < 12 for 95% of samples.
+     - **Checkpoint B — Partner beta**: enable adaptive scheduler for selected partners; require manual reports summarizing counter behaviour and any fallback activations.
+     - **Checkpoint C — Release candidate**: all manual scenario runs completed twice without triggering fallback rollback; confirm documentation updates published.
+   - Regression monitoring & rollback:
+     - After release, automate log scraping from standalone harness runs to ensure `Scheduler.PaintBudget` high-water mark stays below 8 invalidations/frame; alert on regression.
+     - Track crash telemetry for signatures involving `VBlankPaused` > 250 ms; if rate exceeds 0.1% of sessions, initiate rollback by toggling runtime mode to `Legacy` via remote config and notify hosts through release notes.
+     - Maintain a playbook with contact tree (QA lead → engineering owner → release manager) and expected response SLAs (4 h for critical regressions, 24 h for minor telemetry drifts).
+   - Provide migration notes for plug-in developers describing configuration knobs, logging hooks, and validation expectations; include pointers to the telemetry matrix and scenario table above.
+
+## Deliverables
+- Updated IGraphicsWin scheduling logic with per-instance backpressure and hardened WM_VBLANK handling.
+- Vulkan/Skia lifecycle improvements with explicit teardown sequencing and swapchain safety.
+- Diagnostic tooling and documentation guiding manual validation in absence of automated Windows builds.
+  ]]></DesignReference>
+
+  <Tasks>
+    <task>
+      <name>Map current Windows Vulkan/Skia rendering and message scheduling pipeline</name>
+      <status>SUCCESS</status>
+      <tryCount>1</tryCount>
+      <crucialInfo>
+        Baseline captured in Plan/WinVST3VulkanSkia_CurrentState.md covering WM_VBLANK dispatch, WM_PAINT handling, and OnIdle integration for the Vulkan/Skia path.
+      </crucialInfo>
+      <continue-info>
+        Use the new baseline document to inform contention analysis and scheduling redesign tasks.
+      </continue-info>
+      <subtasks>
+        <task>
+          <name>Document WM message flow and paint lifecycle in IGraphicsWin</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Analysis recorded in Plan/WinVST3VulkanSkia_CurrentState.md (WM message pump and WM_PAINT sections) with references to IGraphicsWin guardrails.</crucialInfo>
+          <continue-info>See baseline document for line references when cross-checking new scheduling strategies.</continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+        <task>
+          <name>Document host integration touchpoints affecting scheduling</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Host-facing behaviours documented in Plan/WinVST3VulkanSkia_CurrentState.md (host integration and idle/timer sections).</crucialInfo>
+          <continue-info>Baseline ready for comparison once refactoring strategies are drafted.</continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+      </subtasks>
+    </task>
+
+    <task>
+      <name>Identify multi-instance contention risks and WM_PAINT queue pressure points</name>
+      <status>SUCCESS</status>
+      <tryCount>1</tryCount>
+      <crucialInfo>
+        Shared counters, WM_VBLANK fallbacks, and timer singletons are catalogued in Plan/WinVST3VulkanSkia_CurrentState.md so upcoming refactors can target each pressure point.
+      </crucialInfo>
+      <continue-info>
+        Use the baseline notes to scope instrumentation and per-instance replacements while drafting the refactor design.
+      </continue-info>
+      <subtasks>
+        <task>
+          <name>Evaluate shared state usage and contention between plugin instances</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Documented the shared scheduling counters, GPU caches, and host-facing singletons (timer queue, window class registration) that tie instances together in Plan/WinVST3VulkanSkia_CurrentState.md.</crucialInfo>
+          <continue-info>Leverage the inventories to propose per-instance replacements and guardrails when drafting the refactor strategy.</continue-info>
+          <subtasks>
+            <task>
+              <name>Inventory shared scheduling members in IGraphicsWin and related helpers</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>Captured shared scheduling counters (legacy `sPendingPaintCount`, per-instance `InstancePaintBudget`), window-class bookkeeping (`nWndClassReg`), and message identifiers in Plan/WinVST3VulkanSkia_CurrentState.md#shared-scheduling-state-inventory.</crucialInfo>
+              <continue-info>Use the new inventory to evaluate contention risks and drive per-instance replacement designs in subsequent subtasks.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+            <task>
+              <name>Trace shared GPU resource caches across Vulkan and Skia layers</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>Documented process-wide Vulkan device sharing via WinVulkanDeviceCoordinator and per-instance Skia swapchain caches in Plan/WinVST3VulkanSkia_CurrentState.md#shared-gpu-resource-caches.</crucialInfo>
+              <continue-info>Use the new cache inventory to scope per-instance encapsulation and teardown sequencing fixes for remaining subtasks.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+            <task>
+              <name>Assess host integration singletons that may serialize instances</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>Captured how the shared timer queue, hidden message window, and `nWndClassReg` window-class reuse couple editors inside Plan/WinVST3VulkanSkia_CurrentState.md#host-integration-singletons.</crucialInfo>
+              <continue-info>Use the new notes to isolate singleton teardown hazards and design per-instance scheduling entry points.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+          </subtasks>
+        </task>
+        <task>
+          <name>Analyze WM_PAINT/WM_VBLANK backlog scenarios and failure handling</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Backlog triggers, synchronous WM_VBLANK retries, and timer-driven OnIdle drops are documented for review in Plan/WinVST3VulkanSkia_CurrentState.md.</crucialInfo>
+          <continue-info>Leverage the backlog inventory when specifying telemetry, throttling heuristics, and host-facing safeguards.</continue-info>
+          <subtasks>
+            <task>
+              <name>Document queue saturation triggers and message loss symptoms</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>Captured how the old shared counter stalled WM_VBLANK posts, how ERROR_NOT_ENOUGH_QUOTA routes through synchronous fallbacks, and how timer PostMessage failures drop OnIdle ticks in Plan/WinVST3VulkanSkia_CurrentState.md.</crucialInfo>
+              <continue-info>Use the backlog inventory to justify queue instrumentation and per-instance counters in upcoming design tasks.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+            <task>
+              <name>Evaluate SendMessageTimeoutW fallback behaviour under contention</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>Documented how the 16 ms SendMessageTimeoutW retry blocks the worker briefly and releases mVBlankMessagePending so VSYNC posts can resume after saturation.</crucialInfo>
+              <continue-info>Use the noted timeout and release conditions when defining bounded retry or jitter strategies.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+            <task>
+              <name>Analyze OnIdle pacing impact when paint backlog occurs</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>Captured how the shared timer window drops callbacks on PostMessageW failure, stretching the fixed 20 Hz OnIdle cadence across every instance.</crucialInfo>
+              <continue-info>Design per-instance or resilient timer dispatch so OnIdle/MIDI queues keep flowing despite render throttling.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+          </subtasks>
+        </task>
+      </subtasks>
+    </task>
+
+    <task>
+      <name>Design refactoring strategy for resilient scheduling and OnIdle integration</name>
+      <status>SUCCESS</status>
+      <tryCount>1</tryCount>
+      <crucialInfo>
+        Comprehensive scheduling design recorded across Plan/Current-Plan.xml#DesignReference covering paint budgeting, WM_VBLANK retries, and adaptive OnIdle pacing for multi-instance hosts.
+      </crucialInfo>
+      <continue-info>
+        Implementation teams should follow the documented state machines, telemetry hooks, and configuration surfaces when coding the scheduler refactor.
+      </continue-info>
+      <subtasks>
+        <task>
+          <name>Outline per-instance paint budgeting and queue throttling approach</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Per-instance counters, tiered batching, burst cooling, and instrumentation strategy captured in Plan/Current-Plan.xml#DesignReference (Phase 2) to guide implementation.</crucialInfo>
+          <continue-info>Adopt the documented InstancePaintBudget, batching tiers, and telemetry hooks when coding; ensure timer coordination matches the burst cooling design.</continue-info>
+          <subtasks>
+            <task>
+              <name>Propose per-instance counters replacing sPendingPaintCount while keeping lightweight global telemetry</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>Design captured in Plan/Current-Plan.xml#DesignReference (Phase 2 — Scheduling &amp; Queue Management Strategy) detailing InstancePaintBudget ownership, counter lifecycle, and global snapshot telemetry.</crucialInfo>
+              <continue-info>Implementers should follow the documented invalidate/drain protocols and logging hooks when replacing sPendingPaintCount.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+            <task>
+              <name>Design dirty-region batching and burst dampening heuristics</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>Tiered coalescing, burst cooling thresholds, and timer coordination documented in Plan/Current-Plan.xml#DesignReference under "Dirty-region batching &amp; burst dampening heuristics".</crucialInfo>
+              <continue-info>Implementers should wire the tiered batching helpers and burst cooling state machine into `IGraphicsWin::InvalidateRect` and resume timers once `NeedsDrain` clears.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+            <task>
+              <name>Instrument paint budget decisions for review-only verification</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>Structured logs, debug HUD overlays, and telemetry histogram buckets enumerated in Plan/Current-Plan.xml#DesignReference under "Instrumentation &amp; operator review flow".</crucialInfo>
+              <continue-info>Expose `PaintBudget.Decision` events through the `/IGRAPHICS/SCHED` channel and document the manual QA checklist in release notes.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+          </subtasks>
+        </task>
+        <task>
+          <name>Design robust WM_VBLANK and fallback dispatch mechanism</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Bounded retry ladder, telemetry, and pause/recovery flow recorded in Plan/Current-Plan.xml#DesignReference under “Robust WM_VBLANK delivery”.</crucialInfo>
+          <continue-info>Implement VBlankDispatchWorker, queue metrics, and pause protocol as documented when wiring the scheduler.</continue-info>
+          <subtasks>
+            <task>
+              <name>Define asynchronous worker model with bounded retry and jitter</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>Plan describes VBlankDispatchWorker thread, PostMessage retry ladder, and subscription handling for multi-editor hosts.</crucialInfo>
+              <continue-info>Follow the documented shutdown and retry sequence to prevent dangling WM_VBLANK posts during teardown.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+            <task>
+              <name>Specify queue-depth telemetry and watchdog triggers</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>Telemetry section now calls for Sched.VBlankDispatch logs, queue depth high-water marks, and latency sampling.</crucialInfo>
+              <continue-info>Ensure editor-side handlers push latency deltas into the shared telemetry snapshot for reviewers.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+            <task>
+              <name>Plan fallback path when WM_VBLANK delivery must pause rendering</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>Fallback protocol details VBlankPaused state, health checks, and recovery/reset logic for swapchains.</crucialInfo>
+              <continue-info>Implement health check cadence and HUD telemetry to prove recovery without requiring kernel tracing.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+          </subtasks>
+        </task>
+        <task>
+          <name>Integrate OnIdle pacing with rendering backpressure controls</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Adaptive idle pacing state machine, queue coordination, and host opt-in controls documented in Plan/Current-Plan.xml#DesignReference (Phase 2 — Main-thread pacing integration).</crucialInfo>
+          <continue-info>Implement SchedulerState transitions, SignalIdle helper, and pacing configuration knobs as recorded in the refactor plan.</continue-info>
+          <subtasks>
+            <task>
+              <name>Model interaction between idle timer frequency and paint throttle states</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>State machine covering Normal, BurstCooling, and IdleCatchUp modes plus telemetry hooks captured in the refactor plan’s "Idle timer ↔ paint throttle state model" section.</crucialInfo>
+              <continue-info>Wire SchedulerState updates into WM_PAINT drain loop and OnIdle handler per documented transitions.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+            <task>
+              <name>Define coordination signals between rendering and parameter queues</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>PendingParamFlush coupling, latency forgiveness window, and Scheduler.ParamQueueDepth telemetry defined under "Render/parameter queue coordination".</crucialInfo>
+              <continue-info>Expose queue depth counters and IdleForgiveness semantics when implementing parameter flushing.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+            <task>
+              <name>Plan host opt-in/opt-out controls for idle pacing adjustments</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>Compile-time guard, runtime EIdlePacingMode enum, and host callback strategy documented in "Host opt-in / opt-out controls".</crucialInfo>
+              <continue-info>Implement toggles, debug HUD exposure, and OnIdlePacingChanged notifications as specified.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+          </subtasks>
+        </task>
+      </subtasks>
+    </task>
+
+    <task>
+      <name>Plan validation and hardening checkpoints</name>
+      <status>SUCCESS</status>
+      <tryCount>1</tryCount>
+      <crucialInfo>
+        Telemetry requirements, manual scenario matrix, success thresholds, and rollout safeguards captured in Plan/Current-Plan.xml#DesignReference Phase 4 enable review-only validation.
+      </crucialInfo>
+      <continue-info>
+        Follow the documented validation plan when transitioning from design to implementation; final review task remains to summarize readiness.
+      </continue-info>
+      <subtasks>
+        <task>
+          <name>Define telemetry/logging requirements for review-only validation</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Telemetry matrix, sampling cadence, and review guidance documented in Plan/Current-Plan.xml#DesignReference Phase 4 ensure reviewers can validate queue depth, WM_VBLANK retries, and idle jitter without instrumentation builds.</crucialInfo>
+          <continue-info>Implementation owners should align logging hooks with the Phase 4 Telemetry review gates table when coding the scheduler.</continue-info>
+          <subtasks>
+            <task>
+              <name>List logging categories and severity levels for scheduling telemetry</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>Validation telemetry matrix captured in Plan/Current-Plan.xml#DesignReference (Phase 4 — Telemetry review gates) enumerates `/IGRAPHICS/SCHED`, `Sched.VBlankDispatch`, `Sched.IdleState`, `Scheduler.PaintBudget`, and `Scheduler.ParamQueueDepth` with INFO/WARN/ERROR triggers.</crucialInfo>
+              <continue-info>Apply the documented severity thresholds when wiring centralized logging so QA can rely on the Telemetry review gates table.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+            <task>
+              <name>Define per-instance diagnostic counters and sampling cadence</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>Phase 4 — Telemetry review gates now documents per-instance counters (`queuedInvalidates`, `inflightPaints`, `PendingParamFlush`, `droppedVBlank`, `IdleStretchFactor`) with VSYNC sampling window and aggregation rules.</crucialInfo>
+              <continue-info>Implementers should mirror the VSYNC sampling and reset guidance from the plan when instrumenting WM_PAINT drain and swapchain lifecycle paths.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+            <task>
+              <name>Capture guidance for reviewing telemetry during manual verification</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>Manual review procedure in Plan/Current-Plan.xml#DesignReference (Phase 4 — Telemetry review gates) explains correlating `Scheduler.PaintBudget` spikes with `Sched.VBlankDispatch` retries and idle cadence variance limits.</crucialInfo>
+              <continue-info>QA should follow the documented correlation steps and ±20% idle variance rule when executing the scenario matrix.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+          </subtasks>
+        </task>
+        <task>
+          <name>Compile manual scenario matrix and success criteria</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Phase 4 manual scenario table, stress loops, and acceptance thresholds now cover multi-host, DPI, and GPU combinations plus lifecycle events for validation.</crucialInfo>
+          <continue-info>Use the documented table and stress guidance when planning manual verification runs and sign-off reports.</continue-info>
+          <subtasks>
+            <task>
+              <name>Enumerate host combinations and configuration variants</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>Phase 4 manual scenario matrix now specifies Cubase, Studio One, Reaper, Bitwig, and the standalone harness across DPI/GPU permutations with execution notes.</crucialInfo>
+              <continue-info>QA should follow the scenario table to ensure each host/DPI/GPU row is exercised with dual editors unless flagged otherwise.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+            <task>
+              <name>Define stress procedures for paint and idle workloads</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>Scenario matrix instructions now call for dual-instance animation sweeps, five rapid open/close cycles, resize sweeps, and simulated device loss while logging telemetry.</crucialInfo>
+              <continue-info>Exercise the documented stress loops and compare captured metrics against the Telemetry review gates expectations.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+            <task>
+              <name>Set pass/fail thresholds and observation checklist</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>Phase 4 checkpoints define acceptance criteria: zero ERROR logs, `Scheduler.ParamQueueDepth` < 12 for 95% samples, idle variance ±20%, and `Scheduler.PaintBudget` high-water mark < 8 in regression monitoring.</crucialInfo>
+              <continue-info>Use the checkpoint criteria and regression alerts from the plan when drafting sign-off reports.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+          </subtasks>
+        </task>
+        <task>
+          <name>Outline rollout and regression safeguards</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Phase 4 rollout plan now documents feature toggles, staged checkpoints, regression monitors, and escalation paths for enabling the scheduler safely.</crucialInfo>
+          <continue-info>Implementation and release teams should mirror the feature flag and checkpoint guidance when executing the rollout.</continue-info>
+          <subtasks>
+            <task>
+              <name>Plan feature flagging and fallback toggles</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>Phase 4 rollout plan specifies compile-time flag `IGRAPHICS_SCHED_IDLE_EXPERIMENTAL`, runtime `EIdlePacingMode` controls, console commands, and emergency downgrade flow.</crucialInfo>
+              <continue-info>Implement compile-time guards and configuration plumbing per the feature flag table in the rollout section.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+            <task>
+              <name>Define staging/QA validation checkpoints</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>Rollout plan now includes Checkpoints A–C with required hosts, telemetry conditions, and documentation sign-offs for each stage.</crucialInfo>
+              <continue-info>Use the checkpoint descriptions to sequence manual runs and partner betas before enabling the scheduler by default.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+            <task>
+              <name>Establish regression monitoring and rollback procedure</name>
+              <status>SUCCESS</status>
+              <tryCount>1</tryCount>
+              <crucialInfo>Regression monitoring guidance calls for automated log scraping, crash telemetry thresholds for `VBlankPaused`, and a contact escalation tree with SLA expectations.</crucialInfo>
+              <continue-info>Follow the plan’s regression monitoring bullets when preparing rollout playbooks and remote config toggles.</continue-info>
+              <subtasks>
+              </subtasks>
+            </task>
+          </subtasks>
+        </task>
+      </subtasks>
+    </task>
+
+    <task>
+      <name>Implement per-instance paint budgeting and throttling controls</name>
+      <status>SUCCESS</status>
+      <tryCount>3</tryCount>
+      <crucialInfo>
+        InstancePaintBudget now drives batching, burst cooling, structured Scheduler.PaintBudget telemetry, and the debug HUD overlay, giving reviewers histogram snapshots and per-instance counters directly in IGraphicsWin.
+      </crucialInfo>
+      <continue-info>
+        Shift focus to WM_VBLANK worker implementation and adaptive idle pacing so the new telemetry can be correlated across scheduling stages.
+      </continue-info>
+      <subtasks>
+        <task>
+          <name>Replace sPendingPaintCount with per-instance InstancePaintBudget tracking</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Replaced the global counter with per-instance InstancePaintBudget state in IGraphicsWin so WM_VBLANK gating and teardown operate on local load only.</crucialInfo>
+          <continue-info>Extend batching and telemetry hooks onto InstancePaintBudget before closing out the remaining paint budgeting subtasks.</continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+        <task>
+          <name>Integrate tiered dirty-region batching and burst cooling heuristics</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>IGraphicsWin batches dirty rectangles by size, escalates to full-surface drains when thresholds trigger, defers bursts through InstancePaintBudget::NeedsDrain, and resumes via deferred invalidation flushing once WM_PAINT drains catch up.</crucialInfo>
+          <continue-info>Leverage the new per-instance budget state when publishing Scheduler.PaintBudget telemetry and HUD overlays.</continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+        <task>
+          <name>Emit paint budget telemetry and debug surfaces</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Scheduler.PaintBudget logging now streams through SchedulerLogging.h, per-instance counters feed the global histogram snapshot, and the FPS debug HUD exposes queued/decision state so reviewers can validate throttling without custom builds.</crucialInfo>
+          <continue-info>Use the new telemetry snapshot helpers and HUD overlay when correlating upcoming WM_VBLANK telemetry work.</continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+      </subtasks>
+    </task>
+
+    <task>
+      <name>Implement WM_VBLANK dispatch worker and fallback controls</name>
+      <status>SUCCESS</status>
+      <tryCount>2</tryCount>
+      <crucialInfo>
+        VBlankDispatchWorker fans out WM_VBLANK_TICK posts with bounded retries, telemetry, and now coordinates with IGraphicsWin’s VBlankPaused pause/health-check/soft-reset flow so multi-instance stalls recover without clogging the UI queue.
+      </crucialInfo>
+      <continue-info>
+        Reference the pause/resume telemetry and soft-reset hooks when integrating the adaptive OnIdle scheduler and HUD overlays.
+      </continue-info>
+      <subtasks>
+        <task>
+          <name>Create VBlankDispatchWorker thread with bounded PostMessage retry</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>IGraphicsWin registers with VBlankDispatchWorker, which queues WM_VBLANK_TICK dispatches per instance, retries PostMessageW with immediate/jittered/5ms delays, and logs or increments mDroppedVBlank when the ladder exhausts.</crucialInfo>
+          <continue-info>Leverage the worker’s queue and dropped-count state when adding queue-depth telemetry and the VBlankPaused fallback flow.</continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+        <task>
+          <name>Instrument WM_VBLANK queue depth and latency telemetry</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>VBlankDispatchWorker now records queue depth samples, logs WARNs when depth exceeds 2× active editors, emits per-dispatch Sched.VBlankDispatch events with retry counts and cadence deltas, and OnDisplayTimer captures WM_VBLANK latency into the scheduler telemetry snapshot.</crucialInfo>
+          <continue-info>Use the new queue-depth and latency metrics when wiring the VBlankPaused fallback so recovery logs can reference current backlog and dispatch cadence.</continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+        <task>
+          <name>Handle VBlankPaused fallback state and recovery flow</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>IGraphicsWin now marks editors as VBlankPaused after bounded retries fail, logs pause/extend events, starts a 15 ms health-check timer that reposts ticks, escalates to a Vulkan swapchain soft reset after 250 ms, and resumes with telemetry, HUD snapshots, and deferred invalidation flushing when WM_VBLANK is acknowledged.</crucialInfo>
+          <continue-info>Leverage the pause/resume telemetry when wiring idle pacing transitions and HUD overlays so VBlank health is surfaced alongside scheduler state.</continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+      </subtasks>
+    </task>
+
+    <task>
+      <name>Integrate adaptive OnIdle pacing and queue coordination</name>
+      <status>SUCCESS</status>
+      <tryCount>2</tryCount>
+      <crucialInfo>
+        SchedulerState transitions, parameter queue coupling, and host opt-in/out plumbing are live; OnHostIdleTick now tracks queue backlog, logs `/IGRAPHICS/SCHED/ParamQueueDepth`, and updates adaptive cadence state so downstream telemetry can rely on accurate pending flush metadata.
+      </crucialInfo>
+      <continue-info>
+        Idle pacing plumbing is complete—future work should build on the emitted telemetry signals and HUD overlays implemented under the telemetry task.</continue-info>
+      <subtasks>
+        <task>
+          <name>Implement SchedulerState transitions for idle pacing modes</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>IGraphicsWin now maintains a SchedulerState with Normal/BurstCooling/IdleCatchUp modes, computes adaptive idle cadence targets, logs Sched.IdleState transitions, updates the HUD, and drives transitions from WM_PAINT drains, deferred invalidations, and host idle ticks.</crucialInfo>
+          <continue-info>Next coordinate PendingParamFlush accounting with OnIdle handlers and render throttling before wiring host-facing telemetry.</continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+        <task>
+          <name>Coordinate parameter queue draining with render throttling</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>IPlugAPIBase now supplies HostIdleTickInfo with parameter/MIDI queue depths, elapsed timer cadence, and processed counts to IGraphicsWin, which couples PendingParamFlush to real backlog, honors RequestIdleForgiveness windows, logs Sched.IdleForgiveness events, and clears burst cooling once queues drain.</crucialInfo>
+          <continue-info>Leverage the new HostIdleTickInfo fields when wiring telemetry/HUD overlays so queue depths, forgiveness windows, and pending flush counts appear alongside scheduler metrics.</continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+        <task>
+          <name>Expose host opt-in/opt-out and configuration controls</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>IGraphics now defines the `EIdlePacingMode` enum and `SetIdlePacingMode()` plumbing guarded by the new `IGRAPHICS_SCHED_IDLE_EXPERIMENTAL` compile-time flag, while `IGraphicsWin` reads `%LOCALAPPDATA%\iPlug2\IPlugSettings.json`, surfaces `LoadIdlePacingModeFromConfigFile()/RefreshIdlePacingModeFromDefaultConfig()`, and routes developer console commands such as `sched.idle.mode adaptive` and `sched_idle_locked60` through `ApplySchedulerConsoleCommand()` so hosts can opt in or downgrade per instance.</crucialInfo>
+          <continue-info>Next integrate the adaptive SchedulerState machine and telemetry so calls to `SetIdlePacingMode()` emit the planned `Sched.IdleState` events and HUD updates while preserving the config/console overrides.</continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+      </subtasks>
+    </task>
+
+    <task>
+      <name>Wire telemetry channels, HUD overlays, and regression hooks</name>
+      <status>SUCCESS</status>
+      <tryCount>1</tryCount>
+      <crucialInfo>
+        Scheduler logging now emits through `/IGRAPHICS/SCHED/...` categories with configurable severity floors, a 120-frame telemetry window captures queued invalidates, pending paints, idle stretch, forgiveness activity, param queue depth, and VBlank drops, and the FPS HUD surfaces burst cooling, forgiveness timers, parameter backlog, and VBlank health.
+      </crucialInfo>
+      <continue-info>
+        Telemetry plumbing is complete—rollout tasks can rely on the structured logs and HUD readouts without additional scheduler changes.
+      </continue-info>
+      <subtasks>
+        <task>
+          <name>Finalize centralized logging categories and severity thresholds</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>`SchedulerLogging.h` defines `/IGRAPHICS/SCHED` category constants with configurable severity floors so PaintBudget, IdleState, IdleForgiveness, VBlankDispatch, and ParamQueueDepth events follow the telemetry matrix while sharing the root logger sink.</crucialInfo>
+          <continue-info>Categories are normalized; adjust `IGRAPHICS_SCHED_LOG_*` macros if QA needs alternate verbosity.</continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+        <task>
+          <name>Implement histogram and counter sampling cadence</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Telemetry snapshots retain a 120-frame window of queued invalidates, pending paints, idle stretch, forgiveness activity, param queue depth, and VBlank drops alongside running maxima for review-only validation.</crucialInfo>
+          <continue-info>Reset hooks are wired—call `ResetSchedulerTelemetrySnapshot()` between manual runs to clear accumulated samples.</continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+        <task>
+          <name>Render debug HUD overlays for paint and idle diagnostics</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>The FPS overlay now reports queued/budgeted paints, burst cooling, idle state/stretch, active forgiveness windows, parameter backlog, and VBlank queue/drop status for multi-instance stress validation.</crucialInfo>
+          <continue-info>HUD output follows the FPS display toggle; operators can rely on it during validation scenarios.</continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+      </subtasks>
+    </task>
+
+    <task>
+      <name>Introduce rollout controls and manual validation artifacts</name>
+      <status>SUCCESS</status>
+      <tryCount>1</tryCount>
+      <crucialInfo>
+        Runtime toggles now emit structured `/IGRAPHICS/SCHED/Rollout` telemetry, configuration parsing reports detailed failure reasons, and dedicated documentation captures validation checklists plus monitoring hooks for the staged rollout.</crucialInfo>
+      <continue-info>Rollout controls are in place; future updates should extend telemetry fields if additional host metrics are required.</continue-info>
+      <subtasks>
+        <task>
+          <name>Implement feature flags and runtime toggles for scheduler rollout</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>`IGraphicsWin` now logs `mode_applied`, `mode_changed`, and configuration load results via the new `/IGRAPHICS/SCHED/Rollout` category while flagging VBlank health alerts under `/IGRAPHICS/SCHED/Alerts`, fulfilling the rollout telemetry contract.</crucialInfo>
+          <continue-info>Review `SchedulerLogging.h` and `IGraphicsWin.cpp` if new pacing modes or thresholds are introduced.</continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+        <task>
+          <name>Create manual validation checklist and reporting templates</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>`Plan/WinVST3VulkanSkia_ValidationChecklist.md` provides host/DPI coverage steps, HUD capture requirements, and pass/fail reporting templates aligned with the scenario matrix.</crucialInfo>
+          <continue-info>Update the checklist when new hosts or rendering backends enter the support matrix.</continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+        <task>
+          <name>Configure regression monitoring and alert hooks</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>`Plan/WinVST3VulkanSkia_RolloutMonitoring.md` defines alert routing for `/IGRAPHICS/SCHED/Alerts`, idle mode adoption metrics, and runbook actions for scheduler regressions.</crucialInfo>
+          <continue-info>Integrate the documented metrics into central dashboards before expanding rollout.</continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+      </subtasks>
+    </task>
+  </Tasks>
+
+  <Finalization>
+    <task>
+      <name>Code perspective correctness check</name>
+      <status>SUCCESS</status>
+      <tryCount>1</tryCount>
+      <crucialInfo>
+        Reopened the completed implementation workstreams for code-perspective review, verified cross-system integration, and documented
+        readiness for host-side validation. Review focused on scheduler correctness, telemetry wiring, idle pacing APIs, and rollout plumbing.
+      </crucialInfo>
+      <continue-info>All review subtasks passed; no additional fixes pending.</continue-info>
+      <subtasks>
+        <task>
+          <name>Review per-instance paint budgeting and throttling integration</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Confirmed InstancePaintBudget replaces the legacy global counter, that batching/NeedsDrain paths coalesce invalidations safely, and that Scheduler.PaintBudget telemetry/HUD overlays stay consistent after the fixes applied in this review.</crucialInfo>
+          <continue-info>Monitor per-instance teardown helpers during host validation to ensure counters reset cleanly.</continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+        <task>
+          <name>Review WM_VBLANK dispatch worker and recovery flow</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Validated VBlankDispatchWorker queue depth warnings, retry ladder, pause/health-check gating, and the telemetry drop counters after adding forward declarations to unblock compilation.</crucialInfo>
+          <continue-info>Verify host logs capture queue depth and VBlankPaused recovery timing during validation runs.</continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+        <task>
+          <name>Review adaptive OnIdle pacing and queue coordination</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Audited SchedulerState transitions, HostIdleTickInfo propagation, and idle forgiveness handling; ensured chrono usage is supported by required headers and queue telemetry updates remain accurate.</crucialInfo>
+          <continue-info>Keep an eye on idle forgiveness windows when stress testing mixed MIDI/parameter workloads.</continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+        <task>
+          <name>Review telemetry channels, HUD overlays, and regression hooks</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Checked SchedulerLogging macros, severity floors, histogram sampling, and HUD surfaces; verified queue depth samples, idle stretch metrics, and telemetry sink configuration for rollout monitoring.</crucialInfo>
+          <continue-info>Coordinate with analytics tooling if additional telemetry fields are needed.</continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+        <task>
+          <name>Review rollout controls and validation artifacts</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>Confirmed idle pacing configuration loading, console command routing, and `/IGRAPHICS/SCHED/Rollout` alert emissions align with documentation and that failure paths surface actionable telemetry.</crucialInfo>
+          <continue-info>Rollout guidance stands; no blockers identified for partner handoff.</continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+      </subtasks>
+    </task>
+    <task>
+      <name>FINAL CHECK</name>
+      <status>SUCCESS</status>
+      <tryCount>1</tryCount>
+      <crucialInfo>
+        Completed the dedicated code-perspective review pass, reconciling plan tasks with implementation changes and verifying readiness for multi-instance validation. See Plan/WinVST3VulkanSkia_FinalReview.md for consolidated findings and rollout recommendations.
+      </crucialInfo>
+      <continue-info>No further action required; proceed with host-side validation per the published checklist.</continue-info>
+    </task>
+  </Finalization>
+</plan>

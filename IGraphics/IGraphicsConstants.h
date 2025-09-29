@@ -12,6 +12,10 @@
 
 #include "IPlugPlatform.h"
 
+#ifndef IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+#define IGRAPHICS_SCHED_IDLE_EXPERIMENTAL 0
+#endif
+
 BEGIN_IPLUG_NAMESPACE
 BEGIN_IGRAPHICS_NAMESPACE
 
@@ -168,6 +172,20 @@ enum class EColorReplacement { None, Fill, Stroke };
 
 /** \todo */
 enum class EUIResizerMode { Scale, Size };
+
+/** Idle pacing configuration exposed to hosts and developer tooling */
+enum class EIdlePacingMode
+{
+  Legacy = 0,
+  Adaptive,
+  Locked60Hz
+};
+
+static constexpr const char* kIdlePacingModeStrs[3] = {
+  "Legacy",
+  "Adaptive",
+  "Locked60Hz"
+};
 
 /** \todo */
 enum class ECursor

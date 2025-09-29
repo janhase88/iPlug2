@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <ctime>
 #include <cassert>
+#include <chrono>
 
 #include "IPlugAPIBase.h"
 
@@ -141,14 +142,28 @@ void IPlugAPIBase::SendParameterValueFromAPI(int paramIdx, double value, bool no
 
 void IPlugAPIBase::OnTimer(Timer& t)
 {
-  if(HasUI())
+  IGraphics* pGraphics = nullptr;
+  IGraphics::HostIdleTickInfo idleInfo;
+
+  if (HasUI())
   {
+    pGraphics = GetUI();
+
+    if (pGraphics)
+    {
+      idleInfo.paramQueueDepthBefore = static_cast<int>(mParamChangeFromProcessor.ElementsAvailable());
+      idleInfo.midiQueueDepthBefore = static_cast<int>(mMidiMsgsFromProcessor.ElementsAvailable());
+      idleInfo.sysexQueueDepthBefore = static_cast<int>(mSysExDataFromProcessor.ElementsAvailable());
+    }
+
 // VST3 ********************************************************************************
 #if defined VST3P_API || defined VST3_API
     while (mMidiMsgsFromProcessor.ElementsAvailable())
     {
       IMidiMsg msg;
       mMidiMsgsFromProcessor.Pop(msg);
+      if (pGraphics)
+        ++idleInfo.midiMessagesProcessed;
 #ifdef VST3P_API // distributed
       TransmitMidiMsgFromProcessor(msg);
 #else
@@ -160,6 +175,8 @@ void IPlugAPIBase::OnTimer(Timer& t)
     {
       SysExData msg;
       mSysExDataFromProcessor.Pop(msg);
+      if (pGraphics)
+        ++idleInfo.sysexMessagesProcessed;
 #ifdef VST3P_API // distributed
       TransmitSysExDataFromProcessor(msg);
 #else
@@ -168,30 +185,55 @@ void IPlugAPIBase::OnTimer(Timer& t)
     }
 // !VST3 ******************************************************************************
 #else
-    while(mParamChangeFromProcessor.ElementsAvailable())
+    while (mParamChangeFromProcessor.ElementsAvailable())
     {
       ParamTuple p;
       mParamChangeFromProcessor.Pop(p);
+      if (pGraphics)
+        ++idleInfo.paramMessagesProcessed;
       SendParameterValueFromDelegate(p.idx, p.value, false);
     }
-    
+
     while (mMidiMsgsFromProcessor.ElementsAvailable())
     {
       IMidiMsg msg;
       mMidiMsgsFromProcessor.Pop(msg);
+      if (pGraphics)
+        ++idleInfo.midiMessagesProcessed;
       SendMidiMsgFromDelegate(msg);
     }
-    
+
     while (mSysExDataFromProcessor.ElementsAvailable())
     {
       SysExData msg;
       mSysExDataFromProcessor.Pop(msg);
+      if (pGraphics)
+        ++idleInfo.sysexMessagesProcessed;
       SendSysexMsgFromDelegate({msg.mOffset, msg.mData, msg.mSize});
     }
 #endif
   }
-  
+
   OnIdle();
+
+  if (pGraphics)
+  {
+    idleInfo.paramQueueDepthAfter = static_cast<int>(mParamChangeFromProcessor.ElementsAvailable());
+    idleInfo.midiQueueDepthAfter = static_cast<int>(mMidiMsgsFromProcessor.ElementsAvailable());
+    idleInfo.sysexQueueDepthAfter = static_cast<int>(mSysExDataFromProcessor.ElementsAvailable());
+
+    const auto now = std::chrono::steady_clock::now();
+    if (mLastUIIdleTick.time_since_epoch().count() > 0)
+    {
+      const double elapsedMs = std::chrono::duration<double, std::milli>(now - mLastUIIdleTick).count();
+      idleInfo.elapsedMs = elapsedMs;
+      const double nominalMs = 1000.0 / static_cast<double>(IDLE_TIMER_RATE);
+      idleInfo.timerFellBehind = elapsedMs > (nominalMs * 1.25);
+    }
+    mLastUIIdleTick = now;
+
+    pGraphics->OnHostIdleTick(idleInfo);
+  }
 }
 
 void IPlugAPIBase::SendMidiMsgFromUI(const IMidiMsg& msg)

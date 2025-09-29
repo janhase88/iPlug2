@@ -13,6 +13,7 @@
 #include <cstring>
 #include <cstdint>
 #include <memory>
+#include <chrono>
 
 #include "ptrlist.h"
 #include "mutex.h"
@@ -226,7 +227,8 @@ private:
 private:
   WDL_String mParamDisplayStr;
   std::unique_ptr<Timer> mTimer;
-  
+  std::chrono::steady_clock::time_point mLastUIIdleTick;
+
   IPlugQueue<ParamTuple> mParamChangeFromProcessor {PARAM_TRANSFER_SIZE};
   IPlugQueue<IMidiMsg> mMidiMsgsFromEditor {MIDI_TRANSFER_SIZE}; // a queue of midi messages generated in the editor by clicking keyboard UI etc
   IPlugQueue<IMidiMsg> mMidiMsgsFromProcessor {MIDI_TRANSFER_SIZE}; // a queue of MIDI messages received (potentially on the high priority thread), by the processor to send to the editor

@@ -892,6 +892,8 @@ void UpdatePaintBudgetCounters(const IGraphicsWin::InstancePaintBudget::Snapshot
 }
 } // namespace
 
+} // anonymous namespace
+
 #if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
 void IGraphicsWin::SchedulerState::Reset(EIdlePacingMode mode, ULONGLONG nowTick)
 {

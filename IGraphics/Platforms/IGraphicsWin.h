@@ -258,8 +258,6 @@ private:
   void StopVBlankThread();
   void VBlankNotify();
 
-  static constexpr size_t kVBlankLatencySampleCount = 32;
-  static constexpr size_t kSchedulerSampleWindow = 120;
 #if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
   static constexpr int kParamQueueWarnThreshold = 12;
   static constexpr int kParamQueueErrorThreshold = 16;
@@ -275,31 +273,10 @@ private:
   void PerformVBlankHealthCheck();
   void RequestSwapchainSoftReset(ULONGLONG sincePauseMs);
 
-  friend class VBlankDispatchWorker;
+public:
+  static constexpr size_t kVBlankLatencySampleCount = 32;
+  static constexpr size_t kSchedulerSampleWindow = 120;
 
-  HWND mVBlankWindow = 0;                      // Window to post messages to for every vsync
-  volatile bool mVBlankShutdown = false;       // Flag to indiciate that the vsync thread should shutdown
-  HANDLE mVBlankThread = INVALID_HANDLE_VALUE; // ID of thread.
-  std::atomic<DWORD> mVBlankCount{0};          // running count of vblank events since the start of the window.
-  std::atomic<bool> mVBlankMessagePending{false}; // true while a WM_VBLANK message is outstanding on the UI queue
-  std::atomic<DWORD> mQueuedVBlank{0};         // newest vblank counter queued for delivery to the UI thread
-  std::atomic<DWORD> mPendingSyncVBlank{0};    // newest tick awaiting a fallback WM_VBLANK send when PostMessageW fails
-  DWORD mLastProcessedVBlank = 0;              // last WM_VBLANK tick serviced by the UI thread
-  int mVBlankSkipUntil = 0;                    // support for skipping vblank notification if the last callback took too long.
-                                              // This helps keep the message pump clear in the case of overload.
-  std::shared_ptr<VBlankSubscription> mVBlankSubscription; // worker registration for bounded WM_VBLANK dispatch
-  mutable std::mutex mVBlankSubscriptionMutex;             // guards subscription access across threads
-  std::atomic<uint32_t> mDroppedVBlank{0};     // number of ticks abandoned after exhausting retries
-  std::atomic<bool> mVBlankPaused{false};
-  std::atomic<bool> mVBlankHealthTimerActive{false};
-  std::atomic<uint32_t> mVBlankConsecutiveDrops{0};
-  std::atomic<uint32_t> mVBlankHealthCheckAttempts{0};
-  ULONGLONG mVBlankPausedSinceTick = 0;
-  bool mVBlankSoftResetIssued = false;
-  std::array<std::atomic<DWORD>, kVBlankLatencySampleCount> mVBlankLatencyCounts{};
-  std::array<std::atomic<uint64_t>, kVBlankLatencySampleCount> mVBlankLatencyMicros{};
-  bool mVSYNCEnabled = false;
-  bool mDeferInvalidation = false;
   struct InstancePaintBudget
   {
     enum class DecisionKind
@@ -434,6 +411,32 @@ private:
     uint32_t idleTimerBehindWindow[kSchedulerSampleWindow] = {};
   };
 
+private:
+  friend class VBlankDispatchWorker;
+
+  HWND mVBlankWindow = 0;                      // Window to post messages to for every vsync
+  volatile bool mVBlankShutdown = false;       // Flag to indiciate that the vsync thread should shutdown
+  HANDLE mVBlankThread = INVALID_HANDLE_VALUE; // ID of thread.
+  std::atomic<DWORD> mVBlankCount{0};          // running count of vblank events since the start of the window.
+  std::atomic<bool> mVBlankMessagePending{false}; // true while a WM_VBLANK message is outstanding on the UI queue
+  std::atomic<DWORD> mQueuedVBlank{0};         // newest vblank counter queued for delivery to the UI thread
+  std::atomic<DWORD> mPendingSyncVBlank{0};    // newest tick awaiting a fallback WM_VBLANK send when PostMessageW fails
+  DWORD mLastProcessedVBlank = 0;              // last WM_VBLANK tick serviced by the UI thread
+  int mVBlankSkipUntil = 0;                    // support for skipping vblank notification if the last callback took too long.
+                                              // This helps keep the message pump clear in the case of overload.
+  std::shared_ptr<VBlankSubscription> mVBlankSubscription; // worker registration for bounded WM_VBLANK dispatch
+  mutable std::mutex mVBlankSubscriptionMutex;             // guards subscription access across threads
+  std::atomic<uint32_t> mDroppedVBlank{0};     // number of ticks abandoned after exhausting retries
+  std::atomic<bool> mVBlankPaused{false};
+  std::atomic<bool> mVBlankHealthTimerActive{false};
+  std::atomic<uint32_t> mVBlankConsecutiveDrops{0};
+  std::atomic<uint32_t> mVBlankHealthCheckAttempts{0};
+  ULONGLONG mVBlankPausedSinceTick = 0;
+  bool mVBlankSoftResetIssued = false;
+  std::array<std::atomic<DWORD>, kVBlankLatencySampleCount> mVBlankLatencyCounts{};
+  std::array<std::atomic<uint64_t>, kVBlankLatencySampleCount> mVBlankLatencyMicros{};
+  bool mVSYNCEnabled = false;
+  bool mDeferInvalidation = false;
   static SchedulerTelemetrySnapshot GetSchedulerTelemetrySnapshot();
   static void ResetSchedulerTelemetrySnapshot();
 

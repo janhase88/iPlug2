@@ -468,6 +468,8 @@ StaticStorage<HFontHolder> IGraphicsWin::sHFontCache;
 
 extern float GetScaleForHWND(HWND hWnd);
 
+namespace iplug::igraphics
+{
 namespace
 {
 constexpr ULONGLONG kBurstCoolingWindowMs = 32ULL; // ~2 VSYNC intervals at 60Hz
@@ -892,7 +894,7 @@ void UpdatePaintBudgetCounters(const IGraphicsWin::InstancePaintBudget::Snapshot
 }
 } // namespace
 
-} // anonymous namespace
+} // namespace iplug::igraphics
 
 #if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
 void IGraphicsWin::SchedulerState::Reset(EIdlePacingMode mode, ULONGLONG nowTick)

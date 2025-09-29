@@ -459,14 +459,18 @@ typedef BOOL(WINAPI* PFNWGLSWAPINTERVALEXTPROC)(int interval);
 
 #pragma mark - Static storage
 
-StaticStorage<iplug::igraphics::IGraphicsWin::InstalledFont> iplug::igraphics::IGraphicsWin::sPlatformFontCache;
-StaticStorage<iplug::igraphics::HFontHolder> iplug::igraphics::IGraphicsWin::sHFontCache;
-#pragma mark - Mouse and tablet helpers
+namespace iplug::igraphics
+{
+StaticStorage<IGraphicsWin::InstalledFont> IGraphicsWin::sPlatformFontCache;
+StaticStorage<HFontHolder> IGraphicsWin::sHFontCache;
+} // namespace iplug::igraphics
 
 extern float GetScaleForHWND(HWND hWnd);
 
 namespace iplug::igraphics
 {
+#pragma mark - Mouse and tablet helpers
+
 namespace
 {
 constexpr ULONGLONG kBurstCoolingWindowMs = 32ULL; // ~2 VSYNC intervals at 60Hz
@@ -889,6 +893,8 @@ void UpdatePaintBudgetCounters(const IGraphicsWin::InstancePaintBudget::Snapshot
   AtomicMax(telemetry.maxInflight, snapshot.pendingPaints);
   AtomicMax(telemetry.maxQueued, snapshot.queuedInvalidates);
 }
+} // namespace
+
 } // namespace
 
 } // namespace iplug::igraphics

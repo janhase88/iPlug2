@@ -445,9 +445,6 @@ private:
 
 } // namespace iplug::igraphics
 
-using namespace iplug;
-using namespace igraphics;
-
 #ifdef IGRAPHICS_GL3
 typedef HGLRC(WINAPI* PFNWGLCREATECONTEXTATTRIBSARBPROC)(HDC hDC, HGLRC hShareContext, const int* attribList);
   #define WGL_CONTEXT_MAJOR_VERSION_ARB 0x2091
@@ -462,8 +459,8 @@ typedef BOOL(WINAPI* PFNWGLSWAPINTERVALEXTPROC)(int interval);
 
 #pragma mark - Static storage
 
-StaticStorage<IGraphicsWin::InstalledFont> IGraphicsWin::sPlatformFontCache;
-StaticStorage<HFontHolder> IGraphicsWin::sHFontCache;
+StaticStorage<iplug::igraphics::IGraphicsWin::InstalledFont> iplug::igraphics::IGraphicsWin::sPlatformFontCache;
+StaticStorage<iplug::igraphics::HFontHolder> iplug::igraphics::IGraphicsWin::sHFontCache;
 #pragma mark - Mouse and tablet helpers
 
 extern float GetScaleForHWND(HWND hWnd);
@@ -896,6 +893,8 @@ void UpdatePaintBudgetCounters(const IGraphicsWin::InstancePaintBudget::Snapshot
 
 } // namespace iplug::igraphics
 
+namespace iplug::igraphics
+{
 #if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
 void IGraphicsWin::SchedulerState::Reset(EIdlePacingMode mode, ULONGLONG nowTick)
 {
@@ -5626,6 +5625,8 @@ void IGraphicsWin::VBlankNotify()
                             schedulerlog::MakeField("count", latestCount)});
   }
 }
+
+} // namespace iplug::igraphics
 
 #ifndef NO_IGRAPHICS
   #if defined IGRAPHICS_SKIA

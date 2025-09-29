@@ -274,6 +274,7 @@ private:
   void RequestSwapchainSoftReset(ULONGLONG sincePauseMs);
 
 public:
+  // Telemetry helpers in IGraphicsWin.cpp require direct access to these types/constants.
   static constexpr size_t kVBlankLatencySampleCount = 32;
   static constexpr size_t kSchedulerSampleWindow = 120;
 

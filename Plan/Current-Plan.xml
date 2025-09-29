@@ -813,13 +813,13 @@
     </task>
     <task>
       <name>Windows scheduler regression follow-up</name>
-      <status>SUCCESS</status>
-      <tryCount>1</tryCount>
+      <status>RETRY</status>
+      <tryCount>2</tryCount>
       <crucialInfo>
-        Restored MSVC build compatibility by qualifying HostIdleTickInfo usage in IPlugAPIBase and hoisting SteadyClockMicros / AtomicMax definitions ahead of their first use in IGraphicsWin so scheduler telemetry compiles again on Windows.
+        MSVC still fails after the initial fix: VBlankDispatchWorker remains outside the igraphics namespace so it cannot access private scheduler state, atomic shared_ptr helpers are unavailable for subscription storage, and several schedulerlog calls exceed the initializer-list overloads.
       </crucialInfo>
       <continue-info>
-        Monitor upcoming Windows builds for any remaining scheduler logging signature mismatches and confirm HostIdle telemetry flows through the renewed interface.
+        Move VBlankDispatchWorker into iplug::igraphics, guard subscription access with a mutex, and update the logging calls before re-running the Windows build.
       </continue-info>
       <subtasks>
         <task>
@@ -831,6 +831,19 @@
           </crucialInfo>
           <continue-info>
             Verify downstream consumers rely on the same helper declarations if further refactors touch scheduler logging utilities.
+          </continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+        <task>
+          <name>Restore VBlank worker visibility and subscription safety on MSVC</name>
+          <status>OPEN</status>
+          <tryCount>0</tryCount>
+          <crucialInfo>
+            Resolve the private member access errors, undefined worker type, ambiguous RecordVBlankLatencySample call, and schedulerlog overload mismatches reported in the Windows build by relocating the worker and reworking subscription storage.
+          </crucialInfo>
+          <continue-info>
+            After restructuring the worker, replace the atomic shared_ptr usage with mutex-guarded storage and confirm all log calls use initializer-list arguments accepted by MSVC.
           </continue-info>
           <subtasks>
           </subtasks>

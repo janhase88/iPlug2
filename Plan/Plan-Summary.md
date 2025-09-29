@@ -3,12 +3,12 @@
 [x] File Overview:
 - Num files Changed: 4
 - Num files Created: 0
-- Num lines Modified: 69
+- Num lines Modified: 60
 
 [x] List of Files changed/created:
 - Changed:
   - IGraphics/Platforms/IGraphicsWin.cpp
-  - IPlug/IPlugAPIBase.cpp
+  - IGraphics/Platforms/IGraphicsWin.h
   - Plan/Current-Plan.xml
   - Plan/Plan-Summary.md
 
@@ -79,8 +79,9 @@
   - Review telemetry channels, HUD overlays, and regression hooks — PREVIOUS STATUS: N/A / CURRENT STATUS: SUCCESS
   - Review rollout controls and validation artifacts — PREVIOUS STATUS: N/A / CURRENT STATUS: SUCCESS
 - FINAL CHECK — PREVIOUS STATUS: OPEN / CURRENT STATUS: SUCCESS (final review complete; see FinalReview report)
-- Windows scheduler regression follow-up — PREVIOUS STATUS: N/A / CURRENT STATUS: SUCCESS (MSVC scheduler logging build restored with helper hoists and qualified HostIdle telemetry)
-  - Unblock HostIdle telemetry compilation on Windows — PREVIOUS STATUS: N/A / CURRENT STATUS: SUCCESS (guarded IGraphics include and SteadyClockMicros/AtomicMax relocation unblock Visual Studio)
+- Windows scheduler regression follow-up — PREVIOUS STATUS: SUCCESS / CURRENT STATUS: RETRY (MSVC build still failing; VBlank worker visibility and subscription sync reopened)
+  - Unblock HostIdle telemetry compilation on Windows — PREVIOUS STATUS: SUCCESS / CURRENT STATUS: SUCCESS (guarded IGraphics include and SteadyClockMicros/AtomicMax relocation unblock Visual Studio)
+  - Restore VBlank worker visibility and subscription safety on MSVC — PREVIOUS STATUS: N/A / CURRENT STATUS: OPEN (worker must move into igraphics and shared_ptr updates need mutex protection before MSVC build will pass)
 
 [x] Message to User:
-MSVC build breakers are addressed: HostIdle telemetry now compiles after qualifying the igraphics namespace and hoisting helper definitions, and the plan documents the regression follow-up. Continue with Windows validation using the existing checklist and watch upcoming builds for any lingering scheduler logging mismatches.
+Reopening the Windows scheduler regression follow-up: Host idle telemetry is unblocked, but the VBlank dispatch worker still needs to move into the igraphics namespace, replace atomic shared_ptr usage with a mutex-guarded subscription, and align scheduler logging calls so MSVC can compile.

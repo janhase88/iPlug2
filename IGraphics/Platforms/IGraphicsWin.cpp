@@ -63,12 +63,12 @@ struct VBlankSubscription
 } // namespace igraphics
 } // namespace iplug
 
-using namespace iplug;
-using namespace igraphics;
-
 #pragma warning(disable : 4244) // Pointer size cast mismatch.
 #pragma warning(disable : 4312) // Pointer size cast mismatch.
 #pragma warning(disable : 4311) // Pointer size cast mismatch.
+
+using namespace iplug;
+using namespace igraphics;
 
 static int nWndClassReg = 0;
 static const wchar_t* wndClassName = L"IPlugWndClass";
@@ -117,6 +117,9 @@ void RecordSchedulerSample(const IGraphicsWin::InstancePaintBudget::Snapshot& sn
                            bool forgivenessActive);
 #endif
 } // namespace
+
+namespace iplug {
+namespace igraphics {
 
 class VBlankDispatchWorker
 {
@@ -460,6 +463,12 @@ private:
   std::chrono::steady_clock::time_point mLastDispatchTimestamp{};
   bool mHaveLastDispatchTimestamp = false;
 };
+
+} // namespace igraphics
+} // namespace iplug
+
+using namespace iplug;
+using namespace igraphics;
 
 #ifdef IGRAPHICS_GL3
 typedef HGLRC(WINAPI* PFNWGLCREATECONTEXTATTRIBSARBPROC)(HDC hDC, HGLRC hShareContext, const int* attribList);
@@ -2001,7 +2010,11 @@ void IGraphicsWin::PerformVBlankHealthCheck()
                             schedulerlog::MakeBoolField("durationThreshold", durationExceeded)});
   }
 
-  auto subscription = std::atomic_load_explicit(&mVBlankSubscription, std::memory_order_acquire);
+  std::shared_ptr<VBlankSubscription> subscription;
+  {
+    std::lock_guard<std::mutex> lock(mVBlankSubscriptionMutex);
+    subscription = mVBlankSubscription;
+  }
   if (subscription && subscription->active.load(std::memory_order_acquire))
   {
     mPendingSyncVBlank.store(latest, std::memory_order_release);
@@ -5364,7 +5377,10 @@ void IGraphicsWin::StartVBlankThread(HWND hWnd)
     entry.store(0, std::memory_order_relaxed);
   }
   auto subscription = VBlankDispatchWorker::Instance().Subscribe(this, hWnd);
-  std::atomic_store_explicit(&mVBlankSubscription, subscription, std::memory_order_release);
+  {
+    std::lock_guard<std::mutex> lock(mVBlankSubscriptionMutex);
+    mVBlankSubscription = subscription;
+  }
   DWORD threadId = 0;
   mVBlankThread = ::CreateThread(NULL, 0, VBlankRun, this, 0, &threadId);
 }
@@ -5379,9 +5395,13 @@ void IGraphicsWin::StopVBlankThread()
     }
 
     mVBlankShutdown = true;
-    auto subscription = std::atomic_load_explicit(&mVBlankSubscription, std::memory_order_acquire);
+    std::shared_ptr<VBlankSubscription> subscription;
+    {
+      std::lock_guard<std::mutex> lock(mVBlankSubscriptionMutex);
+      subscription = mVBlankSubscription;
+      mVBlankSubscription.reset();
+    }
     VBlankDispatchWorker::Instance().Unsubscribe(subscription);
-    std::atomic_store_explicit(&mVBlankSubscription, std::shared_ptr<VBlankSubscription>{}, std::memory_order_release);
     mVBlankMessagePending.store(false, std::memory_order_release);
     mPendingSyncVBlank.store(0, std::memory_order_release);
     StopVBlankHealthTimer();
@@ -5577,7 +5597,11 @@ void IGraphicsWin::VBlankNotify()
     return;
   }
 
-  auto subscription = std::atomic_load_explicit(&mVBlankSubscription, std::memory_order_acquire);
+  std::shared_ptr<VBlankSubscription> subscription;
+  {
+    std::lock_guard<std::mutex> lock(mVBlankSubscriptionMutex);
+    subscription = mVBlankSubscription;
+  }
   if (!subscription || !subscription->active.load(std::memory_order_acquire))
   {
     return;
@@ -5599,9 +5623,11 @@ void IGraphicsWin::VBlankNotify()
   if (!VBlankDispatchWorker::Instance().QueueDispatch(subscription, latestCount))
   {
     mVBlankMessagePending.store(false, std::memory_order_release);
-    schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "worker", schedulerlog::Severity::kWarn,
-                           schedulerlog::MakeField("event", "queue_fail"),
-                           schedulerlog::MakeField("count", latestCount));
+    schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                           "worker",
+                           schedulerlog::Severity::kWarn,
+                           {schedulerlog::MakeField("event", "queue_fail"),
+                            schedulerlog::MakeField("count", latestCount)});
   }
 }
 

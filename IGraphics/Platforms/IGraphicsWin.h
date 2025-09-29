@@ -29,6 +29,7 @@
 #include <memory>
 #include <array>
 #include <initializer_list>
+#include <mutex>
 
 #ifdef IGRAPHICS_VULKAN
   #define VK_USE_PLATFORM_WIN32_KHR
@@ -287,6 +288,7 @@ private:
   int mVBlankSkipUntil = 0;                    // support for skipping vblank notification if the last callback took too long.
                                               // This helps keep the message pump clear in the case of overload.
   std::shared_ptr<VBlankSubscription> mVBlankSubscription; // worker registration for bounded WM_VBLANK dispatch
+  mutable std::mutex mVBlankSubscriptionMutex;             // guards subscription access across threads
   std::atomic<uint32_t> mDroppedVBlank{0};     // number of ticks abandoned after exhausting retries
   std::atomic<bool> mVBlankPaused{false};
   std::atomic<bool> mVBlankHealthTimerActive{false};

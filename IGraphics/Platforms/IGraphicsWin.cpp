@@ -81,6 +81,22 @@ namespace
 {
 constexpr uint32_t kVBlankQueueDepthWarningMultiplier = 2;
 
+uint64_t SteadyClockMicros(const std::chrono::steady_clock::time_point& tp)
+{
+  return static_cast<uint64_t>(
+    std::chrono::duration_cast<std::chrono::microseconds>(tp.time_since_epoch()).count());
+}
+
+template <typename T>
+void AtomicMax(std::atomic<T>& target, T value)
+{
+  T current = target.load(std::memory_order_relaxed);
+  while (current < value
+         && !target.compare_exchange_weak(current, value, std::memory_order_release, std::memory_order_relaxed))
+  {
+  }
+}
+
 void RecordVBlankQueueDepthSample(uint32_t depth);
 void IncrementVBlankQueueWarnCount();
 void RecordVBlankDispatchSuccess();
@@ -202,12 +218,14 @@ public:
     if (emitWarn)
     {
       IncrementVBlankQueueWarnCount();
-      schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "worker", schedulerlog::Severity::kWarn,
-                             schedulerlog::MakeField("event", "queue_depth"),
-                             schedulerlog::MakeField("depth", depth),
-                             schedulerlog::MakeField("threshold", threshold),
-                             schedulerlog::MakeField("activeEditors", activeSubscriptions),
-                             schedulerlog::MakeField("highWater", highWater));
+      schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                             "worker",
+                             schedulerlog::Severity::kWarn,
+                             {schedulerlog::MakeField("event", "queue_depth"),
+                              schedulerlog::MakeField("depth", depth),
+                              schedulerlog::MakeField("threshold", threshold),
+                              schedulerlog::MakeField("activeEditors", activeSubscriptions),
+                              schedulerlog::MakeField("highWater", highWater)});
     }
 
     return true;
@@ -327,12 +345,14 @@ private:
         if (emitWarn)
         {
           IncrementVBlankQueueWarnCount();
-          schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "worker", schedulerlog::Severity::kWarn,
-                                 schedulerlog::MakeField("event", "queue_depth"),
-                                 schedulerlog::MakeField("depth", depth),
-                                 schedulerlog::MakeField("threshold", threshold),
-                                 schedulerlog::MakeField("activeEditors", activeSubscriptions),
-                                 schedulerlog::MakeField("highWater", highWater));
+          schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                                 "worker",
+                                 schedulerlog::Severity::kWarn,
+                                 {schedulerlog::MakeField("event", "queue_depth"),
+                                  schedulerlog::MakeField("depth", depth),
+                                  schedulerlog::MakeField("threshold", threshold),
+                                  schedulerlog::MakeField("activeEditors", activeSubscriptions),
+                                  schedulerlog::MakeField("highWater", highWater)});
         }
       }
     }
@@ -366,14 +386,17 @@ private:
 
       owner->RecordVBlankDispatchPosted(dispatchCount, SteadyClockMicros(request.enqueuedAt));
 
-      schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "worker", schedulerlog::Severity::kInfo,
-                             schedulerlog::MakeField("event", "dispatch"),
-                             schedulerlog::MakeField("count", request.dispatchCount),
-                             schedulerlog::MakeField("retryCount", request.attempt),
-                             schedulerlog::MakeField("queueDepth", request.queueDepthAtDequeue),
-                             schedulerlog::MakeField("enqueueDepth", request.queueDepthAtEnqueue),
-                             schedulerlog::MakeField("activeEditors", std::max<uint32_t>(request.activeSubscriptions, 1)),
-                             schedulerlog::MakeField("sinceLastMs", sinceLastMs));
+      schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                             "worker",
+                             schedulerlog::Severity::kInfo,
+                             {schedulerlog::MakeField("event", "dispatch"),
+                              schedulerlog::MakeField("count", request.dispatchCount),
+                              schedulerlog::MakeField("retryCount", request.attempt),
+                              schedulerlog::MakeField("queueDepth", request.queueDepthAtDequeue),
+                              schedulerlog::MakeField("enqueueDepth", request.queueDepthAtEnqueue),
+                              schedulerlog::MakeField(
+                                "activeEditors", std::max<uint32_t>(request.activeSubscriptions, 1)),
+                              schedulerlog::MakeField("sinceLastMs", sinceLastMs)});
       return false;
     }
 
@@ -406,11 +429,13 @@ private:
     owner->mVBlankMessagePending.store(false, std::memory_order_release);
     owner->mPendingSyncVBlank.store(0, std::memory_order_release);
 
-    schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "worker", schedulerlog::Severity::kWarn,
-                           schedulerlog::MakeField("event", "drop"),
-                           schedulerlog::MakeField("count", request.dispatchCount),
-                           schedulerlog::MakeField("error", error),
-                           schedulerlog::MakeField("droppedTotal", dropTotal));
+    schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                           "worker",
+                           schedulerlog::Severity::kWarn,
+                           {schedulerlog::MakeField("event", "drop"),
+                            schedulerlog::MakeField("count", request.dispatchCount),
+                            schedulerlog::MakeField("error", error),
+                            schedulerlog::MakeField("droppedTotal", dropTotal)});
 
     owner->EnterVBlankPaused(request.dispatchCount, error);
 
@@ -751,21 +776,6 @@ void RecordSchedulerSample(const IGraphicsWin::InstancePaintBudget::Snapshot& sn
   telemetry.droppedVBlankTotal.store(droppedVBlank, std::memory_order_release);
 }
 #endif
-uint64_t SteadyClockMicros(const std::chrono::steady_clock::time_point& tp)
-{
-  return static_cast<uint64_t>(
-    std::chrono::duration_cast<std::chrono::microseconds>(tp.time_since_epoch()).count());
-}
-
-template <typename T>
-void AtomicMax(std::atomic<T>& target, T value)
-{
-  T current = target.load(std::memory_order_relaxed);
-  while (current < value
-         && !target.compare_exchange_weak(current, value, std::memory_order_release, std::memory_order_relaxed))
-  {
-  }
-}
 
 int HistogramBucketForCount(int count)
 {
@@ -1831,12 +1841,14 @@ void IGraphicsWin::RecordVBlankDispatchHandled(DWORD count, uint64_t handledMicr
   RecordVBlankLatencySample(clampedMicros);
 
   const double latencyMs = static_cast<double>(latencyMicros) / 1000.0;
-  schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "ui", schedulerlog::Severity::kInfo,
-                         schedulerlog::MakeField("event", "ack"),
-                         schedulerlog::MakeField("count", count),
-                         schedulerlog::MakeField("latencyMs", latencyMs),
-                         schedulerlog::MakeField("pendingPaints", mInstancePaintBudget.PendingPaints()),
-                         schedulerlog::MakeField("queuedInvalidates", mInstancePaintBudget.QueuedInvalidates()));
+  schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                         "ui",
+                         schedulerlog::Severity::kInfo,
+                         {schedulerlog::MakeField("event", "ack"),
+                          schedulerlog::MakeField("count", count),
+                          schedulerlog::MakeField("latencyMs", latencyMs),
+                          schedulerlog::MakeField("pendingPaints", mInstancePaintBudget.PendingPaints()),
+                          schedulerlog::MakeField("queuedInvalidates", mInstancePaintBudget.QueuedInvalidates())});
 
   mVBlankLatencyMicros[slot].store(0, std::memory_order_release);
 }
@@ -1855,22 +1867,27 @@ void IGraphicsWin::EnterVBlankPaused(DWORD failedCount, DWORD errorCode)
     mVBlankConsecutiveDrops.store(1, std::memory_order_release);
     mVBlankHealthCheckAttempts.store(0, std::memory_order_release);
 
-    schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "worker", schedulerlog::Severity::kWarn,
-                           schedulerlog::MakeField("event", "pause"),
-                           schedulerlog::MakeField("count", failedCount),
-                           schedulerlog::MakeField("error", static_cast<uint32_t>(errorCode)),
-                           schedulerlog::MakeField("droppedTotal", mDroppedVBlank.load(std::memory_order_acquire)));
+    schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                           "worker",
+                           schedulerlog::Severity::kWarn,
+                           {schedulerlog::MakeField("event", "pause"),
+                            schedulerlog::MakeField("count", failedCount),
+                            schedulerlog::MakeField("error", static_cast<uint32_t>(errorCode)),
+                            schedulerlog::MakeField(
+                              "droppedTotal", mDroppedVBlank.load(std::memory_order_acquire))});
 
     PublishPaintBudgetSnapshot("vblank.pause", "Pause", 0, nowTick, true);
   }
   else
   {
     const uint32_t drops = mVBlankConsecutiveDrops.fetch_add(1, std::memory_order_acq_rel) + 1;
-    schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "worker", schedulerlog::Severity::kInfo,
-                           schedulerlog::MakeField("event", "pause_extend"),
-                           schedulerlog::MakeField("count", failedCount),
-                           schedulerlog::MakeField("error", static_cast<uint32_t>(errorCode)),
-                           schedulerlog::MakeField("drops", drops));
+    schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                           "worker",
+                           schedulerlog::Severity::kInfo,
+                           {schedulerlog::MakeField("event", "pause_extend"),
+                            schedulerlog::MakeField("count", failedCount),
+                            schedulerlog::MakeField("error", static_cast<uint32_t>(errorCode)),
+                            schedulerlog::MakeField("drops", drops)});
   }
 
   StartVBlankHealthTimer();
@@ -1891,13 +1908,16 @@ void IGraphicsWin::ExitVBlankPaused(DWORD recoveredCount, ULONGLONG resumeTick)
   const uint32_t attempts = mVBlankHealthCheckAttempts.load(std::memory_order_acquire);
   const uint32_t drops = mVBlankConsecutiveDrops.exchange(0, std::memory_order_acq_rel);
 
-  schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "ui", schedulerlog::Severity::kInfo,
-                         schedulerlog::MakeField("event", "resume"),
-                         schedulerlog::MakeField("count", recoveredCount),
-                         schedulerlog::MakeField("pausedMs", static_cast<uint32_t>(sincePause)),
-                         schedulerlog::MakeField("healthChecks", attempts),
-                         schedulerlog::MakeField("drops", drops),
-                         schedulerlog::MakeField("droppedTotal", mDroppedVBlank.load(std::memory_order_acquire)));
+  schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                         "ui",
+                         schedulerlog::Severity::kInfo,
+                         {schedulerlog::MakeField("event", "resume"),
+                          schedulerlog::MakeField("count", recoveredCount),
+                          schedulerlog::MakeField("pausedMs", static_cast<uint32_t>(sincePause)),
+                          schedulerlog::MakeField("healthChecks", attempts),
+                          schedulerlog::MakeField("drops", drops),
+                          schedulerlog::MakeField(
+                            "droppedTotal", mDroppedVBlank.load(std::memory_order_acquire))});
 
   PublishPaintBudgetSnapshot("vblank.resume", "Resume", 0, nowTick, true);
 
@@ -1949,25 +1969,29 @@ void IGraphicsWin::PerformVBlankHealthCheck()
   const DWORD latest = mQueuedVBlank.load(std::memory_order_acquire);
   const uint32_t drops = mVBlankConsecutiveDrops.load(std::memory_order_acquire);
 
-  schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "ui", schedulerlog::Severity::kInfo,
-                         schedulerlog::MakeField("event", "health_check"),
-                         schedulerlog::MakeField("attempt", attempt),
-                         schedulerlog::MakeField("sincePauseMs", static_cast<uint32_t>(sincePause)),
-                         schedulerlog::MakeField("latestCount", latest),
-                         schedulerlog::MakeField("drops", drops));
+  schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                         "ui",
+                         schedulerlog::Severity::kInfo,
+                         {schedulerlog::MakeField("event", "health_check"),
+                          schedulerlog::MakeField("attempt", attempt),
+                          schedulerlog::MakeField("sincePauseMs", static_cast<uint32_t>(sincePause)),
+                          schedulerlog::MakeField("latestCount", latest),
+                          schedulerlog::MakeField("drops", drops)});
 
   const bool attemptsExceeded = attempt >= kVBlankHealthAlertAttemptThreshold;
   const bool durationExceeded = sincePause >= kVBlankHealthAlertDurationMs;
   if (attemptsExceeded || durationExceeded)
   {
-    schedulerlog::LogEvent(schedulerlog::kCategoryAlerts, "ui", schedulerlog::Severity::kError,
-                           schedulerlog::MakeField("event", "vblank_pause_alert"),
-                           schedulerlog::MakeField("attempt", attempt),
-                           schedulerlog::MakeField("sincePauseMs", static_cast<uint32_t>(sincePause)),
-                           schedulerlog::MakeField("latestCount", latest),
-                           schedulerlog::MakeField("drops", drops),
-                           schedulerlog::MakeBoolField("attemptThreshold", attemptsExceeded),
-                           schedulerlog::MakeBoolField("durationThreshold", durationExceeded));
+    schedulerlog::LogEvent(schedulerlog::kCategoryAlerts,
+                           "ui",
+                           schedulerlog::Severity::kError,
+                           {schedulerlog::MakeField("event", "vblank_pause_alert"),
+                            schedulerlog::MakeField("attempt", attempt),
+                            schedulerlog::MakeField("sincePauseMs", static_cast<uint32_t>(sincePause)),
+                            schedulerlog::MakeField("latestCount", latest),
+                            schedulerlog::MakeField("drops", drops),
+                            schedulerlog::MakeBoolField("attemptThreshold", attemptsExceeded),
+                            schedulerlog::MakeBoolField("durationThreshold", durationExceeded)});
   }
 
   auto subscription = std::atomic_load_explicit(&mVBlankSubscription, std::memory_order_acquire);
@@ -1987,9 +2011,11 @@ void IGraphicsWin::PerformVBlankHealthCheck()
 
     if (!queued)
     {
-      schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "worker", schedulerlog::Severity::kWarn,
-                             schedulerlog::MakeField("event", "health_queue_fail"),
-                             schedulerlog::MakeField("count", latest));
+      schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                             "worker",
+                             schedulerlog::Severity::kWarn,
+                             {schedulerlog::MakeField("event", "health_queue_fail"),
+                              schedulerlog::MakeField("count", latest)});
     }
   }
 
@@ -2005,26 +2031,34 @@ void IGraphicsWin::RequestSwapchainSoftReset(ULONGLONG sincePauseMs)
 #if defined IGRAPHICS_VULKAN
   if (!mVkDevice || mVkSwapchain.handle == VK_NULL_HANDLE)
   {
-    schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "ui", schedulerlog::Severity::kInfo,
-                           schedulerlog::MakeField("event", "soft_reset_skipped"),
-                           schedulerlog::MakeField("reason", "no_swapchain"),
-                           schedulerlog::MakeField("pausedMs", static_cast<uint32_t>(sincePauseMs)));
+    schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                           "ui",
+                           schedulerlog::Severity::kInfo,
+                           {schedulerlog::MakeField("event", "soft_reset_skipped"),
+                            schedulerlog::MakeField("reason", "no_swapchain"),
+                            schedulerlog::MakeField("pausedMs", static_cast<uint32_t>(sincePauseMs))});
     return;
   }
 
-  schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "ui", schedulerlog::Severity::kWarn,
-                         schedulerlog::MakeField("event", "soft_reset_request"),
-                         schedulerlog::MakeField("pausedMs", static_cast<uint32_t>(sincePauseMs)));
+  schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                         "ui",
+                         schedulerlog::Severity::kWarn,
+                         {schedulerlog::MakeField("event", "soft_reset_request"),
+                          schedulerlog::MakeField("pausedMs", static_cast<uint32_t>(sincePauseMs))});
 
   const bool recreated = RecreateVulkanContext();
-  schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "ui", recreated ? schedulerlog::Severity::kInfo : schedulerlog::Severity::kError,
-                         schedulerlog::MakeField("event", recreated ? "soft_reset_complete" : "soft_reset_failed"),
-                         schedulerlog::MakeField("pausedMs", static_cast<uint32_t>(sincePauseMs)));
+  schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                         "ui",
+                         recreated ? schedulerlog::Severity::kInfo : schedulerlog::Severity::kError,
+                         {schedulerlog::MakeField("event", recreated ? "soft_reset_complete" : "soft_reset_failed"),
+                          schedulerlog::MakeField("pausedMs", static_cast<uint32_t>(sincePauseMs))});
 #else
-  schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch, "ui", schedulerlog::Severity::kInfo,
-                         schedulerlog::MakeField("event", "soft_reset_skipped"),
-                         schedulerlog::MakeField("reason", "backend_not_supported"),
-                         schedulerlog::MakeField("pausedMs", static_cast<uint32_t>(sincePauseMs)));
+  schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                         "ui",
+                         schedulerlog::Severity::kInfo,
+                         {schedulerlog::MakeField("event", "soft_reset_skipped"),
+                          schedulerlog::MakeField("reason", "backend_not_supported"),
+                          schedulerlog::MakeField("pausedMs", static_cast<uint32_t>(sincePauseMs))});
 #endif
 }
 
@@ -3044,12 +3078,13 @@ void IGraphicsWin::OnIdlePacingModeChanged(EIdlePacingMode mode)
 {
   IGRAPHICS_DRAW_CLASS::OnIdlePacingModeChanged(mode);
 #if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
-  schedulerlog::LogEvent(schedulerlog::kCategoryRollout, mIdlePacingModeFromConfig ? "config" : "runtime",
+  schedulerlog::LogEvent(schedulerlog::kCategoryRollout,
+                         mIdlePacingModeFromConfig ? "config" : "runtime",
                          schedulerlog::Severity::kInfo,
-                         schedulerlog::MakeField("event", "mode_changed"),
-                         schedulerlog::MakeStringField("mode", IdlePacingModeToString(mode)),
-                         schedulerlog::MakeField("hwnd", reinterpret_cast<uintptr_t>(mPlugWnd)),
-                         schedulerlog::MakeBoolField("fromConfig", mIdlePacingModeFromConfig));
+                         {schedulerlog::MakeField("event", "mode_changed"),
+                          schedulerlog::MakeStringField("mode", IdlePacingModeToString(mode)),
+                          schedulerlog::MakeField("hwnd", reinterpret_cast<uintptr_t>(mPlugWnd)),
+                          schedulerlog::MakeBoolField("fromConfig", mIdlePacingModeFromConfig)});
   ResetIdleSchedulerState(mode, GetTickCount64());
 #endif
 }
@@ -3117,15 +3152,17 @@ void IGraphicsWin::OnHostIdleTick(const HostIdleTickInfo& info)
     mSchedulerState.paramQueueAboveThresholdSince = 0;
   }
 
-  schedulerlog::LogEvent(schedulerlog::kCategoryParamQueueDepth, "idle_tick", queueSeverity,
-                         schedulerlog::MakeField("outstanding", outstanding),
-                         schedulerlog::MakeField("depthBefore", queueBefore),
-                         schedulerlog::MakeField("depthAfter", queueAfter),
-                         schedulerlog::MakeField("processed", info.paramMessagesProcessed),
-                         schedulerlog::MakeField("elapsedMs", info.elapsedMs),
-                         schedulerlog::MakeBoolField("timerFellBehind", info.timerFellBehind),
-                         schedulerlog::MakeField("overThresholdMs", overThresholdMs),
-                         schedulerlog::MakeField("highWater", mSchedulerState.paramQueueHighWater));
+  schedulerlog::LogEvent(schedulerlog::kCategoryParamQueueDepth,
+                         "idle_tick",
+                         queueSeverity,
+                         {schedulerlog::MakeField("outstanding", outstanding),
+                          schedulerlog::MakeField("depthBefore", queueBefore),
+                          schedulerlog::MakeField("depthAfter", queueAfter),
+                          schedulerlog::MakeField("processed", info.paramMessagesProcessed),
+                          schedulerlog::MakeField("elapsedMs", info.elapsedMs),
+                          schedulerlog::MakeBoolField("timerFellBehind", info.timerFellBehind),
+                          schedulerlog::MakeField("overThresholdMs", overThresholdMs),
+                          schedulerlog::MakeField("highWater", mSchedulerState.paramQueueHighWater)});
   RecordParamQueueTelemetry(outstanding, queueSeverity);
 
   if (GetIdlePacingMode() == EIdlePacingMode::Adaptive)
@@ -3252,10 +3289,12 @@ void IGraphicsWin::LoadIdlePacingModeFromConfigFile(const char* filePath)
   const IdlePacingConfigStatus status = ParseIdlePacingModeFromSettings(filePath, parsed);
   if (status != IdlePacingConfigStatus::kOk)
   {
-    schedulerlog::LogEvent(schedulerlog::kCategoryRollout, "config", schedulerlog::Severity::kWarn,
-                           schedulerlog::MakeField("event", "config_load_failed"),
-                           schedulerlog::MakeStringField("path", filePath),
-                           schedulerlog::MakeStringField("status", IdlePacingConfigStatusToString(status)));
+    schedulerlog::LogEvent(schedulerlog::kCategoryRollout,
+                           "config",
+                           schedulerlog::Severity::kWarn,
+                           {schedulerlog::MakeField("event", "config_load_failed"),
+                            schedulerlog::MakeStringField("path", filePath),
+                            schedulerlog::MakeStringField("status", IdlePacingConfigStatusToString(status))});
     return;
   }
 
@@ -3263,16 +3302,20 @@ void IGraphicsWin::LoadIdlePacingModeFromConfigFile(const char* filePath)
   mIdlePacingModeFromConfig = true;
   if (!ApplyIdlePacingModeString(IdlePacingModeToString(parsed), true))
   {
-    schedulerlog::LogEvent(schedulerlog::kCategoryRollout, "config", schedulerlog::Severity::kWarn,
-                           schedulerlog::MakeField("event", "config_apply_failed"),
-                           schedulerlog::MakeStringField("path", filePath));
+    schedulerlog::LogEvent(schedulerlog::kCategoryRollout,
+                           "config",
+                           schedulerlog::Severity::kWarn,
+                           {schedulerlog::MakeField("event", "config_apply_failed"),
+                            schedulerlog::MakeStringField("path", filePath)});
     return;
   }
 
-  schedulerlog::LogEvent(schedulerlog::kCategoryRollout, "config", schedulerlog::Severity::kInfo,
-                         schedulerlog::MakeField("event", "config_applied"),
-                         schedulerlog::MakeStringField("path", filePath),
-                         schedulerlog::MakeStringField("mode", IdlePacingModeToString(parsed)));
+  schedulerlog::LogEvent(schedulerlog::kCategoryRollout,
+                         "config",
+                         schedulerlog::Severity::kInfo,
+                         {schedulerlog::MakeField("event", "config_applied"),
+                          schedulerlog::MakeStringField("path", filePath),
+                          schedulerlog::MakeStringField("mode", IdlePacingModeToString(parsed))});
 
   DBGMSG("IGraphicsWin: idle pacing mode set to %s from %s\n", IdlePacingModeToString(parsed), filePath);
 #endif
@@ -3313,10 +3356,11 @@ bool IGraphicsWin::ApplyIdlePacingModeString(const std::string& modeString, bool
   EIdlePacingMode parsed = EIdlePacingMode::Legacy;
   if (!ParseIdlePacingModeStringInternal(modeString, parsed))
   {
-    schedulerlog::LogEvent(schedulerlog::kCategoryRollout, fromConfig ? "config" : "runtime",
+    schedulerlog::LogEvent(schedulerlog::kCategoryRollout,
+                           fromConfig ? "config" : "runtime",
                            schedulerlog::Severity::kWarn,
-                           schedulerlog::MakeField("event", "mode_parse_failed"),
-                           schedulerlog::MakeField("input", modeString));
+                           {schedulerlog::MakeField("event", "mode_parse_failed"),
+                            schedulerlog::MakeField("input", modeString)});
     DBGMSG("IGraphicsWin: unrecognised idle pacing mode '%s'\n", modeString.c_str());
     return false;
   }
@@ -3324,10 +3368,11 @@ bool IGraphicsWin::ApplyIdlePacingModeString(const std::string& modeString, bool
 #if !IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
   if (parsed != EIdlePacingMode::Legacy)
   {
-    schedulerlog::LogEvent(schedulerlog::kCategoryRollout, fromConfig ? "config" : "runtime",
+    schedulerlog::LogEvent(schedulerlog::kCategoryRollout,
+                           fromConfig ? "config" : "runtime",
                            schedulerlog::Severity::kWarn,
-                           schedulerlog::MakeField("event", "mode_rejected_disabled"),
-                           schedulerlog::MakeField("requested", modeString));
+                           {schedulerlog::MakeField("event", "mode_rejected_disabled"),
+                            schedulerlog::MakeField("requested", modeString)});
     DBGMSG("IGraphicsWin: requested idle pacing mode '%s' ignored because experimental scheduler is disabled\n", modeString.c_str());
     parsed = EIdlePacingMode::Legacy;
   }
@@ -3345,17 +3390,18 @@ bool IGraphicsWin::ApplyIdlePacingModeString(const std::string& modeString, bool
 
 #if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
   const schedulerlog::Severity severity = changed ? schedulerlog::Severity::kInfo : schedulerlog::Severity::kDebug;
-  schedulerlog::LogEvent(schedulerlog::kCategoryRollout, fromConfig ? "config" : "runtime", severity,
-                         schedulerlog::MakeField("event", changed ? "mode_applied" : "mode_unchanged"),
-                         schedulerlog::MakeField("requested", modeString),
-                         schedulerlog::MakeStringField("effective", IdlePacingModeToString(effective)),
-                         schedulerlog::MakeStringField("previous", IdlePacingModeToString(previous)),
-                         schedulerlog::MakeBoolField("fromConfig", fromConfig),
-                         schedulerlog::MakeBoolField("changed", changed),
-                         schedulerlog::MakeStringField("configPath",
-                                                       (fromConfig && mIdlePacingConfigPath.GetLength() > 0)
-                                                         ? mIdlePacingConfigPath.Get()
-                                                         : ""));
+  schedulerlog::LogEvent(schedulerlog::kCategoryRollout,
+                         fromConfig ? "config" : "runtime",
+                         severity,
+                         {schedulerlog::MakeField("event", changed ? "mode_applied" : "mode_unchanged"),
+                          schedulerlog::MakeField("requested", modeString),
+                          schedulerlog::MakeStringField("effective", IdlePacingModeToString(effective)),
+                          schedulerlog::MakeStringField("previous", IdlePacingModeToString(previous)),
+                          schedulerlog::MakeBoolField("fromConfig", fromConfig),
+                          schedulerlog::MakeBoolField("changed", changed),
+                          schedulerlog::MakeStringField(
+                            "configPath",
+                            (fromConfig && mIdlePacingConfigPath.GetLength() > 0) ? mIdlePacingConfigPath.Get() : "")});
 #else
   (void) effective;
   (void) previous;

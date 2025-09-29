@@ -811,5 +811,31 @@
       </crucialInfo>
       <continue-info>No further action required; proceed with host-side validation per the published checklist.</continue-info>
     </task>
+    <task>
+      <name>Windows scheduler regression follow-up</name>
+      <status>SUCCESS</status>
+      <tryCount>1</tryCount>
+      <crucialInfo>
+        Restored MSVC build compatibility by qualifying HostIdleTickInfo usage in IPlugAPIBase and hoisting SteadyClockMicros / AtomicMax definitions ahead of their first use in IGraphicsWin so scheduler telemetry compiles again on Windows.
+      </crucialInfo>
+      <continue-info>
+        Monitor upcoming Windows builds for any remaining scheduler logging signature mismatches and confirm HostIdle telemetry flows through the renewed interface.
+      </continue-info>
+      <subtasks>
+        <task>
+          <name>Unblock HostIdle telemetry compilation on Windows</name>
+          <status>SUCCESS</status>
+          <tryCount>1</tryCount>
+          <crucialInfo>
+            Added the guarded IGraphics include to IPlugAPIBase, qualified igraphics namespace usage, and moved SteadyClockMicros / AtomicMax definitions before the VBlank worker so Visual Studio finds the symbols when building scheduler logging.
+          </crucialInfo>
+          <continue-info>
+            Verify downstream consumers rely on the same helper declarations if further refactors touch scheduler logging utilities.
+          </continue-info>
+          <subtasks>
+          </subtasks>
+        </task>
+      </subtasks>
+    </task>
   </Finalization>
 </plan>

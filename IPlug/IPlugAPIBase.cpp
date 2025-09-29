@@ -21,6 +21,10 @@
 
 #include "IPlugAPIBase.h"
 
+#ifndef NO_IGRAPHICS
+#include "IGraphics/IGraphics.h"
+#endif
+
 using namespace iplug;
 
 IPlugAPIBase::IPlugAPIBase(Config c, EAPI plugAPI)
@@ -142,8 +146,8 @@ void IPlugAPIBase::SendParameterValueFromAPI(int paramIdx, double value, bool no
 
 void IPlugAPIBase::OnTimer(Timer& t)
 {
-  IGraphics* pGraphics = nullptr;
-  IGraphics::HostIdleTickInfo idleInfo;
+  igraphics::IGraphics* pGraphics = nullptr;
+  igraphics::IGraphics::HostIdleTickInfo idleInfo;
 
   if (HasUI())
   {

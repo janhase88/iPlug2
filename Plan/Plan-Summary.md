@@ -3,7 +3,7 @@
 [x] File Overview:
 - Num files Changed: 4
 - Num files Created: 0
-- Num lines Modified: 98
+- Num lines Modified: 69
 
 [x] List of Files changed/created:
 - Changed:
@@ -79,6 +79,8 @@
   - Review telemetry channels, HUD overlays, and regression hooks — PREVIOUS STATUS: N/A / CURRENT STATUS: SUCCESS
   - Review rollout controls and validation artifacts — PREVIOUS STATUS: N/A / CURRENT STATUS: SUCCESS
 - FINAL CHECK — PREVIOUS STATUS: OPEN / CURRENT STATUS: SUCCESS (final review complete; see FinalReview report)
+- Windows scheduler regression follow-up — PREVIOUS STATUS: N/A / CURRENT STATUS: SUCCESS (MSVC scheduler logging build restored with helper hoists and qualified HostIdle telemetry)
+  - Unblock HostIdle telemetry compilation on Windows — PREVIOUS STATUS: N/A / CURRENT STATUS: SUCCESS (guarded IGraphics include and SteadyClockMicros/AtomicMax relocation unblock Visual Studio)
 
 [x] Message to User:
-Code fixes to unblock compilation landed and the code-perspective review of implementation tasks passed. Refer to `Plan/WinVST3VulkanSkia_FinalReview.md` for findings and proceed with manual host validation using the published checklist.
+MSVC build breakers are addressed: HostIdle telemetry now compiles after qualifying the igraphics namespace and hoisting helper definitions, and the plan documents the regression follow-up. Continue with Windows validation using the existing checklist and watch upcoming builds for any lingering scheduler logging mismatches.

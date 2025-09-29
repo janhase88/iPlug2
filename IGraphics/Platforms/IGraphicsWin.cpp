@@ -50,6 +50,19 @@
   #define CCSIZEOF_STRUCT(structname, member) (__builtin_offsetof(structname, member) + sizeof(((structname*)0)->member))
 #endif
 
+namespace iplug {
+namespace igraphics {
+
+struct VBlankSubscription
+{
+  IGraphicsWin* owner = nullptr;
+  HWND window = nullptr;
+  std::atomic<bool> active{false};
+};
+
+} // namespace igraphics
+} // namespace iplug
+
 using namespace iplug;
 using namespace igraphics;
 
@@ -69,13 +82,6 @@ static double sFPS = 0.0;
 
 #define WM_VBLANK (WM_USER + 1)
 #define WM_VBLANK_TICK WM_VBLANK
-
-struct VBlankSubscription
-{
-  IGraphicsWin* owner = nullptr;
-  HWND window = nullptr;
-  std::atomic<bool> active{false};
-};
 
 namespace
 {
@@ -882,6 +888,7 @@ void UpdatePaintBudgetCounters(const IGraphicsWin::InstancePaintBudget::Snapshot
   AtomicMax(telemetry.maxInflight, snapshot.pendingPaints);
   AtomicMax(telemetry.maxQueued, snapshot.queuedInvalidates);
 }
+} // namespace
 } // namespace
 
 #if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL

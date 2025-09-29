@@ -22,7 +22,15 @@
 #include "IPlugAPIBase.h"
 
 #ifndef NO_IGRAPHICS
-#include "IGraphics/IGraphics.h"
+  #if defined(__has_include)
+    #if __has_include("IGraphics/IGraphics.h")
+      #include "IGraphics/IGraphics.h"
+    #elif __has_include("IGraphics.h")
+      #include "IGraphics.h"
+    #endif
+  #else
+    #include "IGraphics.h"
+  #endif
 #endif
 
 using namespace iplug;

@@ -4911,35 +4911,80 @@ void IGraphicsWin::PromptForFile(WDL_String& fileName, WDL_String& path, EFileAc
 
 void IGraphicsWin::PromptForDirectory(WDL_String& dir, IFileDialogCompletionHandlerFunc completionHandler)
 {
-  BROWSEINFOW bi;
-  memset(&bi, 0, sizeof(bi));
+  // If you have a UTF8->UTF16 helper similar to UTF16AsUTF8(), use it here.
+  auto Utf8ToUtf16 = [](const char* s) -> std::wstring {
+    if (!s) return {};
+    int len = MultiByteToWideChar(CP_UTF8, 0, s, -1, nullptr, 0);
+    std::wstring w(len ? len - 1 : 0, L'\0');
+    if (len) MultiByteToWideChar(CP_UTF8, 0, s, -1, w.data(), len);
+    return w;
+  };
 
-  bi.ulFlags = BIF_USENEWUI;
-  bi.hwndOwner = mPlugWnd;
-  bi.lpszTitle = L"Choose a Directory";
+  dir.Set("");
 
-  // must call this if using BIF_USENEWUI
-  ::OleInitialize(NULL);
-  LPITEMIDLIST pIDL = ::SHBrowseForFolderW(&bi);
+  // STA is required for IFileDialog; OleInitialize is fine (calls CoInitializeEx under the hood).
+  HRESULT hrInit = ::OleInitialize(nullptr);
 
-  if (pIDL != NULL)
+  IFileDialog* pfd = nullptr;
+  HRESULT hr = ::CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pfd));
+  if (SUCCEEDED(hr) && pfd)
   {
-    wchar_t buffer[_MAX_PATH] = {'\0'};
-
-    if (::SHGetPathFromIDListW(pIDL, buffer) != 0)
+    // Configure dialog options
+    DWORD opts = 0;
+    if (SUCCEEDED(pfd->GetOptions(&opts)))
     {
-      dir.Set(UTF16AsUTF8(buffer).Get());
-      dir.Append("\\");
+      // Pick folders, only real filesystem, and don't change the process CWD
+      opts |= FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_NOCHANGEDIR;
+      pfd->SetOptions(opts);
     }
 
-    // free the item id list
-    CoTaskMemFree(pIDL);
-  }
-  else
-  {
-    dir.Set("");
+    pfd->SetTitle(L"Choose a Directory");
+
+    // Optional: start from the current value in 'dir' if provided
+    if (dir.GetLength() > 0)
+    {
+      std::wstring wdir = Utf8ToUtf16(dir.Get());
+      // Strip any trailing slash to keep SHCreateItemFromParsingName happy
+      while (!wdir.empty() && (wdir.back() == L'\\' || wdir.back() == L'/')) wdir.pop_back();
+
+      if (!wdir.empty())
+      {
+        IShellItem* startItem = nullptr;
+        if (SUCCEEDED(::SHCreateItemFromParsingName(wdir.c_str(), nullptr, IID_PPV_ARGS(&startItem))) && startItem)
+        {
+          pfd->SetFolder(startItem);
+          startItem->Release();
+        }
+      }
+    }
+
+    // Show modal to your plug-in window
+    hr = pfd->Show(mPlugWnd);
+
+    if (SUCCEEDED(hr))
+    {
+      IShellItem* result = nullptr;
+      if (SUCCEEDED(pfd->GetResult(&result)) && result)
+      {
+        PWSTR pszPath = nullptr;
+        if (SUCCEEDED(result->GetDisplayName(SIGDN_FILESYSPATH, &pszPath)) && pszPath)
+        {
+          WDL_String chosen(UTF16AsUTF8(pszPath).Get());
+          // Ensure trailing backslash to match your previous behavior
+          if (chosen.GetLength() && chosen.Get()[chosen.GetLength() - 1] != '\\')
+            chosen.Append("\\");
+          dir.Set(chosen.Get());
+
+          ::CoTaskMemFree(pszPath);
+        }
+        result->Release();
+      }
+    }
+
+    pfd->Release();
   }
 
+  // Call your completion handler either way (mirrors your original code)
   if (completionHandler)
   {
     WDL_String fileName; // not used
@@ -4948,7 +4993,7 @@ void IGraphicsWin::PromptForDirectory(WDL_String& dir, IFileDialogCompletionHand
 
   ReleaseMouseCapture();
 
-  ::OleUninitialize();
+  if (SUCCEEDED(hrInit)) ::OleUninitialize();
 }
 
 static UINT_PTR CALLBACK CCHookProc(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM lParam)

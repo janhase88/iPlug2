@@ -82,6 +82,7 @@ struct VBlankSubscription
 namespace
 {
 constexpr uint32_t kVBlankQueueDepthWarningMultiplier = 2;
+constexpr HRESULT kDwmCompositionDisabled = static_cast<HRESULT>(0x80263001L);
 
 void RecordVBlankQueueDepthSample(uint32_t depth);
 void IncrementVBlankQueueWarnCount();
@@ -5517,6 +5518,7 @@ DWORD IGraphicsWin::OnVBlankRun()
     IDXGIFactory1* factory = nullptr;
     IDXGIOutput* output = nullptr;
     HMONITOR monitor = nullptr;
+    WCHAR deviceName[32] = {0};
 
     ~DxgiVBlankHelper()
     {
@@ -5547,6 +5549,7 @@ DWORD IGraphicsWin::OnVBlankRun()
         factory = nullptr;
       }
       monitor = nullptr;
+      deviceName[0] = L'\0';
     }
 
     bool EnsureInitialized()
@@ -5628,6 +5631,9 @@ DWORD IGraphicsWin::OnVBlankRun()
           {
             output = candidate;
             monitor = targetMonitor;
+            lstrcpynW(deviceName,
+                      desc.DeviceName,
+                      static_cast<int>(sizeof(deviceName) / sizeof(deviceName[0])));
             adapter->Release();
             return true;
           }
@@ -5666,14 +5672,17 @@ DWORD IGraphicsWin::OnVBlankRun()
 
       return true;
     }
+
+    const WCHAR* DeviceName() const
+    {
+      return deviceName[0] != L'\0' ? deviceName : nullptr;
+    }
   };
 
   struct DwmVBlankHelper
   {
     using DwmIsCompositionEnabledFn = HRESULT(WINAPI*)(BOOL*);
     using DwmFlushFn = HRESULT(WINAPI*)();
-
-    static constexpr HRESULT kCompositionDisabled = static_cast<HRESULT>(0x80263001L);
 
     HMODULE module = nullptr;
     DwmIsCompositionEnabledFn isCompositionEnabled = nullptr;
@@ -5745,7 +5754,7 @@ DWORD IGraphicsWin::OnVBlankRun()
 
       if (FAILED(hr))
       {
-        if (hr == kCompositionDisabled)
+        if (hr == kDwmCompositionDisabled)
         {
           compositionEnabled = FALSE;
         }
@@ -5952,7 +5961,48 @@ DWORD IGraphicsWin::OnVBlankRun()
       return status;
     };
 
+    auto tryOpenAdapterForDisplay = [&](const WCHAR* deviceName,
+                                        D3DKMT_OPENADAPTERFROMHDC& openAdapterData) -> NTSTATUS {
+      if (!deviceName || deviceName[0] == L'\0')
+        return static_cast<NTSTATUS>(E_HANDLE);
+
+      HDC displayDC = CreateDCW(L"DISPLAY", deviceName, nullptr, nullptr);
+      if (!displayDC)
+      {
+        schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                               "vblank",
+                               schedulerlog::Severity::kWarn,
+                               {schedulerlog::MakeField("event", "d3dkmt_createdc_failed"),
+                                schedulerlog::MakeField("fallback", "dxgi_dwm")});
+        return static_cast<NTSTATUS>(E_HANDLE);
+      }
+
+      openAdapterData = {};
+      openAdapterData.hDc = displayDC;
+      NTSTATUS status = (*pOpen)(&openAdapterData);
+      DeleteDC(displayDC);
+      if (status != S_OK)
+      {
+        schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                               "vblank",
+                               schedulerlog::Severity::kWarn,
+                               {schedulerlog::MakeField("event", "d3dkmt_open_display_failed"),
+                                schedulerlog::MakeField("status", static_cast<int>(status)),
+                                schedulerlog::MakeField("fallback", "dxgi_dwm")});
+      }
+      else
+      {
+        schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                               "vblank",
+                               schedulerlog::Severity::kDebug,
+                               {schedulerlog::MakeField("event", "d3dkmt_open_display_success"),
+                                schedulerlog::MakeField("fallback", "dxgi_dwm")});
+      }
+      return status;
+    };
+
     auto tryOpenAdapter = [&](D3DKMT_OPENADAPTERFROMHDC& openAdapterData) -> bool {
+      dxgiHelper.EnsureOutput(mVBlankWindow);
       std::array<HWND, 5> searchWindows = {mVBlankWindow,
                                            GetAncestor(mVBlankWindow, GA_PARENT),
                                            GetAncestor(mVBlankWindow, GA_ROOT),
@@ -5978,6 +6028,13 @@ DWORD IGraphicsWin::OnVBlankRun()
           continue;
 
         NTSTATUS status = tryOpenAdapterForWindow(window, openAdapterData);
+        if (status == S_OK)
+          return true;
+      }
+      const WCHAR* deviceName = dxgiHelper.DeviceName();
+      if (deviceName)
+      {
+        NTSTATUS status = tryOpenAdapterForDisplay(deviceName, openAdapterData);
         if (status == S_OK)
           return true;
       }

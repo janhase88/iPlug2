@@ -5668,9 +5668,103 @@ DWORD IGraphicsWin::OnVBlankRun()
     }
   };
 
+  struct DwmVBlankHelper
+  {
+    using DwmIsCompositionEnabledFn = HRESULT(WINAPI*)(BOOL*);
+    using DwmFlushFn = HRESULT(WINAPI*)();
+
+    static constexpr HRESULT kCompositionDisabled = static_cast<HRESULT>(0x80263001L);
+
+    HMODULE module = nullptr;
+    DwmIsCompositionEnabledFn isCompositionEnabled = nullptr;
+    DwmFlushFn flush = nullptr;
+
+    ~DwmVBlankHelper()
+    {
+      Cleanup();
+    }
+
+    void Cleanup()
+    {
+      if (module)
+      {
+        FreeLibrary(module);
+        module = nullptr;
+      }
+      isCompositionEnabled = nullptr;
+      flush = nullptr;
+    }
+
+    bool EnsureInitialized()
+    {
+      if (flush)
+        return true;
+
+      module = LoadLibraryW(L"dwmapi.dll");
+      if (!module)
+        return false;
+
+      isCompositionEnabled = reinterpret_cast<DwmIsCompositionEnabledFn>(GetProcAddress(module, "DwmIsCompositionEnabled"));
+      flush = reinterpret_cast<DwmFlushFn>(GetProcAddress(module, "DwmFlush"));
+      if (!flush)
+      {
+        Cleanup();
+        return false;
+      }
+
+      return true;
+    }
+
+    bool Wait(bool* compositionEnabledOut, HRESULT* outHr)
+    {
+      if (compositionEnabledOut)
+        *compositionEnabledOut = false;
+      if (outHr)
+        *outHr = S_OK;
+
+      if (!EnsureInitialized())
+      {
+        if (outHr)
+          *outHr = E_FAIL;
+        return false;
+      }
+
+      BOOL compositionEnabled = TRUE;
+      if (isCompositionEnabled)
+      {
+        HRESULT compHr = isCompositionEnabled(&compositionEnabled);
+        if (FAILED(compHr))
+        {
+          compositionEnabled = TRUE;
+        }
+      }
+
+      HRESULT hr = flush();
+      if (outHr)
+        *outHr = hr;
+
+      if (FAILED(hr))
+      {
+        if (hr == kCompositionDisabled)
+        {
+          compositionEnabled = FALSE;
+        }
+        return false;
+      }
+
+      if (compositionEnabledOut)
+        *compositionEnabledOut = compositionEnabled != FALSE;
+
+      return true;
+    }
+  };
+
   DxgiVBlankHelper dxgiHelper;
+  DwmVBlankHelper dwmHelper;
   bool dxgiActive = false;
+  bool dwmActive = false;
   bool reportedDxgiFailure = false;
+  bool reportedDwmFailure = false;
 
   // We need to try to load the module and entry points to wait on v blank.
   // if anything fails, we try to gracefully fallback to sleeping for some
@@ -5692,7 +5786,7 @@ DWORD IGraphicsWin::OnVBlankRun()
 
   bool reportedSleepFallback = false;
 
-  auto waitWithDxgiFallback = [&](const char* stage) {
+  auto waitWithFallback = [&](const char* stage) {
     HRESULT waitHr = S_OK;
     bool waited = dxgiHelper.Wait(mVBlankWindow, &waitHr);
     if (waited)
@@ -5707,7 +5801,17 @@ DWORD IGraphicsWin::OnVBlankRun()
                                 schedulerlog::MakeField("stage", stage)});
       }
       reportedDxgiFailure = false;
+      reportedDwmFailure = false;
       reportedSleepFallback = false;
+      if (dwmActive)
+      {
+        dwmActive = false;
+        schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                               "vblank",
+                               schedulerlog::Severity::kInfo,
+                               {schedulerlog::MakeField("event", "dwm_wait_inactive"),
+                                schedulerlog::MakeField("stage", stage)});
+      }
       return;
     }
 
@@ -5734,6 +5838,49 @@ DWORD IGraphicsWin::OnVBlankRun()
                               schedulerlog::MakeField("fallback", "sleep")});
     }
 
+    bool compositionEnabled = false;
+    HRESULT dwmHr = S_OK;
+    bool dwmWaited = dwmHelper.Wait(&compositionEnabled, &dwmHr);
+    if (dwmWaited)
+    {
+      if (!dwmActive)
+      {
+        dwmActive = true;
+        schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                               "vblank",
+                               schedulerlog::Severity::kInfo,
+                               {schedulerlog::MakeField("event", "dwm_wait_active"),
+                                schedulerlog::MakeField("stage", stage),
+                                schedulerlog::MakeField("composition", compositionEnabled)});
+      }
+      reportedDwmFailure = false;
+      reportedSleepFallback = false;
+      return;
+    }
+
+    if (dwmActive)
+    {
+      dwmActive = false;
+      schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                             "vblank",
+                             schedulerlog::Severity::kWarn,
+                             {schedulerlog::MakeField("event", "dwm_wait_lost"),
+                              schedulerlog::MakeField("stage", stage),
+                              schedulerlog::MakeField("hr", static_cast<int>(dwmHr))});
+    }
+
+    if (!reportedDwmFailure)
+    {
+      reportedDwmFailure = true;
+      schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                             "vblank",
+                             schedulerlog::Severity::kWarn,
+                             {schedulerlog::MakeField("event", "dwm_wait_failed"),
+                              schedulerlog::MakeField("stage", stage),
+                              schedulerlog::MakeField("hr", static_cast<int>(dwmHr)),
+                              schedulerlog::MakeField("fallback", "sleep")});
+    }
+
     if (!reportedSleepFallback)
     {
       schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
@@ -5757,10 +5904,10 @@ DWORD IGraphicsWin::OnVBlankRun()
                            "vblank",
                            schedulerlog::Severity::kInfo,
                            {schedulerlog::MakeField("event", "d3dkmt_missing"),
-                            schedulerlog::MakeField("fallback", "dxgi")});
+                            schedulerlog::MakeField("fallback", "dxgi_dwm")});
     while (mVBlankShutdown == false)
     {
-      waitWithDxgiFallback("d3dkmt_missing");
+      waitWithFallback("d3dkmt_missing");
       VBlankNotify();
     }
   }
@@ -5869,7 +6016,17 @@ DWORD IGraphicsWin::OnVBlankRun()
                                      {schedulerlog::MakeField("event", "dxgi_wait_inactive"),
                                       schedulerlog::MakeField("stage", "d3dkmt_open")});
             }
+            if (dwmActive)
+            {
+              dwmActive = false;
+              schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                                     "vblank",
+                                     schedulerlog::Severity::kInfo,
+                                     {schedulerlog::MakeField("event", "dwm_wait_inactive"),
+                                      schedulerlog::MakeField("stage", "d3dkmt_open")});
+            }
             reportedDxgiFailure = false;
+            reportedDwmFailure = false;
             reportedSleepFallback = false;
           }
           else
@@ -5880,7 +6037,7 @@ DWORD IGraphicsWin::OnVBlankRun()
                                    "vblank",
                                    schedulerlog::Severity::kWarn,
                                    {schedulerlog::MakeField("event", "d3dkmt_open_retry"),
-                                    schedulerlog::MakeField("fallback", "dxgi")});
+                                    schedulerlog::MakeField("fallback", "dxgi_dwm")});
           }
         }
       }
@@ -5917,6 +6074,15 @@ DWORD IGraphicsWin::OnVBlankRun()
                                    {schedulerlog::MakeField("event", "dxgi_wait_inactive"),
                                     schedulerlog::MakeField("stage", "d3dkmt_wait")});
           }
+          if (dwmActive)
+          {
+            dwmActive = false;
+            schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                                   "vblank",
+                                   schedulerlog::Severity::kInfo,
+                                   {schedulerlog::MakeField("event", "dwm_wait_inactive"),
+                                    schedulerlog::MakeField("stage", "d3dkmt_wait")});
+          }
           VBlankNotify();
           continue;
         }
@@ -5924,7 +6090,7 @@ DWORD IGraphicsWin::OnVBlankRun()
 
       // Temporary fallback for lost adapter or failed call.
       const char* fallbackStage = waitFailed ? "d3dkmt_wait_failed" : "d3dkmt_retry";
-      waitWithDxgiFallback(fallbackStage);
+      waitWithFallback(fallbackStage);
 
       // notify logic
       VBlankNotify();

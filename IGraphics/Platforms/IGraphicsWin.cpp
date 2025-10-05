@@ -38,6 +38,7 @@
 #include <deque>
 #include <fstream>
 #include <mutex>
+#include <dxgi.h>
 #include <random>
 #include <sstream>
 #include <limits>
@@ -5507,6 +5508,170 @@ DWORD IGraphicsWin::OnVBlankRun()
   float rateFallback = 60.0f;
   int rateMS = (int)(1000.0f / rateFallback);
 
+  struct DxgiVBlankHelper
+  {
+    using CreateFactoryFn = HRESULT(WINAPI*)(REFIID, void**);
+
+    HMODULE module = nullptr;
+    CreateFactoryFn createFactory = nullptr;
+    IDXGIFactory1* factory = nullptr;
+    IDXGIOutput* output = nullptr;
+    HMONITOR monitor = nullptr;
+
+    ~DxgiVBlankHelper()
+    {
+      Cleanup();
+    }
+
+    void Cleanup()
+    {
+      ResetOutput();
+      if (module)
+      {
+        FreeLibrary(module);
+        module = nullptr;
+      }
+      createFactory = nullptr;
+    }
+
+    void ResetOutput()
+    {
+      if (output)
+      {
+        output->Release();
+        output = nullptr;
+      }
+      if (factory)
+      {
+        factory->Release();
+        factory = nullptr;
+      }
+      monitor = nullptr;
+    }
+
+    bool EnsureInitialized()
+    {
+      if (createFactory)
+        return true;
+
+      module = LoadLibraryW(L"dxgi.dll");
+      if (!module)
+        return false;
+
+      createFactory = reinterpret_cast<CreateFactoryFn>(GetProcAddress(module, "CreateDXGIFactory1"));
+      if (!createFactory)
+      {
+        Cleanup();
+        return false;
+      }
+
+      return true;
+    }
+
+    bool EnsureOutput(HWND window)
+    {
+      if (!EnsureInitialized())
+        return false;
+
+      HMONITOR targetMonitor = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
+      if (!targetMonitor)
+      {
+        ResetOutput();
+        return false;
+      }
+
+      if (output && monitor == targetMonitor)
+        return true;
+
+      ResetOutput();
+
+      IDXGIFactory1* newFactory = nullptr;
+      HRESULT hr = createFactory(__uuidof(IDXGIFactory1), reinterpret_cast<void**>(&newFactory));
+      if (FAILED(hr) || !newFactory)
+      {
+        return false;
+      }
+
+      factory = newFactory;
+
+      UINT adapterIndex = 0;
+      while (true)
+      {
+        IDXGIAdapter1* adapter = nullptr;
+        hr = factory->EnumAdapters1(adapterIndex++, &adapter);
+        if (hr == DXGI_ERROR_NOT_FOUND)
+          break;
+        if (FAILED(hr) || adapter == nullptr)
+        {
+          if (adapter)
+            adapter->Release();
+          continue;
+        }
+
+        UINT outputIndex = 0;
+        while (true)
+        {
+          IDXGIOutput* candidate = nullptr;
+          hr = adapter->EnumOutputs(outputIndex++, &candidate);
+          if (hr == DXGI_ERROR_NOT_FOUND)
+            break;
+          if (FAILED(hr) || candidate == nullptr)
+          {
+            if (candidate)
+              candidate->Release();
+            continue;
+          }
+
+          DXGI_OUTPUT_DESC desc;
+          hr = candidate->GetDesc(&desc);
+          if (SUCCEEDED(hr) && desc.Monitor == targetMonitor)
+          {
+            output = candidate;
+            monitor = targetMonitor;
+            adapter->Release();
+            return true;
+          }
+
+          candidate->Release();
+        }
+
+        adapter->Release();
+      }
+
+      ResetOutput();
+      return false;
+    }
+
+    bool Wait(HWND window, HRESULT* outHr)
+    {
+      if (outHr)
+        *outHr = S_OK;
+
+      if (!EnsureOutput(window) || !output)
+      {
+        if (outHr)
+          *outHr = E_FAIL;
+        return false;
+      }
+
+      HRESULT hr = output->WaitForVBlank();
+      if (outHr)
+        *outHr = hr;
+
+      if (FAILED(hr))
+      {
+        ResetOutput();
+        return false;
+      }
+
+      return true;
+    }
+  };
+
+  DxgiVBlankHelper dxgiHelper;
+  bool dxgiActive = false;
+  bool reportedDxgiFailure = false;
+
   // We need to try to load the module and entry points to wait on v blank.
   // if anything fails, we try to gracefully fallback to sleeping for some
   // number of milliseconds.
@@ -5525,8 +5690,65 @@ DWORD IGraphicsWin::OnVBlankRun()
     pWait = (D3DKMTWaitForVerticalBlankEvent)GetProcAddress((HMODULE)hInst, "D3DKMTWaitForVerticalBlankEvent");
   }
 
+  bool reportedSleepFallback = false;
+
+  auto waitWithDxgiFallback = [&](const char* stage) {
+    HRESULT waitHr = S_OK;
+    bool waited = dxgiHelper.Wait(mVBlankWindow, &waitHr);
+    if (waited)
+    {
+      if (!dxgiActive)
+      {
+        dxgiActive = true;
+        schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                               "vblank",
+                               schedulerlog::Severity::kInfo,
+                               {schedulerlog::MakeField("event", "dxgi_wait_active"),
+                                schedulerlog::MakeField("stage", stage)});
+      }
+      reportedDxgiFailure = false;
+      reportedSleepFallback = false;
+      return;
+    }
+
+    if (dxgiActive)
+    {
+      dxgiActive = false;
+      schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                             "vblank",
+                             schedulerlog::Severity::kWarn,
+                             {schedulerlog::MakeField("event", "dxgi_wait_lost"),
+                              schedulerlog::MakeField("stage", stage),
+                              schedulerlog::MakeField("hr", static_cast<int>(waitHr))});
+    }
+
+    if (!reportedDxgiFailure)
+    {
+      reportedDxgiFailure = true;
+      schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                             "vblank",
+                             schedulerlog::Severity::kWarn,
+                             {schedulerlog::MakeField("event", "dxgi_wait_failed"),
+                              schedulerlog::MakeField("stage", stage),
+                              schedulerlog::MakeField("hr", static_cast<int>(waitHr)),
+                              schedulerlog::MakeField("fallback", "sleep")});
+    }
+
+    if (!reportedSleepFallback)
+    {
+      schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                             "vblank",
+                             schedulerlog::Severity::kWarn,
+                             {schedulerlog::MakeField("event", "sleep_fallback"),
+                              schedulerlog::MakeField("stage", stage)});
+      reportedSleepFallback = true;
+    }
+
+    ::Sleep(rateMS);
+  };
+
   // if we don't get bindings to the methods we will fallback
-  // to a crummy sleep loop for now.  This is really just a last
+  // to a DXGI wait, otherwise to sleeping. This is really just a last
   // resort and not expected on modern hardware and Windows OS
   // installs.
   if (!pOpen || !pClose || !pWait)
@@ -5535,10 +5757,10 @@ DWORD IGraphicsWin::OnVBlankRun()
                            "vblank",
                            schedulerlog::Severity::kInfo,
                            {schedulerlog::MakeField("event", "d3dkmt_missing"),
-                            schedulerlog::MakeField("fallback", "sleep")});
+                            schedulerlog::MakeField("fallback", "dxgi")});
     while (mVBlankShutdown == false)
     {
-      ::Sleep(rateMS);
+      waitWithDxgiFallback("d3dkmt_missing");
       VBlankNotify();
     }
   }
@@ -5619,7 +5841,6 @@ DWORD IGraphicsWin::OnVBlankRun()
     // track of the adapter and reask for it if the device is lost.
     bool adapterIsOpen = false;
     DWORD adapterLastFailTime = 0;
-    bool reportedSleepFallback = false;
     _D3DKMT_WAITFORVERTICALBLANKEVENT we = {0};
 
     while (mVBlankShutdown == false)
@@ -5639,25 +5860,32 @@ DWORD IGraphicsWin::OnVBlankRun()
             we.hAdapter = openAdapterData.hAdapter;
             we.hDevice = 0;
             we.VidPnSourceId = openAdapterData.VidPnSourceId;
+            if (dxgiActive)
+            {
+              dxgiActive = false;
+              schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                                     "vblank",
+                                     schedulerlog::Severity::kInfo,
+                                     {schedulerlog::MakeField("event", "dxgi_wait_inactive"),
+                                      schedulerlog::MakeField("stage", "d3dkmt_open")});
+            }
+            reportedDxgiFailure = false;
             reportedSleepFallback = false;
           }
           else
           {
             // failed
             adapterLastFailTime = ::GetTickCount();
-            if (!reportedSleepFallback)
-            {
-              schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
-                                     "vblank",
-                                     schedulerlog::Severity::kWarn,
-                                     {schedulerlog::MakeField("event", "d3dkmt_open_retry"),
-                                      schedulerlog::MakeField("fallback", "sleep")});
-              reportedSleepFallback = true;
-            }
+            schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                                   "vblank",
+                                   schedulerlog::Severity::kWarn,
+                                   {schedulerlog::MakeField("event", "d3dkmt_open_retry"),
+                                    schedulerlog::MakeField("fallback", "dxgi")});
           }
         }
       }
 
+      bool waitFailed = false;
       if (adapterIsOpen)
       {
         // Finally we can wait on VBlank
@@ -5674,14 +5902,29 @@ DWORD IGraphicsWin::OnVBlankRun()
           ca.hAdapter = we.hAdapter;
           (*pClose)(&ca);
           adapterIsOpen = false;
+          waitFailed = true;
+        }
+        else
+        {
+          reportedDxgiFailure = false;
+          reportedSleepFallback = false;
+          if (dxgiActive)
+          {
+            dxgiActive = false;
+            schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                                   "vblank",
+                                   schedulerlog::Severity::kInfo,
+                                   {schedulerlog::MakeField("event", "dxgi_wait_inactive"),
+                                    schedulerlog::MakeField("stage", "d3dkmt_wait")});
+          }
+          VBlankNotify();
+          continue;
         }
       }
 
       // Temporary fallback for lost adapter or failed call.
-      if (!adapterIsOpen)
-      {
-        ::Sleep(rateMS);
-      }
+      const char* fallbackStage = waitFailed ? "d3dkmt_wait_failed" : "d3dkmt_retry";
+      waitWithDxgiFallback(fallbackStage);
 
       // notify logic
       VBlankNotify();

@@ -5531,18 +5531,95 @@ DWORD IGraphicsWin::OnVBlankRun()
   // installs.
   if (!pOpen || !pClose || !pWait)
   {
+    schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                           "vblank",
+                           schedulerlog::Severity::kInfo,
+                           {schedulerlog::MakeField("event", "d3dkmt_missing"),
+                            schedulerlog::MakeField("fallback", "sleep")});
     while (mVBlankShutdown == false)
     {
-      Sleep(rateMS);
+      ::Sleep(rateMS);
       VBlankNotify();
     }
   }
   else
   {
+    auto logAdapterOpenFailure = [&](const char* stage, NTSTATUS status, HWND window) {
+      schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                             "vblank",
+                             schedulerlog::Severity::kWarn,
+                             {schedulerlog::MakeField("event", stage),
+                              schedulerlog::MakeField("status", static_cast<int>(status)),
+                              schedulerlog::MakeField("window", static_cast<uint64_t>(reinterpret_cast<uintptr_t>(window)))});
+    };
+
+    auto tryOpenAdapterForWindow = [&](HWND window, D3DKMT_OPENADAPTERFROMHDC& openAdapterData) -> NTSTATUS {
+      if (window == nullptr)
+        return static_cast<NTSTATUS>(E_HANDLE);
+
+      HDC hDC = GetDC(window);
+      if (hDC == nullptr)
+      {
+        logAdapterOpenFailure("d3dkmt_getdc_failed", static_cast<NTSTATUS>(E_HANDLE), window);
+        return static_cast<NTSTATUS>(E_HANDLE);
+      }
+
+      openAdapterData = {};
+      openAdapterData.hDc = hDC;
+      NTSTATUS status = (*pOpen)(&openAdapterData);
+      ReleaseDC(window, hDC);
+      if (status != S_OK)
+      {
+        logAdapterOpenFailure("d3dkmt_open_failed", status, window);
+      }
+      else
+      {
+        schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                               "vblank",
+                               schedulerlog::Severity::kDebug,
+                               {schedulerlog::MakeField("event", "d3dkmt_open_success"),
+                                schedulerlog::MakeField("window", static_cast<uint64_t>(reinterpret_cast<uintptr_t>(window)))});
+      }
+      return status;
+    };
+
+    auto tryOpenAdapter = [&](D3DKMT_OPENADAPTERFROMHDC& openAdapterData) -> bool {
+      std::array<HWND, 5> searchWindows = {mVBlankWindow,
+                                           GetAncestor(mVBlankWindow, GA_PARENT),
+                                           GetAncestor(mVBlankWindow, GA_ROOT),
+                                           GetAncestor(mVBlankWindow, GA_ROOTOWNER),
+                                           GetDesktopWindow()};
+
+      for (size_t i = 0; i < searchWindows.size(); ++i)
+      {
+        HWND window = searchWindows[i];
+        if (!window)
+          continue;
+
+        bool alreadyTried = false;
+        for (size_t j = 0; j < i; ++j)
+        {
+          if (searchWindows[j] == window)
+          {
+            alreadyTried = true;
+            break;
+          }
+        }
+        if (alreadyTried)
+          continue;
+
+        NTSTATUS status = tryOpenAdapterForWindow(window, openAdapterData);
+        if (status == S_OK)
+          return true;
+      }
+      return false;
+    };
+
     // we have a good set of functions to call.  We need to keep
     // track of the adapter and reask for it if the device is lost.
     bool adapterIsOpen = false;
     DWORD adapterLastFailTime = 0;
+    bool reportedSleepFallback = false;
     _D3DKMT_WAITFORVERTICALBLANKEVENT we = {0};
 
     while (mVBlankShutdown == false)
@@ -5554,10 +5631,7 @@ DWORD IGraphicsWin::OnVBlankRun()
         {
           // try to get adapter
           D3DKMT_OPENADAPTERFROMHDC openAdapterData = {0};
-          HDC hDC = GetDC(mVBlankWindow);
-          openAdapterData.hDc = hDC;
-          NTSTATUS status = (*pOpen)(&openAdapterData);
-          if (status == S_OK)
+          if (tryOpenAdapter(openAdapterData))
           {
             // success, setup wait request parameters.
             adapterLastFailTime = 0;
@@ -5565,13 +5639,22 @@ DWORD IGraphicsWin::OnVBlankRun()
             we.hAdapter = openAdapterData.hAdapter;
             we.hDevice = 0;
             we.VidPnSourceId = openAdapterData.VidPnSourceId;
+            reportedSleepFallback = false;
           }
           else
           {
             // failed
             adapterLastFailTime = ::GetTickCount();
+            if (!reportedSleepFallback)
+            {
+              schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                                     "vblank",
+                                     schedulerlog::Severity::kWarn,
+                                     {schedulerlog::MakeField("event", "d3dkmt_open_retry"),
+                                      schedulerlog::MakeField("fallback", "sleep")});
+              reportedSleepFallback = true;
+            }
           }
-          DeleteDC(hDC);
         }
       }
 
@@ -5582,6 +5665,11 @@ DWORD IGraphicsWin::OnVBlankRun()
         if (status != S_OK)
         {
           // failed, close now and try again on the next pass.
+          schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                                 "vblank",
+                                 schedulerlog::Severity::kWarn,
+                                 {schedulerlog::MakeField("event", "d3dkmt_wait_failed"),
+                                  schedulerlog::MakeField("status", static_cast<int>(status))});
           _D3DKMT_CLOSEADAPTER ca;
           ca.hAdapter = we.hAdapter;
           (*pClose)(&ca);

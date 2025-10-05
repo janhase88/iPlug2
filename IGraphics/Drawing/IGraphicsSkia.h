@@ -259,6 +259,7 @@ private:
   std::vector<sk_sp<SkSurface>> mVKSwapchainSurfaces;
   uint32_t mVKCurrentImage = kInvalidImageIndex;
   VkSemaphore mVKImageAvailableSemaphore = VK_NULL_HANDLE;
+  VkSemaphore mVKSkiaSubmitSemaphore = VK_NULL_HANDLE;
   VkSemaphore mVKRenderFinishedSemaphore = VK_NULL_HANDLE;
   VkFence mVKInFlightFence = VK_NULL_HANDLE;
   VkFormat mVKSwapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;

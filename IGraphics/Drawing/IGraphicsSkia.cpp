@@ -992,6 +992,26 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   }
   mVKCurrentImage = kInvalidImageIndex;
   mVKImageAvailableSemaphore = ctx->imageAvailableSemaphore;
+  if (mVKDevice != VK_NULL_HANDLE)
+  {
+    VkSemaphoreCreateInfo submitSemInfo{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+    VkResult submitSemRes = vkCreateSemaphore(mVKDevice, &submitSemInfo, nullptr, &mVKSkiaSubmitSemaphore);
+    if (submitSemRes != VK_SUCCESS)
+    {
+      IGRAPHICS_VK_LOG("OnViewInitialized",
+                          "vkCreateSemaphore",
+                          vulkanlog::Severity::kError,
+                          vulkanlog::MakeField("vkResult", static_cast<int>(submitSemRes)),
+                           vulkanlog::MakeField("semaphore", "skiaSubmit"));
+      mVKSkiaSubmitSemaphore = VK_NULL_HANDLE;
+    }
+    else
+    {
+      IGRAPHICS_VK_LOG_SIMPLE("OnViewInitialized",
+                          "createdSkiaSubmitSemaphore",
+                          vulkanlog::Severity::kDebug);
+    }
+  }
   mVKRenderFinishedSemaphore = ctx->renderFinishedSemaphore;
   mVKInFlightFence = ctx->inFlightFence;
 
@@ -1050,6 +1070,12 @@ void IGraphicsSkia::OnViewDestroyed()
   {
     vkDeviceWaitIdle(mVKDevice);
 
+    if (mVKSkiaSubmitSemaphore != VK_NULL_HANDLE)
+    {
+      vkDestroySemaphore(mVKDevice, mVKSkiaSubmitSemaphore, nullptr);
+      mVKSkiaSubmitSemaphore = VK_NULL_HANDLE;
+    }
+
     if (mVKCommandBuffer != VK_NULL_HANDLE && mVKCommandPool != VK_NULL_HANDLE)
     {
       vkFreeCommandBuffers(mVKDevice, mVKCommandPool, 1, &mVKCommandBuffer);
@@ -1065,6 +1091,7 @@ void IGraphicsSkia::OnViewDestroyed()
   mVKCommandPool = VK_NULL_HANDLE;
 
   mVKImageAvailableSemaphore = VK_NULL_HANDLE;
+  mVKSkiaSubmitSemaphore = VK_NULL_HANDLE;
   mVKRenderFinishedSemaphore = VK_NULL_HANDLE;
   mVKInFlightFence = VK_NULL_HANDLE;
   mVKSwapchain = VK_NULL_HANDLE;
@@ -1932,7 +1959,27 @@ void IGraphicsSkia::EndFrame()
   #if defined IGRAPHICS_VULKAN
   if (auto dContext = GrAsDirectContext(mScreenSurface->getCanvas()->recordingContext()))
   {
-    GrBackendSemaphore signalSemaphore = GrBackendSemaphores::MakeVk(mVKRenderFinishedSemaphore);
+    if (mVKSkiaSubmitSemaphore == VK_NULL_HANDLE)
+    {
+      IGRAPHICS_VK_LOG_SIMPLE("EndFrame",
+                          "missingSkiaSubmitSemaphore",
+                          vulkanlog::Severity::kError);
+      vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // signal fence
+      mVKSubmissionPending = true;
+      return;
+    }
+
+    if (mVKRenderFinishedSemaphore == VK_NULL_HANDLE)
+    {
+      IGRAPHICS_VK_LOG_SIMPLE("EndFrame",
+                          "missingRenderFinishedSemaphore",
+                          vulkanlog::Severity::kError);
+      vkQueueSubmit(mVKQueue, 0, nullptr, mVKInFlightFence); // signal fence
+      mVKSubmissionPending = true;
+      return;
+    }
+
+    GrBackendSemaphore signalSemaphore = GrBackendSemaphores::MakeVk(mVKSkiaSubmitSemaphore);
     GrFlushInfo flushInfo{};
     flushInfo.fNumSemaphores = 1;
     flushInfo.fSignalSemaphores = &signalSemaphore;
@@ -2075,12 +2122,13 @@ void IGraphicsSkia::EndFrame()
   VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
   VkSubmitInfo submitInfo{};
   submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-  submitInfo.waitSemaphoreCount = 1;
-  submitInfo.pWaitSemaphores = &mVKRenderFinishedSemaphore;
-  submitInfo.pWaitDstStageMask = &waitStage;
+  submitInfo.waitSemaphoreCount = (mVKSkiaSubmitSemaphore != VK_NULL_HANDLE) ? 1 : 0;
+  submitInfo.pWaitSemaphores = (submitInfo.waitSemaphoreCount == 1) ? &mVKSkiaSubmitSemaphore : nullptr;
+  submitInfo.pWaitDstStageMask = (submitInfo.waitSemaphoreCount == 1) ? &waitStage : nullptr;
   submitInfo.commandBufferCount = 1;
   submitInfo.pCommandBuffers = &mVKCommandBuffer;
-  submitInfo.signalSemaphoreCount = 0;
+  submitInfo.signalSemaphoreCount = 1;
+  submitInfo.pSignalSemaphores = &mVKRenderFinishedSemaphore;
 
   VkResult submitRes = vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
   bool previousPending = mVKSubmissionPending;
@@ -2109,8 +2157,8 @@ void IGraphicsSkia::EndFrame()
 
   VkPresentInfoKHR presentInfo{};
   presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-  presentInfo.waitSemaphoreCount = 0;
-  presentInfo.pWaitSemaphores = nullptr;
+  presentInfo.waitSemaphoreCount = 1;
+  presentInfo.pWaitSemaphores = &mVKRenderFinishedSemaphore;
   presentInfo.swapchainCount = 1;
   presentInfo.pSwapchains = &mVKSwapchain;
   presentInfo.pImageIndices = &mVKCurrentImage;

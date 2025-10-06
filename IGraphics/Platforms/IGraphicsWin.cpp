@@ -5483,6 +5483,14 @@ typedef struct _D3DKMT_OPENADAPTERFROMHDC
   D3DDDI_VIDEO_PRESENT_SOURCE_ID VidPnSourceId;
 } D3DKMT_OPENADAPTERFROMHDC;
 
+typedef struct _D3DKMT_OPENADAPTERFROMGDIDISPLAYNAME
+{
+  WCHAR DeviceName[32];
+  D3DKMT_HANDLE hAdapter;
+  LUID AdapterLuid;
+  D3DDDI_VIDEO_PRESENT_SOURCE_ID VidPnSourceId;
+} D3DKMT_OPENADAPTERFROMGDIDISPLAYNAME;
+
 typedef struct _D3DKMT_CLOSEADAPTER
 {
   D3DKMT_HANDLE hAdapter;
@@ -5497,6 +5505,7 @@ typedef struct _D3DKMT_WAITFORVERTICALBLANKEVENT
 
 // entry points
 typedef NTSTATUS(WINAPI* D3DKMTOpenAdapterFromHdc)(D3DKMT_OPENADAPTERFROMHDC* Arg1);
+typedef NTSTATUS(WINAPI* D3DKMTOpenAdapterFromGdiDisplayName)(D3DKMT_OPENADAPTERFROMGDIDISPLAYNAME* Arg1);
 typedef NTSTATUS(WINAPI* D3DKMTCloseAdapter)(const D3DKMT_CLOSEADAPTER* Arg1);
 typedef NTSTATUS(WINAPI* D3DKMTWaitForVerticalBlankEvent)(const D3DKMT_WAITFORVERTICALBLANKEVENT* Arg1);
 
@@ -5782,6 +5791,7 @@ DWORD IGraphicsWin::OnVBlankRun()
   // TODO: handle low power modes
 
   D3DKMTOpenAdapterFromHdc pOpen = nullptr;
+  D3DKMTOpenAdapterFromGdiDisplayName pOpenFromDisplay = nullptr;
   D3DKMTCloseAdapter pClose = nullptr;
   D3DKMTWaitForVerticalBlankEvent pWait = nullptr;
   HINSTANCE hInst = LoadLibraryW(L"gdi32.dll");
@@ -5789,6 +5799,8 @@ DWORD IGraphicsWin::OnVBlankRun()
   if (hInst != nullptr)
   {
     pOpen = (D3DKMTOpenAdapterFromHdc)GetProcAddress((HMODULE)hInst, "D3DKMTOpenAdapterFromHdc");
+    pOpenFromDisplay =
+      (D3DKMTOpenAdapterFromGdiDisplayName)GetProcAddress((HMODULE)hInst, "D3DKMTOpenAdapterFromGdiDisplayName");
     pClose = (D3DKMTCloseAdapter)GetProcAddress((HMODULE)hInst, "D3DKMTCloseAdapter");
     pWait = (D3DKMTWaitForVerticalBlankEvent)GetProcAddress((HMODULE)hInst, "D3DKMTWaitForVerticalBlankEvent");
   }
@@ -5907,7 +5919,7 @@ DWORD IGraphicsWin::OnVBlankRun()
   // to a DXGI wait, otherwise to sleeping. This is really just a last
   // resort and not expected on modern hardware and Windows OS
   // installs.
-  if (!pOpen || !pClose || !pWait)
+  if ((!pOpen && !pOpenFromDisplay) || !pClose || !pWait)
   {
     schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
                            "vblank",
@@ -5932,7 +5944,7 @@ DWORD IGraphicsWin::OnVBlankRun()
     };
 
     auto tryOpenAdapterForWindow = [&](HWND window, D3DKMT_OPENADAPTERFROMHDC& openAdapterData) -> NTSTATUS {
-      if (window == nullptr)
+      if (window == nullptr || !pOpen)
         return static_cast<NTSTATUS>(E_HANDLE);
 
       HDC hDC = GetDC(window);
@@ -5964,6 +5976,39 @@ DWORD IGraphicsWin::OnVBlankRun()
     auto tryOpenAdapterForDisplay = [&](const WCHAR* deviceName,
                                         D3DKMT_OPENADAPTERFROMHDC& openAdapterData) -> NTSTATUS {
       if (!deviceName || deviceName[0] == L'\0')
+        return static_cast<NTSTATUS>(E_HANDLE);
+
+      if (pOpenFromDisplay)
+      {
+        D3DKMT_OPENADAPTERFROMGDIDISPLAYNAME byName = {};
+        lstrcpynW(byName.DeviceName,
+                  deviceName,
+                  static_cast<int>(sizeof(byName.DeviceName) / sizeof(byName.DeviceName[0])));
+        NTSTATUS status = (*pOpenFromDisplay)(&byName);
+        if (status == S_OK)
+        {
+          openAdapterData = {};
+          openAdapterData.hDc = nullptr;
+          openAdapterData.hAdapter = byName.hAdapter;
+          openAdapterData.AdapterLuid = byName.AdapterLuid;
+          openAdapterData.VidPnSourceId = byName.VidPnSourceId;
+          schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                                 "vblank",
+                                 schedulerlog::Severity::kDebug,
+                                 {schedulerlog::MakeField("event", "d3dkmt_open_gdi_success"),
+                                  schedulerlog::MakeField("fallback", "dxgi_dwm")});
+          return status;
+        }
+
+        schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                               "vblank",
+                               schedulerlog::Severity::kWarn,
+                               {schedulerlog::MakeField("event", "d3dkmt_open_gdi_failed"),
+                                schedulerlog::MakeField("status", static_cast<int>(status)),
+                                schedulerlog::MakeField("fallback", "dxgi_dwm")});
+      }
+
+      if (!pOpen)
         return static_cast<NTSTATUS>(E_HANDLE);
 
       HDC displayDC = CreateDCW(L"DISPLAY", deviceName, nullptr, nullptr);

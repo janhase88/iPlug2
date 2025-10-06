@@ -106,6 +106,23 @@ IControl::IControl(const IRECT& bounds, IActionFunction aF)
 {
 }
 
+void IControl::AddDirtyArea(const IRECT& rect)
+{
+  if (rect.Empty())
+    return;
+
+  mDirtyBounds = mDirtyBounds.Empty() ? rect : mDirtyBounds.Union(rect);
+}
+
+void IControl::UpdateDirtyAreaForRectChange(const IRECT& previousBounds)
+{
+  if (previousBounds != mRECT)
+  {
+    AddDirtyArea(previousBounds);
+    AddDirtyArea(mRECT);
+  }
+}
+
 int IControl::GetParamIdx(int valIdx) const
 {
   assert(valIdx > kNoValIdx && valIdx < NVals());
@@ -201,9 +218,10 @@ void IControl::SetDirty(bool triggerAction, int valIdx)
 
   auto setValue = [this](int v) { SetValue(Clip(GetValue(v), 0.0, 1.0), v); };
   ForValIdx(valIdx, setValue);
-  
+
   mDirty = true;
-  
+  AddDirtyArea(mRECT);
+
   if (triggerAction)
   {
     auto paramUpdate = [this](int v)

@@ -317,7 +317,14 @@ public:
 
   /** Set the rectangular draw area for this control, within the graphics context
    * @param bounds The control's bounds */
-  void SetRECT(const IRECT& bounds) { mRECT = bounds; mMouseIsOver = false; OnResize(); }
+  void SetRECT(const IRECT& bounds)
+  {
+    const IRECT previous = mRECT;
+    mRECT = bounds;
+    mMouseIsOver = false;
+    OnResize();
+    UpdateDirtyAreaForRectChange(previous);
+  }
   
   /** Get the rectangular mouse tracking target area, within the graphics context for this control
    * @return The control's target bounds within the graphics context */
@@ -329,7 +336,14 @@ public:
   
   /** Set BOTH the draw rect and the target area, within the graphics context for this control
    * @param bounds The control's new draw and target bounds within the graphics context */
-  void SetTargetAndDrawRECTs(const IRECT& bounds) { mRECT = mTargetRECT = bounds; mMouseIsOver = false; OnResize(); }
+  void SetTargetAndDrawRECTs(const IRECT& bounds)
+  {
+    const IRECT previous = mRECT;
+    mRECT = mTargetRECT = bounds;
+    mMouseIsOver = false;
+    OnResize();
+    UpdateDirtyAreaForRectChange(previous);
+  }
 
   /** Set the position of the control, preserving the width and height. This may need to be overriden if you maintain custom positioning data in your control
    * @param x the new x coordinate of the top left corner of the control
@@ -406,7 +420,11 @@ public:
   virtual void SetDirty(bool triggerAction = true, int valIdx = kNoValIdx);
 
   /* Set the control clean, i.e. Called by IGraphics draw loop after control has been drawn */
-  virtual void SetClean() { mDirty = false; }
+  virtual void SetClean()
+  {
+    mDirty = false;
+    mDirtyBounds.Clear();
+  }
 
   /* Called at each display refresh by the IGraphics draw loop, triggers the control's AnimationFunc if it is set */
   void Animate();
@@ -414,6 +432,8 @@ public:
   /** Called at each display refresh by the IGraphics draw loop, after IControl::Animate(), to determine if the control is marked as dirty. 
    * @return \c true if the control is marked dirty. */
   virtual bool IsDirty();
+
+  IRECT GetDirtyBounds() const { return mDirtyBounds.Empty() ? mRECT : mDirtyBounds; }
 
   /** Disable/enable default prompt for user input
    * @param disable Set true to disable prompt */
@@ -583,6 +603,9 @@ protected:
 #endif
   
 private:
+  void AddDirtyArea(const IRECT& rect);
+  void UpdateDirtyAreaForRectChange(const IRECT& previousBounds);
+
   IContainerBase* mParent = nullptr;
   IGEditorDelegate* mDelegate = nullptr;
   IGraphics* mGraphics = nullptr;
@@ -594,6 +617,7 @@ private:
   std::vector<ParamTuple> mVals { {kNoParameter, 0.} };
   std::unordered_map<EGestureType, IGestureFunc> mGestureFuncs;
   EGestureType mLastGesture = EGestureType::Unknown;
+  IRECT mDirtyBounds;
 };
 
 #pragma mark - Base Controls

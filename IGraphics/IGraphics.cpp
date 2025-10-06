@@ -920,7 +920,7 @@ bool IGraphics::IsDirty(IRECTList& rects)
     if (pControl->IsDirty())
     {
       // N.B padding outlines for single line outlines
-      auto rectToAdd = pControl->GetRECT().GetPadded(0.75);
+      auto rectToAdd = pControl->GetDirtyBounds().GetPadded(0.75);
       
       if (pControl->GetParent())
       {

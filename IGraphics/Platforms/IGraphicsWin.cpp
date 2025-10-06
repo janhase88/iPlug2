@@ -6599,7 +6599,21 @@ void IGraphicsWin::VBlankNotify()
   const int pendingPaints = mInstancePaintBudget.PendingPaints();
   if (pendingPaints > 0)
   {
-    return;
+    // Keep track of the latest VBlank index so the UI thread can drain to the freshest tick,
+    // but continue on to queue a dispatch instead of suppressing updates while a paint is in
+    // flight. This avoids multi-frame gaps when WM_PAINT latency is high.
+    DWORD observed = mPendingSyncVBlank.load(std::memory_order_acquire);
+    while (observed < latestCount
+           && !mPendingSyncVBlank.compare_exchange_weak(observed,
+                                                        latestCount,
+                                                        std::memory_order_acq_rel,
+                                                        std::memory_order_acquire))
+    {
+    }
+  }
+  else
+  {
+    mPendingSyncVBlank.store(0, std::memory_order_release);
   }
 
   if (mVBlankPaused.load(std::memory_order_acquire))
@@ -6628,8 +6642,6 @@ void IGraphicsWin::VBlankNotify()
     }
     return;
   }
-
-  mPendingSyncVBlank.store(0, std::memory_order_release);
 
   if (!VBlankDispatchWorker::Instance().QueueDispatch(subscription, latestCount))
   {

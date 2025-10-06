@@ -24,7 +24,11 @@ enum class Verbosity
 };
 
 #ifndef IGRAPHICS_SCHED_LOG_VERBOSITY
-  #define IGRAPHICS_SCHED_LOG_VERBOSITY 2
+  #if defined(NDEBUG)
+    #define IGRAPHICS_SCHED_LOG_VERBOSITY 2
+  #else
+    #define IGRAPHICS_SCHED_LOG_VERBOSITY 3
+  #endif
 #endif
 
 constexpr Verbosity kConfiguredVerbosity =

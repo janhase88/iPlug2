@@ -46,6 +46,7 @@
 #include <utility>
 #include <vector>
 #include <wininet.h>
+#include <windisplayconfig.h>
 
 #if defined __clang__
   #undef CCSIZEOF_STRUCT
@@ -5491,6 +5492,12 @@ typedef struct _D3DKMT_OPENADAPTERFROMGDIDISPLAYNAME
   D3DDDI_VIDEO_PRESENT_SOURCE_ID VidPnSourceId;
 } D3DKMT_OPENADAPTERFROMGDIDISPLAYNAME;
 
+typedef struct _D3DKMT_OPENADAPTERFROMLUID
+{
+  LUID AdapterLuid;
+  D3DKMT_HANDLE hAdapter;
+} D3DKMT_OPENADAPTERFROMLUID;
+
 typedef struct _D3DKMT_CLOSEADAPTER
 {
   D3DKMT_HANDLE hAdapter;
@@ -5506,6 +5513,7 @@ typedef struct _D3DKMT_WAITFORVERTICALBLANKEVENT
 // entry points
 typedef NTSTATUS(WINAPI* D3DKMTOpenAdapterFromHdc)(D3DKMT_OPENADAPTERFROMHDC* Arg1);
 typedef NTSTATUS(WINAPI* D3DKMTOpenAdapterFromGdiDisplayName)(D3DKMT_OPENADAPTERFROMGDIDISPLAYNAME* Arg1);
+typedef NTSTATUS(WINAPI* D3DKMTOpenAdapterFromLuid)(D3DKMT_OPENADAPTERFROMLUID* Arg1);
 typedef NTSTATUS(WINAPI* D3DKMTCloseAdapter)(const D3DKMT_CLOSEADAPTER* Arg1);
 typedef NTSTATUS(WINAPI* D3DKMTWaitForVerticalBlankEvent)(const D3DKMT_WAITFORVERTICALBLANKEVENT* Arg1);
 
@@ -5528,6 +5536,10 @@ DWORD IGraphicsWin::OnVBlankRun()
     IDXGIOutput* output = nullptr;
     HMONITOR monitor = nullptr;
     WCHAR deviceName[32] = {0};
+    LUID adapterLuid{};
+    bool hasAdapterLuid = false;
+    D3DDDI_VIDEO_PRESENT_SOURCE_ID vidPnSourceId = static_cast<D3DDDI_VIDEO_PRESENT_SOURCE_ID>(-1);
+    bool hasVidPnSourceId = false;
 
     ~DxgiVBlankHelper()
     {
@@ -5559,6 +5571,10 @@ DWORD IGraphicsWin::OnVBlankRun()
       }
       monitor = nullptr;
       deviceName[0] = L'\0';
+      hasAdapterLuid = false;
+      adapterLuid = {};
+      vidPnSourceId = static_cast<D3DDDI_VIDEO_PRESENT_SOURCE_ID>(-1);
+      hasVidPnSourceId = false;
     }
 
     bool EnsureInitialized()
@@ -5643,6 +5659,10 @@ DWORD IGraphicsWin::OnVBlankRun()
             lstrcpynW(deviceName,
                       desc.DeviceName,
                       static_cast<int>(sizeof(deviceName) / sizeof(deviceName[0])));
+            adapterLuid = desc.AdapterLuid;
+            hasAdapterLuid = true;
+            hasVidPnSourceId = false;
+            EnsureVidPnSourceId();
             adapter->Release();
             return true;
           }
@@ -5654,6 +5674,55 @@ DWORD IGraphicsWin::OnVBlankRun()
       }
 
       ResetOutput();
+      return false;
+    }
+
+    bool EnsureVidPnSourceId()
+    {
+      if (hasVidPnSourceId)
+        return true;
+
+      if (!hasAdapterLuid || deviceName[0] == L'\0')
+        return false;
+
+      UINT32 pathCount = 0;
+      UINT32 modeCount = 0;
+      if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &pathCount, &modeCount) != ERROR_SUCCESS)
+        return false;
+
+      if (pathCount == 0 || modeCount == 0)
+        return false;
+
+      std::vector<DISPLAYCONFIG_PATH_INFO> paths(pathCount);
+      std::vector<DISPLAYCONFIG_MODE_INFO> modes(modeCount);
+      if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &pathCount, paths.data(), &modeCount, modes.data(), nullptr) != ERROR_SUCCESS)
+        return false;
+
+      for (UINT32 i = 0; i < pathCount; ++i)
+      {
+        const auto& path = paths[i];
+        if (path.sourceInfo.adapterId.HighPart != adapterLuid.HighPart
+            || path.sourceInfo.adapterId.LowPart != adapterLuid.LowPart)
+        {
+          continue;
+        }
+
+        DISPLAYCONFIG_SOURCE_DEVICE_NAME sourceName{};
+        sourceName.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+        sourceName.header.size = sizeof(sourceName);
+        sourceName.header.adapterId = path.sourceInfo.adapterId;
+        sourceName.header.id = path.sourceInfo.id;
+        if (DisplayConfigGetDeviceInfo(&sourceName.header) != ERROR_SUCCESS)
+          continue;
+
+        if (lstrcmpiW(sourceName.viewGdiDeviceName, deviceName) == 0)
+        {
+          vidPnSourceId = static_cast<D3DDDI_VIDEO_PRESENT_SOURCE_ID>(path.sourceInfo.id);
+          hasVidPnSourceId = true;
+          return true;
+        }
+      }
+
       return false;
     }
 
@@ -5685,6 +5754,22 @@ DWORD IGraphicsWin::OnVBlankRun()
     const WCHAR* DeviceName() const
     {
       return deviceName[0] != L'\0' ? deviceName : nullptr;
+    }
+
+    bool AdapterLuid(LUID& luidOut) const
+    {
+      if (!hasAdapterLuid)
+        return false;
+      luidOut = adapterLuid;
+      return true;
+    }
+
+    bool VidPnSourceId(D3DDDI_VIDEO_PRESENT_SOURCE_ID& sourceIdOut)
+    {
+      if (!hasVidPnSourceId && !EnsureVidPnSourceId())
+        return false;
+      sourceIdOut = vidPnSourceId;
+      return hasVidPnSourceId;
     }
   };
 
@@ -5792,6 +5877,7 @@ DWORD IGraphicsWin::OnVBlankRun()
 
   D3DKMTOpenAdapterFromHdc pOpen = nullptr;
   D3DKMTOpenAdapterFromGdiDisplayName pOpenFromDisplay = nullptr;
+  D3DKMTOpenAdapterFromLuid pOpenFromLuid = nullptr;
   D3DKMTCloseAdapter pClose = nullptr;
   D3DKMTWaitForVerticalBlankEvent pWait = nullptr;
   HINSTANCE hInst = LoadLibraryW(L"gdi32.dll");
@@ -5801,6 +5887,7 @@ DWORD IGraphicsWin::OnVBlankRun()
     pOpen = (D3DKMTOpenAdapterFromHdc)GetProcAddress((HMODULE)hInst, "D3DKMTOpenAdapterFromHdc");
     pOpenFromDisplay =
       (D3DKMTOpenAdapterFromGdiDisplayName)GetProcAddress((HMODULE)hInst, "D3DKMTOpenAdapterFromGdiDisplayName");
+    pOpenFromLuid = (D3DKMTOpenAdapterFromLuid)GetProcAddress((HMODULE)hInst, "D3DKMTOpenAdapterFromLuid");
     pClose = (D3DKMTCloseAdapter)GetProcAddress((HMODULE)hInst, "D3DKMTCloseAdapter");
     pWait = (D3DKMTWaitForVerticalBlankEvent)GetProcAddress((HMODULE)hInst, "D3DKMTWaitForVerticalBlankEvent");
   }
@@ -6046,8 +6133,41 @@ DWORD IGraphicsWin::OnVBlankRun()
       return status;
     };
 
+    auto tryOpenAdapterForLuid = [&](const LUID* luid,
+                                     D3DKMT_OPENADAPTERFROMHDC& openAdapterData,
+                                     D3DDDI_VIDEO_PRESENT_SOURCE_ID sourceId) -> NTSTATUS {
+      if (!luid || !pOpenFromLuid)
+        return static_cast<NTSTATUS>(E_HANDLE);
+
+      D3DKMT_OPENADAPTERFROMLUID byLuid = {};
+      byLuid.AdapterLuid = *luid;
+      NTSTATUS status = (*pOpenFromLuid)(&byLuid);
+      if (status == S_OK)
+      {
+        openAdapterData = {};
+        openAdapterData.hAdapter = byLuid.hAdapter;
+        openAdapterData.AdapterLuid = byLuid.AdapterLuid;
+        openAdapterData.VidPnSourceId = sourceId;
+        schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                               "vblank",
+                               schedulerlog::Severity::kDebug,
+                               {schedulerlog::MakeField("event", "d3dkmt_open_luid_success"),
+                                schedulerlog::MakeField("fallback", "dxgi_dwm")});
+        return status;
+      }
+
+      schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                             "vblank",
+                             schedulerlog::Severity::kWarn,
+                             {schedulerlog::MakeField("event", "d3dkmt_open_luid_failed"),
+                              schedulerlog::MakeField("status", static_cast<int>(status)),
+                              schedulerlog::MakeField("fallback", "dxgi_dwm")});
+      return status;
+    };
+
     auto tryOpenAdapter = [&](D3DKMT_OPENADAPTERFROMHDC& openAdapterData) -> bool {
       dxgiHelper.EnsureOutput(mVBlankWindow);
+      dxgiHelper.EnsureVidPnSourceId();
       std::array<HWND, 5> searchWindows = {mVBlankWindow,
                                            GetAncestor(mVBlankWindow, GA_PARENT),
                                            GetAncestor(mVBlankWindow, GA_ROOT),
@@ -6080,6 +6200,14 @@ DWORD IGraphicsWin::OnVBlankRun()
       if (deviceName)
       {
         NTSTATUS status = tryOpenAdapterForDisplay(deviceName, openAdapterData);
+        if (status == S_OK)
+          return true;
+      }
+      LUID luid;
+      D3DDDI_VIDEO_PRESENT_SOURCE_ID sourceId = 0;
+      if (dxgiHelper.AdapterLuid(luid) && dxgiHelper.VidPnSourceId(sourceId))
+      {
+        NTSTATUS status = tryOpenAdapterForLuid(&luid, openAdapterData, sourceId);
         if (status == S_OK)
           return true;
       }

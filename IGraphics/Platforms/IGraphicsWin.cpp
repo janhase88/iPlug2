@@ -46,7 +46,7 @@
 #include <utility>
 #include <vector>
 #include <wininet.h>
-#include <windisplayconfig.h>
+#include <wingdi.h>
 
 #if defined __clang__
   #undef CCSIZEOF_STRUCT
@@ -5721,6 +5721,8 @@ DWORD IGraphicsWin::OnVBlankRun()
 
       IDXGIOutput* preferredOutput = nullptr;
       DXGI_OUTPUT_DESC preferredDesc{};
+      LUID preferredAdapterLuid{};
+      bool preferredHasAdapterLuid = false;
 
       UINT adapterIndex = 0;
       while (true)
@@ -5752,6 +5754,23 @@ DWORD IGraphicsWin::OnVBlankRun()
 
           DXGI_OUTPUT_DESC desc{};
           hr = candidate->GetDesc(&desc);
+          LUID candidateAdapterLuid{};
+          bool candidateHasAdapterLuid = false;
+          if (SUCCEEDED(hr))
+          {
+            IDXGIAdapter* parent = nullptr;
+            if (SUCCEEDED(candidate->GetParent(__uuidof(IDXGIAdapter), reinterpret_cast<void**>(&parent))) && parent)
+            {
+              DXGI_ADAPTER_DESC adapterDesc{};
+              if (SUCCEEDED(parent->GetDesc(&adapterDesc)))
+              {
+                candidateAdapterLuid = adapterDesc.AdapterLuid;
+                candidateHasAdapterLuid = true;
+              }
+              parent->Release();
+            }
+          }
+
           bool keepCandidate = false;
           if (SUCCEEDED(hr) && targetMonitor && desc.Monitor == targetMonitor)
           {
@@ -5760,8 +5779,16 @@ DWORD IGraphicsWin::OnVBlankRun()
             lstrcpynW(deviceName,
                       desc.DeviceName,
                       static_cast<int>(sizeof(deviceName) / sizeof(deviceName[0])));
-            adapterLuid = desc.AdapterLuid;
-            hasAdapterLuid = true;
+            if (candidateHasAdapterLuid)
+            {
+              adapterLuid = candidateAdapterLuid;
+              hasAdapterLuid = true;
+            }
+            else
+            {
+              adapterLuid = {};
+              hasAdapterLuid = false;
+            }
             hasVidPnSourceId = false;
             EnsureVidPnSourceId();
             if (preferredOutput)
@@ -5770,10 +5797,13 @@ DWORD IGraphicsWin::OnVBlankRun()
             return true;
           }
 
-          if (SUCCEEDED(hr) && hasPreferredLuid && EqualLuid(desc.AdapterLuid, preferredLuid) && !preferredOutput)
+          if (SUCCEEDED(hr) && candidateHasAdapterLuid && hasPreferredLuid
+              && EqualLuid(candidateAdapterLuid, preferredLuid) && !preferredOutput)
           {
             preferredOutput = candidate;
             preferredDesc = desc;
+            preferredAdapterLuid = candidateAdapterLuid;
+            preferredHasAdapterLuid = true;
             keepCandidate = true;
           }
 
@@ -5793,8 +5823,16 @@ DWORD IGraphicsWin::OnVBlankRun()
         lstrcpynW(deviceName,
                   preferredDesc.DeviceName,
                   static_cast<int>(sizeof(deviceName) / sizeof(deviceName[0])));
-        adapterLuid = preferredDesc.AdapterLuid;
-        hasAdapterLuid = true;
+        if (preferredHasAdapterLuid)
+        {
+          adapterLuid = preferredAdapterLuid;
+          hasAdapterLuid = true;
+        }
+        else
+        {
+          adapterLuid = {};
+          hasAdapterLuid = false;
+        }
         hasVidPnSourceId = false;
         EnsureVidPnSourceId();
         return true;

@@ -82,6 +82,7 @@ using namespace igraphics;
 
 IControl::IControl(const IRECT& bounds, int paramIdx, IActionFunction aF)
 : mRECT(bounds)
+, mLastDrawRECT(bounds)
 , mTargetRECT(bounds)
 , mActionFunc(aF)
 {
@@ -90,6 +91,7 @@ IControl::IControl(const IRECT& bounds, int paramIdx, IActionFunction aF)
 
 IControl::IControl(const IRECT& bounds, const std::initializer_list<int>& params, IActionFunction aF)
 : mRECT(bounds)
+, mLastDrawRECT(bounds)
 , mTargetRECT(bounds)
 , mActionFunc(aF)
 {
@@ -101,9 +103,29 @@ IControl::IControl(const IRECT& bounds, const std::initializer_list<int>& params
 
 IControl::IControl(const IRECT& bounds, IActionFunction aF)
 : mRECT(bounds)
+, mLastDrawRECT(bounds)
 , mTargetRECT(bounds)
 , mActionFunc(aF)
 {
+}
+
+void IControl::AddDirtyArea(const IRECT& rect)
+{
+  if (rect.Empty())
+    return;
+
+  mDirtyBounds = mDirtyBounds.Empty() ? rect : mDirtyBounds.Union(rect);
+}
+
+void IControl::UpdateDirtyAreaForRectChange(const IRECT& previousBounds)
+{
+  if (previousBounds != mRECT)
+  {
+    mDirty = true;
+    AddDirtyArea(mLastDrawRECT);
+    AddDirtyArea(previousBounds);
+    AddDirtyArea(mRECT);
+  }
 }
 
 int IControl::GetParamIdx(int valIdx) const
@@ -201,9 +223,11 @@ void IControl::SetDirty(bool triggerAction, int valIdx)
 
   auto setValue = [this](int v) { SetValue(Clip(GetValue(v), 0.0, 1.0), v); };
   ForValIdx(valIdx, setValue);
-  
+
   mDirty = true;
-  
+  AddDirtyArea(mLastDrawRECT);
+  AddDirtyArea(mRECT);
+
   if (triggerAction)
   {
     auto paramUpdate = [this](int v)

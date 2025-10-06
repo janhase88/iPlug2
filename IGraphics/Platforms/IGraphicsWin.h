@@ -218,6 +218,10 @@ private:
   void DestroyVulkanContext();
   void ActivateVulkanContext();
   void DeactivateVulkanContext();
+  void UpdateVulkanAdapterIdentity(const VkPhysicalDeviceIDProperties& idProps);
+  void ClearVulkanAdapterIdentity();
+  bool GetVulkanAdapterLuid(LUID& luidOut) const;
+  uint32_t GetVulkanAdapterNodeMask() const;
   WinVulkanDeviceCoordinator mVulkanDeviceCoordinator;
   uint64_t mVulkanDeviceGeneration = 0;
   VkInstance mVkInstance = VK_NULL_HANDLE;
@@ -233,6 +237,9 @@ private:
   std::vector<VkImage> mVkSwapchainImages;
   VkFormat mVkFormat = VK_FORMAT_B8G8R8A8_UNORM;
   VkImageUsageFlags mVkSwapchainUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  std::atomic<uint64_t> mVulkanAdapterLuidValue{0};
+  std::atomic<bool> mVulkanAdapterLuidValid{false};
+  std::atomic<uint32_t> mVulkanAdapterNodeMask{0};
 #endif
 
 #ifdef IGRAPHICS_GL

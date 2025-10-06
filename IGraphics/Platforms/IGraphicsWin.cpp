@@ -3738,6 +3738,49 @@ void IGraphicsWin::DestroyGLContext()
 #endif
 
 #ifdef IGRAPHICS_VULKAN
+
+void IGraphicsWin::UpdateVulkanAdapterIdentity(const VkPhysicalDeviceIDProperties& idProps)
+{
+  if (idProps.deviceLUIDValid)
+  {
+    uint64_t encodedLuid = 0;
+    static_assert(sizeof(idProps.deviceLUID) >= sizeof(encodedLuid), "Unexpected LUID size");
+    std::memcpy(&encodedLuid, idProps.deviceLUID, sizeof(encodedLuid));
+    mVulkanAdapterLuidValue.store(encodedLuid, std::memory_order_release);
+    mVulkanAdapterLuidValid.store(true, std::memory_order_release);
+    mVulkanAdapterNodeMask.store(idProps.deviceNodeMask, std::memory_order_release);
+  }
+  else
+  {
+    mVulkanAdapterLuidValue.store(0, std::memory_order_release);
+    mVulkanAdapterLuidValid.store(false, std::memory_order_release);
+    mVulkanAdapterNodeMask.store(0, std::memory_order_release);
+  }
+}
+
+void IGraphicsWin::ClearVulkanAdapterIdentity()
+{
+  mVulkanAdapterLuidValue.store(0, std::memory_order_release);
+  mVulkanAdapterLuidValid.store(false, std::memory_order_release);
+  mVulkanAdapterNodeMask.store(0, std::memory_order_release);
+}
+
+bool IGraphicsWin::GetVulkanAdapterLuid(LUID& luidOut) const
+{
+  if (!mVulkanAdapterLuidValid.load(std::memory_order_acquire))
+    return false;
+
+  const uint64_t encoded = mVulkanAdapterLuidValue.load(std::memory_order_acquire);
+  luidOut.LowPart = static_cast<DWORD>(encoded & 0xFFFFFFFFULL);
+  luidOut.HighPart = static_cast<LONG>((encoded >> 32) & 0xFFFFFFFFULL);
+  return true;
+}
+
+uint32_t IGraphicsWin::GetVulkanAdapterNodeMask() const
+{
+  return mVulkanAdapterNodeMask.load(std::memory_order_acquire);
+}
+
 bool IGraphicsWin::CreateVulkanContext()
 {
   if (mVkInstance)
@@ -3782,6 +3825,14 @@ bool IGraphicsWin::CreateVulkanContext()
   mPresentQueue = snapshot.presentQueue;
   mVkQueueFamily = snapshot.queueFamily;
   mVulkanDeviceGeneration = generation;
+
+  VkPhysicalDeviceProperties2 props2{};
+  props2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+  VkPhysicalDeviceIDProperties idProps{};
+  idProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES;
+  props2.pNext = &idProps;
+  vkGetPhysicalDeviceProperties2(mVkPhysicalDevice, &props2);
+  UpdateVulkanAdapterIdentity(idProps);
 
   VkSurfaceCapabilitiesKHR caps{};
   res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(mVkPhysicalDevice, mVkSurface, &caps);
@@ -3855,6 +3906,8 @@ void IGraphicsWin::DestroyVulkanContext()
 {
   if (mVkDevice)
     vkDeviceWaitIdle(mVkDevice);
+
+  ClearVulkanAdapterIdentity();
 
   mImageAvailableSemaphore.Reset();
   mRenderFinishedSemaphore.Reset();
@@ -5540,10 +5593,17 @@ DWORD IGraphicsWin::OnVBlankRun()
     bool hasAdapterLuid = false;
     D3DDDI_VIDEO_PRESENT_SOURCE_ID vidPnSourceId = static_cast<D3DDDI_VIDEO_PRESENT_SOURCE_ID>(-1);
     bool hasVidPnSourceId = false;
+    bool hasPreferredLuid = false;
+    LUID preferredLuid{};
 
     ~DxgiVBlankHelper()
     {
       Cleanup();
+    }
+
+    static bool EqualLuid(const LUID& a, const LUID& b)
+    {
+      return a.HighPart == b.HighPart && a.LowPart == b.LowPart;
     }
 
     void Cleanup()
@@ -5596,20 +5656,57 @@ DWORD IGraphicsWin::OnVBlankRun()
       return true;
     }
 
+    bool SetPreferredAdapterLuid(const LUID* luid)
+    {
+      if (!luid)
+      {
+        if (!hasPreferredLuid)
+          return false;
+        hasPreferredLuid = false;
+        preferredLuid = {};
+        return true;
+      }
+
+      if (hasPreferredLuid && EqualLuid(preferredLuid, *luid))
+        return false;
+
+      preferredLuid = *luid;
+      hasPreferredLuid = true;
+      if (output && (!hasAdapterLuid || !EqualLuid(adapterLuid, preferredLuid)))
+      {
+        ResetOutput();
+      }
+      return true;
+    }
+
+    bool PreferredAdapterLuid(LUID& luidOut) const
+    {
+      if (!hasPreferredLuid)
+        return false;
+      luidOut = preferredLuid;
+      return true;
+    }
+
     bool EnsureOutput(HWND window)
     {
       if (!EnsureInitialized())
         return false;
 
       HMONITOR targetMonitor = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
-      if (!targetMonitor)
+      if (!targetMonitor && !hasPreferredLuid)
       {
         ResetOutput();
         return false;
       }
 
-      if (output && monitor == targetMonitor)
-        return true;
+      if (output)
+      {
+        if ((targetMonitor && monitor == targetMonitor)
+            || (!targetMonitor && hasAdapterLuid && hasPreferredLuid && EqualLuid(adapterLuid, preferredLuid)))
+        {
+          return true;
+        }
+      }
 
       ResetOutput();
 
@@ -5621,6 +5718,9 @@ DWORD IGraphicsWin::OnVBlankRun()
       }
 
       factory = newFactory;
+
+      IDXGIOutput* preferredOutput = nullptr;
+      DXGI_OUTPUT_DESC preferredDesc{};
 
       UINT adapterIndex = 0;
       while (true)
@@ -5650,12 +5750,13 @@ DWORD IGraphicsWin::OnVBlankRun()
             continue;
           }
 
-          DXGI_OUTPUT_DESC desc;
+          DXGI_OUTPUT_DESC desc{};
           hr = candidate->GetDesc(&desc);
-          if (SUCCEEDED(hr) && desc.Monitor == targetMonitor)
+          bool keepCandidate = false;
+          if (SUCCEEDED(hr) && targetMonitor && desc.Monitor == targetMonitor)
           {
             output = candidate;
-            monitor = targetMonitor;
+            monitor = desc.Monitor;
             lstrcpynW(deviceName,
                       desc.DeviceName,
                       static_cast<int>(sizeof(deviceName) / sizeof(deviceName[0])));
@@ -5663,15 +5764,44 @@ DWORD IGraphicsWin::OnVBlankRun()
             hasAdapterLuid = true;
             hasVidPnSourceId = false;
             EnsureVidPnSourceId();
+            if (preferredOutput)
+              preferredOutput->Release();
             adapter->Release();
             return true;
           }
 
-          candidate->Release();
+          if (SUCCEEDED(hr) && hasPreferredLuid && EqualLuid(desc.AdapterLuid, preferredLuid) && !preferredOutput)
+          {
+            preferredOutput = candidate;
+            preferredDesc = desc;
+            keepCandidate = true;
+          }
+
+          if (!keepCandidate)
+          {
+            candidate->Release();
+          }
         }
 
         adapter->Release();
       }
+
+      if (preferredOutput)
+      {
+        output = preferredOutput;
+        monitor = preferredDesc.Monitor;
+        lstrcpynW(deviceName,
+                  preferredDesc.DeviceName,
+                  static_cast<int>(sizeof(deviceName) / sizeof(deviceName[0])));
+        adapterLuid = preferredDesc.AdapterLuid;
+        hasAdapterLuid = true;
+        hasVidPnSourceId = false;
+        EnsureVidPnSourceId();
+        return true;
+      }
+
+      if (preferredOutput)
+        preferredOutput->Release();
 
       ResetOutput();
       return false;
@@ -5682,8 +5812,18 @@ DWORD IGraphicsWin::OnVBlankRun()
       if (hasVidPnSourceId)
         return true;
 
-      if (!hasAdapterLuid || deviceName[0] == L'\0')
-        return false;
+      if (!hasAdapterLuid)
+      {
+        if (hasPreferredLuid)
+        {
+          adapterLuid = preferredLuid;
+          hasAdapterLuid = true;
+        }
+        else
+        {
+          return false;
+        }
+      }
 
       UINT32 pathCount = 0;
       UINT32 modeCount = 0;
@@ -5701,8 +5841,7 @@ DWORD IGraphicsWin::OnVBlankRun()
       for (UINT32 i = 0; i < pathCount; ++i)
       {
         const auto& path = paths[i];
-        if (path.sourceInfo.adapterId.HighPart != adapterLuid.HighPart
-            || path.sourceInfo.adapterId.LowPart != adapterLuid.LowPart)
+        if (!EqualLuid(path.sourceInfo.adapterId, adapterLuid))
         {
           continue;
         }
@@ -5712,15 +5851,39 @@ DWORD IGraphicsWin::OnVBlankRun()
         sourceName.header.size = sizeof(sourceName);
         sourceName.header.adapterId = path.sourceInfo.adapterId;
         sourceName.header.id = path.sourceInfo.id;
-        if (DisplayConfigGetDeviceInfo(&sourceName.header) != ERROR_SUCCESS)
+
+        bool nameMatches = false;
+        if (DisplayConfigGetDeviceInfo(&sourceName.header) == ERROR_SUCCESS)
+        {
+          if (deviceName[0] == L'\0')
+          {
+            lstrcpynW(deviceName,
+                      sourceName.viewGdiDeviceName,
+                      static_cast<int>(sizeof(deviceName) / sizeof(deviceName[0])));
+            nameMatches = true;
+          }
+          else if (lstrcmpiW(sourceName.viewGdiDeviceName, deviceName) == 0)
+          {
+            nameMatches = true;
+          }
+        }
+        else if (deviceName[0] == L'\0' && hasPreferredLuid)
+        {
+          nameMatches = true;
+        }
+
+        if (!nameMatches && deviceName[0] != L'\0' && !hasPreferredLuid)
           continue;
 
-        if (lstrcmpiW(sourceName.viewGdiDeviceName, deviceName) == 0)
+        vidPnSourceId = static_cast<D3DDDI_VIDEO_PRESENT_SOURCE_ID>(path.sourceInfo.id);
+        hasVidPnSourceId = true;
+        if (!nameMatches && hasPreferredLuid && sourceName.viewGdiDeviceName[0] != L'\0')
         {
-          vidPnSourceId = static_cast<D3DDDI_VIDEO_PRESENT_SOURCE_ID>(path.sourceInfo.id);
-          hasVidPnSourceId = true;
-          return true;
+          lstrcpynW(deviceName,
+                    sourceName.viewGdiDeviceName,
+                    static_cast<int>(sizeof(deviceName) / sizeof(deviceName[0])));
         }
+        return true;
       }
 
       return false;
@@ -5758,10 +5921,17 @@ DWORD IGraphicsWin::OnVBlankRun()
 
     bool AdapterLuid(LUID& luidOut) const
     {
-      if (!hasAdapterLuid)
-        return false;
-      luidOut = adapterLuid;
-      return true;
+      if (hasAdapterLuid)
+      {
+        luidOut = adapterLuid;
+        return true;
+      }
+      if (hasPreferredLuid)
+      {
+        luidOut = preferredLuid;
+        return true;
+      }
+      return false;
     }
 
     bool VidPnSourceId(D3DDDI_VIDEO_PRESENT_SOURCE_ID& sourceIdOut)
@@ -5863,6 +6033,36 @@ DWORD IGraphicsWin::OnVBlankRun()
   };
 
   DxgiVBlankHelper dxgiHelper;
+  auto refreshPreferredAdapter = [&]() {
+    bool changed = false;
+    LUID preferred{};
+    if (GetVulkanAdapterLuid(preferred))
+    {
+      changed = dxgiHelper.SetPreferredAdapterLuid(&preferred);
+      if (changed)
+      {
+        schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                               "vblank",
+                               schedulerlog::Severity::kInfo,
+                               {schedulerlog::MakeField("event", "preferred_luid_updated"),
+                                schedulerlog::MakeField("luid_high", static_cast<int>(preferred.HighPart)),
+                                schedulerlog::MakeField("luid_low", static_cast<uint32_t>(preferred.LowPart))});
+      }
+    }
+    else
+    {
+      changed = dxgiHelper.SetPreferredAdapterLuid(nullptr);
+      if (changed)
+      {
+        schedulerlog::LogEvent(schedulerlog::kCategoryVBlankDispatch,
+                               "vblank",
+                               schedulerlog::Severity::kInfo,
+                               {schedulerlog::MakeField("event", "preferred_luid_cleared")});
+      }
+    }
+    return changed;
+  };
+  refreshPreferredAdapter();
   DwmVBlankHelper dwmHelper;
   bool dxgiActive = false;
   bool dwmActive = false;
@@ -6015,6 +6215,7 @@ DWORD IGraphicsWin::OnVBlankRun()
                             schedulerlog::MakeField("fallback", "dxgi_dwm")});
     while (mVBlankShutdown == false)
     {
+      refreshPreferredAdapter();
       waitWithFallback("d3dkmt_missing");
       VBlankNotify();
     }
@@ -6222,6 +6423,7 @@ DWORD IGraphicsWin::OnVBlankRun()
 
     while (mVBlankShutdown == false)
     {
+      refreshPreferredAdapter();
       if (!adapterIsOpen)
       {
         // reacquire the adapter (at most once a second).

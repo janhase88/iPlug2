@@ -1080,17 +1080,20 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   mVKQueueFamily = ctx->queueFamily;
   mVKSwapchainFormat = ctx->format;
   mVKSwapchainUsageFlags = ctx->usageFlags;
-  mVKSwapchainImages.clear();
-  if (ctx->swapchainImages)
   {
-    for (auto img : *ctx->swapchainImages)
-      mVKSwapchainImages.push_back(img);
+    std::lock_guard<std::mutex> lock(mVKSwapchainMutex);
+    mVKSwapchainImages.clear();
+    if (ctx->swapchainImages)
+    {
+      for (auto img : *ctx->swapchainImages)
+        mVKSwapchainImages.push_back(img);
+    }
+    mVKSwapchainImageViews.assign(mVKSwapchainImages.size(), VK_NULL_HANDLE);
+    mVKCurrentImage = kInvalidImageIndex;
+    mVKImageAvailableSemaphore = ctx->imageAvailableSemaphore;
+    mVKRenderFinishedSemaphore = ctx->renderFinishedSemaphore;
+    mVKInFlightFence = ctx->inFlightFence;
   }
-  mVKSwapchainImageViews.assign(mVKSwapchainImages.size(), VK_NULL_HANDLE);
-  mVKCurrentImage = kInvalidImageIndex;
-  mVKImageAvailableSemaphore = ctx->imageAvailableSemaphore;
-  mVKRenderFinishedSemaphore = ctx->renderFinishedSemaphore;
-  mVKInFlightFence = ctx->inFlightFence;
 
   skgpu::VulkanBackendContext backendContext = {};
   backendContext.fGetProc = [](const char* name, VkInstance instance, VkDevice device) {
@@ -1124,6 +1127,7 @@ void IGraphicsSkia::OnViewDestroyed()
   mMTLLayer = nullptr;
   mMTLDevice = nullptr;
 #elif defined IGRAPHICS_VULKAN
+  std::unique_lock<std::mutex> lock(mVKSwapchainMutex);
   if (mGrContext)
   {
     bool preparedForFlush = PrepareCurrentSwapchainImageForFlush();

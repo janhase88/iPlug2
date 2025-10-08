@@ -209,7 +209,7 @@ struct HasImageViewField : std::false_type
 };
 
 template <typename T>
-struct HasImageViewField<T, VoidT<decltype(std::declval<T&>().fImageView)>> : std::true_type
+struct HasImageViewField<T, VoidT<decltype(&T::fImageView)>> : std::true_type
 {
 };
 
@@ -310,20 +310,20 @@ VkImageView IGraphicsSkia::EnsureSwapchainImageView(uint32_t imageIndex, VkImage
   return cachedView;
 }
 
-sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int width, int height, const GrVkImageInfo& baseImageInfo)
+sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int width, int height, const GrVkImageInfo& imageInfo)
 {
-  GrVkImageInfo imageInfo = baseImageInfo;
+  GrVkImageInfo localInfo = imageInfo;
   if (imageIndex >= mVKSwapchainSurfaces.size())
   {
     mVKSwapchainSurfaces.resize(mVKSwapchainImages.size());
   }
 
-  VkImageView imageView = EnsureSwapchainImageView(imageIndex, imageInfo.fImage);
+  VkImageView imageView = EnsureSwapchainImageView(imageIndex, localInfo.fImage);
   if (imageView == VK_NULL_HANDLE)
     return nullptr;
 
-  SetImageView(imageInfo, imageView);
-  const VkImageView loggedImageView = GetImageView(imageInfo);
+  SetImageView(localInfo, imageView);
+  const VkImageView loggedImageView = GetImageView(localInfo);
 
   SkColorType colorType = kUnknown_SkColorType;
   switch (mVKSwapchainFormat)
@@ -345,7 +345,7 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
   {
     if (cachedSurface->width() == width && cachedSurface->height() == height)
     {
-      auto backendRT = GrBackendRenderTargets::MakeVk(width, height, imageInfo);
+      auto backendRT = GrBackendRenderTargets::MakeVk(width, height, localInfo);
       if (backendRT.isValid())
       {
         auto colorState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, mVKQueueFamily);
@@ -357,12 +357,12 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
     cachedSurface.reset();
   }
 
-  auto backendRT = GrBackendRenderTargets::MakeVk(width, height, imageInfo);
+  auto backendRT = GrBackendRenderTargets::MakeVk(width, height, localInfo);
   if (!backendRT.isValid() || colorType == kUnknown_SkColorType || !mGrContext->colorTypeSupportedAsSurface(colorType))
   {
     IGRAPHICS_VK_LOG("EnsureSwapchainSurface", "validation", vulkanlog::Severity::kError,
                          vulkanlog::MakeField("imageIndex", imageIndex),
-                          vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(imageInfo.fImage)),
+                          vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(localInfo.fImage)),
                           vulkanlog::MakeHandleField("imageView", vulkanlog::HandleToUint64(loggedImageView)),
                           vulkanlog::MakeField("width", width),
                           vulkanlog::MakeField("height", height));
@@ -378,14 +378,14 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
   {
     IGRAPHICS_VK_LOG("EnsureSwapchainSurface", "WrapBackendRenderTarget", vulkanlog::Severity::kError,
                          vulkanlog::MakeField("imageIndex", imageIndex),
-                          vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(imageInfo.fImage)),
+                          vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(localInfo.fImage)),
                           vulkanlog::MakeHandleField("imageView", vulkanlog::HandleToUint64(loggedImageView)));
     return nullptr;
   }
 
   IGRAPHICS_VK_LOG("EnsureSwapchainSurface", "created", vulkanlog::Severity::kDebug,
                        vulkanlog::MakeField("imageIndex", imageIndex),
-                        vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(imageInfo.fImage)),
+                        vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(localInfo.fImage)),
                         vulkanlog::MakeHandleField("imageView", vulkanlog::HandleToUint64(loggedImageView)),
                         vulkanlog::MakeField("width", width),
                         vulkanlog::MakeField("height", height));

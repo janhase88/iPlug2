@@ -255,6 +255,7 @@ private:
   VkCommandBuffer mVKCommandBuffer = VK_NULL_HANDLE;
   uint32_t mVKQueueFamily = 0;
   std::vector<VkImage> mVKSwapchainImages;
+  std::vector<VkImageView> mVKSwapchainImageViews;
   std::vector<VkImageLayout> mVKImageLayouts;
   std::vector<sk_sp<SkSurface>> mVKSwapchainSurfaces;
   uint32_t mVKCurrentImage = kInvalidImageIndex;
@@ -272,7 +273,8 @@ private:
   bool PrepareCurrentSwapchainImageForFlush();
   void ResetVulkanSwapchainCaches();
   VkCommandBuffer EnsureVulkanCommandBuffer();
-  sk_sp<SkSurface> EnsureSwapchainSurface(uint32_t imageIndex, int width, int height, const GrVkImageInfo& imageInfo);
+  VkImageView EnsureSwapchainImageView(uint32_t imageIndex, VkImage image);
+  sk_sp<SkSurface> EnsureSwapchainSurface(uint32_t imageIndex, int width, int height, GrVkImageInfo imageInfo);
   bool AssertValidSwapchainImage(VkImage image, const char* context);
 #endif
 

@@ -202,6 +202,43 @@ void ReleaseSkiaGpuResources(Context* context)
 
   ReleaseSkiaGpuResourcesImpl<Context>::Apply(context);
 }
+
+template <typename T, typename = void>
+struct HasImageViewField : std::false_type
+{
+};
+
+template <typename T>
+struct HasImageViewField<T, VoidT<decltype(std::declval<T&>().fImageView)>> : std::true_type
+{
+};
+
+template <typename ImageInfo>
+typename std::enable_if<HasImageViewField<ImageInfo>::value>::type
+SetImageView(ImageInfo& info, VkImageView view)
+{
+  info.fImageView = view;
+}
+
+template <typename ImageInfo>
+typename std::enable_if<!HasImageViewField<ImageInfo>::value>::type
+SetImageView(ImageInfo&, VkImageView)
+{
+}
+
+template <typename ImageInfo>
+typename std::enable_if<HasImageViewField<ImageInfo>::value, VkImageView>::type
+GetImageView(const ImageInfo& info)
+{
+  return info.fImageView;
+}
+
+template <typename ImageInfo>
+typename std::enable_if<!HasImageViewField<ImageInfo>::value, VkImageView>::type
+GetImageView(const ImageInfo&)
+{
+  return VK_NULL_HANDLE;
+}
 } // namespace
 #endif
 
@@ -273,8 +310,9 @@ VkImageView IGraphicsSkia::EnsureSwapchainImageView(uint32_t imageIndex, VkImage
   return cachedView;
 }
 
-sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int width, int height, GrVkImageInfo imageInfo)
+sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int width, int height, const GrVkImageInfo& baseImageInfo)
 {
+  GrVkImageInfo imageInfo = baseImageInfo;
   if (imageIndex >= mVKSwapchainSurfaces.size())
   {
     mVKSwapchainSurfaces.resize(mVKSwapchainImages.size());
@@ -284,7 +322,8 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
   if (imageView == VK_NULL_HANDLE)
     return nullptr;
 
-  imageInfo.fImageView = imageView;
+  SetImageView(imageInfo, imageView);
+  const VkImageView loggedImageView = GetImageView(imageInfo);
 
   SkColorType colorType = kUnknown_SkColorType;
   switch (mVKSwapchainFormat)
@@ -324,7 +363,7 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
     IGRAPHICS_VK_LOG("EnsureSwapchainSurface", "validation", vulkanlog::Severity::kError,
                          vulkanlog::MakeField("imageIndex", imageIndex),
                           vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(imageInfo.fImage)),
-                          vulkanlog::MakeHandleField("imageView", vulkanlog::HandleToUint64(imageInfo.fImageView)),
+                          vulkanlog::MakeHandleField("imageView", vulkanlog::HandleToUint64(loggedImageView)),
                           vulkanlog::MakeField("width", width),
                           vulkanlog::MakeField("height", height));
     return nullptr;
@@ -340,14 +379,14 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
     IGRAPHICS_VK_LOG("EnsureSwapchainSurface", "WrapBackendRenderTarget", vulkanlog::Severity::kError,
                          vulkanlog::MakeField("imageIndex", imageIndex),
                           vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(imageInfo.fImage)),
-                          vulkanlog::MakeHandleField("imageView", vulkanlog::HandleToUint64(imageInfo.fImageView)));
+                          vulkanlog::MakeHandleField("imageView", vulkanlog::HandleToUint64(loggedImageView)));
     return nullptr;
   }
 
   IGRAPHICS_VK_LOG("EnsureSwapchainSurface", "created", vulkanlog::Severity::kDebug,
                        vulkanlog::MakeField("imageIndex", imageIndex),
                         vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(imageInfo.fImage)),
-                        vulkanlog::MakeHandleField("imageView", vulkanlog::HandleToUint64(imageInfo.fImageView)),
+                        vulkanlog::MakeHandleField("imageView", vulkanlog::HandleToUint64(loggedImageView)),
                         vulkanlog::MakeField("width", width),
                         vulkanlog::MakeField("height", height));
   return cachedSurface;
@@ -541,8 +580,8 @@ bool IGraphicsSkia::PrepareCurrentSwapchainImageForFlush()
     imageInfo.fLevelCount = 1;
     imageInfo.fCurrentQueueFamily = mVKQueueFamily;
 
-    imageInfo.fImageView = EnsureSwapchainImageView(mVKCurrentImage, swapImage);
-    if (imageInfo.fImageView == VK_NULL_HANDLE)
+    VkImageView imageView = EnsureSwapchainImageView(mVKCurrentImage, swapImage);
+    if (imageView == VK_NULL_HANDLE)
     {
       IGRAPHICS_VK_LOG("PrepareCurrentSwapchainImageForFlush",
                           "ensureImageViewFailed",
@@ -551,6 +590,8 @@ bool IGraphicsSkia::PrepareCurrentSwapchainImageForFlush()
                            vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(swapImage)));
       return false;
     }
+
+    SetImageView(imageInfo, imageView);
 
     const int width = mScreenSurface->width();
     const int height = mScreenSurface->height();
@@ -2108,8 +2149,8 @@ void IGraphicsSkia::EndFrame()
     imageInfo.fLevelCount = 1;
     imageInfo.fCurrentQueueFamily = mVKQueueFamily;
 
-    imageInfo.fImageView = EnsureSwapchainImageView(mVKCurrentImage, swapImage);
-    if (imageInfo.fImageView == VK_NULL_HANDLE)
+    VkImageView imageView = EnsureSwapchainImageView(mVKCurrentImage, swapImage);
+    if (imageView == VK_NULL_HANDLE)
     {
       IGRAPHICS_VK_LOG("EndFrame",
                           "ensureImageViewFailed",
@@ -2120,6 +2161,8 @@ void IGraphicsSkia::EndFrame()
       mVKCurrentImage = kInvalidImageIndex;
       return;
     }
+
+    SetImageView(imageInfo, imageView);
 
     const int width = mScreenSurface->width();
     const int height = mScreenSurface->height();

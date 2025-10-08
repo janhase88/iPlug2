@@ -274,7 +274,7 @@ private:
   void ResetVulkanSwapchainCaches();
   VkCommandBuffer EnsureVulkanCommandBuffer();
   VkImageView EnsureSwapchainImageView(uint32_t imageIndex, VkImage image);
-  sk_sp<SkSurface> EnsureSwapchainSurface(uint32_t imageIndex, int width, int height, GrVkImageInfo imageInfo);
+  sk_sp<SkSurface> EnsureSwapchainSurface(uint32_t imageIndex, int width, int height, const GrVkImageInfo& imageInfo);
   bool AssertValidSwapchainImage(VkImage image, const char* context);
 #endif
 

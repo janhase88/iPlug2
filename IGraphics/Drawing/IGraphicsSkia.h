@@ -230,6 +230,7 @@ private:
   int mLastCpuPresentHeight = 0;
   int mLastCpuPresentDestWidth = 0;
   int mLastCpuPresentDestHeight = 0;
+  bool mLastCpuPresentAppliedCompensation = false;
   bool mCpuPresentLogValid = false;
 #endif
 

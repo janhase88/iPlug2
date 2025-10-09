@@ -2052,6 +2052,34 @@ void IGraphicsSkia::EndFrame()
     int destWidth = srcWidth;
     int destHeight = srcHeight;
 
+    bool appliedCompensation = false;
+    int previousGraphicsMode = 0;
+    XFORM previousWorldTransform{};
+    bool restoreWorldTransform = false;
+
+    if (virtualization > 0.f && std::isfinite(virtualization) && std::fabs(virtualization - 1.f) > 0.001f)
+    {
+      previousGraphicsMode = SetGraphicsMode(hdc, GM_ADVANCED);
+
+      if (previousGraphicsMode != 0)
+      {
+        if (GetWorldTransform(hdc, &previousWorldTransform))
+          restoreWorldTransform = true;
+
+        const float inverseVirtualization = 1.f / virtualization;
+        XFORM compensationTransform{};
+        compensationTransform.eM11 = inverseVirtualization;
+        compensationTransform.eM22 = inverseVirtualization;
+        compensationTransform.eDx = 0.f;
+        compensationTransform.eDy = 0.f;
+        compensationTransform.eM12 = 0.f;
+        compensationTransform.eM21 = 0.f;
+
+        if (SetWorldTransform(hdc, &compensationTransform))
+          appliedCompensation = true;
+      }
+    }
+
     const bool shouldLogPresent =
       !mCpuPresentLogValid ||
       std::fabs(screenScale - mLastCpuPresentScreenScale) > 0.001f ||
@@ -2061,11 +2089,12 @@ void IGraphicsSkia::EndFrame()
       mLastCpuPresentWidth != srcWidth ||
       mLastCpuPresentHeight != srcHeight ||
       mLastCpuPresentDestWidth != destWidth ||
-      mLastCpuPresentDestHeight != destHeight;
+      mLastCpuPresentDestHeight != destHeight ||
+      mLastCpuPresentAppliedCompensation != appliedCompensation;
 
     if (shouldLogPresent)
     {
-      DBGMSG("SkiaCPU.EndFrame: hwnd=%p src=%dx%d dest=%dx%d screenScale=%.3f windowScale=%.3f monitorScale=%.3f virtualization=%.3f\n",
+      DBGMSG("SkiaCPU.EndFrame: hwnd=%p src=%dx%d dest=%dx%d screenScale=%.3f windowScale=%.3f monitorScale=%.3f virtualization=%.3f compensated=%s\n",
              hWnd,
              srcWidth,
              srcHeight,
@@ -2074,7 +2103,8 @@ void IGraphicsSkia::EndFrame()
              screenScale,
              windowScale,
              monitorScale,
-             virtualization);
+             virtualization,
+             appliedCompensation ? "true" : "false");
       mCpuPresentLogValid = true;
       mLastCpuPresentScreenScale = screenScale;
       mLastCpuPresentWindowScale = windowScale;
@@ -2084,6 +2114,7 @@ void IGraphicsSkia::EndFrame()
       mLastCpuPresentHeight = srcHeight;
       mLastCpuPresentDestWidth = destWidth;
       mLastCpuPresentDestHeight = destHeight;
+      mLastCpuPresentAppliedCompensation = appliedCompensation;
     }
 
     StretchDIBits(hdc,
@@ -2099,6 +2130,24 @@ void IGraphicsSkia::EndFrame()
                   bmpInfo,
                   DIB_RGB_COLORS,
                   SRCCOPY);
+
+    if (appliedCompensation)
+    {
+      if (restoreWorldTransform)
+      {
+        SetWorldTransform(hdc, &previousWorldTransform);
+      }
+      else
+      {
+        XFORM identity{};
+        identity.eM11 = 1.f;
+        identity.eM22 = 1.f;
+        SetWorldTransform(hdc, &identity);
+      }
+    }
+
+    if (previousGraphicsMode != 0)
+      SetGraphicsMode(hdc, previousGraphicsMode);
   }
 
   EndPaint(hWnd, &ps);

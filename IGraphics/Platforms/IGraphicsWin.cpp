@@ -4330,23 +4330,25 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   if (!std::isfinite(parentVirtualization) || parentVirtualization <= 0.f)
     parentVirtualization = 1.f;
 
-  const int physicalWidth =
+  const int expectedPhysicalWidth =
     std::max(1, static_cast<int>(std::lround(static_cast<double>(logicalWidth) * parentVirtualization)));
-  const int physicalHeight =
+  const int expectedPhysicalHeight =
     std::max(1, static_cast<int>(std::lround(static_cast<double>(logicalHeight) * parentVirtualization)));
 
-  DBGMSG("WinDPI[OpenWindow.adjust]: parent=%p virtualization=%.3f logical=%dx%d physical=%dx%d\n",
+  DBGMSG("WinDPI[OpenWindow.adjust]: parent=%p virtualization=%.3f logical=%dx%d request=%dx%d expectedPhysical=%dx%d\n",
          mParentWnd,
          parentVirtualization,
          logicalWidth,
          logicalHeight,
-         physicalWidth,
-         physicalHeight);
+         logicalWidth,
+         logicalHeight,
+         expectedPhysicalWidth,
+         expectedPhysicalHeight);
 
   int x = 0;
   int y = 0;
-  int w = physicalWidth;
-  int h = physicalHeight;
+  int w = logicalWidth;
+  int h = logicalHeight;
 
   if (mPlugWnd)
   {

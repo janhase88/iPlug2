@@ -4301,11 +4301,27 @@ void* IGraphicsWin::OpenWindow(void* pParent)
 {
   mDpiDebugLogState.valid = false;
   mParentWnd = (HWND)pParent;
-  iplug::win::ScopedPerMonitorDpiAwarenessContext dpiScope;
-  const auto parentScales = iplug::win::GetDpiScalesForHWND(mParentWnd);
+
+  iplug::win::DpiScales parentScales{};
+  {
+    iplug::win::ScopedPerMonitorDpiAwarenessContext dpiScope;
+    parentScales = iplug::win::GetDpiScalesForHWND(mParentWnd);
+  }
+
   const int scaledWidth = WindowWidth();
   const int scaledHeight = WindowHeight();
   DebugLogDpiEvent("OpenWindow.request", mParentWnd, parentScales, GetScreenScale(), GetScreenScale(), scaledWidth, scaledHeight);
+
+  float virtualization = 1.f;
+  const float windowScale = (std::isfinite(parentScales.window) && parentScales.window > 0.f) ? parentScales.window : 0.f;
+  const float monitorScale = (std::isfinite(parentScales.monitor) && parentScales.monitor > 0.f) ? parentScales.monitor : 0.f;
+
+  if (windowScale > kDpiScaleEpsilon)
+    virtualization = monitorScale / windowScale;
+
+  if (!std::isfinite(virtualization) || virtualization <= 0.f)
+    virtualization = 1.f;
+
   int x = 0;
   int y = 0;
   int w = scaledWidth;
@@ -4321,6 +4337,17 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     y = cR.top - pR.top;
     w = cR.right - cR.left;
     h = cR.bottom - cR.top;
+  }
+  else
+  {
+    const int physicalWidth = static_cast<int>(std::round(static_cast<double>(w) * static_cast<double>(virtualization)));
+    const int physicalHeight = static_cast<int>(std::round(static_cast<double>(h) * static_cast<double>(virtualization)));
+
+    if (physicalWidth > 0)
+      w = physicalWidth;
+
+    if (physicalHeight > 0)
+      h = physicalHeight;
   }
 
   if (nWndClassReg++ == 0)
@@ -4373,7 +4400,11 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     GetClientRect(mPlugWnd, &clientRect);
     const int clientWidth = static_cast<int>(clientRect.right - clientRect.left);
     const int clientHeight = static_cast<int>(clientRect.bottom - clientRect.top);
-    const auto plugScales = iplug::win::GetDpiScalesForHWND(mPlugWnd);
+    iplug::win::DpiScales plugScales{};
+    {
+      iplug::win::ScopedPerMonitorDpiAwarenessContext dpiScope;
+      plugScales = iplug::win::GetDpiScalesForHWND(mPlugWnd);
+    }
     DebugLogDpiEvent("OpenWindow.created", mPlugWnd, plugScales, GetScreenScale(), GetScreenScale(), clientWidth, clientHeight);
   }
 

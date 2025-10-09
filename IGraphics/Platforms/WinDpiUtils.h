@@ -5,6 +5,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 namespace iplug::win
@@ -13,6 +14,7 @@ namespace detail
 {
 using GetDpiForWindowFunc = UINT(WINAPI*)(HWND);
 using GetDpiForMonitorFunc = HRESULT(WINAPI*)(HMONITOR, int, UINT*, UINT*);
+using GetScaleFactorForMonitorFunc = HRESULT(WINAPI*)(HMONITOR, int*);
 using SetThreadDpiAwarenessContextFunc = DPI_AWARENESS_CONTEXT(WINAPI*)(DPI_AWARENESS_CONTEXT);
 
 inline GetDpiForWindowFunc LoadGetDpiForWindow()
@@ -40,6 +42,21 @@ inline GetDpiForMonitorFunc LoadGetDpiForMonitor()
       return nullptr;
 
     return reinterpret_cast<GetDpiForMonitorFunc>(GetProcAddress(shcore, "GetDpiForMonitor"));
+  }();
+
+  return fn;
+}
+
+inline GetScaleFactorForMonitorFunc LoadGetScaleFactorForMonitor()
+{
+  static GetScaleFactorForMonitorFunc fn = []() -> GetScaleFactorForMonitorFunc {
+    HMODULE shcore = GetModuleHandleW(L"shcore.dll");
+    if (!shcore)
+      shcore = LoadLibraryW(L"shcore.dll");
+    if (!shcore)
+      return nullptr;
+
+    return reinterpret_cast<GetScaleFactorForMonitorFunc>(GetProcAddress(shcore, "GetScaleFactorForMonitor"));
   }();
 
   return fn;
@@ -76,23 +93,57 @@ inline UINT QueryWindowDpi(HWND hWnd)
 
 inline UINT QueryMonitorDpi(HWND hWnd)
 {
-  auto fn = LoadGetDpiForMonitor();
-  if (!fn)
-    return 0;
-
   constexpr int kEffectiveDpiType = 0; // MDT_EFFECTIVE_DPI
 
   HMONITOR monitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
   if (!monitor)
     return 0;
 
-  UINT dpiX = 0;
-  UINT dpiY = 0;
+  if (auto fn = LoadGetDpiForMonitor())
+  {
+    UINT dpiX = 0;
+    UINT dpiY = 0;
 
-  if (fn(monitor, kEffectiveDpiType, &dpiX, &dpiY) == S_OK && dpiX != 0)
-    return dpiX;
+    if (fn(monitor, kEffectiveDpiType, &dpiX, &dpiY) == S_OK && dpiX != 0)
+      return dpiX;
+  }
 
-  return 0;
+  if (auto scaleFn = LoadGetScaleFactorForMonitor())
+  {
+    int scaleFactor = 0;
+    if (scaleFn(monitor, &scaleFactor) == S_OK && scaleFactor > 0)
+    {
+      const UINT dpiFromScale = static_cast<UINT>((scaleFactor * USER_DEFAULT_SCREEN_DPI + 50) / 100);
+      if (dpiFromScale != 0)
+        return dpiFromScale;
+    }
+  }
+
+  const HWND targetWnd = hWnd ? hWnd : GetDesktopWindow();
+  HDC dc = targetWnd ? GetDC(targetWnd) : nullptr;
+  if (!dc)
+    return 0;
+
+  const int logicalWidth = GetDeviceCaps(dc, HORZRES);
+  const int physicalWidth = GetDeviceCaps(dc, DESKTOPHORZRES);
+  const int logicalDpi = GetDeviceCaps(dc, LOGPIXELSX);
+  ReleaseDC(targetWnd, dc);
+
+  if (logicalDpi <= 0)
+    return 0;
+
+  float virtualization = 1.f;
+  if (logicalWidth > 0 && physicalWidth > 0)
+    virtualization = static_cast<float>(physicalWidth) / static_cast<float>(logicalWidth);
+
+  if (!std::isfinite(virtualization) || virtualization <= 0.f)
+    virtualization = 1.f;
+
+  const float effectiveDpi = static_cast<float>(logicalDpi) * virtualization;
+  if (effectiveDpi <= 0.f || !std::isfinite(effectiveDpi))
+    return 0;
+
+  return static_cast<UINT>(std::round(effectiveDpi));
 }
 
 inline float ScaleFromDpi(UINT dpi)

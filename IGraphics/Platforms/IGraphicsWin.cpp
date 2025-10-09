@@ -4303,11 +4303,8 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   mParentWnd = (HWND)pParent;
   iplug::win::ScopedPerMonitorDpiAwarenessContext dpiScope;
   const auto parentScales = iplug::win::GetDpiScalesForHWND(mParentWnd);
-  const float parentWindowScale = (std::isfinite(parentScales.window) && parentScales.window > 0.f)
-                                    ? parentScales.window
-                                    : 1.f;
-  const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * parentWindowScale));
-  const int scaledHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * parentWindowScale));
+  const int scaledWidth = WindowWidth();
+  const int scaledHeight = WindowHeight();
   DebugLogDpiEvent("OpenWindow.request", mParentWnd, parentScales, GetScreenScale(), GetScreenScale(), scaledWidth, scaledHeight);
   int x = 0;
   int y = 0;

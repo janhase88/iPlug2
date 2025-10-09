@@ -228,6 +228,8 @@ private:
   float mLastCpuPresentVirtualization = 0.f;
   int mLastCpuPresentWidth = 0;
   int mLastCpuPresentHeight = 0;
+  int mLastCpuPresentDestWidth = 0;
+  int mLastCpuPresentDestHeight = 0;
   bool mCpuPresentLogValid = false;
 #endif
 

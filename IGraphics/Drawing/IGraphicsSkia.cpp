@@ -2026,8 +2026,8 @@ void IGraphicsSkia::EndFrame()
   SkCGDrawBitmap(pCGContext, bmp, 0, 0);
   CGContextRestoreGState(pCGContext);
   #elif defined OS_WIN
-  const int w = WindowWidth() * GetScreenScale();
-  const int h = WindowHeight() * GetScreenScale();
+  const int srcWidth = WindowWidth() * GetScreenScale();
+  const int srcHeight = WindowHeight() * GetScreenScale();
   BITMAPINFO* bmpInfo = reinterpret_cast<BITMAPINFO*>(mSurfaceMemory.Get());
   HWND hWnd = (HWND)GetWindow();
   PAINTSTRUCT ps;
@@ -2048,21 +2048,39 @@ void IGraphicsSkia::EndFrame()
 
     const float virtualization =
       (windowScale > 0.f && std::isfinite(windowScale)) ? (monitorScale / windowScale) : 0.f;
+    int destWidth = WindowWidth();
+    int destHeight = WindowHeight();
+
+    if (std::isfinite(windowScale) && windowScale > 0.f)
+    {
+      destWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * windowScale));
+      destHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * windowScale));
+    }
+
+    if (destWidth <= 0)
+      destWidth = WindowWidth();
+    if (destHeight <= 0)
+      destHeight = WindowHeight();
+
     const bool shouldLogPresent =
       !mCpuPresentLogValid ||
       std::fabs(screenScale - mLastCpuPresentScreenScale) > 0.001f ||
       std::fabs(windowScale - mLastCpuPresentWindowScale) > 0.001f ||
       std::fabs(monitorScale - mLastCpuPresentMonitorScale) > 0.001f ||
       std::fabs(virtualization - mLastCpuPresentVirtualization) > 0.001f ||
-      mLastCpuPresentWidth != w ||
-      mLastCpuPresentHeight != h;
+      mLastCpuPresentWidth != srcWidth ||
+      mLastCpuPresentHeight != srcHeight ||
+      mLastCpuPresentDestWidth != destWidth ||
+      mLastCpuPresentDestHeight != destHeight;
 
     if (shouldLogPresent)
     {
-      DBGMSG("SkiaCPU.EndFrame: hwnd=%p client=%dx%d screenScale=%.3f windowScale=%.3f monitorScale=%.3f virtualization=%.3f\n",
+      DBGMSG("SkiaCPU.EndFrame: hwnd=%p src=%dx%d dest=%dx%d screenScale=%.3f windowScale=%.3f monitorScale=%.3f virtualization=%.3f\n",
              hWnd,
-             w,
-             h,
+             srcWidth,
+             srcHeight,
+             destWidth,
+             destHeight,
              screenScale,
              windowScale,
              monitorScale,
@@ -2072,12 +2090,25 @@ void IGraphicsSkia::EndFrame()
       mLastCpuPresentWindowScale = windowScale;
       mLastCpuPresentMonitorScale = monitorScale;
       mLastCpuPresentVirtualization = virtualization;
-      mLastCpuPresentWidth = w;
-      mLastCpuPresentHeight = h;
+      mLastCpuPresentWidth = srcWidth;
+      mLastCpuPresentHeight = srcHeight;
+      mLastCpuPresentDestWidth = destWidth;
+      mLastCpuPresentDestHeight = destHeight;
     }
 
-    StretchDIBits(hdc, 0, 0, w, h, 0, 0, w, h, bmpInfo->bmiColors, bmpInfo, DIB_RGB_COLORS, SRCCOPY);
-    ReleaseDC(hWnd, hdc);
+    StretchDIBits(hdc,
+                  0,
+                  0,
+                  destWidth,
+                  destHeight,
+                  0,
+                  0,
+                  srcWidth,
+                  srcHeight,
+                  bmpInfo->bmiColors,
+                  bmpInfo,
+                  DIB_RGB_COLORS,
+                  SRCCOPY);
   }
 
   EndPaint(hWnd, &ps);

@@ -16,7 +16,7 @@
 #include "heapbuf.h"
 
 #include "IGraphicsWin.h"
-#include "WinDpiAwareness.h"
+#include "WinDpiUtils.h"
 #include "IGraphicsWin_dnd.h"
 #include "IPlugParameter.h"
 #include "IPlugPaths.h"
@@ -82,6 +82,7 @@ struct VBlankSubscription
 namespace
 {
 constexpr uint32_t kVBlankQueueDepthWarningMultiplier = 2;
+constexpr float kDpiScaleEpsilon = 0.001f;
 
 void RecordVBlankQueueDepthSample(uint32_t depth);
 void IncrementVBlankQueueWarnCount();
@@ -466,7 +467,6 @@ StaticStorage<IGraphicsWin::InstalledFont> IGraphicsWin::sPlatformFontCache;
 StaticStorage<HFontHolder> IGraphicsWin::sHFontCache;
 } // namespace iplug::igraphics
 
-extern float GetScaleForHWND(HWND hWnd);
 
 namespace iplug::igraphics
 {
@@ -2186,9 +2186,7 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
   // TODO: move this... listen to the right messages in windows for screen resolution changes, etc.
   if (!GetCapture()) // workaround Windows issues with window sizing during mouse move
   {
-    float scale = GetScaleForHWND(mPlugWnd);
-    if (scale != GetScreenScale())
-      SetScreenScale(scale);
+    ApplyDpiScales(mPlugWnd);
   }
 
   // TODO: this is far too aggressive for slow drawing animations and data changing.  We need to
@@ -4166,6 +4164,28 @@ void IGraphicsWin::DeactivateVulkanContext()
 }
 #endif
 
+void IGraphicsWin::ApplyDpiScales(HWND referenceWnd)
+{
+  const auto scales = iplug::win::GetDpiScalesForHWND(referenceWnd ? referenceWnd : mParentWnd);
+
+  float windowScale = scales.window;
+  if (!std::isfinite(windowScale) || windowScale <= 0.f)
+    windowScale = 1.f;
+
+  float screenScale = scales.monitor;
+  if (!std::isfinite(screenScale) || screenScale <= 0.f)
+    screenScale = windowScale;
+
+  const bool windowChanged = std::fabs(windowScale - mWindowScale) > kDpiScaleEpsilon;
+  const bool screenChanged = std::fabs(screenScale - GetScreenScale()) > kDpiScaleEpsilon;
+
+  if (!windowChanged && !screenChanged)
+    return;
+
+  mWindowScale = windowScale;
+  IGraphics::SetScreenScale(screenScale);
+}
+
 void IGraphicsWin::ActivateGLContext()
 {
 #if defined IGRAPHICS_GL
@@ -4205,12 +4225,13 @@ EMsgBoxResult IGraphicsWin::ShowMessageBox(const char* str, const char* title, E
 
 void* IGraphicsWin::OpenWindow(void* pParent)
 {
-  ScopedPerMonitorDpiAwareness dpiScope;
-
   mParentWnd = (HWND)pParent;
-  const float parentScale = GetScaleForHWND(mParentWnd);
-  const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * parentScale));
-  const int scaledHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * parentScale));
+  const auto parentScales = iplug::win::GetDpiScalesForHWND(mParentWnd);
+  const float parentWindowScale = (std::isfinite(parentScales.window) && parentScales.window > 0.f)
+                                    ? parentScales.window
+                                    : 1.f;
+  const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * parentWindowScale));
+  const int scaledHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * parentWindowScale));
   int x = 0;
   int y = 0;
   int w = scaledWidth;
@@ -4272,8 +4293,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   #endif
 #endif
 
-  const float screenScale = mPlugWnd ? GetScaleForHWND(mPlugWnd) : parentScale;
-  SetScreenScale(screenScale); // resizes draw context
+  ApplyDpiScales(mPlugWnd ? mPlugWnd : mParentWnd); // resizes draw context
 
   GetDelegate()->LayoutUI(this);
 

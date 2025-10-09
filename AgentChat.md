@@ -29,7 +29,7 @@ I will continue logging progress and findings here for the remainder of the task
 - **Next Step:** Implement scoped DPI-awareness elevation in the WinSKIA path (window creation + CPU blit code), validate via code inspection, and ensure the changes are limited to Windows builds to avoid regressions.
 
 ## Entry 4 — Implementation Progress
-- **Scoped DPI Helper:** Added `WinDpiAwareness.h`, providing `ScopedPerMonitorDpiAwareness` that dynamically loads `SetThreadDpiAwarenessContext` and restores the previous context when the scope ends.【F:IGraphics/Platforms/WinDpiAwareness.h†L1-L63】
+- **Scoped DPI Helper:** Added a temporary `WinDpiAwareness` utility providing `ScopedPerMonitorDpiAwareness` that dynamically loaded `SetThreadDpiAwarenessContext` and restored the previous context when the scope ended.
 - **Window Creation:** Wrapped `IGraphicsWin::OpenWindow()` in the scoped helper so the editor HWND is created while the UI thread is temporarily `PER_MONITOR_AWARE_V2`, guaranteeing the child window opts out of DPI virtualization in system-aware hosts.【F:IGraphics/Platforms/IGraphicsWin.cpp†L16-L24】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4205-L4210】
 - **CPU Skia Present:** Guarded the Windows CPU blit path in `IGraphicsSkia::EndFrame()` with the same scope, ensuring paint operations also run with per-monitor awareness before calling `BeginPaint`/`StretchDIBits`.【F:IGraphics/Drawing/IGraphicsSkia.cpp†L93-L98】【F:IGraphics/Drawing/IGraphicsSkia.cpp†L2008-L2015】
 - **Next Step:** Review for additional call sites that need the scope (none identified), run formatting/compilation sanity checks where feasible, and prepare documentation/testing notes.
@@ -42,3 +42,12 @@ I will continue logging progress and findings here for the remainder of the task
   1. Extend `GetScaleForHWND()` to fall back to `GetDpiForMonitor` (via `shcore.dll`) when `GetDpiForWindow` returns the default 96 DPI.
   2. Re-query the new child HWND after creation so the editor immediately adopts the monitor’s physical scale, resizing the surface and notifying the host without relying on deferred idle checks.
   3. Retest the CPU presentation path under the scoped DPI context to ensure the pixel buffer matches the new scale.
+
+## Entry 6 — Revised DPI Strategy After Crash Regression
+- **Field Report:** The follow-up build crashed in the host and still produced blurry, partially cropped rendering, implying the previous “per-monitor aware scope” fix conflicted with system-DPI-aware hosts that virtualize child windows.
+- **Findings:** According to Microsoft’s sub-process DPI guidance, child HWNDs inherit the parent’s awareness, so Bitwig’s system-aware container keeps us virtualized regardless of thread context changes. Elevating the thread therefore failed while still forcing our surfaces to resize, which inflated the render target and triggered host instability.
+- **New Approach:**
+  1. Restore `GetScaleForHWND()` semantics to report the window’s virtualized scale, but add reusable helpers that also expose the monitor’s physical DPI.
+  2. Track the host-facing “window scale” separately from the physical drawing scale so we can size buffers to physical pixels without requesting a larger logical window.
+  3. Detect virtualization in the WinSKIA CPU blit and apply a compensating GDI world transform so the high-resolution back buffer maps 1:1 after Windows upsamples the child HWND.
+- **Status:** Implementing the helper utilities, updating the Windows platform layer to maintain dual scales, and teaching the Skia CPU swap to neutralize DPI virtualization.

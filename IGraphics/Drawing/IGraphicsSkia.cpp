@@ -1315,8 +1315,10 @@ void IGraphicsSkia::DrawResize()
   const float screenScale = GetScreenScale();
   const int drawWidth = std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * screenScale)));
   const int drawHeight = std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * screenScale)));
-  int presentWidth = drawWidth;
-  int presentHeight = drawHeight;
+  int presentPhysicalWidth = drawWidth;
+  int presentPhysicalHeight = drawHeight;
+  int presentLogicalWidth = drawWidth;
+  int presentLogicalHeight = drawHeight;
 
 #if defined OS_WIN
   iplug::win::ScopedPerMonitorDpiAwarenessContext dpiScope;
@@ -1336,13 +1338,15 @@ void IGraphicsSkia::DrawResize()
   if (!std::isfinite(virtualization) || virtualization <= 0.f)
     virtualization = 1.f;
 
-  presentWidth = std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * windowScale)));
-  presentHeight = std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * windowScale)));
+  presentLogicalWidth = std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * windowScale)));
+  presentLogicalHeight = std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * windowScale)));
 
   const bool logPresentation =
     !mPresentationLogValid ||
-    mPresentationWidth != presentWidth ||
-    mPresentationHeight != presentHeight ||
+    mPresentationPhysicalWidth != presentPhysicalWidth ||
+    mPresentationPhysicalHeight != presentPhysicalHeight ||
+    mPresentationLogicalWidth != presentLogicalWidth ||
+    mPresentationLogicalHeight != presentLogicalHeight ||
     std::fabs(mPresentationWindowScale - windowScale) > 0.001f ||
     std::fabs(mPresentationMonitorScale - monitorScale) > 0.001f ||
     std::fabs(mPresentationVirtualization - virtualization) > 0.001f ||
@@ -1351,12 +1355,14 @@ void IGraphicsSkia::DrawResize()
 
   if (logPresentation)
   {
-    DBGMSG("SkiaWin.Resize: hwnd=%p draw=%dx%d present=%dx%d screenScale=%.3f windowScale=%.3f monitorScale=%.3f virtualization=%.3f\n",
+    DBGMSG("SkiaWin.Resize: hwnd=%p draw=%dx%d presentPhysical=%dx%d presentLogical=%dx%d screenScale=%.3f windowScale=%.3f monitorScale=%.3f virtualization=%.3f\n",
            hwnd,
            drawWidth,
            drawHeight,
-           presentWidth,
-           presentHeight,
+           presentPhysicalWidth,
+           presentPhysicalHeight,
+           presentLogicalWidth,
+           presentLogicalHeight,
            screenScale,
            windowScale,
            monitorScale,
@@ -1364,8 +1370,10 @@ void IGraphicsSkia::DrawResize()
     mPresentationLogValid = true;
   }
 
-  mPresentationWidth = presentWidth;
-  mPresentationHeight = presentHeight;
+  mPresentationPhysicalWidth = presentPhysicalWidth;
+  mPresentationPhysicalHeight = presentPhysicalHeight;
+  mPresentationLogicalWidth = presentLogicalWidth;
+  mPresentationLogicalHeight = presentLogicalHeight;
   mPresentationWindowScale = windowScale;
   mPresentationMonitorScale = monitorScale;
   mPresentationVirtualization = virtualization;
@@ -1469,8 +1477,8 @@ void IGraphicsSkia::DrawResize()
     VkSurfaceCapabilitiesKHR caps{};
     if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(mVKPhysicalDevice, mVKSurface, &caps) == VK_SUCCESS)
     {
-      uint32_t width = static_cast<uint32_t>(presentWidth);
-      uint32_t height = static_cast<uint32_t>(presentHeight);
+      uint32_t width = static_cast<uint32_t>(presentPhysicalWidth);
+      uint32_t height = static_cast<uint32_t>(presentPhysicalHeight);
       if (caps.currentExtent.width != UINT32_MAX)
       {
         width = caps.currentExtent.width;
@@ -1482,18 +1490,20 @@ void IGraphicsSkia::DrawResize()
         height = std::max(caps.minImageExtent.height, std::min(height, caps.maxImageExtent.height));
       }
       IGRAPHICS_VK_LOG("DrawResize",
-                          "surfaceCapabilities",
-                          vulkanlog::Severity::kDebug,
-                          vulkanlog::MakeField("currentWidth", caps.currentExtent.width),
-                           vulkanlog::MakeField("currentHeight", caps.currentExtent.height),
-                           vulkanlog::MakeField("minWidth", caps.minImageExtent.width),
-                           vulkanlog::MakeField("minHeight", caps.minImageExtent.height),
-                           vulkanlog::MakeField("maxWidth", caps.maxImageExtent.width),
-                           vulkanlog::MakeField("maxHeight", caps.maxImageExtent.height),
-                           vulkanlog::MakeField("clampedWidth", width),
-                           vulkanlog::MakeField("clampedHeight", height));
-      presentWidth = static_cast<int>(width);
-      presentHeight = static_cast<int>(height);
+                      "surfaceCapabilities",
+                      vulkanlog::Severity::kDebug,
+                      vulkanlog::MakeField("currentWidth", caps.currentExtent.width),
+                       vulkanlog::MakeField("currentHeight", caps.currentExtent.height),
+                       vulkanlog::MakeField("minWidth", caps.minImageExtent.width),
+                       vulkanlog::MakeField("minHeight", caps.minImageExtent.height),
+                       vulkanlog::MakeField("maxWidth", caps.maxImageExtent.width),
+                       vulkanlog::MakeField("maxHeight", caps.maxImageExtent.height),
+                       vulkanlog::MakeField("clampedWidth", width),
+                       vulkanlog::MakeField("clampedHeight", height));
+      presentPhysicalWidth = static_cast<int>(width);
+      presentPhysicalHeight = static_cast<int>(height);
+      mPresentationPhysicalWidth = presentPhysicalWidth;
+      mPresentationPhysicalHeight = presentPhysicalHeight;
     }
   }
 #endif
@@ -1515,11 +1525,11 @@ void IGraphicsSkia::DrawResize()
         IGRAPHICS_VK_LOG("DrawResize",
                             "requestSwapchainResize",
                             vulkanlog::Severity::kInfo,
-                            vulkanlog::MakeField("width", presentWidth),
-                             vulkanlog::MakeField("height", presentHeight),
+                            vulkanlog::MakeField("width", presentPhysicalWidth),
+                             vulkanlog::MakeField("height", presentPhysicalHeight),
                              vulkanlog::MakeField("frameVersion", static_cast<uint64_t>(mVKFrameVersion)),
                              vulkanlog::MakeField("swapchainVersion", static_cast<uint64_t>(mVKSwapchainVersion)));
-        VkResult res = pWin->CreateOrResizeVulkanSwapchain(presentWidth, presentHeight, swapchain, images, format, mVKSwapchainUsageFlags, mVKSubmissionPending);
+        VkResult res = pWin->CreateOrResizeVulkanSwapchain(presentPhysicalWidth, presentPhysicalHeight, swapchain, images, format, mVKSwapchainUsageFlags, mVKSubmissionPending);
         if (res == VK_SUCCESS)
         {
           mVKSwapchain = swapchain;
@@ -1700,8 +1710,8 @@ void IGraphicsSkia::BeginFrame()
     }
 
 #if defined OS_WIN
-    int width = (mPresentationWidth > 0) ? mPresentationWidth : WindowWidth() * GetScreenScale();
-    int height = (mPresentationHeight > 0) ? mPresentationHeight : WindowHeight() * GetScreenScale();
+    int width = (mPresentationPhysicalWidth > 0) ? mPresentationPhysicalWidth : WindowWidth() * GetScreenScale();
+    int height = (mPresentationPhysicalHeight > 0) ? mPresentationPhysicalHeight : WindowHeight() * GetScreenScale();
 #else
     int width = WindowWidth() * GetScreenScale();
     int height = WindowHeight() * GetScreenScale();
@@ -2113,17 +2123,55 @@ void IGraphicsSkia::EndFrame()
     const float virtualization =
       (windowScale > 0.f && std::isfinite(windowScale)) ? (monitorScale / windowScale) : 0.f;
 
-    int destWidth = (mPresentationWidth > 0) ? mPresentationWidth : srcWidth;
-    int destHeight = (mPresentationHeight > 0) ? mPresentationHeight : srcHeight;
+    const int destLogicalWidth =
+      std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * windowScale)));
+    const int destLogicalHeight =
+      std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * windowScale)));
+
+    int destWidth = destLogicalWidth;
+    int destHeight = destLogicalHeight;
 
     bool appliedCompensation = false;
     int previousStretchMode = 0;
+    int previousGraphicsMode = 0;
+    XFORM previousTransform{};
+    bool restoreTransform = false;
 
-    if ((destWidth != srcWidth || destHeight != srcHeight) && virtualization > 0.f && std::isfinite(virtualization))
+    if ((std::fabs(virtualization - 1.f) > 0.001f) && virtualization > 0.f && std::isfinite(virtualization))
     {
       previousStretchMode = SetStretchBltMode(hdc, HALFTONE);
-      appliedCompensation = true;
+      previousGraphicsMode = SetGraphicsMode(hdc, GM_ADVANCED);
+      if (previousGraphicsMode != 0)
+      {
+        restoreTransform = GetWorldTransform(hdc, &previousTransform) != FALSE;
+        XFORM transform{};
+        transform.eM11 = virtualization;
+        transform.eM22 = virtualization;
+        transform.eM12 = 0.f;
+        transform.eM21 = 0.f;
+        transform.eDx = 0.f;
+        transform.eDy = 0.f;
+
+        if (SetWorldTransform(hdc, &transform))
+        {
+          appliedCompensation = true;
+        }
+        else if (restoreTransform)
+        {
+          SetWorldTransform(hdc, &previousTransform);
+          restoreTransform = false;
+        }
+      }
     }
+
+    const int destPhysicalWidth =
+      (virtualization > 0.f && std::isfinite(virtualization))
+        ? static_cast<int>(std::lround(static_cast<double>(destLogicalWidth) * virtualization))
+        : destLogicalWidth;
+    const int destPhysicalHeight =
+      (virtualization > 0.f && std::isfinite(virtualization))
+        ? static_cast<int>(std::lround(static_cast<double>(destLogicalHeight) * virtualization))
+        : destLogicalHeight;
 
     const bool shouldLogPresent =
       !mCpuPresentLogValid ||
@@ -2133,18 +2181,20 @@ void IGraphicsSkia::EndFrame()
       std::fabs(virtualization - mLastCpuPresentVirtualization) > 0.001f ||
       mLastCpuPresentWidth != srcWidth ||
       mLastCpuPresentHeight != srcHeight ||
-      mLastCpuPresentDestWidth != destWidth ||
-      mLastCpuPresentDestHeight != destHeight ||
+      mLastCpuPresentDestWidth != destLogicalWidth ||
+      mLastCpuPresentDestHeight != destLogicalHeight ||
       mLastCpuPresentAppliedCompensation != appliedCompensation;
 
     if (shouldLogPresent)
     {
-      DBGMSG("SkiaCPU.EndFrame: hwnd=%p src=%dx%d dest=%dx%d screenScale=%.3f windowScale=%.3f monitorScale=%.3f virtualization=%.3f compensated=%s\n",
+      DBGMSG("SkiaCPU.EndFrame: hwnd=%p src=%dx%d destLogical=%dx%d destPhysical=%dx%d screenScale=%.3f windowScale=%.3f monitorScale=%.3f virtualization=%.3f compensated=%s\n",
              hWnd,
              srcWidth,
              srcHeight,
-             destWidth,
-             destHeight,
+             destLogicalWidth,
+             destLogicalHeight,
+             destPhysicalWidth,
+             destPhysicalHeight,
              screenScale,
              windowScale,
              monitorScale,
@@ -2157,8 +2207,8 @@ void IGraphicsSkia::EndFrame()
       mLastCpuPresentVirtualization = virtualization;
       mLastCpuPresentWidth = srcWidth;
       mLastCpuPresentHeight = srcHeight;
-      mLastCpuPresentDestWidth = destWidth;
-      mLastCpuPresentDestHeight = destHeight;
+      mLastCpuPresentDestWidth = destLogicalWidth;
+      mLastCpuPresentDestHeight = destLogicalHeight;
       mLastCpuPresentAppliedCompensation = appliedCompensation;
     }
 
@@ -2176,6 +2226,10 @@ void IGraphicsSkia::EndFrame()
                   DIB_RGB_COLORS,
                   SRCCOPY);
 
+    if (restoreTransform)
+      SetWorldTransform(hdc, &previousTransform);
+    if (previousGraphicsMode != 0)
+      SetGraphicsMode(hdc, previousGraphicsMode);
     if (previousStretchMode != 0)
       SetStretchBltMode(hdc, previousStretchMode);
   }
@@ -2222,16 +2276,39 @@ void IGraphicsSkia::EndFrame()
   }
   #endif
 #if defined OS_WIN
-  if (mScreenSurface && std::fabs(mPresentationVirtualization - 1.f) > 0.001f && mPresentationVirtualization > 0.f)
+  if (mScreenSurface)
   {
     SkCanvas* screenCanvas = mScreenSurface->getCanvas();
-    screenCanvas->save();
-    const float inverseVirtualization = 1.f / mPresentationVirtualization;
-    screenCanvas->scale(inverseVirtualization, inverseVirtualization);
-    mSurface->draw(screenCanvas, 0.0, 0.0, nullptr);
-    screenCanvas->restore();
+    float scaleX = 1.f;
+    float scaleY = 1.f;
+
+    if (mLastPresentationDrawWidth > 0 && mPresentationPhysicalWidth > 0 &&
+        mPresentationPhysicalWidth != mLastPresentationDrawWidth)
+    {
+      scaleX = static_cast<float>(mPresentationPhysicalWidth) /
+               static_cast<float>(mLastPresentationDrawWidth);
+    }
+
+    if (mLastPresentationDrawHeight > 0 && mPresentationPhysicalHeight > 0 &&
+        mPresentationPhysicalHeight != mLastPresentationDrawHeight)
+    {
+      scaleY = static_cast<float>(mPresentationPhysicalHeight) /
+               static_cast<float>(mLastPresentationDrawHeight);
+    }
+
+    if (std::fabs(scaleX - 1.f) > 0.001f || std::fabs(scaleY - 1.f) > 0.001f)
+    {
+      screenCanvas->save();
+      screenCanvas->scale(scaleX, scaleY);
+      mSurface->draw(screenCanvas, 0.0, 0.0, nullptr);
+      screenCanvas->restore();
+    }
+    else
+    {
+      mSurface->draw(screenCanvas, 0.0, 0.0, nullptr);
+    }
   }
-  else
+  else if (mScreenSurface)
   {
     mSurface->draw(mScreenSurface->getCanvas(), 0.0, 0.0, nullptr);
   }

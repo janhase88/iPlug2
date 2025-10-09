@@ -221,8 +221,10 @@ private:
   SkMatrix mFinalMatrix;
 
 #if defined OS_WIN
-  int mPresentationWidth = 0;
-  int mPresentationHeight = 0;
+  int mPresentationPhysicalWidth = 0;
+  int mPresentationPhysicalHeight = 0;
+  int mPresentationLogicalWidth = 0;
+  int mPresentationLogicalHeight = 0;
   float mPresentationWindowScale = 1.f;
   float mPresentationMonitorScale = 1.f;
   float mPresentationVirtualization = 1.f;

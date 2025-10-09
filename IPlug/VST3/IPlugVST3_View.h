@@ -139,9 +139,12 @@ public:
 
   Steinberg::tresult PLUGIN_API setContentScaleFactor(ScaleFactor factor) override
   {
-    mOwner.SetScreenScale(factor);
+    if (factor <= 0.)
+      return Steinberg::kResultFalse;
 
-    return Steinberg::kResultOk;
+    mOwner.SetScreenScale(static_cast<float>(factor));
+
+    return Steinberg::kResultTrue;
   }
 
   Steinberg::tresult PLUGIN_API queryInterface(const Steinberg::TUID _iid, void** obj) override

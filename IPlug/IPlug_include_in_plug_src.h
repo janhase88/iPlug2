@@ -35,31 +35,128 @@
   }
   #endif
 
-  UINT(WINAPI *__GetDpiForWindow)(HWND);
+  namespace
+  {
+    using GetDpiForWindowFn = UINT (WINAPI*)(HWND);
+    using GetDpiForMonitorFn = HRESULT (WINAPI*)(HMONITOR, UINT, UINT*, UINT*);
+    using GetScaleFactorForMonitorFn = HRESULT (WINAPI*)(HMONITOR, UINT*);
+
+    GetDpiForWindowFn LoadGetDpiForWindow()
+    {
+      static GetDpiForWindowFn sFunc = []() -> GetDpiForWindowFn {
+        HMODULE user32 = GetModuleHandleW(L"user32.dll");
+        if (!user32)
+          user32 = LoadLibraryW(L"user32.dll");
+        if (!user32)
+          return nullptr;
+        return reinterpret_cast<GetDpiForWindowFn>(GetProcAddress(user32, "GetDpiForWindow"));
+      }();
+      return sFunc;
+    }
+
+    GetDpiForMonitorFn LoadGetDpiForMonitor()
+    {
+      static GetDpiForMonitorFn sFunc = []() -> GetDpiForMonitorFn {
+        HMODULE shcore = GetModuleHandleW(L"shcore.dll");
+        if (!shcore)
+          shcore = LoadLibraryW(L"shcore.dll");
+        if (!shcore)
+          return nullptr;
+        return reinterpret_cast<GetDpiForMonitorFn>(GetProcAddress(shcore, "GetDpiForMonitor"));
+      }();
+      return sFunc;
+    }
+
+    GetScaleFactorForMonitorFn LoadGetScaleFactorForMonitor()
+    {
+      static GetScaleFactorForMonitorFn sFunc = []() -> GetScaleFactorForMonitorFn {
+        HMODULE shcore = GetModuleHandleW(L"shcore.dll");
+        if (!shcore)
+          shcore = LoadLibraryW(L"shcore.dll");
+        if (!shcore)
+          return nullptr;
+        return reinterpret_cast<GetScaleFactorForMonitorFn>(GetProcAddress(shcore, "GetScaleFactorForMonitor"));
+      }();
+      return sFunc;
+    }
+  } // namespace
 
   float GetScaleForHWND(HWND hWnd)
   {
-    if (!__GetDpiForWindow)
+    if (!hWnd)
+      return 1.f;
+
+    float scale = 1.f;
+    UINT dpi = 0;
+
+    if (auto getDpiForWindow = LoadGetDpiForWindow())
     {
-      HINSTANCE h = LoadLibraryW(L"user32.dll");
-      if (h) *(void **)&__GetDpiForWindow = GetProcAddress(h, "GetDpiForWindow");
-
-      if (!__GetDpiForWindow)
-        return 1;
-    }
-
-    int dpi = __GetDpiForWindow(hWnd);
-
-    if (dpi != USER_DEFAULT_SCREEN_DPI)
-    {
+      dpi = getDpiForWindow(hWnd);
+      if (dpi > 0 && dpi != USER_DEFAULT_SCREEN_DPI)
+      {
 #if defined IGRAPHICS_QUANTISE_SCREENSCALE
-      return std::round(static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI);
+        return std::round(static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI);
 #else
-      return static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI;
+        return static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI;
 #endif
+      }
     }
 
-    return 1;
+    HMONITOR monitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
+    if (monitor)
+    {
+      if (auto getDpiForMonitor = LoadGetDpiForMonitor())
+      {
+        UINT dpiX = 0;
+        UINT dpiY = 0;
+        if (SUCCEEDED(getDpiForMonitor(monitor, /*MDT_EFFECTIVE_DPI*/ 0, &dpiX, &dpiY)) && dpiX > 0)
+        {
+          dpi = dpiX;
+#if defined IGRAPHICS_QUANTISE_SCREENSCALE
+          return std::round(static_cast<float>(dpiX) / USER_DEFAULT_SCREEN_DPI);
+#else
+          return static_cast<float>(dpiX) / USER_DEFAULT_SCREEN_DPI;
+#endif
+        }
+      }
+
+      if (auto getScaleFactorForMonitor = LoadGetScaleFactorForMonitor())
+      {
+        UINT scalePercent = 0;
+        if (SUCCEEDED(getScaleFactorForMonitor(monitor, &scalePercent)) && scalePercent >= 100)
+        {
+          scale = static_cast<float>(scalePercent) / 100.f;
+          return scale;
+        }
+      }
+    }
+
+    if (dpi == 0)
+    {
+      HDC dc = GetDC(hWnd);
+      HWND releaseWnd = hWnd;
+      if (!dc)
+      {
+        dc = GetDC(nullptr);
+        releaseWnd = nullptr;
+      }
+      if (dc)
+      {
+        dpi = static_cast<UINT>(GetDeviceCaps(dc, LOGPIXELSX));
+        ReleaseDC(releaseWnd, dc);
+      }
+    }
+
+    if (dpi == 0)
+      return scale;
+
+    scale = static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI;
+#if defined IGRAPHICS_QUANTISE_SCREENSCALE
+    scale = std::round(scale);
+#endif
+    if (scale <= 0.f)
+      scale = 1.f;
+    return scale;
   }
 
 #endif

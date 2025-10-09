@@ -36,9 +36,18 @@
   }
   #endif
 
-  UINT(WINAPI *__GetDpiForWindow)(HWND);
-  void* (WINAPI *__SetThreadDpiAwarenessContext)(void*);
+  UINT (WINAPI* __GetDpiForWindow)(HWND);
+  HRESULT (WINAPI* __GetDpiForMonitor)(HMONITOR, unsigned int, unsigned int*, unsigned int*);
+  void* (WINAPI* __SetThreadDpiAwarenessContext)(void*);
   bool __TriedLoadSetThreadDpiAwarenessContext = false;
+  bool __TriedLoadGetDpiForMonitor = false;
+
+#ifndef MDT_EFFECTIVE_DPI
+  enum
+  {
+    MDT_EFFECTIVE_DPI = 0
+  };
+#endif
 
   float GetScaleForHWND(HWND hWnd)
   {
@@ -55,21 +64,39 @@
 
       if (!__TriedLoadSetThreadDpiAwarenessContext)
         __TriedLoadSetThreadDpiAwarenessContext = true;
-
-      if (!__GetDpiForWindow)
-        return 1;
     }
 
     void* previousContext = nullptr;
     if (__SetThreadDpiAwarenessContext)
       previousContext = __SetThreadDpiAwarenessContext(reinterpret_cast<void*>(static_cast<std::intptr_t>(-4)));
 
-    int dpi = __GetDpiForWindow(hWnd);
+    unsigned int dpi = 0;
+    if (__GetDpiForWindow)
+      dpi = __GetDpiForWindow(hWnd);
 
     if (__SetThreadDpiAwarenessContext && previousContext)
       __SetThreadDpiAwarenessContext(previousContext);
 
-    if (dpi != USER_DEFAULT_SCREEN_DPI)
+    if ((!dpi || dpi == USER_DEFAULT_SCREEN_DPI) && !__GetDpiForMonitor && !__TriedLoadGetDpiForMonitor)
+    {
+      HINSTANCE h = LoadLibraryW(L"shcore.dll");
+      if (h)
+        *(void **)&__GetDpiForMonitor = GetProcAddress(h, "GetDpiForMonitor");
+      __TriedLoadGetDpiForMonitor = true;
+    }
+
+    if (__GetDpiForMonitor && (!dpi || dpi == USER_DEFAULT_SCREEN_DPI))
+    {
+      if (HMONITOR monitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST))
+      {
+        unsigned int dpiX = USER_DEFAULT_SCREEN_DPI;
+        unsigned int dpiY = USER_DEFAULT_SCREEN_DPI;
+        if (SUCCEEDED(__GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &dpiX, &dpiY)) && dpiX)
+          dpi = dpiX;
+      }
+    }
+
+    if (dpi && dpi != USER_DEFAULT_SCREEN_DPI)
     {
 #if defined IGRAPHICS_QUANTISE_SCREENSCALE
       return std::round(static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI);

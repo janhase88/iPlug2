@@ -4312,16 +4312,6 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   const int scaledHeight = WindowHeight();
   DebugLogDpiEvent("OpenWindow.request", mParentWnd, parentScales, GetScreenScale(), GetScreenScale(), scaledWidth, scaledHeight);
 
-  float virtualization = 1.f;
-  const float windowScale = (std::isfinite(parentScales.window) && parentScales.window > 0.f) ? parentScales.window : 0.f;
-  const float monitorScale = (std::isfinite(parentScales.monitor) && parentScales.monitor > 0.f) ? parentScales.monitor : 0.f;
-
-  if (windowScale > kDpiScaleEpsilon)
-    virtualization = monitorScale / windowScale;
-
-  if (!std::isfinite(virtualization) || virtualization <= 0.f)
-    virtualization = 1.f;
-
   int x = 0;
   int y = 0;
   int w = scaledWidth;
@@ -4338,17 +4328,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     w = cR.right - cR.left;
     h = cR.bottom - cR.top;
   }
-  else
-  {
-    const int physicalWidth = static_cast<int>(std::round(static_cast<double>(w) * static_cast<double>(virtualization)));
-    const int physicalHeight = static_cast<int>(std::round(static_cast<double>(h) * static_cast<double>(virtualization)));
-
-    if (physicalWidth > 0)
-      w = physicalWidth;
-
-    if (physicalHeight > 0)
-      h = physicalHeight;
-  }
+  iplug::win::ScopedPerMonitorDpiAwarenessContext createScope;
 
   if (nWndClassReg++ == 0)
   {
@@ -4357,6 +4337,13 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   }
 
   mPlugWnd = CreateWindowW(wndClassName, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
+
+  bool setPerMonitorAwareness = false;
+  if (mPlugWnd)
+  {
+    setPerMonitorAwareness = iplug::win::TrySetWindowPerMonitorDpiAwareness(mPlugWnd);
+    DBGMSG("WinDPI[OpenWindow.awareness]: hwnd=%p setPerMonitor=%s\n", mPlugWnd, setPerMonitorAwareness ? "true" : "false");
+  }
 #if defined IGRAPHICS_VULKAN
   SetPlatformContext(mPlugWnd);
   if (!CreateVulkanContext())

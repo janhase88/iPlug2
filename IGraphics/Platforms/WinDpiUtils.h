@@ -16,6 +16,7 @@ using GetDpiForWindowFunc = UINT(WINAPI*)(HWND);
 using GetDpiForMonitorFunc = HRESULT(WINAPI*)(HMONITOR, int, UINT*, UINT*);
 using GetScaleFactorForMonitorFunc = HRESULT(WINAPI*)(HMONITOR, int*);
 using SetThreadDpiAwarenessContextFunc = DPI_AWARENESS_CONTEXT(WINAPI*)(DPI_AWARENESS_CONTEXT);
+using SetWindowDpiAwarenessContextFunc = BOOL(WINAPI*)(HWND, DPI_AWARENESS_CONTEXT);
 
 inline GetDpiForWindowFunc LoadGetDpiForWindow()
 {
@@ -72,6 +73,21 @@ inline SetThreadDpiAwarenessContextFunc LoadSetThreadDpiAwarenessContext()
       return nullptr;
 
     return reinterpret_cast<SetThreadDpiAwarenessContextFunc>(GetProcAddress(user32, "SetThreadDpiAwarenessContext"));
+  }();
+
+  return fn;
+}
+
+inline SetWindowDpiAwarenessContextFunc LoadSetWindowDpiAwarenessContext()
+{
+  static SetWindowDpiAwarenessContextFunc fn = []() -> SetWindowDpiAwarenessContextFunc {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (!user32)
+      user32 = LoadLibraryW(L"user32.dll");
+    if (!user32)
+      return nullptr;
+
+    return reinterpret_cast<SetWindowDpiAwarenessContextFunc>(GetProcAddress(user32, "SetWindowDpiAwarenessContext"));
   }();
 
   return fn;
@@ -231,6 +247,29 @@ public:
   }
 #endif
 };
+
+inline bool TrySetWindowDpiAwarenessContext(HWND hWnd, DPI_AWARENESS_CONTEXT targetContext)
+{
+  if (!hWnd || targetContext == nullptr)
+    return false;
+
+  if (auto fn = detail::LoadSetWindowDpiAwarenessContext())
+  {
+    return fn(hWnd, targetContext) != FALSE;
+  }
+
+  return false;
+}
+
+inline bool TrySetWindowPerMonitorDpiAwareness(HWND hWnd)
+{
+#ifdef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+  return TrySetWindowDpiAwarenessContext(hWnd, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+#else
+  (void)hWnd;
+  return false;
+#endif
+}
 
 struct DpiScales
 {

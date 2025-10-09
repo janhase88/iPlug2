@@ -87,3 +87,18 @@ I will continue logging progress and findings here for the remainder of the task
 - **CPU Present Telemetry:** The WinSKIA CPU blit path now logs screen scale, window DPI, monitor DPI, virtualization ratio, and stretch compensation whenever those values change, enabling precise tracing of the DPI pipeline without flooding the console.
 - **State Management:** Logging state resets when a window opens to ensure each instance reports its first measurements while still filtering redundant repeats during steady state.
 - **Next Step:** Hand the build back for host-side validation so we can correlate the new logs with Bitwig’s behavior and continue refining the DPI handling.
+
+## Entry 11 — Renewed Root-Cause Analysis and Remediation Plan
+- **Field Observation:** Despite the logging improvements, Bitwig still renders the WinSKIA UI blurred and continues to resize the plug-in frame when its "Scale plug-in UI" toggle changes, confirming that our compensation path has not eliminated Windows DPI virtualization.
+- **Technical Finding:** Re-reading Microsoft’s mixed-awareness guidance shows that a child window inherits the DPI awareness of the thread that creates it. Because Bitwig runs the plug-in thread as *system-DPI aware*, our child HWND remains virtualized no matter how we size the Skia surface; any downscale/ upscale pair forces resampling and thus blur.
+- **Remediation Strategy:**
+  1. Introduce a reusable helper that safely calls `SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)` and restores the previous context.
+  2. Wrap Win editor window creation and paint entry points in this helper so the HWND is created and painted under a per-monitor-aware context even inside system-aware hosts. This removes Windows DPI virtualization at the source.
+  3. Once virtualization is gone, simplify the Skia CPU presentation path (remove world-transform compensation) so the back buffer maps 1:1 without intermediate resampling.
+- **Next Step:** Implement the scoped DPI-awareness helper, apply it to window creation and CPU present, and then re-run through the logging to confirm that window and monitor DPI now match exactly.
+
+## Entry 12 — Per-Monitor Awareness Implementation
+- **Scoped Helper Added:** Introduced `ScopedThreadDpiAwarenessContext`/`ScopedPerMonitorDpiAwarenessContext` in `WinDpiUtils.h`, dynamically loading `SetThreadDpiAwarenessContext`, storing the previous context, and restoring it on scope exit so we can safely elevate DPI awareness around targeted operations.【F:IGraphics/Platforms/WinDpiUtils.h†L17-L86】
+- **Window Lifecycle Wrapped:** Applied the new scope in `IGraphicsWin::OpenWindow()` and `UpdateScreenScale()` so the editor HWND is created and all DPI queries execute while the thread is temporarily per-monitor aware. This guarantees that `GetDpiForWindow` yields the monitor DPI and that the child window opts out of virtualization at creation time.【F:IGraphics/Platforms/IGraphicsWin.cpp†L2146-L2209】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4237-L4274】
+- **CPU Present Simplified:** Wrapped the Skia CPU `BeginPaint` path in the same scope, removed the world-transform compensation, and trimmed the logging to track the observed virtualization ratio (expected to remain 1.0 once virtualization is gone). The bitmap now blits 1:1 without intermediate resampling.【F:IGraphics/Drawing/IGraphicsSkia.cpp†L7-L12】【F:IGraphics/Drawing/IGraphicsSkia.cpp†L2032-L2081】【F:IGraphics/Drawing/IGraphicsSkia.h†L225-L230】
+- **Next Step:** Have the user retest in Bitwig to confirm that window size no longer depends on the host toggle and that the Skia output is sharp at >100% display scales. The new logs should show window and monitor DPI matching exactly.

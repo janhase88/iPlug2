@@ -4236,6 +4236,7 @@ void IGraphicsWin::DebugLogDpiEvent(const char* context,
 
 void IGraphicsWin::UpdateScreenScale(HWND referenceWnd)
 {
+  iplug::win::ScopedPerMonitorDpiAwarenessContext awarenessScope;
   const auto scales = iplug::win::GetDpiScalesForHWND(referenceWnd ? referenceWnd : mParentWnd);
 
   float monitorScale = scales.monitor;
@@ -4300,6 +4301,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
 {
   mDpiDebugLogState.valid = false;
   mParentWnd = (HWND)pParent;
+  iplug::win::ScopedPerMonitorDpiAwarenessContext dpiScope;
   const auto parentScales = iplug::win::GetDpiScalesForHWND(mParentWnd);
   const float parentWindowScale = (std::isfinite(parentScales.window) && parentScales.window > 0.f)
                                     ? parentScales.window

@@ -13,6 +13,7 @@ namespace detail
 {
 using GetDpiForWindowFunc = UINT(WINAPI*)(HWND);
 using GetDpiForMonitorFunc = HRESULT(WINAPI*)(HMONITOR, int, UINT*, UINT*);
+using SetThreadDpiAwarenessContextFunc = DPI_AWARENESS_CONTEXT(WINAPI*)(DPI_AWARENESS_CONTEXT);
 
 inline GetDpiForWindowFunc LoadGetDpiForWindow()
 {
@@ -39,6 +40,21 @@ inline GetDpiForMonitorFunc LoadGetDpiForMonitor()
       return nullptr;
 
     return reinterpret_cast<GetDpiForMonitorFunc>(GetProcAddress(shcore, "GetDpiForMonitor"));
+  }();
+
+  return fn;
+}
+
+inline SetThreadDpiAwarenessContextFunc LoadSetThreadDpiAwarenessContext()
+{
+  static SetThreadDpiAwarenessContextFunc fn = []() -> SetThreadDpiAwarenessContextFunc {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (!user32)
+      user32 = LoadLibraryW(L"user32.dll");
+    if (!user32)
+      return nullptr;
+
+    return reinterpret_cast<SetThreadDpiAwarenessContextFunc>(GetProcAddress(user32, "SetThreadDpiAwarenessContext"));
   }();
 
   return fn;
@@ -87,6 +103,83 @@ inline float ScaleFromDpi(UINT dpi)
   return static_cast<float>(dpi) / static_cast<float>(USER_DEFAULT_SCREEN_DPI);
 }
 } // namespace detail
+
+class ScopedThreadDpiAwarenessContext
+{
+public:
+  explicit ScopedThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT targetContext)
+  {
+    auto fn = detail::LoadSetThreadDpiAwarenessContext();
+    if (!fn || targetContext == nullptr)
+      return;
+
+    DPI_AWARENESS_CONTEXT previous = fn(targetContext);
+    if (!previous)
+      return;
+
+    mSetter = fn;
+    mPrevious = previous;
+  }
+
+  ScopedThreadDpiAwarenessContext(const ScopedThreadDpiAwarenessContext&) = delete;
+  ScopedThreadDpiAwarenessContext& operator=(const ScopedThreadDpiAwarenessContext&) = delete;
+
+  ScopedThreadDpiAwarenessContext(ScopedThreadDpiAwarenessContext&& other) noexcept
+  {
+    mSetter = other.mSetter;
+    mPrevious = other.mPrevious;
+    other.mSetter = nullptr;
+    other.mPrevious = nullptr;
+  }
+
+  ScopedThreadDpiAwarenessContext& operator=(ScopedThreadDpiAwarenessContext&& other) noexcept
+  {
+    if (this != &other)
+    {
+      Reset();
+      mSetter = other.mSetter;
+      mPrevious = other.mPrevious;
+      other.mSetter = nullptr;
+      other.mPrevious = nullptr;
+    }
+    return *this;
+  }
+
+  ~ScopedThreadDpiAwarenessContext()
+  {
+    Reset();
+  }
+
+  void Reset()
+  {
+    if (mSetter && mPrevious)
+    {
+      mSetter(mPrevious);
+    }
+    mSetter = nullptr;
+    mPrevious = nullptr;
+  }
+
+private:
+  detail::SetThreadDpiAwarenessContextFunc mSetter = nullptr;
+  DPI_AWARENESS_CONTEXT mPrevious = nullptr;
+};
+
+class ScopedPerMonitorDpiAwarenessContext : public ScopedThreadDpiAwarenessContext
+{
+public:
+#ifdef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+  ScopedPerMonitorDpiAwarenessContext()
+    : ScopedThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
+  {
+  }
+#else
+  ScopedPerMonitorDpiAwarenessContext()
+    : ScopedThreadDpiAwarenessContext(nullptr)
+  {
+  }
+#endif
+};
 
 struct DpiScales
 {

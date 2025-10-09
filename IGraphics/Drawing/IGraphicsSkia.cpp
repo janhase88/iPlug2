@@ -8,6 +8,10 @@
 
 #include "IGraphicsSkia.h"
 
+#if defined OS_WIN
+  #include "../Platforms/WinDpiUtils.h"
+#endif
+
 #pragma warning(push)
 #pragma warning(disable : 4244)
 #include "include/core/SkBitmap.h"
@@ -2027,6 +2031,7 @@ void IGraphicsSkia::EndFrame()
   BITMAPINFO* bmpInfo = reinterpret_cast<BITMAPINFO*>(mSurfaceMemory.Get());
   HWND hWnd = (HWND)GetWindow();
   PAINTSTRUCT ps;
+  iplug::win::ScopedPerMonitorDpiAwarenessContext awarenessScope;
   HDC hdc = BeginPaint(hWnd, &ps);
 
   if (hdc)
@@ -2041,75 +2046,37 @@ void IGraphicsSkia::EndFrame()
     if (!std::isfinite(monitorScale) || monitorScale <= 0.f)
       monitorScale = screenScale;
 
-    float compensation = 1.f;
-
-    if (screenScale > 0.f && std::isfinite(screenScale))
-    {
-      if (windowScale > 0.f && std::isfinite(windowScale) && windowScale < (screenScale - 0.001f))
-        compensation = windowScale / screenScale;
-    }
-
-    const float virtualization = (windowScale > 0.f) ? (monitorScale / windowScale) : 0.f;
+    const float virtualization =
+      (windowScale > 0.f && std::isfinite(windowScale)) ? (monitorScale / windowScale) : 0.f;
     const bool shouldLogPresent =
       !mCpuPresentLogValid ||
       std::fabs(screenScale - mLastCpuPresentScreenScale) > 0.001f ||
       std::fabs(windowScale - mLastCpuPresentWindowScale) > 0.001f ||
       std::fabs(monitorScale - mLastCpuPresentMonitorScale) > 0.001f ||
-      std::fabs(compensation - mLastCpuPresentCompensation) > 0.001f ||
+      std::fabs(virtualization - mLastCpuPresentVirtualization) > 0.001f ||
       mLastCpuPresentWidth != w ||
       mLastCpuPresentHeight != h;
 
     if (shouldLogPresent)
     {
-      DBGMSG("SkiaCPU.EndFrame: hwnd=%p client=%dx%d screenScale=%.3f windowScale=%.3f monitorScale=%.3f virtualization=%.3f compensation=%.3f\n",
+      DBGMSG("SkiaCPU.EndFrame: hwnd=%p client=%dx%d screenScale=%.3f windowScale=%.3f monitorScale=%.3f virtualization=%.3f\n",
              hWnd,
              w,
              h,
              screenScale,
              windowScale,
              monitorScale,
-             virtualization,
-             compensation);
+             virtualization);
       mCpuPresentLogValid = true;
       mLastCpuPresentScreenScale = screenScale;
       mLastCpuPresentWindowScale = windowScale;
       mLastCpuPresentMonitorScale = monitorScale;
-      mLastCpuPresentCompensation = compensation;
+      mLastCpuPresentVirtualization = virtualization;
       mLastCpuPresentWidth = w;
       mLastCpuPresentHeight = h;
     }
 
-    bool restoreState = false;
-    int savedState = 0;
-
-    if (std::isfinite(compensation) && std::fabs(compensation - 1.f) > 0.001f)
-    {
-      savedState = SaveDC(hdc);
-      if (savedState != 0 && SetGraphicsMode(hdc, GM_ADVANCED))
-      {
-        XFORM transform{};
-        transform.eM11 = compensation;
-        transform.eM22 = compensation;
-        transform.eDx = 0.f;
-        transform.eDy = 0.f;
-
-        if (SetWorldTransform(hdc, &transform))
-        {
-          restoreState = true;
-        }
-      }
-
-      if (!restoreState && savedState != 0)
-      {
-        RestoreDC(hdc, savedState);
-        savedState = 0;
-      }
-    }
-
     StretchDIBits(hdc, 0, 0, w, h, 0, 0, w, h, bmpInfo->bmiColors, bmpInfo, DIB_RGB_COLORS, SRCCOPY);
-
-    if (restoreState && savedState != 0)
-      RestoreDC(hdc, savedState);
     ReleaseDC(hWnd, hdc);
   }
 

@@ -4361,6 +4361,13 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     w = cR.right - cR.left;
     h = cR.bottom - cR.top;
   }
+  bool hostingBehaviorApplied = false;
+#if defined(DPI_HOSTING_BEHAVIOR_MIXED)
+  iplug::win::ScopedThreadDpiHostingBehavior hostingScope(DPI_HOSTING_BEHAVIOR_MIXED);
+  hostingBehaviorApplied = hostingScope.Applied();
+  DBGMSG("WinDPI[OpenWindow.hosting]: behavior=mixed applied=%s\n", hostingBehaviorApplied ? "true" : "false");
+#endif
+
   iplug::win::ScopedPerMonitorDpiAwarenessContext createScope;
 
   if (nWndClassReg++ == 0)
@@ -4375,7 +4382,10 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   if (mPlugWnd)
   {
     setPerMonitorAwareness = iplug::win::TrySetWindowPerMonitorDpiAwareness(mPlugWnd);
-    DBGMSG("WinDPI[OpenWindow.awareness]: hwnd=%p setPerMonitor=%s\n", mPlugWnd, setPerMonitorAwareness ? "true" : "false");
+    DBGMSG("WinDPI[OpenWindow.awareness]: hwnd=%p setPerMonitor=%s hostingApplied=%s\n",
+           mPlugWnd,
+           setPerMonitorAwareness ? "true" : "false",
+           hostingBehaviorApplied ? "true" : "false");
   }
 #if defined IGRAPHICS_VULKAN
   SetPlatformContext(mPlugWnd);

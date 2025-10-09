@@ -17,6 +17,9 @@ using GetDpiForMonitorFunc = HRESULT(WINAPI*)(HMONITOR, int, UINT*, UINT*);
 using GetScaleFactorForMonitorFunc = HRESULT(WINAPI*)(HMONITOR, int*);
 using SetThreadDpiAwarenessContextFunc = DPI_AWARENESS_CONTEXT(WINAPI*)(DPI_AWARENESS_CONTEXT);
 using SetWindowDpiAwarenessContextFunc = BOOL(WINAPI*)(HWND, DPI_AWARENESS_CONTEXT);
+#if defined(DPI_HOSTING_BEHAVIOR_MIXED)
+using SetThreadDpiHostingBehaviorFunc = DPI_HOSTING_BEHAVIOR(WINAPI*)(DPI_HOSTING_BEHAVIOR);
+#endif
 
 inline GetDpiForWindowFunc LoadGetDpiForWindow()
 {
@@ -92,6 +95,23 @@ inline SetWindowDpiAwarenessContextFunc LoadSetWindowDpiAwarenessContext()
 
   return fn;
 }
+
+#if defined(DPI_HOSTING_BEHAVIOR_MIXED)
+inline SetThreadDpiHostingBehaviorFunc LoadSetThreadDpiHostingBehavior()
+{
+  static SetThreadDpiHostingBehaviorFunc fn = []() -> SetThreadDpiHostingBehaviorFunc {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (!user32)
+      user32 = LoadLibraryW(L"user32.dll");
+    if (!user32)
+      return nullptr;
+
+    return reinterpret_cast<SetThreadDpiHostingBehaviorFunc>(GetProcAddress(user32, "SetThreadDpiHostingBehavior"));
+  }();
+
+  return fn;
+}
+#endif
 
 inline UINT QueryWindowDpi(HWND hWnd)
 {
@@ -247,6 +267,82 @@ public:
   }
 #endif
 };
+
+#if defined(DPI_HOSTING_BEHAVIOR_MIXED)
+class ScopedThreadDpiHostingBehavior
+{
+public:
+  explicit ScopedThreadDpiHostingBehavior(DPI_HOSTING_BEHAVIOR target)
+  {
+    auto fn = detail::LoadSetThreadDpiHostingBehavior();
+    if (!fn)
+      return;
+
+    if (target == DPI_HOSTING_BEHAVIOR_INVALID)
+      return;
+
+    DPI_HOSTING_BEHAVIOR previous = fn(target);
+    if (previous == DPI_HOSTING_BEHAVIOR_INVALID)
+      return;
+
+    mSetter = fn;
+    mPrevious = previous;
+  }
+
+  ScopedThreadDpiHostingBehavior(const ScopedThreadDpiHostingBehavior&) = delete;
+  ScopedThreadDpiHostingBehavior& operator=(const ScopedThreadDpiHostingBehavior&) = delete;
+
+  ScopedThreadDpiHostingBehavior(ScopedThreadDpiHostingBehavior&& other) noexcept
+  {
+    mSetter = other.mSetter;
+    mPrevious = other.mPrevious;
+    other.mSetter = nullptr;
+    other.mPrevious = DPI_HOSTING_BEHAVIOR_INVALID;
+  }
+
+  ScopedThreadDpiHostingBehavior& operator=(ScopedThreadDpiHostingBehavior&& other) noexcept
+  {
+    if (this != &other)
+    {
+      Reset();
+      mSetter = other.mSetter;
+      mPrevious = other.mPrevious;
+      other.mSetter = nullptr;
+      other.mPrevious = DPI_HOSTING_BEHAVIOR_INVALID;
+    }
+    return *this;
+  }
+
+  ~ScopedThreadDpiHostingBehavior()
+  {
+    Reset();
+  }
+
+  void Reset()
+  {
+    if (mSetter)
+    {
+      mSetter(mPrevious);
+    }
+    mSetter = nullptr;
+    mPrevious = DPI_HOSTING_BEHAVIOR_INVALID;
+  }
+
+  bool Applied() const { return mSetter != nullptr; }
+
+private:
+  detail::SetThreadDpiHostingBehaviorFunc mSetter = nullptr;
+  DPI_HOSTING_BEHAVIOR mPrevious = DPI_HOSTING_BEHAVIOR_INVALID;
+};
+#else
+class ScopedThreadDpiHostingBehavior
+{
+public:
+  explicit ScopedThreadDpiHostingBehavior(int) {}
+  void Reset() {}
+  bool Applied() const { return false; }
+};
+#endif
 
 inline bool TrySetWindowDpiAwarenessContext(HWND hWnd, DPI_AWARENESS_CONTEXT targetContext)
 {

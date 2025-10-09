@@ -4164,6 +4164,76 @@ void IGraphicsWin::DeactivateVulkanContext()
 }
 #endif
 
+void IGraphicsWin::DebugLogDpiEvent(const char* context,
+                                    HWND referenceWnd,
+                                    const iplug::win::DpiScales& scales,
+                                    float previousScreenScale,
+                                    float nextScreenScale,
+                                    int clientWidth,
+                                    int clientHeight)
+{
+  const HWND targetWnd = referenceWnd ? referenceWnd : (mPlugWnd ? mPlugWnd : mParentWnd);
+  const float windowScale = (std::isfinite(scales.window) && scales.window > 0.f) ? scales.window : 0.f;
+  const float monitorScale = (std::isfinite(scales.monitor) && scales.monitor > 0.f) ? scales.monitor : 0.f;
+  const float virtualization = (windowScale > kDpiScaleEpsilon) ? (monitorScale / windowScale) : 0.f;
+  const char* tag = context ? context : "unknown";
+  const char* contextKey = tag;
+
+  const bool duplicateContext = (mDpiDebugLogState.valid && mDpiDebugLogState.context == contextKey);
+  const bool duplicateWindow = (mDpiDebugLogState.valid && mDpiDebugLogState.window == targetWnd);
+  const bool duplicateWindowScale =
+    (mDpiDebugLogState.valid && std::fabs(windowScale - mDpiDebugLogState.windowScale) <= kDpiScaleEpsilon);
+  const bool duplicateMonitorScale =
+    (mDpiDebugLogState.valid && std::fabs(monitorScale - mDpiDebugLogState.monitorScale) <= kDpiScaleEpsilon);
+  const bool duplicatePrev =
+    (mDpiDebugLogState.valid && std::fabs(previousScreenScale - mDpiDebugLogState.previousScreenScale) <= kDpiScaleEpsilon);
+  const bool duplicateNext =
+    (mDpiDebugLogState.valid && std::fabs(nextScreenScale - mDpiDebugLogState.appliedScreenScale) <= kDpiScaleEpsilon);
+  const bool duplicateClient =
+    (mDpiDebugLogState.valid && mDpiDebugLogState.clientWidth == clientWidth && mDpiDebugLogState.clientHeight == clientHeight);
+
+  const bool shouldLog = !(duplicateContext && duplicateWindow && duplicateWindowScale && duplicateMonitorScale && duplicatePrev &&
+                           duplicateNext && duplicateClient);
+
+  if (!shouldLog)
+    return;
+
+  if (clientWidth >= 0 && clientHeight >= 0)
+  {
+    DBGMSG("WinDPI[%s]: hwnd=%p windowScale=%.3f monitorScale=%.3f virtualization=%.3f prevScreenScale=%.3f nextScreenScale=%.3f client=%dx%d\n",
+           tag,
+           targetWnd,
+           windowScale,
+           monitorScale,
+           virtualization,
+           previousScreenScale,
+           nextScreenScale,
+           clientWidth,
+           clientHeight);
+  }
+  else
+  {
+    DBGMSG("WinDPI[%s]: hwnd=%p windowScale=%.3f monitorScale=%.3f virtualization=%.3f prevScreenScale=%.3f nextScreenScale=%.3f\n",
+           tag,
+           targetWnd,
+           windowScale,
+           monitorScale,
+           virtualization,
+           previousScreenScale,
+           nextScreenScale);
+  }
+
+  mDpiDebugLogState.context = contextKey;
+  mDpiDebugLogState.window = targetWnd;
+  mDpiDebugLogState.windowScale = windowScale;
+  mDpiDebugLogState.monitorScale = monitorScale;
+  mDpiDebugLogState.previousScreenScale = previousScreenScale;
+  mDpiDebugLogState.appliedScreenScale = nextScreenScale;
+  mDpiDebugLogState.clientWidth = clientWidth;
+  mDpiDebugLogState.clientHeight = clientHeight;
+  mDpiDebugLogState.valid = true;
+}
+
 void IGraphicsWin::UpdateScreenScale(HWND referenceWnd)
 {
   const auto scales = iplug::win::GetDpiScalesForHWND(referenceWnd ? referenceWnd : mParentWnd);
@@ -4176,8 +4246,15 @@ void IGraphicsWin::UpdateScreenScale(HWND referenceWnd)
       monitorScale = 1.f;
   }
 
-  if (std::fabs(monitorScale - GetScreenScale()) <= kDpiScaleEpsilon)
+  const float previousScale = GetScreenScale();
+
+  if (std::fabs(monitorScale - previousScale) <= kDpiScaleEpsilon)
+  {
+    DebugLogDpiEvent("UpdateScreenScale.noop", referenceWnd, scales, previousScale, previousScale);
     return;
+  }
+
+  DebugLogDpiEvent("UpdateScreenScale.apply", referenceWnd, scales, previousScale, monitorScale);
 
   IGraphics::SetScreenScale(monitorScale);
 }
@@ -4221,6 +4298,7 @@ EMsgBoxResult IGraphicsWin::ShowMessageBox(const char* str, const char* title, E
 
 void* IGraphicsWin::OpenWindow(void* pParent)
 {
+  mDpiDebugLogState.valid = false;
   mParentWnd = (HWND)pParent;
   const auto parentScales = iplug::win::GetDpiScalesForHWND(mParentWnd);
   const float parentWindowScale = (std::isfinite(parentScales.window) && parentScales.window > 0.f)
@@ -4228,6 +4306,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
                                     : 1.f;
   const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * parentWindowScale));
   const int scaledHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * parentWindowScale));
+  DebugLogDpiEvent("OpenWindow.request", mParentWnd, parentScales, GetScreenScale(), GetScreenScale(), scaledWidth, scaledHeight);
   int x = 0;
   int y = 0;
   int w = scaledWidth;
@@ -4288,6 +4367,16 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   OnViewInitialized((void*)dc);
   #endif
 #endif
+
+  if (mPlugWnd)
+  {
+    RECT clientRect{0, 0, 0, 0};
+    GetClientRect(mPlugWnd, &clientRect);
+    const int clientWidth = static_cast<int>(clientRect.right - clientRect.left);
+    const int clientHeight = static_cast<int>(clientRect.bottom - clientRect.top);
+    const auto plugScales = iplug::win::GetDpiScalesForHWND(mPlugWnd);
+    DebugLogDpiEvent("OpenWindow.created", mPlugWnd, plugScales, GetScreenScale(), GetScreenScale(), clientWidth, clientHeight);
+  }
 
   UpdateScreenScale(mPlugWnd ? mPlugWnd : mParentWnd); // resizes draw context
 

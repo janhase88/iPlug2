@@ -2037,12 +2037,46 @@ void IGraphicsSkia::EndFrame()
     if (!std::isfinite(windowScale) || windowScale <= 0.f)
       windowScale = 1.f;
 
+    float monitorScale = iplug::win::GetPhysicalScaleForHWND(hWnd);
+    if (!std::isfinite(monitorScale) || monitorScale <= 0.f)
+      monitorScale = screenScale;
+
     float compensation = 1.f;
 
     if (screenScale > 0.f && std::isfinite(screenScale))
     {
       if (windowScale > 0.f && std::isfinite(windowScale) && windowScale < (screenScale - 0.001f))
         compensation = windowScale / screenScale;
+    }
+
+    const float virtualization = (windowScale > 0.f) ? (monitorScale / windowScale) : 0.f;
+    const bool shouldLogPresent =
+      !mCpuPresentLogValid ||
+      std::fabs(screenScale - mLastCpuPresentScreenScale) > 0.001f ||
+      std::fabs(windowScale - mLastCpuPresentWindowScale) > 0.001f ||
+      std::fabs(monitorScale - mLastCpuPresentMonitorScale) > 0.001f ||
+      std::fabs(compensation - mLastCpuPresentCompensation) > 0.001f ||
+      mLastCpuPresentWidth != w ||
+      mLastCpuPresentHeight != h;
+
+    if (shouldLogPresent)
+    {
+      DBGMSG("SkiaCPU.EndFrame: hwnd=%p client=%dx%d screenScale=%.3f windowScale=%.3f monitorScale=%.3f virtualization=%.3f compensation=%.3f\n",
+             hWnd,
+             w,
+             h,
+             screenScale,
+             windowScale,
+             monitorScale,
+             virtualization,
+             compensation);
+      mCpuPresentLogValid = true;
+      mLastCpuPresentScreenScale = screenScale;
+      mLastCpuPresentWindowScale = windowScale;
+      mLastCpuPresentMonitorScale = monitorScale;
+      mLastCpuPresentCompensation = compensation;
+      mLastCpuPresentWidth = w;
+      mLastCpuPresentHeight = h;
     }
 
     bool restoreState = false;

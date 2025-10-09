@@ -222,6 +222,13 @@ private:
 
 #if defined OS_WIN && defined IGRAPHICS_CPU
   WDL_TypedBuf<uint8_t> mSurfaceMemory;
+  float mLastCpuPresentWindowScale = 0.f;
+  float mLastCpuPresentMonitorScale = 0.f;
+  float mLastCpuPresentScreenScale = 0.f;
+  float mLastCpuPresentCompensation = 0.f;
+  int mLastCpuPresentWidth = 0;
+  int mLastCpuPresentHeight = 0;
+  bool mCpuPresentLogValid = false;
 #endif
 
 #ifndef IGRAPHICS_CPU

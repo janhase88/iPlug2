@@ -71,3 +71,19 @@ I will continue logging progress and findings here for the remainder of the task
 - **CPU Presentation Compensation:** The Skia CPU swap now queries the live window DPI directly via `WinDpiUtils` and applies a compensating world transform only when Windows is virtualizing the HWND (i.e., when the window DPI is lower than the monitor DPI). This yields 1:1 pixel mapping without altering host window sizing semantics.【F:IGraphics/Drawing/IGraphicsSkia.cpp†L1999-L2106】
 - **Plan Alignment:** Confirmed the implementation matches the recovery strategy outlined in Entry 7: logical size decoupled from host scaling, monitor DPI drives rendering density, and virtualization is handled strictly inside the blit path.
 - **Next Steps:** Await user validation in Bitwig to ensure the window dimensions remain stable when toggling “Scale plug-in UI” and that the rendered surface is now crisp. If issues persist, gather host-specific DPI telemetry using the shared utilities for further tuning.
+
+## Entry 9 — Logging Strategy Alignment
+- **User Directive:** Disable all Skia Vulkan telemetry and add targeted diagnostics that help trace the WinSKIA CPU DPI pipeline. All emitted logs must go through `DBGMSG`, so they appear strictly in the debugger/console output.
+- **Action Plan:**
+  1. **Silence Vulkan Logs:** Drop the default Vulkan verbosity to `kNone` via the shared build property so `IGRAPHICS_VK_LOG` becomes a no-op unless explicitly re-enabled for debugging.
+  2. **Instrument DPI Flow:** Add scoped `DBGMSG` diagnostics in the Windows platform layer (`IGraphicsWin`) to capture parent/window/monitor DPI, requested client sizes, and every applied screen-scale update. Avoid repeat spam by logging only when values change.
+  3. **Instrument CPU Present:** Emit a `DBGMSG` snapshot inside `IGraphicsSkia::EndFrame()` (Windows/CPU path) whenever the computed compensation ratio changes, recording window DPI, monitor DPI, Skia screen scale, and the stretch factor used before `StretchDIBits`.
+  4. **Cross-Verify:** Ensure all new helpers maintain existing behavior (no functional regressions) and keep Vulkan logging locked to the console sink.
+- **Next Step:** Implement the Vulkan logging toggle and add the DPI diagnostics while keeping the codebase clean and regression-free.
+
+## Entry 10 — Logging Implementation Checkpoint
+- **Vulkan Telemetry Disabled:** `common-win.props` now defaults `IGRAPHICS_VULKAN_LOG_VERBOSITY` to `0`, suppressing all `IGRAPHICS_VK_LOG` output unless developers explicitly re-enable it.
+- **DPI Diagnostics Added:** `IGraphicsWin` emits `DBGMSG` snapshots for window creation and every applied/no-op screen-scale update, including the parent/client HWND, window vs. monitor scales, virtualization ratio, and any requested client sizes.
+- **CPU Present Telemetry:** The WinSKIA CPU blit path now logs screen scale, window DPI, monitor DPI, virtualization ratio, and stretch compensation whenever those values change, enabling precise tracing of the DPI pipeline without flooding the console.
+- **State Management:** Logging state resets when a window opens to ensure each instance reports its first measurements while still filtering redundant repeats during steady state.
+- **Next Step:** Hand the build back for host-side validation so we can correlate the new logs with Bitwig’s behavior and continue refining the DPI handling.

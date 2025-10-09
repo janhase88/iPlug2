@@ -220,6 +220,17 @@ private:
   SkMatrix mClipMatrix;
   SkMatrix mFinalMatrix;
 
+#if defined OS_WIN
+  int mPresentationWidth = 0;
+  int mPresentationHeight = 0;
+  float mPresentationWindowScale = 1.f;
+  float mPresentationMonitorScale = 1.f;
+  float mPresentationVirtualization = 1.f;
+  bool mPresentationLogValid = false;
+  int mLastPresentationDrawWidth = 0;
+  int mLastPresentationDrawHeight = 0;
+#endif
+
 #if defined OS_WIN && defined IGRAPHICS_CPU
   WDL_TypedBuf<uint8_t> mSurfaceMemory;
   float mLastCpuPresentWindowScale = 0.f;

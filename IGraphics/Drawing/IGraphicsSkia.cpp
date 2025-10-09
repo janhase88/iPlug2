@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <map>
 #include <type_traits>
 #include <utility>
@@ -1311,8 +1312,66 @@ bool IGraphicsSkia::AssertValidSwapchainImage(VkImage image, const char* context
 void IGraphicsSkia::DrawResize()
 {
   ScopedGraphicsContext scopedGLContext{this};
-  auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * GetScreenScale()));
-  auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * GetScreenScale()));
+  const float screenScale = GetScreenScale();
+  const int drawWidth = std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * screenScale)));
+  const int drawHeight = std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * screenScale)));
+  int presentWidth = drawWidth;
+  int presentHeight = drawHeight;
+
+#if defined OS_WIN
+  iplug::win::ScopedPerMonitorDpiAwarenessContext dpiScope;
+  HWND hwnd = reinterpret_cast<HWND>(GetWindow());
+
+  float windowScale = iplug::win::GetScaleForHWND(hwnd);
+  if (!std::isfinite(windowScale) || windowScale <= 0.f)
+    windowScale = 1.f;
+
+  float monitorScale = iplug::win::GetPhysicalScaleForHWND(hwnd);
+  if (!std::isfinite(monitorScale) || monitorScale <= 0.f)
+    monitorScale = screenScale;
+
+  float virtualization = 1.f;
+  if (windowScale > std::numeric_limits<float>::epsilon())
+    virtualization = monitorScale / windowScale;
+  if (!std::isfinite(virtualization) || virtualization <= 0.f)
+    virtualization = 1.f;
+
+  presentWidth = std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * windowScale)));
+  presentHeight = std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * windowScale)));
+
+  const bool logPresentation =
+    !mPresentationLogValid ||
+    mPresentationWidth != presentWidth ||
+    mPresentationHeight != presentHeight ||
+    std::fabs(mPresentationWindowScale - windowScale) > 0.001f ||
+    std::fabs(mPresentationMonitorScale - monitorScale) > 0.001f ||
+    std::fabs(mPresentationVirtualization - virtualization) > 0.001f ||
+    mLastPresentationDrawWidth != drawWidth ||
+    mLastPresentationDrawHeight != drawHeight;
+
+  if (logPresentation)
+  {
+    DBGMSG("SkiaWin.Resize: hwnd=%p draw=%dx%d present=%dx%d screenScale=%.3f windowScale=%.3f monitorScale=%.3f virtualization=%.3f\n",
+           hwnd,
+           drawWidth,
+           drawHeight,
+           presentWidth,
+           presentHeight,
+           screenScale,
+           windowScale,
+           monitorScale,
+           virtualization);
+    mPresentationLogValid = true;
+  }
+
+  mPresentationWidth = presentWidth;
+  mPresentationHeight = presentHeight;
+  mPresentationWindowScale = windowScale;
+  mPresentationMonitorScale = monitorScale;
+  mPresentationVirtualization = virtualization;
+  mLastPresentationDrawWidth = drawWidth;
+  mLastPresentationDrawHeight = drawHeight;
+#endif
 #if defined IGRAPHICS_VULKAN
   IGRAPHICS_VK_LOG("DrawResize",
                       "begin",
@@ -1410,8 +1469,8 @@ void IGraphicsSkia::DrawResize()
     VkSurfaceCapabilitiesKHR caps{};
     if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(mVKPhysicalDevice, mVKSurface, &caps) == VK_SUCCESS)
     {
-      uint32_t width = static_cast<uint32_t>(w);
-      uint32_t height = static_cast<uint32_t>(h);
+      uint32_t width = static_cast<uint32_t>(presentWidth);
+      uint32_t height = static_cast<uint32_t>(presentHeight);
       if (caps.currentExtent.width != UINT32_MAX)
       {
         width = caps.currentExtent.width;
@@ -1433,8 +1492,8 @@ void IGraphicsSkia::DrawResize()
                            vulkanlog::MakeField("maxHeight", caps.maxImageExtent.height),
                            vulkanlog::MakeField("clampedWidth", width),
                            vulkanlog::MakeField("clampedHeight", height));
-      w = static_cast<int>(width);
-      h = static_cast<int>(height);
+      presentWidth = static_cast<int>(width);
+      presentHeight = static_cast<int>(height);
     }
   }
 #endif
@@ -1442,7 +1501,7 @@ void IGraphicsSkia::DrawResize()
 #if defined IGRAPHICS_GL || defined IGRAPHICS_METAL || defined IGRAPHICS_VULKAN
   if (mGrContext.get())
   {
-    SkImageInfo info = SkImageInfo::MakeN32Premul(w, h);
+    SkImageInfo info = SkImageInfo::MakeN32Premul(drawWidth, drawHeight);
     mSurface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info);
   #if defined IGRAPHICS_VULKAN
     if (mVKDevice && mVKSurface)
@@ -1456,11 +1515,11 @@ void IGraphicsSkia::DrawResize()
         IGRAPHICS_VK_LOG("DrawResize",
                             "requestSwapchainResize",
                             vulkanlog::Severity::kInfo,
-                            vulkanlog::MakeField("width", w),
-                             vulkanlog::MakeField("height", h),
+                            vulkanlog::MakeField("width", presentWidth),
+                             vulkanlog::MakeField("height", presentHeight),
                              vulkanlog::MakeField("frameVersion", static_cast<uint64_t>(mVKFrameVersion)),
                              vulkanlog::MakeField("swapchainVersion", static_cast<uint64_t>(mVKSwapchainVersion)));
-        VkResult res = pWin->CreateOrResizeVulkanSwapchain(w, h, swapchain, images, format, mVKSwapchainUsageFlags, mVKSubmissionPending);
+        VkResult res = pWin->CreateOrResizeVulkanSwapchain(presentWidth, presentHeight, swapchain, images, format, mVKSwapchainUsageFlags, mVKSubmissionPending);
         if (res == VK_SUCCESS)
         {
           mVKSwapchain = swapchain;
@@ -1541,22 +1600,22 @@ void IGraphicsSkia::DrawResize()
   #ifdef OS_WIN
   mSurface.reset();
 
-  const size_t bmpSize = sizeof(BITMAPINFOHEADER) + (w * h * sizeof(uint32_t));
+  const size_t bmpSize = sizeof(BITMAPINFOHEADER) + (static_cast<size_t>(drawWidth) * static_cast<size_t>(drawHeight) * sizeof(uint32_t));
   mSurfaceMemory.Resize(bmpSize);
   BITMAPINFO* bmpInfo = reinterpret_cast<BITMAPINFO*>(mSurfaceMemory.Get());
   ZeroMemory(bmpInfo, sizeof(BITMAPINFO));
   bmpInfo->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-  bmpInfo->bmiHeader.biWidth = w;
-  bmpInfo->bmiHeader.biHeight = -h; // negative means top-down bitmap. Skia draws top-down.
+  bmpInfo->bmiHeader.biWidth = drawWidth;
+  bmpInfo->bmiHeader.biHeight = -drawHeight; // negative means top-down bitmap. Skia draws top-down.
   bmpInfo->bmiHeader.biPlanes = 1;
   bmpInfo->bmiHeader.biBitCount = 32;
   bmpInfo->bmiHeader.biCompression = BI_RGB;
   void* pixels = bmpInfo->bmiColors;
 
-  SkImageInfo info = SkImageInfo::Make(w, h, kN32_SkColorType, kPremul_SkAlphaType, nullptr);
-  mSurface = SkSurfaces::WrapPixels(info, pixels, sizeof(uint32_t) * w);
+  SkImageInfo info = SkImageInfo::Make(drawWidth, drawHeight, kN32_SkColorType, kPremul_SkAlphaType, nullptr);
+  mSurface = SkSurfaces::WrapPixels(info, pixels, sizeof(uint32_t) * drawWidth);
   #else
-  SkImageInfo info = SkImageInfo::MakeN32Premul(w, h);
+  SkImageInfo info = SkImageInfo::MakeN32Premul(drawWidth, drawHeight);
   mSurface = SkSurfaces::Raster(info);
   #endif
 #endif
@@ -1640,8 +1699,13 @@ void IGraphicsSkia::BeginFrame()
       return;
     }
 
+#if defined OS_WIN
+    int width = (mPresentationWidth > 0) ? mPresentationWidth : WindowWidth() * GetScreenScale();
+    int height = (mPresentationHeight > 0) ? mPresentationHeight : WindowHeight() * GetScreenScale();
+#else
     int width = WindowWidth() * GetScreenScale();
     int height = WindowHeight() * GetScreenScale();
+#endif
     if (mVKSubmissionPending)
     {
       IGRAPHICS_VK_LOG("BeginFrame",
@@ -2049,35 +2113,16 @@ void IGraphicsSkia::EndFrame()
     const float virtualization =
       (windowScale > 0.f && std::isfinite(windowScale)) ? (monitorScale / windowScale) : 0.f;
 
-    int destWidth = srcWidth;
-    int destHeight = srcHeight;
+    int destWidth = (mPresentationWidth > 0) ? mPresentationWidth : srcWidth;
+    int destHeight = (mPresentationHeight > 0) ? mPresentationHeight : srcHeight;
 
     bool appliedCompensation = false;
-    int previousGraphicsMode = 0;
-    XFORM previousWorldTransform{};
-    bool restoreWorldTransform = false;
+    int previousStretchMode = 0;
 
-    if (virtualization > 0.f && std::isfinite(virtualization) && std::fabs(virtualization - 1.f) > 0.001f)
+    if ((destWidth != srcWidth || destHeight != srcHeight) && virtualization > 0.f && std::isfinite(virtualization))
     {
-      previousGraphicsMode = SetGraphicsMode(hdc, GM_ADVANCED);
-
-      if (previousGraphicsMode != 0)
-      {
-        if (GetWorldTransform(hdc, &previousWorldTransform))
-          restoreWorldTransform = true;
-
-        const float inverseVirtualization = 1.f / virtualization;
-        XFORM compensationTransform{};
-        compensationTransform.eM11 = inverseVirtualization;
-        compensationTransform.eM22 = inverseVirtualization;
-        compensationTransform.eDx = 0.f;
-        compensationTransform.eDy = 0.f;
-        compensationTransform.eM12 = 0.f;
-        compensationTransform.eM21 = 0.f;
-
-        if (SetWorldTransform(hdc, &compensationTransform))
-          appliedCompensation = true;
-      }
+      previousStretchMode = SetStretchBltMode(hdc, HALFTONE);
+      appliedCompensation = true;
     }
 
     const bool shouldLogPresent =
@@ -2131,23 +2176,8 @@ void IGraphicsSkia::EndFrame()
                   DIB_RGB_COLORS,
                   SRCCOPY);
 
-    if (appliedCompensation)
-    {
-      if (restoreWorldTransform)
-      {
-        SetWorldTransform(hdc, &previousWorldTransform);
-      }
-      else
-      {
-        XFORM identity{};
-        identity.eM11 = 1.f;
-        identity.eM22 = 1.f;
-        SetWorldTransform(hdc, &identity);
-      }
-    }
-
-    if (previousGraphicsMode != 0)
-      SetGraphicsMode(hdc, previousGraphicsMode);
+    if (previousStretchMode != 0)
+      SetStretchBltMode(hdc, previousStretchMode);
   }
 
   EndPaint(hWnd, &ps);
@@ -2191,7 +2221,23 @@ void IGraphicsSkia::EndFrame()
     return;
   }
   #endif
+#if defined OS_WIN
+  if (mScreenSurface && std::fabs(mPresentationVirtualization - 1.f) > 0.001f && mPresentationVirtualization > 0.f)
+  {
+    SkCanvas* screenCanvas = mScreenSurface->getCanvas();
+    screenCanvas->save();
+    const float inverseVirtualization = 1.f / mPresentationVirtualization;
+    screenCanvas->scale(inverseVirtualization, inverseVirtualization);
+    mSurface->draw(screenCanvas, 0.0, 0.0, nullptr);
+    screenCanvas->restore();
+  }
+  else
+  {
+    mSurface->draw(mScreenSurface->getCanvas(), 0.0, 0.0, nullptr);
+  }
+#else
   mSurface->draw(mScreenSurface->getCanvas(), 0.0, 0.0, nullptr);
+#endif
 
   #if defined IGRAPHICS_VULKAN
   if (auto dContext = GrAsDirectContext(mScreenSurface->getCanvas()->recordingContext()))

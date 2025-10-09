@@ -388,23 +388,38 @@ inline DpiScales GetDpiScalesForHWND(HWND hWnd)
 
   return result;
 }
-} // namespace iplug::win
 
 inline float GetScaleForHWND(HWND hWnd)
 {
-  return iplug::win::GetDpiScalesForHWND(hWnd).window;
+  return GetDpiScalesForHWND(hWnd).window;
 }
 
 inline float GetPhysicalScaleForHWND(HWND hWnd)
 {
-  return iplug::win::GetDpiScalesForHWND(hWnd).monitor;
+  return GetDpiScalesForHWND(hWnd).monitor;
 }
 
 inline float GetBackingScaleForHWND(HWND hWnd)
 {
-  const auto scales = iplug::win::GetDpiScalesForHWND(hWnd);
+  const auto scales = GetDpiScalesForHWND(hWnd);
   const float denominator = std::max(scales.window, std::numeric_limits<float>::epsilon());
   return scales.monitor / denominator;
+}
+} // namespace iplug::win
+
+inline float GetScaleForHWND(HWND hWnd)
+{
+  return iplug::win::GetScaleForHWND(hWnd);
+}
+
+inline float GetPhysicalScaleForHWND(HWND hWnd)
+{
+  return iplug::win::GetPhysicalScaleForHWND(hWnd);
+}
+
+inline float GetBackingScaleForHWND(HWND hWnd)
+{
+  return iplug::win::GetBackingScaleForHWND(hWnd);
 }
 
 #endif

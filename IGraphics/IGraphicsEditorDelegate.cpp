@@ -67,11 +67,10 @@ void IGEditorDelegate::OnParentWindowResize(int width, int height)
   if (auto* pGraphics = GetUI())
   {
     const float screenScale = pGraphics->GetPlatformWindowScale();
-
-    if (screenScale <= 0.f)
-      return;
-
     const float currentDrawScale = pGraphics->GetDrawScale();
+
+    if (screenScale <= 0.f || currentDrawScale <= 0.f)
+      return;
 
     if (pGraphics->GetResizerMode() == EUIResizerMode::Scale)
     {
@@ -84,18 +83,28 @@ void IGEditorDelegate::OnParentWindowResize(int width, int height)
       if (width <= 0 || height <= 0)
         return;
 
-      const float scaleX = static_cast<float>(width) / (static_cast<float>(baseWidth) * screenScale);
-      const float scaleY = static_cast<float>(height) / (static_cast<float>(baseHeight) * screenScale);
+      const float unscaledWidth = static_cast<float>(width) / screenScale;
+      const float unscaledHeight = static_cast<float>(height) / screenScale;
+      const float scaleX = unscaledWidth / static_cast<float>(baseWidth);
+      const float scaleY = unscaledHeight / static_cast<float>(baseHeight);
       const float targetScale = std::max(0.f, std::min(scaleX, scaleY));
 
       pGraphics->Resize(baseWidth, baseHeight, targetScale, false);
     }
     else
     {
-      const int unscaledWidth = static_cast<int>(std::round(static_cast<float>(width) / screenScale));
-      const int unscaledHeight = static_cast<int>(std::round(static_cast<float>(height) / screenScale));
+      const float invTotalScale = 1.f / (screenScale * currentDrawScale);
 
-      pGraphics->Resize(unscaledWidth, unscaledHeight, currentDrawScale, false);
+      if (!std::isfinite(invTotalScale))
+        return;
+
+      const int logicalWidth = static_cast<int>(std::round(static_cast<float>(width) * invTotalScale));
+      const int logicalHeight = static_cast<int>(std::round(static_cast<float>(height) * invTotalScale));
+
+      if (logicalWidth <= 0 || logicalHeight <= 0)
+        return;
+
+      pGraphics->Resize(logicalWidth, logicalHeight, currentDrawScale, false);
     }
   }
 }

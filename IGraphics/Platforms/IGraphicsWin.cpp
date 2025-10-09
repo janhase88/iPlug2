@@ -16,6 +16,7 @@
 #include "heapbuf.h"
 
 #include "IGraphicsWin.h"
+#include "WinDpiAwareness.h"
 #include "IGraphicsWin_dnd.h"
 #include "IPlugParameter.h"
 #include "IPlugPaths.h"
@@ -4204,6 +4205,8 @@ EMsgBoxResult IGraphicsWin::ShowMessageBox(const char* str, const char* title, E
 
 void* IGraphicsWin::OpenWindow(void* pParent)
 {
+  ScopedPerMonitorDpiAwareness dpiScope;
+
   mParentWnd = (HWND)pParent;
   const float screenScale = GetScaleForHWND(mParentWnd);
   const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * screenScale));

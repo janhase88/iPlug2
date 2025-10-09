@@ -88,6 +88,7 @@
 
 #elif defined OS_WIN
   #include "../Skia/SkTypefaceWinWrapper.h"
+  #include "../Platforms/WinDpiAwareness.h"
 
   #pragma comment(lib, "skia.lib")
 
@@ -2021,6 +2022,7 @@ void IGraphicsSkia::EndFrame()
   SkCGDrawBitmap(pCGContext, bmp, 0, 0);
   CGContextRestoreGState(pCGContext);
   #elif defined OS_WIN
+  ScopedPerMonitorDpiAwareness dpiScope;
   auto w = WindowWidth() * GetScreenScale();
   auto h = WindowHeight() * GetScreenScale();
   BITMAPINFO* bmpInfo = reinterpret_cast<BITMAPINFO*>(mSurfaceMemory.Get());

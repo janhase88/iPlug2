@@ -88,6 +88,7 @@
 
 #elif defined OS_WIN
   #include "../Skia/SkTypefaceWinWrapper.h"
+  #include "../Platforms/WinDpiUtils.h"
 
   #pragma comment(lib, "skia.lib")
 
@@ -2021,14 +2022,56 @@ void IGraphicsSkia::EndFrame()
   SkCGDrawBitmap(pCGContext, bmp, 0, 0);
   CGContextRestoreGState(pCGContext);
   #elif defined OS_WIN
-  auto w = WindowWidth() * GetScreenScale();
-  auto h = WindowHeight() * GetScreenScale();
+  const int w = WindowWidth() * GetScreenScale();
+  const int h = WindowHeight() * GetScreenScale();
   BITMAPINFO* bmpInfo = reinterpret_cast<BITMAPINFO*>(mSurfaceMemory.Get());
   HWND hWnd = (HWND)GetWindow();
   PAINTSTRUCT ps;
   HDC hdc = BeginPaint(hWnd, &ps);
-  StretchDIBits(hdc, 0, 0, w, h, 0, 0, w, h, bmpInfo->bmiColors, bmpInfo, DIB_RGB_COLORS, SRCCOPY);
-  ReleaseDC(hWnd, hdc);
+
+  if (hdc)
+  {
+    const float screenScale = GetScreenScale();
+    const float platformScale = GetPlatformWindowScale();
+    float compensation = 1.f;
+
+    if (screenScale > 0.f && std::isfinite(screenScale))
+      compensation = platformScale / screenScale;
+
+    bool restoreState = false;
+    int savedState = 0;
+
+    if (std::isfinite(compensation) && std::fabs(compensation - 1.f) > 0.001f)
+    {
+      savedState = SaveDC(hdc);
+      if (savedState != 0 && SetGraphicsMode(hdc, GM_ADVANCED))
+      {
+        XFORM transform{};
+        transform.eM11 = compensation;
+        transform.eM22 = compensation;
+        transform.eDx = 0.f;
+        transform.eDy = 0.f;
+
+        if (SetWorldTransform(hdc, &transform))
+        {
+          restoreState = true;
+        }
+      }
+
+      if (!restoreState && savedState != 0)
+      {
+        RestoreDC(hdc, savedState);
+        savedState = 0;
+      }
+    }
+
+    StretchDIBits(hdc, 0, 0, w, h, 0, 0, w, h, bmpInfo->bmiColors, bmpInfo, DIB_RGB_COLORS, SRCCOPY);
+
+    if (restoreState && savedState != 0)
+      RestoreDC(hdc, savedState);
+    ReleaseDC(hWnd, hdc);
+  }
+
   EndPaint(hWnd, &ps);
   #else
     #error NOT IMPLEMENTED

@@ -12,6 +12,9 @@
 #include "IGraphics.h"
 #include "IControl.h"
 
+#include <algorithm>
+#include <cmath>
+
 using namespace iplug;
 using namespace igraphics;
 
@@ -61,7 +64,7 @@ void IGEditorDelegate::CloseWindow()
 
 void IGEditorDelegate::OnParentWindowResize(int width, int height)
 {
-  if (auto* pGraphics = GetUI()) 
+  if (auto* pGraphics = GetUI())
   {
     const auto scale = pGraphics->GetPlatformWindowScale();
     pGraphics->Resize(static_cast<int>(width / scale), static_cast<int>(height / scale), 1.0f, false);

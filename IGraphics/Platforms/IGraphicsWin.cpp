@@ -4308,14 +4308,45 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     parentScales = iplug::win::GetDpiScalesForHWND(mParentWnd);
   }
 
-  const int scaledWidth = WindowWidth();
-  const int scaledHeight = WindowHeight();
-  DebugLogDpiEvent("OpenWindow.request", mParentWnd, parentScales, GetScreenScale(), GetScreenScale(), scaledWidth, scaledHeight);
+  const int logicalWidth = WindowWidth();
+  const int logicalHeight = WindowHeight();
+  DebugLogDpiEvent("OpenWindow.request",
+                   mParentWnd,
+                   parentScales,
+                   GetScreenScale(),
+                   GetScreenScale(),
+                   logicalWidth,
+                   logicalHeight);
+
+  float parentWindowScale = (std::isfinite(parentScales.window) && parentScales.window > kDpiScaleEpsilon)
+                              ? parentScales.window
+                              : 1.f;
+  float parentMonitorScale = (std::isfinite(parentScales.monitor) && parentScales.monitor > kDpiScaleEpsilon)
+                               ? parentScales.monitor
+                               : parentWindowScale;
+  float parentVirtualization =
+    (parentWindowScale > kDpiScaleEpsilon) ? (parentMonitorScale / parentWindowScale) : 1.f;
+
+  if (!std::isfinite(parentVirtualization) || parentVirtualization <= 0.f)
+    parentVirtualization = 1.f;
+
+  const int physicalWidth =
+    std::max(1, static_cast<int>(std::lround(static_cast<double>(logicalWidth) * parentVirtualization)));
+  const int physicalHeight =
+    std::max(1, static_cast<int>(std::lround(static_cast<double>(logicalHeight) * parentVirtualization)));
+
+  DBGMSG("WinDPI[OpenWindow.adjust]: parent=%p virtualization=%.3f logical=%dx%d physical=%dx%d\n",
+         mParentWnd,
+         parentVirtualization,
+         logicalWidth,
+         logicalHeight,
+         physicalWidth,
+         physicalHeight);
 
   int x = 0;
   int y = 0;
-  int w = scaledWidth;
-  int h = scaledHeight;
+  int w = physicalWidth;
+  int h = physicalHeight;
 
   if (mPlugWnd)
   {

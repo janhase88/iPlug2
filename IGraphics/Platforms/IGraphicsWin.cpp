@@ -4426,7 +4426,24 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     DebugLogDpiEvent("OpenWindow.created", mPlugWnd, plugScales, GetScreenScale(), GetScreenScale(), clientWidth, clientHeight);
   }
 
+  const float targetScreenScale = parentMonitorScale;
+
   UpdateScreenScale(mPlugWnd ? mPlugWnd : mParentWnd); // resizes draw context
+
+  const float appliedScreenScale = GetScreenScale();
+  if (std::fabs(appliedScreenScale - targetScreenScale) > kDpiScaleEpsilon)
+  {
+    iplug::win::ScopedPerMonitorDpiAwarenessContext dpiScope;
+    const auto fallbackScales = iplug::win::GetDpiScalesForHWND(mPlugWnd ? mPlugWnd : mParentWnd);
+    DebugLogDpiEvent("OpenWindow.applyFallbackScale",
+                     mPlugWnd,
+                     fallbackScales,
+                     appliedScreenScale,
+                     targetScreenScale,
+                     -1,
+                     -1);
+    IGraphics::SetScreenScale(targetScreenScale);
+  }
 
   GetDelegate()->LayoutUI(this);
 

@@ -2048,19 +2048,9 @@ void IGraphicsSkia::EndFrame()
 
     const float virtualization =
       (windowScale > 0.f && std::isfinite(windowScale)) ? (monitorScale / windowScale) : 0.f;
-    int destWidth = WindowWidth();
-    int destHeight = WindowHeight();
 
-    if (std::isfinite(windowScale) && windowScale > 0.f)
-    {
-      destWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * windowScale));
-      destHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * windowScale));
-    }
-
-    if (destWidth <= 0)
-      destWidth = WindowWidth();
-    if (destHeight <= 0)
-      destHeight = WindowHeight();
+    int destWidth = srcWidth;
+    int destHeight = srcHeight;
 
     const bool shouldLogPresent =
       !mCpuPresentLogValid ||

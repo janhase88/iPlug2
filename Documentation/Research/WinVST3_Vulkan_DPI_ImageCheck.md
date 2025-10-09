@@ -7,6 +7,7 @@ Hey — here is the investigation you asked for.
 
 ## 2. How that scale is used to size the native window and swapchain
 - When the editor opens, the Windows backend multiplies the logical editor size by the screen scale returned above before creating the child window and immediately calls `SetScreenScale()` with the same factor. That means the Vulkan swapchain is built at physical pixel dimensions that match the monitor DPI instead of a low-resolution fallback.【F:IGraphics/Platforms/IGraphicsWin.cpp†L4205-L4273】
+- If a host later supplies its own VST3 content scale factor, `IGraphics` now records that the screen scale came from the host so the Windows backend stops overriding it with fresh `GetScaleForHWND()` probes. Bitwig’s HiDPI toggle can therefore drive the swapchain size directly instead of being reset to 100% by the fallback DPI query.【F:IGraphics/IGraphics.cpp†L77-L97】【F:IGraphics/Platforms/IGraphicsWin.cpp†L2225-L2231】
 
 ## 3. How Skia renders into the Vulkan images
 - `IGraphicsSkia::DrawResize()` re-computes the backing surface dimensions as `WindowWidth() * GetScreenScale()` whenever the DPI changes, reconfigures the swapchain with those pixel dimensions, and rebuilds the Skia render target at the same size. No stretch or upscaling happens after this point because every Skia surface now matches the swapchain images exactly.【F:IGraphics/Drawing/IGraphicsSkia.cpp†L1306-L1487】

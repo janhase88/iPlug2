@@ -922,7 +922,7 @@ bool IPlugCLAP::guiSetScale(double scale) noexcept
 {
   if (HasUI())
   {
-    SetScreenScale(static_cast<float>(scale));
+    SetScreenScaleFromHost(static_cast<float>(scale));
     return true;
   }
   else

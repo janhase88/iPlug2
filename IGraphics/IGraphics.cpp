@@ -76,10 +76,25 @@ IGraphics::~IGraphics()
 
 void IGraphics::SetScreenScale(float scale)
 {
+  SetScreenScaleInternal(scale, EScreenScaleSource::Platform);
+}
+
+void IGraphics::SetScreenScaleFromHost(float scale)
+{
+  SetScreenScaleInternal(scale, EScreenScaleSource::Host);
+}
+
+void IGraphics::SetScreenScaleInternal(float scale, EScreenScaleSource source)
+{
+  if (scale <= 0.f)
+    return;
+
+  mScreenScaleSource = source;
   mScreenScale = scale;
+
   int windowWidth = WindowWidth() * GetPlatformWindowScale();
   int windowHeight = WindowHeight() * GetPlatformWindowScale();
-  
+
   assert(windowWidth > 0 && windowHeight > 0 && "Window dimensions invalid");
 
   bool parentResized = GetDelegate()->EditorResizeFromUI(windowWidth, windowHeight, true);

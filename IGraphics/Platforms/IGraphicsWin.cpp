@@ -2225,8 +2225,8 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
   // TODO: move this... listen to the right messages in windows for screen resolution changes, etc.
   if (!GetCapture()) // workaround Windows issues with window sizing during mouse move
   {
-    float scale = GetScaleForHWND(mPlugWnd);
-    if (scale != GetScreenScale())
+    const float scale = GetScaleForHWND(mPlugWnd);
+    if (!ScreenScaleFromHost() && scale != GetScreenScale())
       SetScreenScale(scale);
   }
 

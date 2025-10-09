@@ -1013,13 +1013,23 @@ public:
   IGraphics(IGEditorDelegate& dlg, int w, int h, int fps = DEFAULT_FPS, float scale = 1.);
 
   virtual ~IGraphics();
-    
+
   IGraphics(const IGraphics&) = delete;
   IGraphics& operator=(const IGraphics&) = delete;
+
+  enum class EScreenScaleSource
+  {
+    Platform,
+    Host
+  };
     
   /** Called by the platform IGraphics class when moving to a new screen to set DPI
    * @param scale The scale of the screen, typically 2 on a macOS retina screen, or 2 with 200% scaling on windows */
   void SetScreenScale(float scale);
+
+  /** Called by host APIs that explicitly provide a UI content scale factor.
+   *  This marks the screen scale as host-driven so platform DPI probes do not override it. */
+  void SetScreenScaleFromHost(float scale);
 
   /** Called by some platform IGraphics classes in order to translate the graphics context, in response to e.g. iOS onscreen keyboard appearing */
   void SetTranslation(float x, float y) { mXTranslation = x; mYTranslation = y; }
@@ -1124,6 +1134,9 @@ public:
   /** Gets the screen/display scaling factor, e.g. 2 for a macOS retina screen, 1.5 on Windows when screen is scaled to 150%
     * @return The scale factor of the display on which this graphics context is currently located */
   float GetScreenScale() const { return mScreenScale; }
+
+  /** @return true if the current screen scale originated from a host-provided content scale factor */
+  bool ScreenScaleFromHost() const { return mScreenScaleSource == EScreenScaleSource::Host; }
 
   /** Gets the screen/display scaling factor, rounded up
   * @return The scale factor of the screen/display on which this graphics context is currently located */
@@ -1852,6 +1865,7 @@ protected:
 #pragma mark -
 
 private:
+  void SetScreenScaleInternal(float scale, EScreenScaleSource source);
   void ClearMouseOver()
   {
     mMouseOver = nullptr;
@@ -1880,6 +1894,7 @@ private:
   int mHeight;
   int mFPS;
   float mScreenScale = 1.f; // the scaling of the display that the UI is currently on e.g. 2 for retina
+  EScreenScaleSource mScreenScaleSource = EScreenScaleSource::Platform;
   float mDrawScale = 1.f; // scale deviation from  default width and height i.e stretching the UI by dragging bottom right hand corner
 
   int mIdleTicks = 0;

@@ -71,7 +71,7 @@ void IGEditorDelegate::OnParentWindowResize(int width, int height)
 void IGEditorDelegate::SetScreenScale(float scale)
 {
   if (GetUI())
-    mGraphics->SetScreenScale(scale);
+    mGraphics->SetScreenScaleFromHost(scale);
 }
 
 void IGEditorDelegate::SendControlValueFromDelegate(int ctrlTag, double normalizedValue)

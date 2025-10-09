@@ -117,20 +117,40 @@ float iplug::GetScaleForHWND(HWND hWnd)
 }
 #else
 
+#include <cstdint>
+
 UINT(WINAPI* __GetDpiForWindow)(HWND);
+void* (WINAPI* __SetThreadDpiAwarenessContext)(void*);
+bool __TriedLoadSetThreadDpiAwarenessContext = false;
 
 float GetScaleForHWND(HWND hWnd)
 {
-  if (!__GetDpiForWindow)
+  if (!__GetDpiForWindow || (!__SetThreadDpiAwarenessContext && !__TriedLoadSetThreadDpiAwarenessContext))
   {
     HINSTANCE h = LoadLibraryA("user32.dll");
-    if (h) *(void**)&__GetDpiForWindow = GetProcAddress(h, "GetDpiForWindow");
+    if (h)
+    {
+      if (!__GetDpiForWindow)
+        *(void**)&__GetDpiForWindow = GetProcAddress(h, "GetDpiForWindow");
+      if (!__SetThreadDpiAwarenessContext && !__TriedLoadSetThreadDpiAwarenessContext)
+        *(void**)&__SetThreadDpiAwarenessContext = GetProcAddress(h, "SetThreadDpiAwarenessContext");
+    }
+
+    if (!__TriedLoadSetThreadDpiAwarenessContext)
+      __TriedLoadSetThreadDpiAwarenessContext = true;
 
     if (!__GetDpiForWindow)
       return 1;
   }
 
+  void* previousContext = nullptr;
+  if (__SetThreadDpiAwarenessContext)
+    previousContext = __SetThreadDpiAwarenessContext(reinterpret_cast<void*>(static_cast<std::intptr_t>(-4)));
+
   int dpi = __GetDpiForWindow(hWnd);
+
+  if (__SetThreadDpiAwarenessContext && previousContext)
+    __SetThreadDpiAwarenessContext(previousContext);
 
   if (dpi != USER_DEFAULT_SCREEN_DPI)
     return static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI;

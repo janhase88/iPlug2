@@ -2186,7 +2186,7 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
   // TODO: move this... listen to the right messages in windows for screen resolution changes, etc.
   if (!GetCapture()) // workaround Windows issues with window sizing during mouse move
   {
-    ApplyDpiScales(mPlugWnd);
+    UpdateScreenScale(mPlugWnd);
   }
 
   // TODO: this is far too aggressive for slow drawing animations and data changing.  We need to
@@ -4164,26 +4164,22 @@ void IGraphicsWin::DeactivateVulkanContext()
 }
 #endif
 
-void IGraphicsWin::ApplyDpiScales(HWND referenceWnd)
+void IGraphicsWin::UpdateScreenScale(HWND referenceWnd)
 {
   const auto scales = iplug::win::GetDpiScalesForHWND(referenceWnd ? referenceWnd : mParentWnd);
 
-  float windowScale = scales.window;
-  if (!std::isfinite(windowScale) || windowScale <= 0.f)
-    windowScale = 1.f;
+  float monitorScale = scales.monitor;
+  if (!std::isfinite(monitorScale) || monitorScale <= 0.f)
+  {
+    monitorScale = scales.window;
+    if (!std::isfinite(monitorScale) || monitorScale <= 0.f)
+      monitorScale = 1.f;
+  }
 
-  float screenScale = scales.monitor;
-  if (!std::isfinite(screenScale) || screenScale <= 0.f)
-    screenScale = windowScale;
-
-  const bool windowChanged = std::fabs(windowScale - mWindowScale) > kDpiScaleEpsilon;
-  const bool screenChanged = std::fabs(screenScale - GetScreenScale()) > kDpiScaleEpsilon;
-
-  if (!windowChanged && !screenChanged)
+  if (std::fabs(monitorScale - GetScreenScale()) <= kDpiScaleEpsilon)
     return;
 
-  mWindowScale = windowScale;
-  IGraphics::SetScreenScale(screenScale);
+  IGraphics::SetScreenScale(monitorScale);
 }
 
 void IGraphicsWin::ActivateGLContext()
@@ -4293,7 +4289,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   #endif
 #endif
 
-  ApplyDpiScales(mPlugWnd ? mPlugWnd : mParentWnd); // resizes draw context
+  UpdateScreenScale(mPlugWnd ? mPlugWnd : mParentWnd); // resizes draw context
 
   GetDelegate()->LayoutUI(this);
 

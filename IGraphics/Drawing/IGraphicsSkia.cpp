@@ -2032,11 +2032,18 @@ void IGraphicsSkia::EndFrame()
   if (hdc)
   {
     const float screenScale = GetScreenScale();
-    const float platformScale = GetPlatformWindowScale();
+    float windowScale = iplug::win::GetScaleForHWND(hWnd);
+
+    if (!std::isfinite(windowScale) || windowScale <= 0.f)
+      windowScale = 1.f;
+
     float compensation = 1.f;
 
     if (screenScale > 0.f && std::isfinite(screenScale))
-      compensation = platformScale / screenScale;
+    {
+      if (windowScale > 0.f && std::isfinite(windowScale) && windowScale < (screenScale - 0.001f))
+        compensation = windowScale / screenScale;
+    }
 
     bool restoreState = false;
     int savedState = 0;

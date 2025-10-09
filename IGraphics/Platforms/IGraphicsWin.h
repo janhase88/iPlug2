@@ -87,7 +87,6 @@ public:
   void* GetWinModuleHandle() override { return mHInstance; }
 
   void ForceEndUserEdit() override;
-  float GetPlatformWindowScale() const override { return mWindowScale; }
 
   void PlatformResize(bool parentHasResized) override;
 
@@ -253,8 +252,6 @@ private:
   WNDPROC mDefEditProc = nullptr;
   HFONT mEditFont = nullptr;
   DWORD mPID = 0;
-  float mWindowScale = 1.f;
-
   void StartVBlankThread(HWND hWnd);
   void StopVBlankThread();
   void VBlankNotify();
@@ -273,7 +270,7 @@ private:
   void StopVBlankHealthTimer();
   void PerformVBlankHealthCheck();
   void RequestSwapchainSoftReset(ULONGLONG sincePauseMs);
-  void ApplyDpiScales(HWND referenceWnd);
+  void UpdateScreenScale(HWND referenceWnd);
 
 public:
   // Telemetry helpers in IGraphicsWin.cpp require direct access to these types/constants.

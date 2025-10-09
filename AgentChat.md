@@ -51,3 +51,23 @@ I will continue logging progress and findings here for the remainder of the task
   2. Track the host-facing “window scale” separately from the physical drawing scale so we can size buffers to physical pixels without requesting a larger logical window.
   3. Detect virtualization in the WinSKIA CPU blit and apply a compensating GDI world transform so the high-resolution back buffer maps 1:1 after Windows upsamples the child HWND.
 - **Status:** Implementing the helper utilities, updating the Windows platform layer to maintain dual scales, and teaching the Skia CPU swap to neutralize DPI virtualization.
+
+## Entry 7 — Current Assessment and Recovery Plan
+- **Regression Summary:** Latest changes introduced two regressions in Bitwig: (1) the editor window dimensions depend on the DAW's “Scale plug-in UI” toggle, producing oversized frames, and (2) Skia output remains blurry despite the new compensation path.
+- **Root Cause Hypothesis:** The new `mWindowScale` propagation lets host-reported DPI influence logical window sizing. When Bitwig toggles its scaling option, `GetDpiForWindow` reflects the enlarged logical scale, so our editor requests a larger host rectangle even though we only need higher-density pixels. Simultaneously, the Skia surface still aligns with the virtualized device context, so Windows stretches the bitmap a second time.
+- **Corrective Strategy:**
+  1. Re-establish the pre-regression sizing contract by decoupling logical window size from host-reported DPI (i.e., revert `GetPlatformWindowScale()` to 1.0 for Windows).
+  2. Continue deriving the drawing scale from the monitor’s physical DPI so Skia allocates a sharp render target without asking the host to resize the UI shell.
+  3. Compute the virtualization compensation dynamically in the CPU presentation path using the ratio between monitor and window DPI; this ensures a single high-resolution presentation pass without double-scaling.
+- **Next Steps:**
+  - Remove the `mWindowScale` propagation from `IGraphicsWin`, restoring the stable window sizing semantics.
+  - Keep the monitor-DPI query helper but limit its usage to rendering decisions (Skia surface sizing and CPU blit compensation).
+  - Audit `SetScreenScale` and related paths to guarantee they no longer request host resizes when only the rendering scale changes.
+  - Revalidate the CPU `StretchDIBits` compensation math against Microsoft’s DPI virtualization guidelines to confirm the bitmap lands 1:1 in both virtualized and per-monitor-aware hosts.
+
+## Entry 8 — DPI Scale Decoupling Implementation
+- **Window Sizing Restore:** Removed the Windows-specific `mWindowScale` propagation so `GetPlatformWindowScale()` reverts to its base implementation (always 1.0). Logical window dimensions requested from the host now match the pre-regression behavior regardless of host-provided DPI hints.【F:IGraphics/Platforms/IGraphicsWin.h†L83-L123】【F:IGraphics/Platforms/IGraphicsWin.cpp†L2148-L2200】
+- **Screen Scale Update:** Replaced the prior dual-scale bookkeeping with a lean `UpdateScreenScale()` helper that derives the monitor DPI from `WinDpiUtils` and only calls `SetScreenScale()` when the physical scale actually changes. The helper falls back gracefully if monitor DPI is unavailable.【F:IGraphics/Platforms/IGraphicsWin.cpp†L4167-L4182】
+- **CPU Presentation Compensation:** The Skia CPU swap now queries the live window DPI directly via `WinDpiUtils` and applies a compensating world transform only when Windows is virtualizing the HWND (i.e., when the window DPI is lower than the monitor DPI). This yields 1:1 pixel mapping without altering host window sizing semantics.【F:IGraphics/Drawing/IGraphicsSkia.cpp†L1999-L2106】
+- **Plan Alignment:** Confirmed the implementation matches the recovery strategy outlined in Entry 7: logical size decoupled from host scaling, monitor DPI drives rendering density, and virtualization is handled strictly inside the blit path.
+- **Next Steps:** Await user validation in Bitwig to ensure the window dimensions remain stable when toggling “Scale plug-in UI” and that the rendered surface is now crisp. If issues persist, gather host-specific DPI telemetry using the shared utilities for further tuning.

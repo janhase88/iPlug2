@@ -91,6 +91,46 @@ uint64_t SteadyClockMicros(const std::chrono::steady_clock::time_point& tp);
 template <typename T>
 void AtomicMax(std::atomic<T>& target, T value);
 
+using SetThreadDpiAwarenessContextFn = void* (WINAPI*)(void*);
+
+SetThreadDpiAwarenessContextFn LoadSetThreadDpiAwarenessContext()
+{
+  static SetThreadDpiAwarenessContextFn sFn = nullptr;
+  static bool sTriedLoad = false;
+
+  if (!sTriedLoad)
+  {
+    if (HMODULE user32 = LoadLibraryW(L"user32.dll"))
+      sFn = reinterpret_cast<SetThreadDpiAwarenessContextFn>(GetProcAddress(user32, "SetThreadDpiAwarenessContext"));
+
+    sTriedLoad = true;
+  }
+
+  return sFn;
+}
+
+class ScopedPerMonitorAwareContext
+{
+public:
+  ScopedPerMonitorAwareContext()
+  {
+    if (auto fn = LoadSetThreadDpiAwarenessContext())
+      mPrevious = fn(reinterpret_cast<void*>(static_cast<std::intptr_t>(-4)));
+  }
+
+  ~ScopedPerMonitorAwareContext()
+  {
+    if (mPrevious)
+    {
+      if (auto fn = LoadSetThreadDpiAwarenessContext())
+        fn(mPrevious);
+    }
+  }
+
+private:
+  void* mPrevious = nullptr;
+};
+
 #if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
 void RecordParamQueueTelemetry(int outstanding, schedulerlog::Severity severity);
 void RecordSchedulerSample(const IGraphicsWin::InstancePaintBudget::Snapshot& snapshot,
@@ -3502,6 +3542,7 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
     if (!dw && !dh)
       return;
 
+    ScopedPerMonitorAwareContext perMonitorAwareDuringResize;
     SetWindowPos(mPlugWnd, 0, 0, 0, dlgW + dw, dlgH + dh, SETPOS_FLAGS);
 
     if (pParent && !parentHasResized)
@@ -4232,6 +4273,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     RegisterClassW(&wndClass);
   }
 
+  ScopedPerMonitorAwareContext perMonitorAwareDuringCreate;
   mPlugWnd = CreateWindowW(wndClassName, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
 #if defined IGRAPHICS_VULKAN
   SetPlatformContext(mPlugWnd);

@@ -25,6 +25,10 @@
   #include "VulkanLogging.h"
 #endif
 
+#ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+#define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 ((DPI_AWARENESS_CONTEXT)-4)
+#endif
+
 #include <VersionHelpers.h>
 #include <algorithm>
 #include <array>
@@ -81,6 +85,49 @@ struct VBlankSubscription
 namespace
 {
 constexpr uint32_t kVBlankQueueDepthWarningMultiplier = 2;
+
+using SetThreadDpiAwarenessContextFn = DPI_AWARENESS_CONTEXT(WINAPI*)(DPI_AWARENESS_CONTEXT);
+
+SetThreadDpiAwarenessContextFn LoadSetThreadDpiAwarenessContext()
+{
+  static SetThreadDpiAwarenessContextFn sFunc = []() -> SetThreadDpiAwarenessContextFn {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (!user32)
+      user32 = LoadLibraryW(L"user32.dll");
+    if (!user32)
+      return nullptr;
+    return reinterpret_cast<SetThreadDpiAwarenessContextFn>(GetProcAddress(user32, "SetThreadDpiAwarenessContext"));
+  }();
+  return sFunc;
+}
+
+class ScopedThreadDpiAwarenessContext
+{
+public:
+  explicit ScopedThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT context)
+  {
+    if (!context)
+      return;
+
+    if (auto func = LoadSetThreadDpiAwarenessContext())
+    {
+      mFunc = func;
+      mPrevious = func(context);
+    }
+  }
+
+  ~ScopedThreadDpiAwarenessContext()
+  {
+    if (mFunc && mPrevious)
+    {
+      mFunc(mPrevious);
+    }
+  }
+
+private:
+  SetThreadDpiAwarenessContextFn mFunc = nullptr;
+  DPI_AWARENESS_CONTEXT mPrevious = nullptr;
+};
 
 void RecordVBlankQueueDepthSample(uint32_t depth);
 void IncrementVBlankQueueWarnCount();
@@ -4205,28 +4252,45 @@ EMsgBoxResult IGraphicsWin::ShowMessageBox(const char* str, const char* title, E
 void* IGraphicsWin::OpenWindow(void* pParent)
 {
   mParentWnd = (HWND)pParent;
-  int screenScale = GetScaleForHWND(mParentWnd);
-  int x = 0, y = 0, w = WindowWidth() * screenScale, h = WindowHeight() * screenScale;
-
-  if (mPlugWnd)
+  float screenScale = 1.f;
   {
-    RECT pR, cR;
-    GetWindowRect((HWND)pParent, &pR);
-    GetWindowRect(mPlugWnd, &cR);
-    CloseWindow();
-    x = cR.left - pR.left;
-    y = cR.top - pR.top;
-    w = cR.right - cR.left;
-    h = cR.bottom - cR.top;
-  }
+    ScopedThreadDpiAwarenessContext dpiScope(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    screenScale = mParentWnd ? GetScaleForHWND(mParentWnd) : 1.f;
+    if (screenScale <= 0.f)
+      screenScale = 1.f;
 
-  if (nWndClassReg++ == 0)
-  {
-    WNDCLASSW wndClass = {CS_DBLCLKS | CS_OWNDC, WndProc, 0, 0, mHInstance, 0, 0, 0, 0, wndClassName};
-    RegisterClassW(&wndClass);
-  }
+    int x = 0;
+    int y = 0;
+    int w = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * screenScale));
+    int h = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * screenScale));
 
-  mPlugWnd = CreateWindowW(wndClassName, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
+    if (mPlugWnd)
+    {
+      RECT pR, cR;
+      GetWindowRect((HWND)pParent, &pR);
+      GetWindowRect(mPlugWnd, &cR);
+      CloseWindow();
+      x = cR.left - pR.left;
+      y = cR.top - pR.top;
+      w = cR.right - cR.left;
+      h = cR.bottom - cR.top;
+    }
+
+    if (nWndClassReg++ == 0)
+    {
+      WNDCLASSW wndClass = {CS_DBLCLKS | CS_OWNDC, WndProc, 0, 0, mHInstance, 0, 0, 0, 0, wndClassName};
+      RegisterClassW(&wndClass);
+    }
+
+    mPlugWnd = CreateWindowW(wndClassName, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
+
+    if (mPlugWnd)
+    {
+      const float windowScale = GetScaleForHWND(mPlugWnd);
+      if (windowScale > 0.f)
+        screenScale = windowScale;
+    }
+  }
 #if defined IGRAPHICS_VULKAN
   SetPlatformContext(mPlugWnd);
   if (!CreateVulkanContext())

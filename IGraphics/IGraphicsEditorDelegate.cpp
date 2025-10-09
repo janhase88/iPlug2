@@ -12,6 +12,10 @@
 #include "IGraphics.h"
 #include "IControl.h"
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
+
 using namespace iplug;
 using namespace igraphics;
 
@@ -32,11 +36,21 @@ void* IGEditorDelegate::OpenWindow(void* pParent)
     if (mLastWidth && mLastHeight && mLastScale)
       GetUI()->Resize(mLastWidth, mLastHeight, mLastScale);
   }
-  
-  if(mGraphics)
-    return mGraphics->OpenWindow(pParent);
-  else
+
+  if(!mGraphics)
     return nullptr;
+
+  void* windowHandle = mGraphics->OpenWindow(pParent);
+
+  if (windowHandle && mPendingScreenScale > 0.f)
+  {
+    const float currentScale = mGraphics->GetScreenScale();
+    if (std::fabs(currentScale - mPendingScreenScale) > std::numeric_limits<float>::epsilon())
+      mGraphics->SetScreenScale(mPendingScreenScale);
+    mPendingScreenScale = 0.f;
+  }
+
+  return windowHandle;
 }
 
 void IGEditorDelegate::CloseWindow()
@@ -61,7 +75,7 @@ void IGEditorDelegate::CloseWindow()
 
 void IGEditorDelegate::OnParentWindowResize(int width, int height)
 {
-  if (auto* pGraphics = GetUI()) 
+  if (auto* pGraphics = GetUI())
   {
     const auto scale = pGraphics->GetPlatformWindowScale();
     pGraphics->Resize(static_cast<int>(width / scale), static_cast<int>(height / scale), 1.0f, false);
@@ -70,8 +84,19 @@ void IGEditorDelegate::OnParentWindowResize(int width, int height)
 
 void IGEditorDelegate::SetScreenScale(float scale)
 {
+  if (scale <= 0.f)
+    return;
+
   if (GetUI())
-    mGraphics->SetScreenScale(scale);
+  {
+    if (std::fabs(mGraphics->GetScreenScale() - scale) > std::numeric_limits<float>::epsilon())
+      mGraphics->SetScreenScale(scale);
+    mPendingScreenScale = 0.f;
+  }
+  else
+  {
+    mPendingScreenScale = scale;
+  }
 }
 
 void IGEditorDelegate::SendControlValueFromDelegate(int ctrlTag, double normalizedValue)

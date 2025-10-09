@@ -102,6 +102,7 @@ private:
   int mLastWidth = 0;
   int mLastHeight = 0;
   float mLastScale = 0.f;
+  float mPendingScreenScale = 0.f;
   bool mClosing = false; // used to prevent re-entrancy on closing
 };
 

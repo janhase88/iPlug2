@@ -127,15 +127,38 @@ float GetScaleForHWND(HWND hWnd)
     if (h) *(void**)&__GetDpiForWindow = GetProcAddress(h, "GetDpiForWindow");
 
     if (!__GetDpiForWindow)
-      return 1;
+      *(INT_PTR*)&__GetDpiForWindow = 1;
   }
 
-  int dpi = __GetDpiForWindow(hWnd);
+  float scale = 1.f;
 
-  if (dpi != USER_DEFAULT_SCREEN_DPI)
-    return static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI;
+  if (__GetDpiForWindow && reinterpret_cast<INT_PTR>(__GetDpiForWindow) != 1)
+  {
+    const int dpi = __GetDpiForWindow(hWnd);
 
-  return 1;
+    if (dpi > 0)
+      scale = static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI;
+  }
+
+  HDC screenDC = GetDC(nullptr);
+
+  if (screenDC)
+  {
+    const int virtualizedWidth = GetDeviceCaps(screenDC, HORZRES);
+    const int physicalWidth = GetDeviceCaps(screenDC, DESKTOPHORZRES);
+
+    if (virtualizedWidth > 0 && physicalWidth > 0)
+    {
+      const float virtualizationScale = static_cast<float>(physicalWidth) / static_cast<float>(virtualizedWidth);
+
+      if (virtualizationScale > 0.f)
+        scale *= virtualizationScale;
+    }
+
+    ReleaseDC(nullptr, screenDC);
+  }
+
+  return (scale > 0.f) ? scale : 1.f;
 }
 
 #endif

@@ -4208,9 +4208,9 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   ScopedPerMonitorDpiAwareness dpiScope;
 
   mParentWnd = (HWND)pParent;
-  const float screenScale = GetScaleForHWND(mParentWnd);
-  const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * screenScale));
-  const int scaledHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * screenScale));
+  const float parentScale = GetScaleForHWND(mParentWnd);
+  const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * parentScale));
+  const int scaledHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * parentScale));
   int x = 0;
   int y = 0;
   int w = scaledWidth;
@@ -4272,6 +4272,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   #endif
 #endif
 
+  const float screenScale = mPlugWnd ? GetScaleForHWND(mPlugWnd) : parentScale;
   SetScreenScale(screenScale); // resizes draw context
 
   GetDelegate()->LayoutUI(this);

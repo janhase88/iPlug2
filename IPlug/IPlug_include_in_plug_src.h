@@ -36,30 +36,57 @@
   #endif
 
   UINT(WINAPI *__GetDpiForWindow)(HWND);
+  HRESULT(WINAPI* __GetDpiForMonitor)(HMONITOR, int, UINT*, UINT*);
 
   float GetScaleForHWND(HWND hWnd)
   {
+    UINT dpi = USER_DEFAULT_SCREEN_DPI;
+
     if (!__GetDpiForWindow)
     {
       HINSTANCE h = LoadLibraryW(L"user32.dll");
       if (h) *(void **)&__GetDpiForWindow = GetProcAddress(h, "GetDpiForWindow");
-
-      if (!__GetDpiForWindow)
-        return 1;
     }
 
-    int dpi = __GetDpiForWindow(hWnd);
-
-    if (dpi != USER_DEFAULT_SCREEN_DPI)
+    if (__GetDpiForWindow && hWnd)
     {
-#if defined IGRAPHICS_QUANTISE_SCREENSCALE
-      return std::round(static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI);
-#else
-      return static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI;
-#endif
+      UINT windowDpi = __GetDpiForWindow(hWnd);
+      if (windowDpi != 0)
+        dpi = windowDpi;
     }
 
-    return 1;
+    if (dpi == USER_DEFAULT_SCREEN_DPI)
+    {
+      if (!__GetDpiForMonitor)
+      {
+        HINSTANCE shcore = LoadLibraryW(L"shcore.dll");
+        if (shcore)
+          *(void **)&__GetDpiForMonitor = GetProcAddress(shcore, "GetDpiForMonitor");
+      }
+
+      if (__GetDpiForMonitor && hWnd)
+      {
+        HMONITOR monitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
+
+        if (monitor)
+        {
+          constexpr int kEffectiveDpiType = 0; // MDT_EFFECTIVE_DPI
+          UINT dpiX = 0;
+          UINT dpiY = 0;
+
+          if (__GetDpiForMonitor(monitor, kEffectiveDpiType, &dpiX, &dpiY) == 0 && dpiX != 0)
+          {
+            dpi = dpiX;
+          }
+        }
+      }
+    }
+
+#if defined IGRAPHICS_QUANTISE_SCREENSCALE
+    return std::round(static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI);
+#else
+    return static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI;
+#endif
   }
 
 #endif

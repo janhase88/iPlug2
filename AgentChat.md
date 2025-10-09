@@ -33,3 +33,12 @@ I will continue logging progress and findings here for the remainder of the task
 - **Window Creation:** Wrapped `IGraphicsWin::OpenWindow()` in the scoped helper so the editor HWND is created while the UI thread is temporarily `PER_MONITOR_AWARE_V2`, guaranteeing the child window opts out of DPI virtualization in system-aware hosts.【F:IGraphics/Platforms/IGraphicsWin.cpp†L16-L24】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4205-L4210】
 - **CPU Skia Present:** Guarded the Windows CPU blit path in `IGraphicsSkia::EndFrame()` with the same scope, ensuring paint operations also run with per-monitor awareness before calling `BeginPaint`/`StretchDIBits`.【F:IGraphics/Drawing/IGraphicsSkia.cpp†L93-L98】【F:IGraphics/Drawing/IGraphicsSkia.cpp†L2008-L2015】
 - **Next Step:** Review for additional call sites that need the scope (none identified), run formatting/compilation sanity checks where feasible, and prepare documentation/testing notes.
+
+## Entry 5 — Regression Investigation and Fix Strategy
+- **User Feedback:** Bitwig still rendered the UI blurry and now letterboxed after the DPI-awareness scope landed, confirming that disabling virtualization alone isn't sufficient.
+- **Root Cause Analysis:** With virtualization removed, the window kept drawing at 1.0 scale because `GetDpiForWindow` inherited the host’s system-aware context and never reported the monitor DPI. As a result, the Skia surface stayed undersized while the HWND presented at the larger physical size.
+- **External Research:** Reviewed Microsoft’s high-DPI guidance and community discussions on mixed-awareness hierarchies, which recommend querying the monitor via `GetDpiForMonitor` when per-window awareness is unavailable even after elevating the thread context.
+- **Plan:**
+  1. Extend `GetScaleForHWND()` to fall back to `GetDpiForMonitor` (via `shcore.dll`) when `GetDpiForWindow` returns the default 96 DPI.
+  2. Re-query the new child HWND after creation so the editor immediately adopts the monitor’s physical scale, resizing the surface and notifying the host without relying on deferred idle checks.
+  3. Retest the CPU presentation path under the scoped DPI context to ensure the pixel buffer matches the new scale.

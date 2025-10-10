@@ -63,6 +63,8 @@
 #include "include/effects/SkGradientShader.h"
 #include "include/effects/SkImageFilters.h"
 
+using namespace iplug;
+
 #if defined OS_WIN
 namespace
 {
@@ -255,7 +257,6 @@ bool ReadSurfacePixel(SkSurface* surface, int sampleX, int sampleY, uint32_t& pi
   #endif
 #endif
 
-using namespace iplug;
 using namespace igraphics;
 
 extern std::map<std::string, MTLTexturePtr> gTextureMap;

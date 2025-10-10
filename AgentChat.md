@@ -237,3 +237,7 @@ I will continue logging progress and findings here for the remainder of the task
 - I found the culprit in `EndFrame()`: right before we call into Skia I asked Ganesh to treat the swapchain as `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR`. That prevents Skia from issuing the color-attachment writes we need, so the swapchain stays blank and Vulkan validation reports the wrong layout.
 - I swapped that state back to `VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL` so the render target stays writable for the duration of the Skia blit. After Skia finishes we still transition to PRESENT via the explicit pipeline barrier, so Windows receives a filled image.
 - Please rebuild the WinSKIA Vulkan plug-in and grab another Bitwig log. If the fix worked the `SkiaVulkan.SurfaceSample.screen` lines should start showing the same non-zero ARGB values as the draw surface, and the plug-in window should finally render instead of staying white.
+
+## Entry 38 — Restoring DBG logging after the namespace regression
+- Your latest build error (`DBGMSG` undefined near the top of `IGraphicsSkia.cpp`) happened because the diagnostic helpers now live above the existing `using namespace iplug;` directive, so MSVC never saw the namespace alias when compiling those early functions.
+- I hoisted the directive to sit right after the Skia includes so the logging macros resolve everywhere in the file. Nothing else changes—this just restores the Windows build so you can keep testing the Vulkan presentation fixes.【F:IGraphics/Drawing/IGraphicsSkia.cpp†L35-L44】

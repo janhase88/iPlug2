@@ -2328,16 +2328,31 @@ void IGraphicsSkia::EndFrame()
   }
 
   {
+    const int srcWidth = mLastPresentationDrawWidth;
+    const int srcHeight = mLastPresentationDrawHeight;
+    const int destLogicalWidth = mPresentationLogicalWidth;
+    const int destLogicalHeight = mPresentationLogicalHeight;
+
     float scaleX = 1.f;
     float scaleY = 1.f;
 
-    if (mPresentationPhysicalWidth > 0 && mPresentationLogicalWidth > 0)
+    if (srcWidth > 0 && destLogicalWidth > 0)
+    {
+      scaleX = static_cast<float>(destLogicalWidth) /
+               static_cast<float>(srcWidth);
+    }
+    else if (mPresentationPhysicalWidth > 0 && mPresentationLogicalWidth > 0)
     {
       scaleX = static_cast<float>(mPresentationLogicalWidth) /
                static_cast<float>(mPresentationPhysicalWidth);
     }
 
-    if (mPresentationPhysicalHeight > 0 && mPresentationLogicalHeight > 0)
+    if (srcHeight > 0 && destLogicalHeight > 0)
+    {
+      scaleY = static_cast<float>(destLogicalHeight) /
+               static_cast<float>(srcHeight);
+    }
+    else if (mPresentationPhysicalHeight > 0 && mPresentationLogicalHeight > 0)
     {
       scaleY = static_cast<float>(mPresentationLogicalHeight) /
                static_cast<float>(mPresentationPhysicalHeight);
@@ -2362,10 +2377,6 @@ void IGraphicsSkia::EndFrame()
     const float windowScale = mPresentationWindowScale;
     const float monitorScale = mPresentationMonitorScale;
     const float virtualization = mPresentationVirtualization;
-    const int srcWidth = mLastPresentationDrawWidth;
-    const int srcHeight = mLastPresentationDrawHeight;
-    const int destLogicalWidth = mPresentationLogicalWidth;
-    const int destLogicalHeight = mPresentationLogicalHeight;
     const int destPhysicalWidth = mPresentationPhysicalWidth;
     const int destPhysicalHeight = mPresentationPhysicalHeight;
 

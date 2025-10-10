@@ -751,15 +751,17 @@ bool IGraphicsSkia::PrepareCurrentSwapchainImageForFlush()
     auto backendRT = GrBackendRenderTargets::MakeVk(width, height, imageInfo);
     if (backendRT.isValid())
     {
-      auto colorState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, mVKQueueFamily);
+      const VkImageLayout renderLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+      const uint32_t renderQueueFamily = mVKQueueFamily;
+      auto colorState = skgpu::MutableTextureStates::MakeVulkan(renderLayout, renderQueueFamily);
       mGrContext->setBackendRenderTargetState(backendRT, colorState, nullptr, nullptr, nullptr);
       backendRT.setMutableState(colorState);
 #if defined OS_WIN
       DBGMSG("SkiaVulkan.RenderTargetState: hwnd=%p imageIndex=%d layout=%d queueFamily=%u width=%d height=%d\n",
              reinterpret_cast<HWND>(GetWindow()),
              static_cast<int>(mVKCurrentImage),
-             static_cast<int>(colorState.getImageLayout()),
-             static_cast<uint32_t>(colorState.getQueueFamilyIndex()),
+             static_cast<int>(renderLayout),
+             static_cast<uint32_t>(renderQueueFamily),
              width,
              height);
 #endif

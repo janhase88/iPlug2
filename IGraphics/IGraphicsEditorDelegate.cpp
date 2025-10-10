@@ -12,9 +12,6 @@
 #include "IGraphics.h"
 #include "IControl.h"
 
-#include <algorithm>
-#include <cmath>
-
 using namespace iplug;
 using namespace igraphics;
 
@@ -64,48 +61,10 @@ void IGEditorDelegate::CloseWindow()
 
 void IGEditorDelegate::OnParentWindowResize(int width, int height)
 {
-  if (auto* pGraphics = GetUI())
+  if (auto* pGraphics = GetUI()) 
   {
-    const float screenScale = pGraphics->GetPlatformWindowScale();
-    const float currentDrawScale = pGraphics->GetDrawScale();
-
-    if (screenScale <= 0.f || currentDrawScale <= 0.f)
-      return;
-
-    if (pGraphics->GetResizerMode() == EUIResizerMode::Scale)
-    {
-      const int baseWidth = pGraphics->Width();
-      const int baseHeight = pGraphics->Height();
-
-      if (baseWidth <= 0 || baseHeight <= 0)
-        return;
-
-      if (width <= 0 || height <= 0)
-        return;
-
-      const float unscaledWidth = static_cast<float>(width) / screenScale;
-      const float unscaledHeight = static_cast<float>(height) / screenScale;
-      const float scaleX = unscaledWidth / static_cast<float>(baseWidth);
-      const float scaleY = unscaledHeight / static_cast<float>(baseHeight);
-      const float targetScale = std::max(0.f, std::min(scaleX, scaleY));
-
-      pGraphics->Resize(baseWidth, baseHeight, targetScale, false);
-    }
-    else
-    {
-      const float invTotalScale = 1.f / (screenScale * currentDrawScale);
-
-      if (!std::isfinite(invTotalScale))
-        return;
-
-      const int logicalWidth = static_cast<int>(std::round(static_cast<float>(width) * invTotalScale));
-      const int logicalHeight = static_cast<int>(std::round(static_cast<float>(height) * invTotalScale));
-
-      if (logicalWidth <= 0 || logicalHeight <= 0)
-        return;
-
-      pGraphics->Resize(logicalWidth, logicalHeight, currentDrawScale, false);
-    }
+    const auto scale = pGraphics->GetPlatformWindowScale();
+    pGraphics->Resize(static_cast<int>(width / scale), static_cast<int>(height / scale), 1.0f, false);
   }
 }
 

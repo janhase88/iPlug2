@@ -20,7 +20,6 @@
 
 #include "IGraphics_select.h"
 #include "SchedulerLogging.h"
-#include "WinDpiUtils.h"
 
 #include <string>
 #include <vector>
@@ -88,6 +87,7 @@ public:
   void* GetWinModuleHandle() override { return mHInstance; }
 
   void ForceEndUserEdit() override;
+  float GetPlatformWindowScale() const override { return GetScreenScale(); }
 
   void PlatformResize(bool parentHasResized) override;
 
@@ -253,6 +253,7 @@ private:
   WNDPROC mDefEditProc = nullptr;
   HFONT mEditFont = nullptr;
   DWORD mPID = 0;
+
   void StartVBlankThread(HWND hWnd);
   void StopVBlankThread();
   void VBlankNotify();
@@ -271,14 +272,6 @@ private:
   void StopVBlankHealthTimer();
   void PerformVBlankHealthCheck();
   void RequestSwapchainSoftReset(ULONGLONG sincePauseMs);
-  void DebugLogDpiEvent(const char* context,
-                        HWND referenceWnd,
-                        const iplug::win::DpiScales& scales,
-                        float previousScreenScale,
-                        float nextScreenScale,
-                        int clientWidth = -1,
-                        int clientHeight = -1);
-  void UpdateScreenScale(HWND referenceWnd);
 
 public:
   // Telemetry helpers in IGraphicsWin.cpp require direct access to these types/constants.
@@ -543,21 +536,6 @@ private:
   static StaticStorage<HFontHolder> sHFontCache;
 
   std::unordered_map<ITouchID, IMouseInfo> mDeltaCapture; // associative array of touch id pointers to IMouseInfo structs, so that we can get deltas
-
-  struct DpiDebugLogState
-  {
-    const char* context = nullptr;
-    HWND window = nullptr;
-    float windowScale = 0.f;
-    float monitorScale = 0.f;
-    float previousScreenScale = 0.f;
-    float appliedScreenScale = 0.f;
-    int clientWidth = -1;
-    int clientHeight = -1;
-    bool valid = false;
-  };
-
-  DpiDebugLogState mDpiDebugLogState{};
 };
 
 END_IGRAPHICS_NAMESPACE

@@ -220,106 +220,8 @@ private:
   SkMatrix mClipMatrix;
   SkMatrix mFinalMatrix;
 
-#if defined OS_WIN
-  struct SurfaceLogState
-  {
-    const SkSurface* ptr = nullptr;
-    int width = 0;
-    int height = 0;
-    int colorType = -1;
-    int alphaType = -1;
-    bool gpuBacked = false;
-    float screenScale = 0.f;
-    float windowScale = 0.f;
-    float monitorScale = 0.f;
-    float virtualization = 0.f;
-    bool valid = false;
-  };
-
-  struct SurfaceSampleState
-  {
-    const SkSurface* ptr = nullptr;
-    int width = 0;
-    int height = 0;
-    int requestedWidth = 0;
-    int requestedHeight = 0;
-    int sampleX = 0;
-    int sampleY = 0;
-    uint32_t pixel = 0;
-    bool sampleValid = false;
-    bool gpuBacked = false;
-    bool skipLogged = false;
-    bool valid = false;
-  };
-
-  int mPresentationPhysicalWidth = 0;
-  int mPresentationPhysicalHeight = 0;
-  int mPresentationLogicalWidth = 0;
-  int mPresentationLogicalHeight = 0;
-  float mPresentationWindowScale = 1.f;
-  float mPresentationMonitorScale = 1.f;
-  float mPresentationVirtualization = 1.f;
-  bool mPresentationLogValid = false;
-  int mLastPresentationDrawWidth = 0;
-  int mLastPresentationDrawHeight = 0;
-  SurfaceLogState mLastDrawSurfaceLog;
-  SurfaceLogState mLastScreenSurfaceLog;
-  SurfaceSampleState mLastDrawSurfaceSample;
-  SurfaceSampleState mLastScreenSurfaceSample;
-#endif
-
 #if defined OS_WIN && defined IGRAPHICS_CPU
   WDL_TypedBuf<uint8_t> mSurfaceMemory;
-  float mLastCpuPresentWindowScale = 0.f;
-  float mLastCpuPresentMonitorScale = 0.f;
-  float mLastCpuPresentScreenScale = 0.f;
-  float mLastCpuPresentVirtualization = 0.f;
-  int mLastCpuPresentWidth = 0;
-  int mLastCpuPresentHeight = 0;
-  int mLastCpuPresentDestWidth = 0;
-  int mLastCpuPresentDestHeight = 0;
-  bool mLastCpuPresentAppliedCompensation = false;
-  const SkSurface* mLastCpuPresentSurfacePtr = nullptr;
-  bool mCpuPresentLogValid = false;
-#endif
-
-#if defined OS_WIN && !defined IGRAPHICS_CPU
-  bool mGpuPresentLogValid = false;
-  float mLastGpuPresentScreenScale = 0.f;
-  float mLastGpuPresentWindowScale = 0.f;
-  float mLastGpuPresentMonitorScale = 0.f;
-  float mLastGpuPresentVirtualization = 0.f;
-  float mLastGpuPresentScaleX = 0.f;
-  float mLastGpuPresentScaleY = 0.f;
-  int mLastGpuPresentSrcWidth = 0;
-  int mLastGpuPresentSrcHeight = 0;
-  int mLastGpuPresentLogicalWidth = 0;
-  int mLastGpuPresentLogicalHeight = 0;
-  int mLastGpuPresentPhysicalWidth = 0;
-  int mLastGpuPresentPhysicalHeight = 0;
-  bool mLastGpuPresentAppliedScale = false;
-  const SkSurface* mLastGpuPresentSrcSurfacePtr = nullptr;
-  const SkSurface* mLastGpuPresentScreenSurfacePtr = nullptr;
-  bool mLastGpuPresentSurfacesEqual = false;
-#endif
-
-#if defined OS_WIN
-  void MaybeLogSurfaceDetails(const char* tag,
-                              const sk_sp<SkSurface>& surface,
-                              SurfaceLogState& cache,
-                              void* hwnd,
-                              int requestedWidth,
-                              int requestedHeight,
-                              float screenScale,
-                              float windowScale,
-                              float monitorScale,
-                              float virtualization);
-  void MaybeLogSurfaceSample(const char* tag,
-                             const sk_sp<SkSurface>& surface,
-                             SurfaceSampleState& cache,
-                             void* hwnd,
-                             int requestedWidth,
-                             int requestedHeight);
 #endif
 
 #ifndef IGRAPHICS_CPU
@@ -353,7 +255,6 @@ private:
   VkCommandBuffer mVKCommandBuffer = VK_NULL_HANDLE;
   uint32_t mVKQueueFamily = 0;
   std::vector<VkImage> mVKSwapchainImages;
-  std::vector<VkImageView> mVKSwapchainImageViews;
   std::vector<VkImageLayout> mVKImageLayouts;
   std::vector<sk_sp<SkSurface>> mVKSwapchainSurfaces;
   uint32_t mVKCurrentImage = kInvalidImageIndex;
@@ -371,7 +272,6 @@ private:
   bool PrepareCurrentSwapchainImageForFlush();
   void ResetVulkanSwapchainCaches();
   VkCommandBuffer EnsureVulkanCommandBuffer();
-  VkImageView EnsureSwapchainImageView(uint32_t imageIndex, VkImage image);
   sk_sp<SkSurface> EnsureSwapchainSurface(uint32_t imageIndex, int width, int height, const GrVkImageInfo& imageInfo);
   bool AssertValidSwapchainImage(VkImage image, const char* context);
 #endif

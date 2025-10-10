@@ -13,10 +13,6 @@ void (*AttachWindowTopmostButton)(HWND hwnd);
 #include <vector>
 #include <map>
 
-#ifdef OS_WIN
-  #include "../../IGraphics/Platforms/WinDpiUtils.h"
-#endif
-
 REAPER_PLUGIN_HINSTANCE gHINSTANCE;
 HWND gParent;
 HWND gHWND = NULL;
@@ -120,4 +116,26 @@ float iplug::GetScaleForHWND(HWND hWnd)
   return 1.f;
 }
 #else
+
+UINT(WINAPI* __GetDpiForWindow)(HWND);
+
+float GetScaleForHWND(HWND hWnd)
+{
+  if (!__GetDpiForWindow)
+  {
+    HINSTANCE h = LoadLibraryA("user32.dll");
+    if (h) *(void**)&__GetDpiForWindow = GetProcAddress(h, "GetDpiForWindow");
+
+    if (!__GetDpiForWindow)
+      return 1;
+  }
+
+  int dpi = __GetDpiForWindow(hWnd);
+
+  if (dpi != USER_DEFAULT_SCREEN_DPI)
+    return static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI;
+
+  return 1;
+}
+
 #endif

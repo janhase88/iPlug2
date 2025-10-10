@@ -357,6 +357,13 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
         auto colorState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, mVKQueueFamily);
         mGrContext->setBackendRenderTargetState(backendRT, colorState, nullptr, nullptr, nullptr);
         backendRT.setMutableState(colorState);
+#if defined OS_WIN
+        DBGMSG("SkiaVulkan.SwapSurface: hwnd=%p imageIndex=%u reuse width=%d height=%d\n",
+               reinterpret_cast<HWND>(GetWindow()),
+               static_cast<unsigned>(imageIndex),
+               width,
+               height);
+#endif
         return cachedSurface;
       }
     }
@@ -388,6 +395,14 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
                           vulkanlog::MakeHandleField("imageView", vulkanlog::HandleToUint64(loggedImageView)));
     return nullptr;
   }
+
+#if defined OS_WIN
+  DBGMSG("SkiaVulkan.SwapSurface: hwnd=%p imageIndex=%u create width=%d height=%d\n",
+         reinterpret_cast<HWND>(GetWindow()),
+         static_cast<unsigned>(imageIndex),
+         width,
+         height);
+#endif
 
   IGRAPHICS_VK_LOG("EnsureSwapchainSurface", "created", vulkanlog::Severity::kDebug,
                        vulkanlog::MakeField("imageIndex", imageIndex),
@@ -1355,7 +1370,7 @@ void IGraphicsSkia::DrawResize()
 
   if (logPresentation)
   {
-    DBGMSG("SkiaWin.Resize: hwnd=%p draw=%dx%d presentPhysical=%dx%d presentLogical=%dx%d screenScale=%.3f windowScale=%.3f monitorScale=%.3f virtualization=%.3f\n",
+    DBGMSG("SkiaWin.Resize: hwnd=%p surface=%dx%d presentPhysical=%dx%d presentLogical=%dx%d screenScale=%.3f windowScale=%.3f monitorScale=%.3f virtualization=%.3f\n",
            hwnd,
            drawWidth,
            drawHeight,
@@ -2296,7 +2311,73 @@ void IGraphicsSkia::EndFrame()
                static_cast<float>(mLastPresentationDrawHeight);
     }
 
-    if (std::fabs(scaleX - 1.f) > 0.001f || std::fabs(scaleY - 1.f) > 0.001f)
+    const bool applyScale = (std::fabs(scaleX - 1.f) > 0.001f || std::fabs(scaleY - 1.f) > 0.001f);
+
+#if defined OS_WIN
+    const HWND hwnd = reinterpret_cast<HWND>(GetWindow());
+    const float screenScale = GetScreenScale();
+    const float windowScale = mPresentationWindowScale;
+    const float monitorScale = mPresentationMonitorScale;
+    const float virtualization = mPresentationVirtualization;
+    const int srcWidth = mLastPresentationDrawWidth;
+    const int srcHeight = mLastPresentationDrawHeight;
+    const int destLogicalWidth = mPresentationLogicalWidth;
+    const int destLogicalHeight = mPresentationLogicalHeight;
+    const int destPhysicalWidth = mPresentationPhysicalWidth;
+    const int destPhysicalHeight = mPresentationPhysicalHeight;
+
+    const bool shouldLogGpuPresent =
+      !mGpuPresentLogValid ||
+      mLastGpuPresentScreenScale != screenScale ||
+      mLastGpuPresentWindowScale != windowScale ||
+      mLastGpuPresentMonitorScale != monitorScale ||
+      mLastGpuPresentVirtualization != virtualization ||
+      mLastGpuPresentScaleX != scaleX ||
+      mLastGpuPresentScaleY != scaleY ||
+      mLastGpuPresentSrcWidth != srcWidth ||
+      mLastGpuPresentSrcHeight != srcHeight ||
+      mLastGpuPresentLogicalWidth != destLogicalWidth ||
+      mLastGpuPresentLogicalHeight != destLogicalHeight ||
+      mLastGpuPresentPhysicalWidth != destPhysicalWidth ||
+      mLastGpuPresentPhysicalHeight != destPhysicalHeight ||
+      mLastGpuPresentAppliedScale != applyScale;
+
+    if (shouldLogGpuPresent)
+    {
+      DBGMSG("SkiaVulkan.EndFrame: hwnd=%p src=%dx%d destLogical=%dx%d destPhysical=%dx%d screenScale=%.3f windowScale=%.3f monitorScale=%.3f virtualization=%.3f scaleX=%.3f scaleY=%.3f appliedScale=%s\n",
+             hwnd,
+             srcWidth,
+             srcHeight,
+             destLogicalWidth,
+             destLogicalHeight,
+             destPhysicalWidth,
+             destPhysicalHeight,
+             screenScale,
+             windowScale,
+             monitorScale,
+             virtualization,
+             scaleX,
+             scaleY,
+             applyScale ? "true" : "false");
+
+      mGpuPresentLogValid = true;
+      mLastGpuPresentScreenScale = screenScale;
+      mLastGpuPresentWindowScale = windowScale;
+      mLastGpuPresentMonitorScale = monitorScale;
+      mLastGpuPresentVirtualization = virtualization;
+      mLastGpuPresentScaleX = scaleX;
+      mLastGpuPresentScaleY = scaleY;
+      mLastGpuPresentSrcWidth = srcWidth;
+      mLastGpuPresentSrcHeight = srcHeight;
+      mLastGpuPresentLogicalWidth = destLogicalWidth;
+      mLastGpuPresentLogicalHeight = destLogicalHeight;
+      mLastGpuPresentPhysicalWidth = destPhysicalWidth;
+      mLastGpuPresentPhysicalHeight = destPhysicalHeight;
+      mLastGpuPresentAppliedScale = applyScale;
+    }
+#endif
+
+    if (applyScale)
     {
       screenCanvas->save();
       screenCanvas->scale(scaleX, scaleY);

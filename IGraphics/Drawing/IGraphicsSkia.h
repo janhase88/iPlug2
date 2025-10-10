@@ -247,6 +247,23 @@ private:
   bool mCpuPresentLogValid = false;
 #endif
 
+#if defined OS_WIN && !defined IGRAPHICS_CPU
+  bool mGpuPresentLogValid = false;
+  float mLastGpuPresentScreenScale = 0.f;
+  float mLastGpuPresentWindowScale = 0.f;
+  float mLastGpuPresentMonitorScale = 0.f;
+  float mLastGpuPresentVirtualization = 0.f;
+  float mLastGpuPresentScaleX = 0.f;
+  float mLastGpuPresentScaleY = 0.f;
+  int mLastGpuPresentSrcWidth = 0;
+  int mLastGpuPresentSrcHeight = 0;
+  int mLastGpuPresentLogicalWidth = 0;
+  int mLastGpuPresentLogicalHeight = 0;
+  int mLastGpuPresentPhysicalWidth = 0;
+  int mLastGpuPresentPhysicalHeight = 0;
+  bool mLastGpuPresentAppliedScale = false;
+#endif
+
 #ifndef IGRAPHICS_CPU
   sk_sp<GrDirectContext> mGrContext;
   sk_sp<SkSurface> mScreenSurface;

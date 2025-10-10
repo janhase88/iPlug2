@@ -2331,18 +2331,28 @@ void IGraphicsSkia::EndFrame()
     float scaleX = 1.f;
     float scaleY = 1.f;
 
-    if (mLastPresentationDrawWidth > 0 && mPresentationLogicalWidth > 0 &&
-        mPresentationLogicalWidth != mLastPresentationDrawWidth)
+    if (mPresentationPhysicalWidth > 0 && mPresentationLogicalWidth > 0)
     {
       scaleX = static_cast<float>(mPresentationLogicalWidth) /
-               static_cast<float>(mLastPresentationDrawWidth);
+               static_cast<float>(mPresentationPhysicalWidth);
     }
 
-    if (mLastPresentationDrawHeight > 0 && mPresentationLogicalHeight > 0 &&
-        mPresentationLogicalHeight != mLastPresentationDrawHeight)
+    if (mPresentationPhysicalHeight > 0 && mPresentationLogicalHeight > 0)
     {
       scaleY = static_cast<float>(mPresentationLogicalHeight) /
-               static_cast<float>(mLastPresentationDrawHeight);
+               static_cast<float>(mPresentationPhysicalHeight);
+    }
+
+    if ((!std::isfinite(scaleX) || scaleX <= 0.f) && std::isfinite(mPresentationVirtualization) &&
+        mPresentationVirtualization > 0.f)
+    {
+      scaleX = 1.f / mPresentationVirtualization;
+    }
+
+    if ((!std::isfinite(scaleY) || scaleY <= 0.f) && std::isfinite(mPresentationVirtualization) &&
+        mPresentationVirtualization > 0.f)
+    {
+      scaleY = 1.f / mPresentationVirtualization;
     }
 
     const bool applyScale = (std::fabs(scaleX - 1.f) > 0.001f || std::fabs(scaleY - 1.f) > 0.001f);

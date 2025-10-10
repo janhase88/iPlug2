@@ -12,12 +12,12 @@ This checklist verifies that Windows VST3 editors rendered with the Skia/Vulkan 
 - [ ] Launch DebugView (or attach a debugger) so the always-on `DBGMSG`/`IGRAPHICS_VK_LOG` entries from `RefreshPlatformScale()` are captured during the run.【F:IGraphics/Platforms/IGraphicsWin.cpp†L47-L62】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4381-L4416】
 
 ## 2. Baseline Attachment
-- [ ] Launch each host at 150 % scaling and open the plug-in editor. Confirm the `SetHostContentScaleBypassed` log flips to `true`, the paired debug logs report a physical scale ≈1.5 while the host DPI scale remains ≈1.0, and that `PlatformResize` shows `window`/`target` ≈ physical with a virtualization ratio ≈ physical ÷ host. Cross-check the `DrawResize` `DBGMSG` to ensure the render target dimensions equal logical size × physical scale.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3526-L3594】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4346-L4416】【F:IGraphics/Drawing/IGraphicsSkia.cpp†L1316-L1478】
+- [ ] Launch each host at 150 % scaling and open the plug-in editor. Confirm the `SetHostContentScaleBypassed` log flips to `true`, the paired debug logs report a physical scale ≈1.5 while the host DPI scale remains ≈1.0, and that `PlatformResize` shows `window`/`target` ≈ host with a virtualization ratio ≈ physical ÷ host. Cross-check the `DrawResize` `DBGMSG` to ensure the render target dimensions equal logical size × physical scale.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3526-L3594】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4346-L4416】【F:IGraphics/Drawing/IGraphicsSkia.cpp†L1316-L1478】
 - [ ] Capture a screenshot showing the UI is crisp (no bitmap stretching) and the plug-in window bounds match the rendered content.
 
 ## 3. Host Resize Negotiation
 - [ ] Drag the host’s resize handle (if available) or trigger `IPlugView::checkSizeConstraint()` to request a new editor size. Verify the editor redraws sharply with no clipping and the logged scale values remain unchanged during the resize.【F:IGraphics/IGraphicsEditorDelegate.cpp†L58-L102】【F:IGraphics/Platforms/IGraphicsWin.cpp†L3526-L3562】
-- [ ] Use any in-plugin resizer (corner drag) to change the logical size. Ensure the host window follows the physical dimensions while the debug log shows the same bypassed scale.
+- [ ] Use any in-plugin resizer (corner drag) to change the logical size. Ensure the host window reports logical (host-space) dimensions while the debug log shows the same bypassed scale.
 
 ## 4. Monitor Handover
 - [ ] Move the host window between the 100 % and ≥150 % monitors. Confirm `WM_DPICHANGED` fires (scale log updates immediately) and the swapchain redraws without blurring or letterboxing.【F:IGraphics/Platforms/IGraphicsWin.cpp†L2682-L2707】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4420-L4505】

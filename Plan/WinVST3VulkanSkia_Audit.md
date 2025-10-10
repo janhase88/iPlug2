@@ -8,10 +8,10 @@
 ## Editor Delegate Scale Handling
 - `IGEditorDelegate::SetScreenScale()` simply forwards the factor to `IGraphics::SetScreenScale()` without differentiating between host hints and physical monitor DPI (`IGraphics/IGraphicsEditorDelegate.cpp`).
 - `IGraphics::SetScreenScale()` stores the new `mScreenScale`, recalculates the platform window size (`WindowWidth() * GetPlatformWindowScale()`), notifies the host through `EditorResizeFromUI()`, and then triggers platform-specific resizing and relayout (`IGraphics/IGraphics.cpp`).
-- `IGEditorDelegate::OnParentWindowResize()` divides the incoming host width/height by `GetPlatformWindowScale()` (which maps to `IGraphicsWin::GetScreenScale()`) and by `GetDrawScale()` to recover logical UI coordinates.
+- `IGEditorDelegate::OnParentWindowResize()` divides the incoming host width/height by `GetPlatformWindowScale()` (which resolves to the cached host DPI on Windows) and by `GetDrawScale()` to recover logical UI coordinates.
 
 ## Windows Windowing Layer
-- `IGraphicsWin::OpenWindow()` calculates an initial client size by multiplying the logical editor dimensions with `GetScaleForHWND()` and then creates the plug-in child window at that pixel size (`IGraphics/Platforms/IGraphicsWin.cpp`).
+- `IGraphicsWin::OpenWindow()` calculates an initial client size by multiplying the logical editor dimensions with the measured host DPI (falling back to `GetScaleForHWND()` when the host scale is unavailable) before creating the plug-in child window (`IGraphics/Platforms/IGraphicsWin.cpp`).
 - `IGraphicsWin::PlatformResize()` compares the desired pixel dimensions (`WindowWidth() * GetScreenScale()`) with the actual HWND client rect, issuing `SetWindowPos()` calls to adjust the plug-in window and, if required, parent shells.
 - `IGraphicsWin::OnDisplayTimer()` polls `GetScaleForHWND(mPlugWnd)` on every idle tick (when the plug-in does not own the mouse capture) and calls `SetScreenScale()` whenever the observed DPI differs.
 

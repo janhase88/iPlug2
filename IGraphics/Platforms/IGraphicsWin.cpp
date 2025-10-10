@@ -4180,6 +4180,10 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
     swapWidth = std::max(caps.minImageExtent.width, std::min(width, caps.maxImageExtent.width));
     swapHeight = std::max(caps.minImageExtent.height, std::min(height, caps.maxImageExtent.height));
   }
+  DBGMSG("IGraphicsWin: SwapchainExtent width=%u height=%u bypassVirtualExtent=%s\n",
+         swapWidth,
+         swapHeight,
+         bypassVirtualExtent ? "true" : "false");
   swapInfo.imageExtent.width = swapWidth;
   swapInfo.imageExtent.height = swapHeight;
   swapInfo.imageArrayLayers = 1;
@@ -4423,20 +4427,21 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   mParentWnd = (HWND)pParent;
   const float physicalScale = GetScaleForHWND(mParentWnd);
   const float hostScale = ComputeWindowDpiScale(mParentWnd);
-  float windowScale = physicalScale;
-
   const bool hostScaleValid = hostScale > 0.f && std::isfinite(hostScale);
   const bool physicalScaleValid = physicalScale > 0.f && std::isfinite(physicalScale);
-
-  if (!physicalScaleValid && hostScaleValid)
-    windowScale = hostScale;
-  else if (!mBypassHostContentScale && hostScaleValid)
-    windowScale = hostScale;
+  float windowScale = hostScaleValid ? hostScale : physicalScale;
 
   if (hostScaleValid)
     mWindowDPIScale = hostScale;
+  else if (physicalScaleValid)
+    mWindowDPIScale = physicalScale;
   else if (!std::isfinite(mWindowDPIScale) || mWindowDPIScale <= 0.f)
     mWindowDPIScale = 1.f;
+
+  if (!physicalScaleValid && !hostScaleValid)
+    windowScale = 1.f;
+  else if (!hostScaleValid && physicalScaleValid)
+    windowScale = physicalScale;
 
   if (!std::isfinite(windowScale) || windowScale <= 0.f)
     windowScale = 1.f;

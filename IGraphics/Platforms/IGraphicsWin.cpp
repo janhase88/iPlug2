@@ -467,6 +467,56 @@ StaticStorage<HFontHolder> IGraphicsWin::sHFontCache;
 
 extern float GetScaleForHWND(HWND hWnd);
 
+namespace
+{
+using GetDpiForWindowProc = UINT(WINAPI*)(HWND);
+
+GetDpiForWindowProc ResolveGetDpiForWindow()
+{
+  static GetDpiForWindowProc sGetDpiForWindow = nullptr;
+  static bool sAttemptedLoad = false;
+
+  if (!sAttemptedLoad)
+  {
+    HMODULE user32 = LoadLibraryW(L"user32.dll");
+    if (user32)
+    {
+      sGetDpiForWindow = reinterpret_cast<GetDpiForWindowProc>(GetProcAddress(user32, "GetDpiForWindow"));
+    }
+    sAttemptedLoad = true;
+  }
+
+  return sGetDpiForWindow;
+}
+
+float ComputeWindowDpiScale(HWND hWnd)
+{
+  if (hWnd)
+  {
+    if (const GetDpiForWindowProc dpiProc = ResolveGetDpiForWindow())
+    {
+      const UINT dpi = dpiProc(hWnd);
+      if (dpi > 0)
+        return static_cast<float>(dpi) / static_cast<float>(USER_DEFAULT_SCREEN_DPI);
+    }
+  }
+
+  HWND dcWindow = hWnd ? hWnd : nullptr;
+  HDC screenDC = GetDC(dcWindow);
+
+  if (screenDC)
+  {
+    const int logPixels = GetDeviceCaps(screenDC, LOGPIXELSX);
+    ReleaseDC(dcWindow, screenDC);
+
+    if (logPixels > 0)
+      return static_cast<float>(logPixels) / static_cast<float>(USER_DEFAULT_SCREEN_DPI);
+  }
+
+  return 1.f;
+}
+} // namespace
+
 namespace iplug::igraphics
 {
 #pragma mark - Mouse and tablet helpers
@@ -3517,12 +3567,14 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
 
     SetWindowPos(mPlugWnd, 0, 0, 0, dlgW + dw, dlgH + dh, SETPOS_FLAGS);
 
-    if (pParent && !parentHasResized)
+    const bool forceParentResize = mBypassHostContentScale;
+
+    if (pParent && (!parentHasResized || forceParentResize))
     {
       SetWindowPos(pParent, 0, 0, 0, parentW + dw, parentH + dh, SETPOS_FLAGS);
     }
 
-    if (pGrandparent && !parentHasResized)
+    if (pGrandparent && (!parentHasResized || forceParentResize))
     {
       SetWindowPos(pGrandparent, 0, 0, 0, grandparentW + dw, grandparentH + dh, SETPOS_FLAGS);
     }
@@ -4228,9 +4280,49 @@ float IGraphicsWin::MeasureWindowScale() const
   return measured;
 }
 
+float IGraphicsWin::MeasureWindowDPIScale() const
+{
+  const HWND target = mPlugWnd ? mPlugWnd : mParentWnd;
+  const float dpiScale = ComputeWindowDpiScale(target);
+
+  if (!std::isfinite(dpiScale) || dpiScale <= 0.f)
+    return 1.f;
+
+  return dpiScale;
+}
+
+void IGraphicsWin::SetHostContentScaleBypassed(bool bypass)
+{
+  if (mBypassHostContentScale == bypass)
+    return;
+
+  mBypassHostContentScale = bypass;
+
+  if (WindowIsOpen())
+    RefreshPlatformScale(true);
+}
+
+float IGraphicsWin::GetBackingPixelScaleForParentResize() const
+{
+  if (!mBypassHostContentScale)
+    return GetScreenScale();
+
+  if (mWindowDPIScale <= 0.f || !std::isfinite(mWindowDPIScale))
+    return GetScreenScale();
+
+  return mWindowDPIScale;
+}
+
 void IGraphicsWin::RefreshPlatformScale(bool force)
 {
   const float measured = MeasureWindowScale();
+  const float dpiScale = MeasureWindowDPIScale();
+
+  if (dpiScale > 0.f && std::isfinite(dpiScale))
+    mWindowDPIScale = dpiScale;
+  else
+    mWindowDPIScale = 1.f;
+
   const float current = GetScreenScale();
 
   if (!force)

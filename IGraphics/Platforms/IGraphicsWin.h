@@ -88,6 +88,9 @@ public:
 
   void ForceEndUserEdit() override;
   float GetPlatformWindowScale() const override { return GetScreenScale(); }
+  void SetHostContentScaleBypassed(bool bypass) override;
+  bool HostContentScaleBypassed() const override { return mBypassHostContentScale; }
+  float GetBackingPixelScaleForParentResize() const override;
 
   void PlatformResize(bool parentHasResized) override;
 
@@ -186,6 +189,7 @@ protected:
 private:
   void RefreshPlatformScale(bool force);
   float MeasureWindowScale() const;
+  float MeasureWindowDPIScale() const;
 
   // OLE drag & drop
   DragAndDropHelpers::DropTarget* mDropTarget = nullptr;
@@ -256,6 +260,8 @@ private:
   WNDPROC mDefEditProc = nullptr;
   HFONT mEditFont = nullptr;
   DWORD mPID = 0;
+  float mWindowDPIScale = 1.f;
+  bool mBypassHostContentScale = false;
 
   void StartVBlankThread(HWND hWnd);
   void StopVBlankThread();

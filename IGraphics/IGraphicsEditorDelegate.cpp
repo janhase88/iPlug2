@@ -66,10 +66,10 @@ void IGEditorDelegate::OnParentWindowResize(int width, int height)
 {
   if (auto* pGraphics = GetUI())
   {
-    const float screenScale = pGraphics->GetPlatformWindowScale();
+    const float platformResizeScale = pGraphics->GetBackingPixelScaleForParentResize();
     const float currentDrawScale = pGraphics->GetDrawScale();
 
-    if (screenScale <= 0.f || currentDrawScale <= 0.f)
+    if (platformResizeScale <= 0.f || currentDrawScale <= 0.f)
       return;
 
     if (pGraphics->GetResizerMode() == EUIResizerMode::Scale)
@@ -83,8 +83,8 @@ void IGEditorDelegate::OnParentWindowResize(int width, int height)
       if (width <= 0 || height <= 0)
         return;
 
-      const float unscaledWidth = static_cast<float>(width) / screenScale;
-      const float unscaledHeight = static_cast<float>(height) / screenScale;
+      const float unscaledWidth = static_cast<float>(width) / platformResizeScale;
+      const float unscaledHeight = static_cast<float>(height) / platformResizeScale;
       const float scaleX = unscaledWidth / static_cast<float>(baseWidth);
       const float scaleY = unscaledHeight / static_cast<float>(baseHeight);
       const float targetScale = std::max(0.f, std::min(scaleX, scaleY));
@@ -93,7 +93,7 @@ void IGEditorDelegate::OnParentWindowResize(int width, int height)
     }
     else
     {
-      const float invTotalScale = 1.f / (screenScale * currentDrawScale);
+      const float invTotalScale = 1.f / (platformResizeScale * currentDrawScale);
 
       if (!std::isfinite(invTotalScale))
         return;

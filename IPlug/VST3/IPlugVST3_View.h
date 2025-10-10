@@ -117,6 +117,13 @@ public:
 #ifdef OS_WIN
       if (strcmp(type, Steinberg::kPlatformTypeHWND) == 0)
         pView = mOwner.OpenWindow(pParent);
+#if defined IGRAPHICS_VULKAN && defined IGRAPHICS_SKIA
+      if (pView)
+      {
+        if (auto* ui = mOwner.GetUI())
+          ui->SetHostContentScaleBypassed(true);
+      }
+#endif
 #elif defined OS_MAC
       if (strcmp(type, Steinberg::kPlatformTypeNSView) == 0)
         pView = mOwner.OpenWindow(pParent);

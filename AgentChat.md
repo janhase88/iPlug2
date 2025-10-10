@@ -1,3 +1,3 @@
 # AgentChat
 
-- Bypassed the host content scale on Windows VST3 Skia/Vulkan by tracking the raw per-window DPI, rescaling the parent chain, and refreshing the swapchain so the canvas now matches the physical monitor pixels. Next I'll wrap this up with the diff summary and testing details for you to review.
+- Kept Phase 2 active while we validate the physical-DPI path; the window and swapchain stay synced to the monitor pixels, and next I'm reviewing the remaining integration points to confirm everything is covered.

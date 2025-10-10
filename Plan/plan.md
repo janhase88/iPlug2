@@ -5,7 +5,10 @@ Ensure Windows VST3 editors that render with the Skia/Vulkan backend always draw
 
 ## Status
 - [x] Phase 1 — Investigation & Audit (see `WinVST3VulkanSkia_Audit.md`)
-- [x] Phase 2 — Implementation & Integration
+- [ ] Phase 2 — Implementation & Integration — **in progress**
+
+### Current Focus
+- Validating and refining the Phase 2 changes so every Windows VST3 Skia/Vulkan editor consistently renders at the physical monitor DPI while window and swapchain sizes stay aligned.
 
 ## Scope & Constraints
 - Platform: Windows only.

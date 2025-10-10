@@ -9,7 +9,6 @@
 - Changed:
   - AgentChat.md
   - IGraphics/Platforms/IGraphicsWin.cpp
-  - IGraphics/Platforms/IGraphicsWin.h
   - Plan/plan.md
   - Plan/Plan-Summary.md
   - Plan/WinVST3VulkanSkia_CurrentState.md
@@ -24,4 +23,4 @@
   - 8. Documentation & Clean-Up — PREVIOUS STATUS: PARTIAL / CURRENT STATUS: PARTIAL (docs refreshed for the new logging focus; cleanup waits on validation evidence)
 
 [x] Message to User:
-Please rebuild and run at 150 % DPI. Grab `OpenWindow`, `SetHostContentScaleBypassed` (confirm `mixedDpi=true`), `RefreshPlatformScale`, `PlatformResize`, `DrawResize`, and `SwapchainExtent`. `OpenWindow` should now log `bypass=true` immediately—if the swapchain still reports 1200×500 after that, send the log so I can keep digging. If anything is missing from the debug stream or the canvas remains blurry, let me know so I can expand the instrumentation.
+Please rebuild and run at 150 % DPI. Grab `OpenWindow`, `SetHostContentScaleBypassed` (confirm `mixedDpi=true`), `RefreshPlatformScale`, `PlatformResize`, `DrawResize`, and the very first `SwapchainExtent`. The swapchain request now seeds from the physical DPI, so that line should jump straight to something like 1800×750—if it still prints 1200×500, send the capture and we’ll keep chasing the surface capabilities. If anything is missing from the debug stream or the canvas remains blurry, let me know so I can expand the instrumentation.

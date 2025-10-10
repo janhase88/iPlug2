@@ -38,9 +38,9 @@
 #include <VersionHelpers.h>
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cctype>
 #include <chrono>
-#include <cmath>
 #include <condition_variable>
 #include <cstdint>
 #include <cstdlib>
@@ -4000,7 +4000,29 @@ bool IGraphicsWin::CreateVulkanContext()
 
   mVkSwapchain.device = mVkDevice;
   bool submissionPending = false;
-  res = CreateOrResizeVulkanSwapchain(caps.currentExtent.width, caps.currentExtent.height, mVkSwapchain.handle, mVkSwapchainImages, mVkFormat, mVkSwapchainUsageFlags, submissionPending);
+  uint32_t requestedWidth = caps.currentExtent.width;
+  uint32_t requestedHeight = caps.currentExtent.height;
+
+#if defined IGRAPHICS_VULKAN && defined IGRAPHICS_SKIA
+  if (mBypassHostContentScale)
+  {
+    const float physicalScale = MeasureWindowScale();
+
+    if (std::isfinite(physicalScale) && physicalScale > 0.f)
+    {
+      requestedWidth = static_cast<uint32_t>(std::round(static_cast<float>(WindowWidth()) * physicalScale));
+      requestedHeight = static_cast<uint32_t>(std::round(static_cast<float>(WindowHeight()) * physicalScale));
+    }
+  }
+#endif
+
+  if (requestedWidth == 0 || requestedWidth == UINT32_MAX)
+    requestedWidth = std::max<uint32_t>(1u, WindowWidth());
+
+  if (requestedHeight == 0 || requestedHeight == UINT32_MAX)
+    requestedHeight = std::max<uint32_t>(1u, WindowHeight());
+
+  res = CreateOrResizeVulkanSwapchain(requestedWidth, requestedHeight, mVkSwapchain.handle, mVkSwapchainImages, mVkFormat, mVkSwapchainUsageFlags, submissionPending);
   if (res != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("CreateVulkanContext",

@@ -2291,9 +2291,29 @@ void IGraphicsSkia::EndFrame()
   }
   #endif
 #if defined OS_WIN
-  if (mScreenSurface)
+  const HWND hwnd = reinterpret_cast<HWND>(GetWindow());
+  if (!mScreenSurface)
   {
-    SkCanvas* screenCanvas = mScreenSurface->getCanvas();
+    DBGMSG("SkiaVulkan.EndFrame: hwnd=%p no screen surface skipFrame=%d currentImage=%d imageCount=%zu\n",
+           hwnd,
+           static_cast<int>(mVKSkipFrame),
+           static_cast<int>(mVKCurrentImage),
+           static_cast<size_t>(mVKSwapchainImages.size()));
+    return;
+  }
+
+  SkCanvas* screenCanvas = mScreenSurface->getCanvas();
+  if (!screenCanvas)
+  {
+    DBGMSG("SkiaVulkan.EndFrame: hwnd=%p no screen canvas skipFrame=%d currentImage=%d imageCount=%zu\n",
+           hwnd,
+           static_cast<int>(mVKSkipFrame),
+           static_cast<int>(mVKCurrentImage),
+           static_cast<size_t>(mVKSwapchainImages.size()));
+    return;
+  }
+
+  {
     float scaleX = 1.f;
     float scaleY = 1.f;
 
@@ -2314,7 +2334,6 @@ void IGraphicsSkia::EndFrame()
     const bool applyScale = (std::fabs(scaleX - 1.f) > 0.001f || std::fabs(scaleY - 1.f) > 0.001f);
 
 #if defined OS_WIN
-    const HWND hwnd = reinterpret_cast<HWND>(GetWindow());
     const float screenScale = GetScreenScale();
     const float windowScale = mPresentationWindowScale;
     const float monitorScale = mPresentationMonitorScale;
@@ -2388,10 +2407,6 @@ void IGraphicsSkia::EndFrame()
     {
       mSurface->draw(screenCanvas, 0.0, 0.0, nullptr);
     }
-  }
-  else if (mScreenSurface)
-  {
-    mSurface->draw(mScreenSurface->getCanvas(), 0.0, 0.0, nullptr);
   }
 #else
   mSurface->draw(mScreenSurface->getCanvas(), 0.0, 0.0, nullptr);

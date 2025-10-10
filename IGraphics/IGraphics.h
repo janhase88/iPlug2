@@ -1129,18 +1129,6 @@ public:
   * @return The scale factor of the screen/display on which this graphics context is currently located */
   int GetRoundedScreenScale() const { return static_cast<int>(std::ceil(GetScreenScale())); }
 
-  /** Override to request that the platform layer ignore host-provided content scale hints */
-  virtual void SetHostContentScaleBypassed(bool bypass) {}
-
-  /** @return true if host content scale hints are currently bypassed */
-  virtual bool HostContentScaleBypassed() const { return false; }
-
-  /**
-   * @return The scale factor that should be used to translate host-reported window dimensions back into logical UI coordinates
-   *         when the host resizes the editor window.
-   */
-  virtual float GetBackingPixelScaleForParentResize() const { return GetPlatformWindowScale(); }
-
   /** Gets the combined draw and screen/display scaling factor
   * @return The draw scale * screen scale */
   float GetTotalScale() const { return mDrawScale * mScreenScale; }

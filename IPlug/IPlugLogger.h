@@ -35,7 +35,7 @@
 
 BEGIN_IPLUG_NAMESPACE
 
-#if !defined(IPLUG_LOGGING_ALWAYS_ON) && defined(NDEBUG)
+#ifdef NDEBUG
   #define DBGMSG(...) do {} while(0)// should be optimized away
 #else
   #if defined(OS_MAC) || defined(OS_LINUX) || defined(OS_WEB) || defined(OS_IOS)

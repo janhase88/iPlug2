@@ -14,10 +14,6 @@
 #include "pluginterfaces/base/keycodes.h"
 
 #include "IPlugStructs.h"
-#include "IGraphics.h"
-
-using namespace iplug;
-using namespace igraphics;
 
 /** IPlug VST3 View  */
 template <class T>
@@ -120,38 +116,7 @@ public:
       void* pView = nullptr;
 #ifdef OS_WIN
       if (strcmp(type, Steinberg::kPlatformTypeHWND) == 0)
-      {
-#if defined IGRAPHICS_VULKAN && defined IGRAPHICS_SKIA
-        IGraphics* ui = mOwner.GetUI();
-        bool previousBypass = false;
-        if (ui)
-        {
-          previousBypass = ui->HostContentScaleBypassed();
-          ui->SetHostContentScaleBypassed(true);
-        }
-#endif
         pView = mOwner.OpenWindow(pParent);
-#if defined IGRAPHICS_VULKAN && defined IGRAPHICS_SKIA
-        if (!ui)
-        {
-          ui = mOwner.GetUI();
-          if (ui)
-            previousBypass = ui->HostContentScaleBypassed();
-        }
-
-        if (ui)
-        {
-          if (pView)
-          {
-            ui->SetHostContentScaleBypassed(true);
-          }
-          else
-          {
-            ui->SetHostContentScaleBypassed(previousBypass);
-          }
-        }
-#endif
-      }
 #elif defined OS_MAC
       if (strcmp(type, Steinberg::kPlatformTypeNSView) == 0)
         pView = mOwner.OpenWindow(pParent);
@@ -174,11 +139,7 @@ public:
 
   Steinberg::tresult PLUGIN_API setContentScaleFactor(ScaleFactor factor) override
   {
-#if defined OS_WIN && defined IGRAPHICS_VULKAN && defined IGRAPHICS_SKIA
-    (void) factor;
-#else
     mOwner.SetScreenScale(factor);
-#endif
 
     return Steinberg::kResultOk;
   }

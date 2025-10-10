@@ -1,21 +1,22 @@
-[x] Continued From Previous Snapshot: YES — Continuing the Windows VST3 Skia/Vulkan physical-DPI rollout while reworking the window/swapchain handshake and logging.
+[x] Continued From Previous Snapshot: NO — restarted after reverting the previous DPI experiments.
 -----------------
 [x] File Overview:
-- Num files Changed: 7
-- Num files Created: 0
-- Num lines Modified: ~140
+- Num files Changed: 4
+- Num files Created: 2
+- Num lines Modified: (see diff)
 
 [x] List of Files changed/created:
-- Changed:
-  - AgentChat.md
-  - IGraphics/Platforms/IGraphicsWin.cpp
-  - Plan/plan.md
+- IPlug/IPlug_include_in_plug_src.h
+- IPlug/ReaperExt/ReaperExt_include_in_plug_src.h
+- AgentChat.md
+- Plan/plan.md
+- Plan/Plan-Summary.md
 
 -----------------
 [x] Current plan:
-- Phase 2 — Implementation & Integration — PREVIOUS STATUS: REWORKING / CURRENT STATUS: REWORKING (splitting host-vs-physical window scales so the HWND uses physical pixels while host negotiations stay logical)
-  - 7. Validation & Regression Testing — PREVIOUS STATUS: PARTIAL / CURRENT STATUS: EXECUTION OUTSTANDING (manual checklist ready; need host sessions and artefacts once blur resolved)
-  - 8. Documentation & Clean-Up — PREVIOUS STATUS: PARTIAL / CURRENT STATUS: PARTIAL (docs refreshed for the new logging focus; cleanup waits on validation evidence)
+- Phase 1 — PREVIOUS STATUS: OPEN / CURRENT STATUS: SUCCESS
+- Phase 2 — PREVIOUS STATUS: OPEN / CURRENT STATUS: IN PROGRESS
+- Phase 3 — PREVIOUS STATUS: OPEN / CURRENT STATUS: OPEN
 
 [x] Message to User:
-Please rebuild and run at 150 % DPI. The host-vs-physical scales are now separated, so `PlatformResize` should report `hostScale=1.000` and `physicalScale=1.500` while `SwapchainExtent` and `DrawResize` both land on 1800×750. If the canvas is still blurry, send those logs so we can confirm the window and swapchain really switched to physical pixels before digging deeper into the Vulkan path.
+Derived the physical DPI by combining `GetDpiForWindow` with the monitor's real pixel dimensions so the Windows builds should now report ~1.5 at 150 % even in DPI-virtualized hosts. Once you rebuild, please capture the refreshed logs so we can confirm the swapchain is finally sized with the physical pixels.

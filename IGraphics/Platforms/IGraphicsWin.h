@@ -30,7 +30,6 @@
 #include <array>
 #include <initializer_list>
 #include <mutex>
-#include <cmath>
 
 #ifdef IGRAPHICS_VULKAN
   #define VK_USE_PLATFORM_WIN32_KHR
@@ -88,20 +87,7 @@ public:
   void* GetWinModuleHandle() override { return mHInstance; }
 
   void ForceEndUserEdit() override;
-  float GetPlatformWindowScale() const override
-  {
-    const float preferred = mBypassHostContentScale ? mPhysicalWindowScale : mWindowDPIScale;
-
-    if (preferred > 0.f && std::isfinite(preferred))
-      return preferred;
-
-    const float fallback = mBypassHostContentScale ? mWindowDPIScale : GetScreenScale();
-    return (fallback > 0.f && std::isfinite(fallback)) ? fallback : 1.f;
-  }
-
-  void SetHostContentScaleBypassed(bool bypass) override;
-  bool HostContentScaleBypassed() const override { return mBypassHostContentScale; }
-  float GetBackingPixelScaleForParentResize() const override;
+  float GetPlatformWindowScale() const override { return GetScreenScale(); }
 
   void PlatformResize(bool parentHasResized) override;
 
@@ -198,10 +184,6 @@ protected:
   IRECT GetWindowRECT();
 
 private:
-  void RefreshPlatformScale(bool force);
-  float MeasureWindowScale() const;
-  float MeasureWindowDPIScale() const;
-
   // OLE drag & drop
   DragAndDropHelpers::DropTarget* mDropTarget = nullptr;
   bool mOLEInited = false;
@@ -271,11 +253,6 @@ private:
   WNDPROC mDefEditProc = nullptr;
   HFONT mEditFont = nullptr;
   DWORD mPID = 0;
-  float mWindowDPIScale = 1.f;
-  float mPhysicalWindowScale = 1.f;
-  bool mBypassHostContentScale = false;
-  void* mPreviousDpiContext = nullptr;
-  bool mMixedDpiHostingEnabled = false;
 
   void StartVBlankThread(HWND hWnd);
   void StopVBlankThread();

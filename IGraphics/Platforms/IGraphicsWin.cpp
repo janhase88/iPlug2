@@ -10,16 +10,6 @@
 
 // #define IGRAPHICS_DISABLE_VSYNC
 
-#ifndef IPLUG_LOGGING_ALWAYS_ON
-#define IPLUG_LOGGING_ALWAYS_ON 1
-#endif
-
-#if defined IGRAPHICS_VULKAN
-  #ifndef IGRAPHICS_VULKAN_LOG_VERBOSITY
-    #define IGRAPHICS_VULKAN_LOG_VERBOSITY 2
-  #endif
-#endif
-
 #include <Shlobj.h>
 #include <commctrl.h>
 
@@ -38,9 +28,9 @@
 #include <VersionHelpers.h>
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
 #include <cstdint>
 #include <cstdlib>
@@ -108,74 +98,6 @@ void RecordSchedulerSample(const IGraphicsWin::InstancePaintBudget::Snapshot& sn
                            uint32_t droppedVBlank,
                            bool forgivenessActive);
 #endif
-
-using SetThreadDpiAwarenessContextFn = void* (WINAPI*)(void*);
-using SetThreadDpiHostingBehaviorFn = int (WINAPI*)(int);
-
-SetThreadDpiAwarenessContextFn ResolveSetThreadDpiAwarenessContext()
-{
-  static SetThreadDpiAwarenessContextFn fn = []() -> SetThreadDpiAwarenessContextFn {
-    HMODULE user32 = GetModuleHandleW(L"user32.dll");
-    if (!user32)
-      user32 = LoadLibraryW(L"user32.dll");
-    if (!user32)
-      return nullptr;
-
-    return reinterpret_cast<SetThreadDpiAwarenessContextFn>(
-      GetProcAddress(user32, "SetThreadDpiAwarenessContext"));
-  }();
-
-  return fn;
-}
-
-void* EnterPerMonitorAwareV2Context()
-{
-  auto fn = ResolveSetThreadDpiAwarenessContext();
-  if (!fn)
-    return nullptr;
-
-  return fn(reinterpret_cast<void*>(static_cast<intptr_t>(-4)));
-}
-
-void RestoreThreadDpiAwareness(void*& token)
-{
-  if (!token)
-    return;
-
-  auto fn = ResolveSetThreadDpiAwarenessContext();
-  if (!fn)
-    return;
-
-  fn(token);
-  token = nullptr;
-}
-
-bool EnableMixedDpiHosting()
-{
-  constexpr int kDpiHostingBehaviorMixed = 1;
-  static bool attempted = false;
-  static bool enabled = false;
-
-  if (attempted)
-    return enabled;
-
-  attempted = true;
-
-  HMODULE user32 = GetModuleHandleW(L"user32.dll");
-  if (!user32)
-    user32 = LoadLibraryW(L"user32.dll");
-  if (!user32)
-    return false;
-
-  auto fn = reinterpret_cast<SetThreadDpiHostingBehaviorFn>(
-    GetProcAddress(user32, "SetThreadDpiHostingBehavior"));
-  if (!fn)
-    return false;
-
-  fn(kDpiHostingBehaviorMixed);
-  enabled = true;
-  return enabled;
-}
 } // namespace
 
 class VBlankDispatchWorker
@@ -544,56 +466,6 @@ StaticStorage<HFontHolder> IGraphicsWin::sHFontCache;
 } // namespace iplug::igraphics
 
 extern float GetScaleForHWND(HWND hWnd);
-
-namespace
-{
-using GetDpiForWindowProc = UINT(WINAPI*)(HWND);
-
-GetDpiForWindowProc ResolveGetDpiForWindow()
-{
-  static GetDpiForWindowProc sGetDpiForWindow = nullptr;
-  static bool sAttemptedLoad = false;
-
-  if (!sAttemptedLoad)
-  {
-    HMODULE user32 = LoadLibraryW(L"user32.dll");
-    if (user32)
-    {
-      sGetDpiForWindow = reinterpret_cast<GetDpiForWindowProc>(GetProcAddress(user32, "GetDpiForWindow"));
-    }
-    sAttemptedLoad = true;
-  }
-
-  return sGetDpiForWindow;
-}
-
-float ComputeWindowDpiScale(HWND hWnd)
-{
-  if (hWnd)
-  {
-    if (const GetDpiForWindowProc dpiProc = ResolveGetDpiForWindow())
-    {
-      const UINT dpi = dpiProc(hWnd);
-      if (dpi > 0)
-        return static_cast<float>(dpi) / static_cast<float>(USER_DEFAULT_SCREEN_DPI);
-    }
-  }
-
-  HWND dcWindow = hWnd ? hWnd : nullptr;
-  HDC screenDC = GetDC(dcWindow);
-
-  if (screenDC)
-  {
-    const int logPixels = GetDeviceCaps(screenDC, LOGPIXELSX);
-    ReleaseDC(dcWindow, screenDC);
-
-    if (logPixels > 0)
-      return static_cast<float>(logPixels) / static_cast<float>(USER_DEFAULT_SCREEN_DPI);
-  }
-
-  return 1.f;
-}
-} // namespace
 
 namespace iplug::igraphics
 {
@@ -2313,7 +2185,9 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
   // TODO: move this... listen to the right messages in windows for screen resolution changes, etc.
   if (!GetCapture()) // workaround Windows issues with window sizing during mouse move
   {
-    RefreshPlatformScale(false);
+    float scale = GetScaleForHWND(mPlugWnd);
+    if (scale != GetScreenScale())
+      SetScreenScale(scale);
   }
 
   // TODO: this is far too aggressive for slow drawing animations and data changing.  We need to
@@ -2756,21 +2630,6 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
       pGraphics->OnMouseWheel(info.x - (r.left / scale), info.y - (r.top / scale), info.ms, d);
       return 0;
     }
-  }
-  case WM_DPICHANGED: {
-    if (const RECT* suggested = reinterpret_cast<const RECT*>(lParam))
-    {
-      SetWindowPos(hWnd,
-                   nullptr,
-                   suggested->left,
-                   suggested->top,
-                   suggested->right - suggested->left,
-                   suggested->bottom - suggested->top,
-                   SWP_NOZORDER | SWP_NOACTIVATE);
-    }
-
-    pGraphics->RefreshPlatformScale(true);
-    return 0;
   }
   case WM_WINDOWPOSCHANGING: {
     if (WINDOWPOS* wp = reinterpret_cast<WINDOWPOS*>(lParam))
@@ -3623,104 +3482,36 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
 {
   if (WindowIsOpen())
   {
-    int dlgW = 0, dlgH = 0;
+    HWND pParent = 0, pGrandparent = 0;
+    int dlgW = 0, dlgH = 0, parentW = 0, parentH = 0, grandparentW = 0, grandparentH = 0;
     GetWindowSize(mPlugWnd, &dlgW, &dlgH);
-    const float windowScale = GetPlatformWindowScale();
-    const float renderScale = GetScreenScale();
-    const float hostScale = (mWindowDPIScale > 0.f && std::isfinite(mWindowDPIScale)) ? mWindowDPIScale : 1.f;
-    const float physicalScale = (mPhysicalWindowScale > 0.f && std::isfinite(mPhysicalWindowScale)) ? mPhysicalWindowScale : renderScale;
-    const bool renderScaleValid = renderScale > 0.f && std::isfinite(renderScale);
-    const bool windowScaleValid = windowScale > 0.f && std::isfinite(windowScale);
-    const bool hostScaleValid = hostScale > 0.f && std::isfinite(hostScale);
-    const int logicalWidth = WindowWidth();
-    const int logicalHeight = WindowHeight();
-    const float targetScale = windowScaleValid ? windowScale : 1.f;
-    const int targetWidth = static_cast<int>(std::round(static_cast<float>(logicalWidth) * targetScale));
-    const int targetHeight = static_cast<int>(std::round(static_cast<float>(logicalHeight) * targetScale));
-    const int renderWidth = renderScaleValid ? static_cast<int>(std::round(static_cast<float>(logicalWidth) * renderScale))
-                                             : targetWidth;
-    const int renderHeight = renderScaleValid ? static_cast<int>(std::round(static_cast<float>(logicalHeight) * renderScale))
-                                              : targetHeight;
-    const float virtualizationRatio = (hostScaleValid && renderScaleValid && hostScale > 0.f)
-                                        ? (renderScale / hostScale)
-                                        : 1.f;
+    int dw = (WindowWidth() * GetScreenScale()) - dlgW, dh = (WindowHeight() * GetScreenScale()) - dlgH;
 
-    DBGMSG("IGraphicsWin: PlatformResize windowScale=%.3f renderScale=%.3f hostScale=%.3f physicalScale=%.3f targetPixels=%dx%d renderPixels=%dx%d current=%dx%d bypass=%s parentHasResized=%s ratio=%.3f\n",
-           windowScale,
-           renderScale,
-           hostScale,
-           physicalScale,
-           targetWidth,
-           targetHeight,
-           renderWidth,
-           renderHeight,
-           dlgW,
-           dlgH,
-           mBypassHostContentScale ? "true" : "false",
-           parentHasResized ? "true" : "false",
-           virtualizationRatio);
-
-#if defined IGRAPHICS_VULKAN
-    IGRAPHICS_VK_LOG("PlatformResize",
-                     "scales",
-                     vulkanlog::Severity::kInfo,
-                     vulkanlog::MakeField("window", std::to_string(windowScale)),
-                     vulkanlog::MakeField("render", std::to_string(renderScale)),
-                     vulkanlog::MakeField("physical", std::to_string(physicalScale)),
-                     vulkanlog::MakeField("targetPixels", std::to_string(targetWidth) + "x" + std::to_string(targetHeight)),
-                     vulkanlog::MakeField("renderPixels", std::to_string(renderWidth) + "x" + std::to_string(renderHeight)),
-                     vulkanlog::MakeField("bypass", mBypassHostContentScale),
-                     vulkanlog::MakeField("parentHasResized", parentHasResized),
-                     vulkanlog::MakeField("host", std::to_string(hostScale)),
-                     vulkanlog::MakeField("ratio", std::to_string(virtualizationRatio)));
-#endif
-    int dw = targetWidth - dlgW;
-    int dh = targetHeight - dlgH;
-
-    std::vector<std::pair<HWND, std::pair<int, int>>> ancestorSizes;
-    HWND ancestor = mPlugWnd;
-    while ((ancestor = GetParent(ancestor)) != nullptr)
+    if (IsChildWindow(mPlugWnd))
     {
-      int ancW = 0;
-      int ancH = 0;
-      GetWindowSize(ancestor, &ancW, &ancH);
-      ancestorSizes.emplace_back(ancestor, std::make_pair(ancW, ancH));
+      pParent = GetParent(mPlugWnd);
+      GetWindowSize(pParent, &parentW, &parentH);
 
-      if (!IsChildWindow(ancestor))
-        break;
+      if (IsChildWindow(pParent))
+      {
+        pGrandparent = GetParent(pParent);
+        GetWindowSize(pGrandparent, &grandparentW, &grandparentH);
+      }
     }
 
     if (!dw && !dh)
       return;
 
-    const bool forceParentResize = mBypassHostContentScale;
-
-    if (!ancestorSizes.empty() && (!parentHasResized || forceParentResize))
-    {
-      for (auto it = ancestorSizes.rbegin(); it != ancestorSizes.rend(); ++it)
-      {
-        HWND hwnd = it->first;
-        const int ancW = it->second.first;
-        const int ancH = it->second.second;
-        if (hwnd)
-          SetWindowPos(hwnd, 0, 0, 0, ancW + dw, ancH + dh, SETPOS_FLAGS);
-      }
-    }
-
     SetWindowPos(mPlugWnd, 0, 0, 0, dlgW + dw, dlgH + dh, SETPOS_FLAGS);
 
-    if (mPlugWnd)
+    if (pParent && !parentHasResized)
     {
-      int finalW = 0;
-      int finalH = 0;
-      GetWindowSize(mPlugWnd, &finalW, &finalH);
-      DBGMSG("IGraphicsWin: PlatformResize applied target=%dx%d final=%dx%d render=%dx%d\n",
-             targetWidth,
-             targetHeight,
-             finalW,
-             finalH,
-             renderWidth,
-             renderHeight);
+      SetWindowPos(pParent, 0, 0, 0, parentW + dw, parentH + dh, SETPOS_FLAGS);
+    }
+
+    if (pGrandparent && !parentHasResized)
+    {
+      SetWindowPos(pGrandparent, 0, 0, 0, grandparentW + dw, grandparentH + dh, SETPOS_FLAGS);
     }
   }
 }
@@ -4003,29 +3794,7 @@ bool IGraphicsWin::CreateVulkanContext()
 
   mVkSwapchain.device = mVkDevice;
   bool submissionPending = false;
-  uint32_t requestedWidth = caps.currentExtent.width;
-  uint32_t requestedHeight = caps.currentExtent.height;
-
-#if defined IGRAPHICS_VULKAN && defined IGRAPHICS_SKIA
-  if (mBypassHostContentScale)
-  {
-    const float physicalScale = MeasureWindowScale();
-
-    if (std::isfinite(physicalScale) && physicalScale > 0.f)
-    {
-      requestedWidth = static_cast<uint32_t>(std::round(static_cast<float>(WindowWidth()) * physicalScale));
-      requestedHeight = static_cast<uint32_t>(std::round(static_cast<float>(WindowHeight()) * physicalScale));
-    }
-  }
-#endif
-
-  if (requestedWidth == 0 || requestedWidth == UINT32_MAX)
-    requestedWidth = std::max<uint32_t>(1u, WindowWidth());
-
-  if (requestedHeight == 0 || requestedHeight == UINT32_MAX)
-    requestedHeight = std::max<uint32_t>(1u, WindowHeight());
-
-  res = CreateOrResizeVulkanSwapchain(requestedWidth, requestedHeight, mVkSwapchain.handle, mVkSwapchainImages, mVkFormat, mVkSwapchainUsageFlags, submissionPending);
+  res = CreateOrResizeVulkanSwapchain(caps.currentExtent.width, caps.currentExtent.height, mVkSwapchain.handle, mVkSwapchainImages, mVkFormat, mVkSwapchainUsageFlags, submissionPending);
   if (res != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("CreateVulkanContext",
@@ -4288,9 +4057,7 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
   swapInfo.imageColorSpace = surfaceFormat.colorSpace;
   uint32_t swapWidth = width;
   uint32_t swapHeight = height;
-  const bool bypassVirtualExtent = mBypassHostContentScale;
-
-  if (caps.currentExtent.width != UINT32_MAX && !bypassVirtualExtent)
+  if (caps.currentExtent.width != UINT32_MAX)
   {
     swapWidth = caps.currentExtent.width;
     swapHeight = caps.currentExtent.height;
@@ -4300,10 +4067,6 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
     swapWidth = std::max(caps.minImageExtent.width, std::min(width, caps.maxImageExtent.width));
     swapHeight = std::max(caps.minImageExtent.height, std::min(height, caps.maxImageExtent.height));
   }
-  DBGMSG("IGraphicsWin: SwapchainExtent width=%u height=%u bypassVirtualExtent=%s\n",
-         swapWidth,
-         swapHeight,
-         bypassVirtualExtent ? "true" : "false");
   swapInfo.imageExtent.width = swapWidth;
   swapInfo.imageExtent.height = swapHeight;
   swapInfo.imageArrayLayers = 1;
@@ -4324,7 +4087,6 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
                       vulkanlog::MakeField("width", static_cast<uint32_t>(swapInfo.imageExtent.width)),
                        vulkanlog::MakeField("height", static_cast<uint32_t>(swapInfo.imageExtent.height)),
                        vulkanlog::MakeField("minImageCount", static_cast<uint32_t>(swapInfo.minImageCount)),
-                       vulkanlog::MakeField("bypassVirtualExtent", bypassVirtualExtent),
                        vulkanlog::MakeField("usage", static_cast<uint32_t>(swapInfo.imageUsage)),
                        vulkanlog::MakeHandleField("oldSwapchain", vulkanlog::HandleToUint64(reinterpret_cast<uintptr_t>(mVkSwapchain.handle))));
 
@@ -4440,169 +4202,12 @@ EMsgBoxResult IGraphicsWin::ShowMessageBox(const char* str, const char* title, E
   return result;
 }
 
-float IGraphicsWin::MeasureWindowScale() const
-{
-  const HWND target = mPlugWnd ? mPlugWnd : mParentWnd;
-  if (!target)
-    return 1.f;
-
-  const float measured = GetScaleForHWND(target);
-  if (!std::isfinite(measured) || measured <= 0.f)
-    return 1.f;
-
-  return measured;
-}
-
-float IGraphicsWin::MeasureWindowDPIScale() const
-{
-  const HWND target = mPlugWnd ? mPlugWnd : mParentWnd;
-  const float dpiScale = ComputeWindowDpiScale(target);
-
-  if (!std::isfinite(dpiScale) || dpiScale <= 0.f)
-    return 1.f;
-
-  return dpiScale;
-}
-
-void IGraphicsWin::SetHostContentScaleBypassed(bool bypass)
-{
-  if (bypass)
-  {
-    if (!mMixedDpiHostingEnabled)
-      mMixedDpiHostingEnabled = EnableMixedDpiHosting();
-
-    if (!mPreviousDpiContext)
-      mPreviousDpiContext = EnterPerMonitorAwareV2Context();
-  }
-  else
-  {
-    RestoreThreadDpiAwareness(mPreviousDpiContext);
-  }
-
-  if (mBypassHostContentScale == bypass)
-  {
-    if (bypass && WindowIsOpen())
-      RefreshPlatformScale(true);
-
-    return;
-  }
-
-  const bool previous = mBypassHostContentScale;
-  mBypassHostContentScale = bypass;
-
-  DBGMSG("IGraphicsWin: SetHostContentScaleBypassed %s -> %s mixedDpi=%s\n",
-         previous ? "true" : "false",
-         mBypassHostContentScale ? "true" : "false",
-         mMixedDpiHostingEnabled ? "true" : "false");
-
-#if defined IGRAPHICS_VULKAN
-  IGRAPHICS_VK_LOG("SetHostContentScaleBypassed",
-                   "toggle",
-                   vulkanlog::Severity::kInfo,
-                   vulkanlog::MakeField("previous", previous),
-                   vulkanlog::MakeField("current", mBypassHostContentScale));
-#endif
-
-  if (WindowIsOpen())
-    RefreshPlatformScale(true);
-}
-
-float IGraphicsWin::GetBackingPixelScaleForParentResize() const
-{
-  if (mWindowDPIScale > 0.f && std::isfinite(mWindowDPIScale))
-    return mWindowDPIScale;
-
-  return 1.f;
-}
-
-void IGraphicsWin::RefreshPlatformScale(bool force)
-{
-  const float measured = MeasureWindowScale();
-  const float dpiScale = MeasureWindowDPIScale();
-
-  if (dpiScale > 0.f && std::isfinite(dpiScale))
-    mWindowDPIScale = dpiScale;
-  else
-    mWindowDPIScale = 1.f;
-
-  if (measured > 0.f && std::isfinite(measured))
-    mPhysicalWindowScale = measured;
-  else if (!std::isfinite(mPhysicalWindowScale) || mPhysicalWindowScale <= 0.f)
-    mPhysicalWindowScale = 1.f;
-
-  const float current = GetScreenScale();
-  if (!force)
-  {
-    if (std::fabs(measured - current) < 0.001f)
-      return;
-  }
-
-  DBGMSG("IGraphicsWin: RefreshPlatformScale measured=%.3f host=%.3f bypass=%s force=%s\n",
-         measured,
-         mWindowDPIScale,
-         mBypassHostContentScale ? "true" : "false",
-         force ? "true" : "false");
-
-#if defined IGRAPHICS_VULKAN
-  IGRAPHICS_VK_LOG("RefreshPlatformScale",
-                   "dpiUpdate",
-                   vulkanlog::Severity::kInfo,
-                   vulkanlog::MakeField("measured", std::to_string(measured)),
-                   vulkanlog::MakeField("host", std::to_string(mWindowDPIScale)),
-                   vulkanlog::MakeField("bypass", mBypassHostContentScale),
-                   vulkanlog::MakeField("force", force));
-#endif
-
-  if (measured > 0.f && std::isfinite(measured))
-    SetScreenScale(measured);
-}
-
 void* IGraphicsWin::OpenWindow(void* pParent)
 {
   mParentWnd = (HWND)pParent;
-
-#if defined IGRAPHICS_VULKAN && defined IGRAPHICS_SKIA
-  // Ensure the DPI bypass is active before measuring any window metrics so the HWND
-  // is created inside the per-monitor-aware context and Windows reports the physical
-  // pixel bounds instead of the host’s virtualized size.
-  if (!mBypassHostContentScale)
-    SetHostContentScaleBypassed(true);
-#endif
-
-  const float physicalScale = GetScaleForHWND(mParentWnd);
-  const float hostScale = ComputeWindowDpiScale(mParentWnd);
-  const bool hostScaleValid = hostScale > 0.f && std::isfinite(hostScale);
-  const bool physicalScaleValid = physicalScale > 0.f && std::isfinite(physicalScale);
-  float windowScale = 1.f;
-
-  if (hostScaleValid)
-    windowScale = hostScale;
-  else if (physicalScaleValid)
-    windowScale = physicalScale;
-  else
-    windowScale = 1.f;
-
-  if (hostScaleValid)
-    mWindowDPIScale = hostScale;
-  else if (!std::isfinite(mWindowDPIScale) || mWindowDPIScale <= 0.f)
-    mWindowDPIScale = 1.f;
-
-  if (physicalScaleValid)
-    mPhysicalWindowScale = physicalScale;
-  else if (!std::isfinite(mPhysicalWindowScale) || mPhysicalWindowScale <= 0.f)
-    mPhysicalWindowScale = 1.f;
-
-  if (!std::isfinite(windowScale) || windowScale <= 0.f)
-    windowScale = 1.f;
-
-  DBGMSG("IGraphicsWin: OpenWindow hostScale=%.3f physicalScale=%.3f bypass=%s windowScale=%.3f\n",
-         hostScaleValid ? hostScale : -1.f,
-         physicalScaleValid ? physicalScale : -1.f,
-         mBypassHostContentScale ? "true" : "false",
-         windowScale);
-
-  const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * windowScale));
-  const int scaledHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * windowScale));
+  const float screenScale = GetScaleForHWND(mParentWnd);
+  const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * screenScale));
+  const int scaledHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * screenScale));
   int x = 0;
   int y = 0;
   int w = scaledWidth;
@@ -4664,7 +4269,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   #endif
 #endif
 
-  RefreshPlatformScale(true); // resizes draw context using measured physical DPI
+  SetScreenScale(screenScale); // resizes draw context
 
   GetDelegate()->LayoutUI(this);
 
@@ -4886,9 +4491,6 @@ void IGraphicsWin::CloseWindow()
 
 
     mPlugWnd = 0;
-
-    if (mBypassHostContentScale)
-      RestoreThreadDpiAwareness(mPreviousDpiContext);
 
     if (--nWndClassReg == 0)
     {

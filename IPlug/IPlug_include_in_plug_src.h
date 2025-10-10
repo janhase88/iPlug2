@@ -10,6 +10,9 @@
 
 #pragma once
 
+#include <algorithm>
+#include <cmath>
+
 /**
  * @file IPlug_include_in_plug_src.h
  * @brief IPlug source include
@@ -42,46 +45,61 @@
     if (!__GetDpiForWindow)
     {
       HINSTANCE h = LoadLibraryW(L"user32.dll");
-      if (h) *(void **)&__GetDpiForWindow = GetProcAddress(h, "GetDpiForWindow");
+      if (h)
+        *(void**)&__GetDpiForWindow = GetProcAddress(h, "GetDpiForWindow");
 
       if (!__GetDpiForWindow)
-        *(INT_PTR*)&__GetDpiForWindow = 1;
+        return 1.f;
     }
 
-    float scale = 1.f;
+    const int windowDpi = __GetDpiForWindow(hWnd);
+    float dpiScale = 1.f;
 
-    if (__GetDpiForWindow && reinterpret_cast<INT_PTR>(__GetDpiForWindow) != 1)
+    if (windowDpi != USER_DEFAULT_SCREEN_DPI)
     {
-      const int dpi = __GetDpiForWindow(hWnd);
-
-      if (dpi > 0)
-        scale = static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI;
-    }
-
-    HWND dcWindow = hWnd ? hWnd : nullptr;
-    HDC screenDC = GetDC(dcWindow);
-
-    if (screenDC)
-    {
-      const int virtualizedWidth = GetDeviceCaps(screenDC, HORZRES);
-      const int physicalWidth = GetDeviceCaps(screenDC, DESKTOPHORZRES);
-
-      if (virtualizedWidth > 0 && physicalWidth > 0)
-      {
-        const float virtualizationScale = static_cast<float>(physicalWidth) / static_cast<float>(virtualizedWidth);
-
-        if (virtualizationScale > 0.f && virtualizationScale != 1.f)
-          scale *= virtualizationScale;
-      }
-
-      ReleaseDC(dcWindow, screenDC);
-    }
-
 #if defined IGRAPHICS_QUANTISE_SCREENSCALE
-    scale = std::round(scale);
+      dpiScale = std::round(static_cast<float>(windowDpi) / USER_DEFAULT_SCREEN_DPI);
+#else
+      dpiScale = static_cast<float>(windowDpi) / USER_DEFAULT_SCREEN_DPI;
 #endif
+    }
 
-    return (scale > 0.f) ? scale : 1.f;
+    float virtualizationScale = 1.f;
+    HMONITOR hMonitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
+
+    if (hMonitor)
+    {
+      MONITORINFOEXW monitorInfo{};
+      monitorInfo.cbSize = sizeof(monitorInfo);
+
+      if (GetMonitorInfoW(hMonitor, &monitorInfo))
+      {
+        const LONG logicalWidth = monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left;
+        const LONG logicalHeight = monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top;
+
+        if (logicalWidth > 0 && logicalHeight > 0)
+        {
+          DEVMODEW mode{};
+          mode.dmSize = sizeof(mode);
+
+          if (EnumDisplaySettingsW(monitorInfo.szDevice, ENUM_CURRENT_SETTINGS, &mode))
+          {
+            if (mode.dmPelsWidth > 0 && mode.dmPelsHeight > 0)
+            {
+              const float widthRatio = static_cast<float>(mode.dmPelsWidth) / static_cast<float>(logicalWidth);
+              const float heightRatio = static_cast<float>(mode.dmPelsHeight) / static_cast<float>(logicalHeight);
+              const float candidate = std::max(widthRatio, heightRatio);
+
+              if (candidate > 0.f && std::isfinite(candidate))
+                virtualizationScale = candidate;
+            }
+          }
+        }
+      }
+    }
+
+    const float finalScale = dpiScale * virtualizationScale;
+    return (finalScale > 0.f && std::isfinite(finalScale)) ? finalScale : 1.f;
   }
 
 #endif

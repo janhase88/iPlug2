@@ -6,16 +6,6 @@
 #include <utility>
 #include <vector>
 
-#ifndef IPLUG_LOGGING_ALWAYS_ON
-#define IPLUG_LOGGING_ALWAYS_ON 1
-#endif
-
-#if defined IGRAPHICS_VULKAN
-  #ifndef IGRAPHICS_VULKAN_LOG_VERBOSITY
-    #define IGRAPHICS_VULKAN_LOG_VERBOSITY 2
-  #endif
-#endif
-
 #include "IGraphicsSkia.h"
 
 #pragma warning(push)
@@ -1318,14 +1308,6 @@ void IGraphicsSkia::DrawResize()
   ScopedGraphicsContext scopedGLContext{this};
   auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * GetScreenScale()));
   auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * GetScreenScale()));
-  DBGMSG("IGraphicsSkia: DrawResize logical=%dx%d render=%dx%d screenScale=%.3f drawScale=%.3f total=%.3f\n",
-         WindowWidth(),
-         WindowHeight(),
-         w,
-         h,
-         GetScreenScale(),
-         GetDrawScale(),
-         GetTotalScale());
 #if defined IGRAPHICS_VULKAN
   IGRAPHICS_VK_LOG("DrawResize",
                       "begin",
@@ -1425,13 +1407,7 @@ void IGraphicsSkia::DrawResize()
     {
       uint32_t width = static_cast<uint32_t>(w);
       uint32_t height = static_cast<uint32_t>(h);
-      bool bypassVirtualExtent = false;
-#if defined OS_WIN
-      if (auto* pWin = static_cast<IGraphicsWin*>(this))
-        bypassVirtualExtent = pWin->HostContentScaleBypassed();
-#endif
-
-      if (caps.currentExtent.width != UINT32_MAX && !bypassVirtualExtent)
+      if (caps.currentExtent.width != UINT32_MAX)
       {
         width = caps.currentExtent.width;
         height = caps.currentExtent.height;
@@ -1450,7 +1426,6 @@ void IGraphicsSkia::DrawResize()
                            vulkanlog::MakeField("minHeight", caps.minImageExtent.height),
                            vulkanlog::MakeField("maxWidth", caps.maxImageExtent.width),
                            vulkanlog::MakeField("maxHeight", caps.maxImageExtent.height),
-                           vulkanlog::MakeField("bypassVirtualExtent", bypassVirtualExtent),
                            vulkanlog::MakeField("clampedWidth", width),
                            vulkanlog::MakeField("clampedHeight", height));
       w = static_cast<int>(width);

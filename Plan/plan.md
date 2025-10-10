@@ -8,8 +8,8 @@ Ensure Windows VST3 editors that render with the Skia/Vulkan backend always draw
 - [ ] Phase 2 — Implementation & Integration — **rework in progress** (decoupling window/layout scale from render scale and adding end-to-end diagnostics)
 
 ### Current Focus
-- Verify the window/layout scale remains at the host DPI while the renderer uses the physical scale by watching `PlatformResize` virtualization ratios and the new Skia `DrawResize` logs end to end.
-- Capture high-DPI validation logs/screens showing a crisp image inside the host bounds (no overflow) with swapchain extents matching the physical pixel dimensions.
+- Confirm the host and child HWNDs expand to the physical pixel dimensions whenever the bypass is active by watching the updated `PlatformResize` host/render logs.
+- Capture high-DPI validation logs/screens showing a crisp image that fills the plugin window (no overflow) with swapchain extents matching the measured physical DPI.
 - Iterate on logging coverage from `RefreshPlatformScale` through `DrawResize` so testers can trace logical → render scale at a glance.
 
 ## Scope & Constraints
@@ -80,7 +80,7 @@ Use the investigation results to enforce physical DPI usage across the Windows V
 - [x] Ensure other potential host callbacks (`checkSizeConstraint`, custom attributes) do not reintroduce logical scaling—guard or bypass them as needed.
 - [x] Verify the attach-time bypass handshake reliably flips `SetHostContentScaleBypassed(true)` before any scale refresh so the logs stop reporting `bypass=false` and the renderer can adopt the physical DPI.
 
-- [ ] Adjust `IGraphicsWin::OpenWindow()` and resize paths so the HWND hierarchy stays at the host DPI while the renderer uses the physical pixels, preventing DPI-virtualized hosts from overflowing and documenting the virtualization ratio for every resize.
+- [x] Adjust `IGraphicsWin::OpenWindow()` and resize paths so the HWND hierarchy expands to the physical DPI when bypassing the host scale, keeping the Skia/Vulkan surfaces and HWND bounds aligned.
 - [x] When `GetScaleForHWND()` changes, update both the stored screen scale and trigger window/swapchain resizes so the client area and Vulkan images stay in sync.
 - [x] Integrate handling for `WM_DPICHANGED` (or equivalent) to react immediately to monitor DPI switches, using the suggested `RECT` to resize the window if necessary.
 

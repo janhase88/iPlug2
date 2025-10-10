@@ -12,7 +12,7 @@ This checklist verifies that Windows VST3 editors rendered with the Skia/Vulkan 
 - [ ] Launch DebugView (or attach a debugger) so the always-on `DBGMSG`/`IGRAPHICS_VK_LOG` entries from `RefreshPlatformScale()` are captured during the run.【F:IGraphics/Platforms/IGraphicsWin.cpp†L47-L62】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4381-L4416】
 
 ## 2. Baseline Attachment
-- [ ] Launch each host at 150 % scaling and open the plug-in editor. Confirm the `SetHostContentScaleBypassed` log flips to `true`, the paired debug logs report a physical scale ≈1.5 while the host DPI scale remains ≈1.0, and that `PlatformResize` shows `targetScale` ≈ host (≈1.0) with a virtualization ratio ≈1.5. Cross-check the `DrawResize` `DBGMSG` to ensure the render target dimensions equal logical size × physical scale.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3526-L3576】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4346-L4416】【F:IGraphics/Drawing/IGraphicsSkia.cpp†L1316-L1478】
+- [ ] Launch each host at 150 % scaling and open the plug-in editor. Confirm the `SetHostContentScaleBypassed` log flips to `true`, the paired debug logs report a physical scale ≈1.5 while the host DPI scale remains ≈1.0, and that `PlatformResize` shows `window`/`target` ≈ physical with a virtualization ratio ≈ physical ÷ host. Cross-check the `DrawResize` `DBGMSG` to ensure the render target dimensions equal logical size × physical scale.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3526-L3594】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4346-L4416】【F:IGraphics/Drawing/IGraphicsSkia.cpp†L1316-L1478】
 - [ ] Capture a screenshot showing the UI is crisp (no bitmap stretching) and the plug-in window bounds match the rendered content.
 
 ## 3. Host Resize Negotiation

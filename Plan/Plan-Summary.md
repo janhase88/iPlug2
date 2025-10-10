@@ -19,9 +19,9 @@
 
 -----------------
 [x] Current plan:
-- Phase 2 — Implementation & Integration — PREVIOUS STATUS: IN PROGRESS / CURRENT STATUS: REWORKING (window/layout stay at host DPI while renderer targets physical; need crisp-render validation with new logs)
+- Phase 2 — Implementation & Integration — PREVIOUS STATUS: REWORKING / CURRENT STATUS: VALIDATION PENDING (window hierarchy now scales to the physical DPI alongside the renderer; need crisp-render validation with new logs)
   - 7. Validation & Regression Testing — PREVIOUS STATUS: PARTIAL / CURRENT STATUS: EXECUTION OUTSTANDING (manual checklist ready; need host sessions and artefacts)
   - 8. Documentation & Clean-Up — PREVIOUS STATUS: PARTIAL / CURRENT STATUS: PARTIAL (docs refreshed; logging cleanup waits on validation evidence)
 
 [x] Message to User:
-Please rebuild and run at 150 % DPI. `SetHostContentScaleBypassed` should read `true`, `RefreshPlatformScale` will show physical vs. host, `PlatformResize` should report `targetScale≈host` with a virtualization ratio ≈physical/host, and the new `DrawResize` `DBGMSG` should list the logical and render sizes. Let me know whether the UI is crisp inside the window and share the relevant log lines.
+Please rebuild and run at 150 % DPI. `SetHostContentScaleBypassed` should read `true`, `RefreshPlatformScale` will show physical vs. host, `PlatformResize` should report the window scale == render scale with `ratio=physical/host`, and the `DrawResize` `DBGMSG` should list matching logical/render dimensions. Let me know whether the UI fills the window crisply and share the relevant log lines.

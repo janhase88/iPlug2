@@ -91,13 +91,14 @@ public:
   float GetPlatformWindowScale() const override
   {
     if (mBypassHostContentScale)
-    {
-      if (mWindowDPIScale > 0.f && std::isfinite(mWindowDPIScale))
-        return mWindowDPIScale;
-    }
+      return GetScreenScale();
+
+    if (mWindowDPIScale > 0.f && std::isfinite(mWindowDPIScale))
+      return mWindowDPIScale;
 
     return GetScreenScale();
   }
+
   void SetHostContentScaleBypassed(bool bypass) override;
   bool HostContentScaleBypassed() const override { return mBypassHostContentScale; }
   float GetBackingPixelScaleForParentResize() const override;

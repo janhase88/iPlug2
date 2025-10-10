@@ -1,4 +1,4 @@
 # AgentChat
 
-- Brought the host resize negotiation in line with the physical-DPI bypass by feeding VST3 the host-space scale while keeping Vulkan buffers on the measured monitor DPI; next up is checking the remaining validation items.
-- Added scale-change logging and rebuilt the validation/rollout docs so we can exercise the DPI path across hosts before deciding which debug hooks to keep.
+- Implementation for the Windows VST3 Skia/Vulkan physical-DPI path is landed and ready for hands-on verification—flip `Examples/IPlugEffect/config/IPlugEffect-win.props` to `IGRAPHICS_SKIA;IGRAPHICS_VULKAN`, build the VST3 target in Visual Studio, and load it in a DPI-virtualized host at >100% scaling to confirm the window and rendering stay aligned.
+- While validating, keep DebugView open to watch the new `RefreshPlatformScale()` logs; capture screenshots/log excerpts for the validation checklist, then we can prune or gate the debug hooks once evidence is gathered.

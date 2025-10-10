@@ -24,4 +24,4 @@
   - 8. Documentation & Clean-Up — PREVIOUS STATUS: PARTIAL / CURRENT STATUS: PARTIAL (docs refreshed for the new logging focus; cleanup waits on validation evidence)
 
 [x] Message to User:
-Please rebuild and run at 150 % DPI. Grab `OpenWindow`, `SetHostContentScaleBypassed` (confirm `mixedDpi=true`), `RefreshPlatformScale`, `PlatformResize`, `DrawResize`, and `SwapchainExtent`. We expect `PlatformResize` to show the host scale staying at 1.0, the virtualization ratio jumping to ~1.5, and the swapchain/render targets following the physical pixels (e.g. 1800×750). If anything is missing from the debug stream or still looks blurry, let me know so I can expand the instrumentation.
+Please rebuild and run at 150 % DPI. Grab `OpenWindow`, `SetHostContentScaleBypassed` (confirm `mixedDpi=true`), `RefreshPlatformScale`, `PlatformResize`, `DrawResize`, and `SwapchainExtent`. `OpenWindow` should now log `bypass=true` immediately—if the swapchain still reports 1200×500 after that, send the log so I can keep digging. If anything is missing from the debug stream or the canvas remains blurry, let me know so I can expand the instrumentation.

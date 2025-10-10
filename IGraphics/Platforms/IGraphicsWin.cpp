@@ -4531,6 +4531,15 @@ void IGraphicsWin::RefreshPlatformScale(bool force)
 void* IGraphicsWin::OpenWindow(void* pParent)
 {
   mParentWnd = (HWND)pParent;
+
+#if defined IGRAPHICS_VULKAN && defined IGRAPHICS_SKIA
+  // Ensure the DPI bypass is active before measuring any window metrics so the HWND
+  // is created inside the per-monitor-aware context and Windows reports the physical
+  // pixel bounds instead of the host’s virtualized size.
+  if (!mBypassHostContentScale)
+    SetHostContentScaleBypassed(true);
+#endif
+
   const float physicalScale = GetScaleForHWND(mParentWnd);
   const float hostScale = ComputeWindowDpiScale(mParentWnd);
   const bool hostScaleValid = hostScale > 0.f && std::isfinite(hostScale);

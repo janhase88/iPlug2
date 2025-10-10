@@ -9,6 +9,7 @@ Ensure Windows VST3 editors that render with the Skia/Vulkan backend always draw
 
 ### Current Focus
 - Keep the host container and child HWND hierarchy at the logical bounds while we confirm the Vulkan swapchain really allocates physical-pixel images (no more manual ancestor growth that leaves gray gutters).
+- Auto-enable the DPI bypass before `OpenWindow()` so the HWND is created inside the per-monitor-aware context—next validation run should show `OpenWindow ... bypass=true` followed by swapchain extents at the physical pixel size.
 - Instrument the swapchain/surface creation path so the logs reveal whether Skia still binds 1200×500 attachments after we request 1800×750, and capture the virtualization ratio beside each resize.
 - Once the blur is gone, gather high-DPI validation logs/screens to prove the canvas is crisp and fills the window before closing Phase 2.
 

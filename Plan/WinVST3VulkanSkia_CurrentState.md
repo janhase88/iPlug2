@@ -2,7 +2,7 @@
 
 ## Steinberg Host Integration
 - `IPlugVST3View` exposes `IPlugViewContentScaleSupport` but bypasses the host-provided scale factor on Windows when both Skia and Vulkan are enabled, so the editor never reuses Steinberg's logical DPI hints.【F:IPlug/VST3/IPlugVST3_View.h†L41-L147】
-- During `attached()`, the view opens the platform window and immediately toggles the bypass flag on the `IGraphics` instance; the forced refresh that follows logs `bypass=true` and, if the open fails, the flag is reset to `false`.【F:IPlug/VST3/IPlugVST3_View.h†L101-L136】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4346-L4367】
+- During `attached()`, the view primes the bypass before opening the platform window when a graphics instance already exists and restores the previous state if the open fails; fresh creations flip the bypass immediately after `OpenWindow()` returns so the follow-up refresh logs `bypass=true` for validation.【F:IPlug/VST3/IPlugVST3_View.h†L101-L136】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4346-L4367】
 
 ## Editor Delegate Behaviour
 - `IGEditorDelegate::OnParentWindowResize()` converts host resize messages from HWND pixels back into logical UI units using `GetBackingPixelScaleForParentResize()`, keeping draw-scale zoom and layout math in logical space while honoring the bypass-aware platform conversion.【F:IGraphics/IGraphicsEditorDelegate.cpp†L58-L102】
@@ -14,7 +14,7 @@
 - The helper records `mWindowDPIScale` separately from `mScreenScale`, allowing host-space conversions to stay stable while the renderer consumes the physical scale.【F:IGraphics/Platforms/IGraphicsWin.cpp†L4381-L4416】【F:IGraphics/Platforms/IGraphicsWin.h†L91-L107】
 
 ## Window Resizing and DPI Events
-- `PlatformResize()` keeps host callbacks in logical pixels via `GetBackingPixelScaleForParentResize()` while sizing the HWND hierarchy with the host DPI when the bypass is active, ensuring the parent window stays in virtual pixels while the renderer still tracks the physical scale; each resize logs the window/renderer/target scales for validation.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3526-L3571】
+- `PlatformResize()` keeps host callbacks in logical pixels via `GetBackingPixelScaleForParentResize()` while resizing the plug-in, parent, and grandparent HWNDs to the measured physical pixels whenever the bypass is active. Each resize log now reports the virtualization ratio (`renderScale / windowScale`) so testers can confirm the hierarchy expanded to the physical DPI.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3526-L3576】
 - `WM_DPICHANGED` messages apply the suggested rectangle, refresh the platform scale immediately, and trigger a Skia/Vulkan relayout so moving between monitors adopts the new physical DPI without waiting for idle polling.【F:IGraphics/Platforms/IGraphicsWin.cpp†L2682-L2707】
 
 ## Swapchain and Skia Surface Sizing

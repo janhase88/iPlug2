@@ -1,4 +1,4 @@
 # AgentChat
 
-- Reordered the VST3 attach path so the bypass flips right after the window opens; rebuild and you should see `SetHostContentScaleBypassed -> true` followed by `PlatformResize` reporting `targetScale=1.0` while `render=1.5`.
-- If the UI still looks blurry, grab the `RefreshPlatformScale` and `PlatformResize` logs from that run so we can confirm the swapchain is actually using the physical pixels.
+- Bypass now enables before `OpenWindow()`, and `PlatformResize` logs the virtualization ratio with `targetScale` matching the measured physical DPI.
+- Next step: rerun at 150 % scaling, confirm the logs show `bypass=true`, `targetScale≈renderScale`, and report whether the window stays crisp without overflowing.

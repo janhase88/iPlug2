@@ -118,10 +118,35 @@ public:
 #ifdef OS_WIN
       if (strcmp(type, Steinberg::kPlatformTypeHWND) == 0)
       {
+#if defined IGRAPHICS_VULKAN && defined IGRAPHICS_SKIA
+        IGraphics* ui = mOwner.GetUI();
+        bool previousBypass = false;
+        if (ui)
+        {
+          previousBypass = ui->HostContentScaleBypassed();
+          ui->SetHostContentScaleBypassed(true);
+        }
+#endif
         pView = mOwner.OpenWindow(pParent);
 #if defined IGRAPHICS_VULKAN && defined IGRAPHICS_SKIA
-        if (auto* ui = mOwner.GetUI())
-          ui->SetHostContentScaleBypassed(pView != nullptr);
+        if (!ui)
+        {
+          ui = mOwner.GetUI();
+          if (ui)
+            previousBypass = ui->HostContentScaleBypassed();
+        }
+
+        if (ui)
+        {
+          if (pView)
+          {
+            ui->SetHostContentScaleBypassed(true);
+          }
+          else
+          {
+            ui->SetHostContentScaleBypassed(previousBypass);
+          }
+        }
 #endif
       }
 #elif defined OS_MAC

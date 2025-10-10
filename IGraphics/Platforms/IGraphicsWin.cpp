@@ -3555,34 +3555,34 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
 {
   if (WindowIsOpen())
   {
-    HWND pParent = 0, pGrandparent = 0;
-    int dlgW = 0, dlgH = 0, parentW = 0, parentH = 0, grandparentW = 0, grandparentH = 0;
+    int dlgW = 0, dlgH = 0;
     GetWindowSize(mPlugWnd, &dlgW, &dlgH);
     const float windowScale = GetBackingPixelScaleForParentResize();
     const float renderScale = GetScreenScale();
     const bool renderScaleValid = renderScale > 0.f && std::isfinite(renderScale);
     const bool windowScaleValid = windowScale > 0.f && std::isfinite(windowScale);
-    float targetScale = windowScaleValid ? windowScale : 1.f;
-
-    if (mBypassHostContentScale)
-    {
-      if (!windowScaleValid && renderScaleValid)
-        targetScale = renderScale;
-    }
-    else if (renderScaleValid)
+    float targetScale = 1.f;
+    if (renderScaleValid)
     {
       targetScale = renderScale;
+    }
+    else if (windowScaleValid)
+    {
+      targetScale = windowScale;
     }
 
     if (!(targetScale > 0.f && std::isfinite(targetScale)))
       targetScale = 1.f;
 
-    DBGMSG("IGraphicsWin: PlatformResize windowScale=%.3f renderScale=%.3f targetScale=%.3f bypass=%s parentHasResized=%s\n",
+    const float virtualizationRatio = (windowScaleValid && windowScale > 0.f) ? (renderScale / windowScale) : renderScale;
+
+    DBGMSG("IGraphicsWin: PlatformResize windowScale=%.3f renderScale=%.3f targetScale=%.3f bypass=%s parentHasResized=%s ratio=%.3f\n",
            windowScale,
            renderScale,
            targetScale,
            mBypassHostContentScale ? "true" : "false",
-           parentHasResized ? "true" : "false");
+           parentHasResized ? "true" : "false",
+           virtualizationRatio);
 
 #if defined IGRAPHICS_VULKAN
     IGRAPHICS_VK_LOG("PlatformResize",
@@ -3592,23 +3592,25 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
                      vulkanlog::MakeField("render", std::to_string(renderScale)),
                      vulkanlog::MakeField("target", std::to_string(targetScale)),
                      vulkanlog::MakeField("bypass", mBypassHostContentScale),
-                     vulkanlog::MakeField("parentHasResized", parentHasResized));
+                     vulkanlog::MakeField("parentHasResized", parentHasResized),
+                     vulkanlog::MakeField("ratio", std::to_string(virtualizationRatio)));
 #endif
     const int targetWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * targetScale));
     const int targetHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * targetScale));
     int dw = targetWidth - dlgW;
     int dh = targetHeight - dlgH;
 
-    if (IsChildWindow(mPlugWnd))
+    std::vector<std::pair<HWND, std::pair<int, int>>> ancestorSizes;
+    HWND ancestor = mPlugWnd;
+    while ((ancestor = GetParent(ancestor)) != nullptr)
     {
-      pParent = GetParent(mPlugWnd);
-      GetWindowSize(pParent, &parentW, &parentH);
+      int ancW = 0;
+      int ancH = 0;
+      GetWindowSize(ancestor, &ancW, &ancH);
+      ancestorSizes.emplace_back(ancestor, std::make_pair(ancW, ancH));
 
-      if (IsChildWindow(pParent))
-      {
-        pGrandparent = GetParent(pParent);
-        GetWindowSize(pGrandparent, &grandparentW, &grandparentH);
-      }
+      if (!IsChildWindow(ancestor))
+        break;
     }
 
     if (!dw && !dh)
@@ -3618,14 +3620,16 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
 
     const bool forceParentResize = mBypassHostContentScale;
 
-    if (pParent && (!parentHasResized || forceParentResize))
+    if (!ancestorSizes.empty() && (!parentHasResized || forceParentResize))
     {
-      SetWindowPos(pParent, 0, 0, 0, parentW + dw, parentH + dh, SETPOS_FLAGS);
-    }
-
-    if (pGrandparent && (!parentHasResized || forceParentResize))
-    {
-      SetWindowPos(pGrandparent, 0, 0, 0, grandparentW + dw, grandparentH + dh, SETPOS_FLAGS);
+      for (auto& entry : ancestorSizes)
+      {
+        HWND hwnd = entry.first;
+        const int ancW = entry.second.first;
+        const int ancH = entry.second.second;
+        if (hwnd)
+          SetWindowPos(hwnd, 0, 0, 0, ancW + dw, ancH + dh, SETPOS_FLAGS);
+      }
     }
   }
 }

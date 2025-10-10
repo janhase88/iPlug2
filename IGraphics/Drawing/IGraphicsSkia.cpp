@@ -349,7 +349,9 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
   auto& cachedSurface = mVKSwapchainSurfaces[imageIndex];
   if (cachedSurface)
   {
-    if (cachedSurface->width() == width && cachedSurface->height() == height)
+    const int cachedWidth = cachedSurface->width();
+    const int cachedHeight = cachedSurface->height();
+    if (cachedWidth == width && cachedHeight == height)
     {
       auto backendRT = GrBackendRenderTargets::MakeVk(width, height, localInfo);
       if (backendRT.isValid())
@@ -367,6 +369,18 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
         return cachedSurface;
       }
     }
+#if defined OS_WIN
+    else
+    {
+      DBGMSG("SkiaVulkan.SwapSurface: hwnd=%p imageIndex=%u discardCached width=%d height=%d expected=%dx%d\n",
+             reinterpret_cast<HWND>(GetWindow()),
+             static_cast<unsigned>(imageIndex),
+             cachedWidth,
+             cachedHeight,
+             width,
+             height);
+    }
+#endif
     cachedSurface.reset();
   }
 
@@ -2317,17 +2331,17 @@ void IGraphicsSkia::EndFrame()
     float scaleX = 1.f;
     float scaleY = 1.f;
 
-    if (mLastPresentationDrawWidth > 0 && mPresentationPhysicalWidth > 0 &&
-        mPresentationPhysicalWidth != mLastPresentationDrawWidth)
+    if (mLastPresentationDrawWidth > 0 && mPresentationLogicalWidth > 0 &&
+        mPresentationLogicalWidth != mLastPresentationDrawWidth)
     {
-      scaleX = static_cast<float>(mPresentationPhysicalWidth) /
+      scaleX = static_cast<float>(mPresentationLogicalWidth) /
                static_cast<float>(mLastPresentationDrawWidth);
     }
 
-    if (mLastPresentationDrawHeight > 0 && mPresentationPhysicalHeight > 0 &&
-        mPresentationPhysicalHeight != mLastPresentationDrawHeight)
+    if (mLastPresentationDrawHeight > 0 && mPresentationLogicalHeight > 0 &&
+        mPresentationLogicalHeight != mLastPresentationDrawHeight)
     {
-      scaleY = static_cast<float>(mPresentationPhysicalHeight) /
+      scaleY = static_cast<float>(mPresentationLogicalHeight) /
                static_cast<float>(mLastPresentationDrawHeight);
     }
 

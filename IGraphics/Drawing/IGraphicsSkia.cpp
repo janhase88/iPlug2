@@ -2736,9 +2736,9 @@ void IGraphicsSkia::EndFrame()
     auto backendRT = GrBackendRenderTargets::MakeVk(width, height, imageInfo);
     if (backendRT.isValid())
     {
-      auto presentState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, mVKQueueFamily);
-      mGrContext->setBackendRenderTargetState(backendRT, presentState, nullptr, nullptr, nullptr);
-      backendRT.setMutableState(presentState);
+      auto colorState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, mVKQueueFamily);
+      mGrContext->setBackendRenderTargetState(backendRT, colorState, nullptr, nullptr, nullptr);
+      backendRT.setMutableState(colorState);
     }
   }
 

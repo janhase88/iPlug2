@@ -754,6 +754,15 @@ bool IGraphicsSkia::PrepareCurrentSwapchainImageForFlush()
       auto colorState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, mVKQueueFamily);
       mGrContext->setBackendRenderTargetState(backendRT, colorState, nullptr, nullptr, nullptr);
       backendRT.setMutableState(colorState);
+#if defined OS_WIN
+      DBGMSG("SkiaVulkan.RenderTargetState: hwnd=%p imageIndex=%d layout=%d queueFamily=%u width=%d height=%d\n",
+             reinterpret_cast<HWND>(GetWindow()),
+             static_cast<int>(mVKCurrentImage),
+             static_cast<int>(colorState.getImageLayout()),
+             static_cast<uint32_t>(colorState.getQueueFamilyIndex()),
+             width,
+             height);
+#endif
     }
   }
 
@@ -2817,6 +2826,16 @@ void IGraphicsSkia::EndFrame()
                        vulkanlog::MakeField("trackedLayout", static_cast<int>(trackedLayout)),
                        vulkanlog::MakeField("frameVersion", static_cast<uint64_t>(mVKFrameVersion)),
                        vulkanlog::MakeField("swapchainVersion", static_cast<uint64_t>(mVKSwapchainVersion)));
+#if defined OS_WIN
+  DBGMSG("SkiaVulkan.ImageBarrier: hwnd=%p imageIndex=%d oldLayout=%d newLayout=%d trackedLayout=%d frameVersion=%llu swapchainVersion=%llu\n",
+         reinterpret_cast<HWND>(GetWindow()),
+         static_cast<int>(mVKCurrentImage),
+         static_cast<int>(barrier.oldLayout),
+         static_cast<int>(barrier.newLayout),
+         static_cast<int>(trackedLayout),
+         static_cast<unsigned long long>(mVKFrameVersion),
+         static_cast<unsigned long long>(mVKSwapchainVersion));
+#endif
   vkCmdPipelineBarrier(mVKCommandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 
   vkEndCommandBuffer(mVKCommandBuffer);

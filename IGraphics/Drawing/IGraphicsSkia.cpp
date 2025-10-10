@@ -2434,24 +2434,16 @@ void IGraphicsSkia::EndFrame()
 
     if (applyScale)
     {
-      SkSamplingOptions sampling{SkFilterMode::kLinear, SkMipmapMode::kLinear};
-      const SkRect srcRect = SkRect::MakeWH(static_cast<SkScalar>(srcWidth), static_cast<SkScalar>(srcHeight));
-      const SkRect destRect =
-        SkRect::MakeWH(static_cast<SkScalar>(destLogicalWidth), static_cast<SkScalar>(destLogicalHeight));
+      const SkScalar canvasScaleX = static_cast<SkScalar>(scaleX);
+      const SkScalar canvasScaleY = static_cast<SkScalar>(scaleY);
 
-      if (auto scaledImage = mSurface->makeImageSnapshot())
-      {
-        screenCanvas->drawImageRect(scaledImage.get(),
-                                    srcRect,
-                                    destRect,
-                                    sampling,
-                                    nullptr,
-                                    SkCanvas::kStrict_SrcRectConstraint);
-      }
-      else
-      {
-        screenCanvas->drawSurface(mSurface.get(), 0.0f, 0.0f, sampling);
-      }
+      SkPaint paint;
+      paint.setFilterQuality(kHigh_SkFilterQuality);
+
+      screenCanvas->save();
+      screenCanvas->scale(canvasScaleX, canvasScaleY);
+      mSurface->draw(screenCanvas, 0.0, 0.0, &paint);
+      screenCanvas->restore();
     }
     else
     {

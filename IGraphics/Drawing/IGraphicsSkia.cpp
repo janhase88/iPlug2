@@ -22,6 +22,7 @@
 #include "include/core/SkCanvas.h"
 #include "include/core/SkColorType.h"
 #include "include/core/SkImageInfo.h"
+#include "include/core/SkColor.h"
 #include "include/core/SkRect.h"
 #include "include/core/SkFontMetrics.h"
 #include "include/core/SkFontMgr.h"
@@ -2603,25 +2604,47 @@ void IGraphicsSkia::EndFrame()
     }
 #endif
 
-    if (applyScale)
-    {
-      const SkScalar canvasScaleX = static_cast<SkScalar>(scaleX);
-      const SkScalar canvasScaleY = static_cast<SkScalar>(scaleY);
+    sk_sp<SkImage> frameImage = mSurface ? mSurface->makeImageSnapshot() : nullptr;
 
-      LogCanvasMatrixAndClip("SkiaVulkan.CanvasState.beforeScale", hwnd, screenCanvas, applyScale);
-      screenCanvas->save();
-      screenCanvas->scale(canvasScaleX, canvasScaleY);
-      LogCanvasMatrixAndClip("SkiaVulkan.CanvasState.afterScale", hwnd, screenCanvas, applyScale);
-      const SkSamplingOptions samplingOptions(SkFilterMode::kLinear, SkMipmapMode::kLinear);
-      mSurface->draw(screenCanvas, 0.0, 0.0, samplingOptions, nullptr);
-      screenCanvas->restore();
-      LogCanvasMatrixAndClip("SkiaVulkan.CanvasState.afterRestore", hwnd, screenCanvas, applyScale);
-    }
-    else
+    if (!frameImage)
     {
-      LogCanvasMatrixAndClip("SkiaVulkan.CanvasState.noScale", hwnd, screenCanvas, applyScale);
-      mSurface->draw(screenCanvas, 0.0, 0.0, nullptr);
+      DBGMSG("SkiaVulkan.EndFrame: hwnd=%p snapshotFailed srcSurface=%p\n",
+             hwnd,
+             static_cast<const void*>(srcSurfacePtr));
+      return;
     }
+
+    const SkRect srcRect = SkRect::MakeWH(static_cast<SkScalar>(srcWidth),
+                                          static_cast<SkScalar>(srcHeight));
+
+    SkRect dstRect = SkRect::MakeWH(static_cast<SkScalar>(destPhysicalWidth),
+                                    static_cast<SkScalar>(destPhysicalHeight));
+
+    if (applyScale && destLogicalWidth > 0 && destLogicalHeight > 0)
+    {
+      dstRect = SkRect::MakeWH(static_cast<SkScalar>(destLogicalWidth),
+                               static_cast<SkScalar>(destLogicalHeight));
+    }
+
+    const SkSamplingOptions samplingOptions(SkFilterMode::kLinear, SkMipmapMode::kLinear);
+
+    if (applyScale)
+      LogCanvasMatrixAndClip("SkiaVulkan.CanvasState.beforeScale", hwnd, screenCanvas, applyScale);
+    else
+      LogCanvasMatrixAndClip("SkiaVulkan.CanvasState.noScale", hwnd, screenCanvas, applyScale);
+
+    screenCanvas->save();
+    screenCanvas->clear(SK_ColorTRANSPARENT);
+    screenCanvas->drawImageRect(frameImage,
+                                srcRect,
+                                dstRect,
+                                samplingOptions,
+                                nullptr,
+                                SkCanvas::kStrict_SrcRectConstraint);
+    screenCanvas->restore();
+
+    if (applyScale)
+      LogCanvasMatrixAndClip("SkiaVulkan.CanvasState.afterRestore", hwnd, screenCanvas, applyScale);
 
     MaybeLogSurfaceSample("SkiaVulkan.SurfaceSample.draw",
                           mSurface,

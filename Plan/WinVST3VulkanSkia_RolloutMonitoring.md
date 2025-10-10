@@ -5,7 +5,7 @@ The physical-DPI pipeline relies on a mix of Win32 metrics and Vulkan surface ch
 ## 1. Logging Streams
 | Source | Description | Notes |
 | --- | --- | --- |
-| `DBGMSG` (category: `IGraphicsWin`) | Emitted by `RefreshPlatformScale()` whenever the measured physical scale changes. Provides `measured`, `host`, and `bypass` fields for quick verification.【F:IGraphics/Platforms/IGraphicsWin.cpp†L4327-L4334】 | Capture with DebugView or a debugger. Treat repeated flips between two scales as a sign the host is fighting the bypass. |
+| `DBGMSG` / `IGRAPHICS_VK_LOG` (event: `RefreshPlatformScale`) | Emitted together for every scale refresh, capturing the measured physical scale, host DPI scale, bypass flag, and force flag. Verbose logging is forced on even for release builds.【F:IGraphics/Platforms/IGraphicsWin.cpp†L47-L62】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4327-L4334】 | Capture with DebugView or a debugger. Treat repeated flips between two scales as a sign the host is fighting the bypass. |
 | `IGRAPHICS_VK_LOG` (`CreateOrResizeVulkanSwapchain`) | Records surface capability ranges and chosen extents for every swapchain recreation.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3974-L4195】 | Alert on extents that diverge from the HWND client size or frequent recreations triggered without DPI changes. |
 | Host resize traces (optional) | Some DAWs expose verbose resize logging. Enable when available to confirm the host continues to request logical pixels. | Look for hosts repeatedly sending “restore” sizes after we grow the HWND; log a bug if windows visibly fight. |
 
@@ -20,6 +20,7 @@ The physical-DPI pipeline relies on a mix of Win32 metrics and Vulkan surface ch
    - If physical ≈ host, instruct users to confirm they are running a Vulkan/Skia configuration and not a CPU fallback.
 2. **Window clipping or oversize**
    - Review recent swapchain logs for extents; ensure they match the measured physical size (physical scale × logical size).【F:IGraphics/Platforms/IGraphicsWin.cpp†L3823-L4098】
+   - Check the paired `RefreshPlatformScale` events for disparities between `measured` and `host`; a large gap with no window resize implies the host is still virtualizing UI size.
    - If extents match but the host keeps shrinking the parent window, capture host resize logs and consider adding a per-host compatibility toggle to disable the bypass.
 3. **Multi-monitor glitches**
    - Confirm a `WM_DPICHANGED` log entry followed the move. If not, reproduce with the plugin owning mouse capture; the fix may require synthetic scale checks while captured.【F:IGraphics/Platforms/IGraphicsWin.cpp†L2682-L2707】

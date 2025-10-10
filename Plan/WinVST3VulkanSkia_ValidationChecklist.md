@@ -9,10 +9,10 @@ This checklist verifies that Windows VST3 editors rendered with the Skia/Vulkan 
   - [ ] In `Examples/IPlugEffect/config/IPlugEffect-win.props`, change `IGRAPHICS_NANOVG;IGRAPHICS_GL2` to `IGRAPHICS_SKIA;IGRAPHICS_VULKAN` (mirror the CI script behaviour).【F:Scripts/ci/build_project-win.yml†L26-L35】
   - [ ] Open `Examples/IPlugEffect/IPlugEffect.sln` in Visual Studio 2022, select the `IPlugEffect-vst3` target, and build the x64 configuration.
   - [ ] Copy the generated `.vst3` bundle from `Examples/IPlugEffect/build-win/` into your VST3 plug-in folder.
-- [ ] Launch DebugView (or attach a debugger) so `DBGMSG` output from `RefreshPlatformScale()` is visible during the run.【F:IGraphics/Platforms/IGraphicsWin.cpp†L4327-L4334】
+- [ ] Launch DebugView (or attach a debugger) so the always-on `DBGMSG`/`IGRAPHICS_VK_LOG` entries from `RefreshPlatformScale()` are captured during the run.【F:IGraphics/Platforms/IGraphicsWin.cpp†L47-L62】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4327-L4334】
 
 ## 2. Baseline Attachment
-- [ ] Launch each host at 150 % scaling and open the plug-in editor. Confirm the debug log reports a physical scale ≈1.5 while the host DPI scale remains ≈1.0, proving host virtualization is bypassed.【F:IGraphics/Platforms/IGraphicsWin.cpp†L4327-L4334】
+- [ ] Launch each host at 150 % scaling and open the plug-in editor. Confirm the paired debug logs report a physical scale ≈1.5 while the host DPI scale remains ≈1.0, proving host virtualization is bypassed.【F:IGraphics/Platforms/IGraphicsWin.cpp†L4327-L4334】
 - [ ] Capture a screenshot showing the UI is crisp (no bitmap stretching) and the plug-in window bounds match the rendered content.
 
 ## 3. Host Resize Negotiation

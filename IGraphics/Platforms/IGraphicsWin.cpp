@@ -10,6 +10,16 @@
 
 // #define IGRAPHICS_DISABLE_VSYNC
 
+#ifndef IPLUG_LOGGING_ALWAYS_ON
+#define IPLUG_LOGGING_ALWAYS_ON 1
+#endif
+
+#if defined IGRAPHICS_VULKAN
+  #ifndef IGRAPHICS_VULKAN_LOG_VERBOSITY
+    #define IGRAPHICS_VULKAN_LOG_VERBOSITY 2
+  #endif
+#endif
+
 #include <Shlobj.h>
 #include <commctrl.h>
 
@@ -3548,7 +3558,12 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
     HWND pParent = 0, pGrandparent = 0;
     int dlgW = 0, dlgH = 0, parentW = 0, parentH = 0, grandparentW = 0, grandparentH = 0;
     GetWindowSize(mPlugWnd, &dlgW, &dlgH);
-    int dw = (WindowWidth() * GetScreenScale()) - dlgW, dh = (WindowHeight() * GetScreenScale()) - dlgH;
+    const float windowScale = GetBackingPixelScaleForParentResize();
+    const float targetScale = (windowScale > 0.f && std::isfinite(windowScale)) ? windowScale : GetScreenScale();
+    const int targetWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * targetScale));
+    const int targetHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * targetScale));
+    int dw = targetWidth - dlgW;
+    int dh = targetHeight - dlgH;
 
     if (IsChildWindow(mPlugWnd))
     {
@@ -4337,6 +4352,16 @@ void IGraphicsWin::RefreshPlatformScale(bool force)
          mBypassHostContentScale ? "true" : "false",
          force ? "true" : "false");
 
+#if defined IGRAPHICS_VULKAN
+  IGRAPHICS_VK_LOG("RefreshPlatformScale",
+                   "dpiUpdate",
+                   vulkanlog::Severity::kInfo,
+                   vulkanlog::MakeField("measured", std::to_string(measured)),
+                   vulkanlog::MakeField("host", std::to_string(mWindowDPIScale)),
+                   vulkanlog::MakeField("bypass", mBypassHostContentScale),
+                   vulkanlog::MakeField("force", force));
+#endif
+
   if (measured > 0.f && std::isfinite(measured))
     SetScreenScale(measured);
 }
@@ -4344,9 +4369,28 @@ void IGraphicsWin::RefreshPlatformScale(bool force)
 void* IGraphicsWin::OpenWindow(void* pParent)
 {
   mParentWnd = (HWND)pParent;
-  const float screenScale = GetScaleForHWND(mParentWnd);
-  const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * screenScale));
-  const int scaledHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * screenScale));
+  const float physicalScale = GetScaleForHWND(mParentWnd);
+  const float hostScale = ComputeWindowDpiScale(mParentWnd);
+  float windowScale = physicalScale;
+
+  const bool hostScaleValid = hostScale > 0.f && std::isfinite(hostScale);
+  const bool physicalScaleValid = physicalScale > 0.f && std::isfinite(physicalScale);
+
+  if (mBypassHostContentScale && hostScaleValid)
+    windowScale = hostScale;
+  else if (!physicalScaleValid && hostScaleValid)
+    windowScale = hostScale;
+
+  if (hostScaleValid)
+    mWindowDPIScale = hostScale;
+  else if (!std::isfinite(mWindowDPIScale) || mWindowDPIScale <= 0.f)
+    mWindowDPIScale = 1.f;
+
+  if (!std::isfinite(windowScale) || windowScale <= 0.f)
+    windowScale = 1.f;
+
+  const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * windowScale));
+  const int scaledHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * windowScale));
   int x = 0;
   int y = 0;
   int w = scaledWidth;

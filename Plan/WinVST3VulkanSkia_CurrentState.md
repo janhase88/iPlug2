@@ -2,7 +2,7 @@
 
 ## Steinberg Host Integration
 - `IPlugVST3View` exposes `IPlugViewContentScaleSupport` but bypasses the host-provided scale factor on Windows when both Skia and Vulkan are enabled, so the editor never reuses Steinberg's logical DPI hints.【F:IPlug/VST3/IPlugVST3_View.h†L41-L146】
-- During `attached()`, the view opens the platform window and immediately enables the bypass flag on the `IGraphics` instance, ensuring the native layer opts out of host DPI virtualization before any WM messages arrive.【F:IPlug/VST3/IPlugVST3_View.h†L99-L132】
+- During `attached()`, the view enables the bypass flag on the `IGraphics` instance *before* opening the platform window, guaranteeing the Win32 layer ignores host DPI virtualization during HWND creation; the flag is cleared again if the open fails.【F:IPlug/VST3/IPlugVST3_View.h†L99-L132】
 
 ## Editor Delegate Behaviour
 - `IGEditorDelegate::OnParentWindowResize()` converts host resize messages from HWND pixels back into logical UI units using `GetBackingPixelScaleForParentResize()`, keeping draw-scale zoom and layout math in logical space while honoring the bypass-aware platform conversion.【F:IGraphics/IGraphicsEditorDelegate.cpp†L58-L102】
@@ -14,7 +14,7 @@
 - The helper records `mWindowDPIScale` separately from `mScreenScale`, allowing host-space conversions to stay stable while the renderer consumes the physical scale.【F:IGraphics/Platforms/IGraphicsWin.cpp†L4270-L4346】【F:IGraphics/Platforms/IGraphicsWin.h†L91-L107】
 
 ## Window Resizing and DPI Events
-- `PlatformResize()` compares the desired physical pixel size (`WindowWidth() * GetScreenScale()`) with the HWND client rect and forces both the plug-in window and parent shells to grow when the bypass is active, keeping the child window aligned with the physical swapchain dimensions.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3526-L3562】
+- `PlatformResize()` now targets the host-facing DPI (`GetBackingPixelScaleForParentResize()`) when sizing HWNDs, so DPI-virtualized hosts keep their expected logical dimensions while the renderer continues to use the measured physical scale for swapchains.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3526-L3562】
 - `WM_DPICHANGED` messages apply the suggested rectangle, refresh the platform scale immediately, and trigger a Skia/Vulkan relayout so moving between monitors adopts the new physical DPI without waiting for idle polling.【F:IGraphics/Platforms/IGraphicsWin.cpp†L2682-L2707】
 
 ## Swapchain and Skia Surface Sizing
@@ -27,5 +27,5 @@
 - Tooltip and parameter edit HWNDs are re-created after `OpenWindow()` while the physical scale is active, so their fonts and bounds follow the same pixel density as the main canvas.【F:IGraphics/Platforms/IGraphicsWin.cpp†L4414-L4499】
 
 ## Diagnostics and Logging
-- Every platform-scale refresh now emits a `DBGMSG` with the measured physical scale, host DPI scale, and bypass state. These messages provide lightweight telemetry confirming that DPI virtualization is being ignored and help correlate host resize issues with the underlying scale values.【F:IGraphics/Platforms/IGraphicsWin.cpp†L4327-L4334】
+- Every platform-scale refresh now emits both a `DBGMSG` and an `IGRAPHICS_VK_LOG` info event with the measured physical scale, host DPI scale, bypass state, and whether the refresh was forced. Logging stays enabled even in release builds by forcing `DBGMSG` on and setting the Vulkan logger verbosity to verbose.【F:IGraphics/Platforms/IGraphicsWin.cpp†L47-L62】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4327-L4334】
 - Vulkan swapchain helpers already log surface capabilities and extent selections through `IGRAPHICS_VK_LOG`, so DPI-driven resize churn can be reviewed without additional instrumentation.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3974-L4195】

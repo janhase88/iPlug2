@@ -116,14 +116,20 @@ public:
       void* pView = nullptr;
 #ifdef OS_WIN
       if (strcmp(type, Steinberg::kPlatformTypeHWND) == 0)
-        pView = mOwner.OpenWindow(pParent);
-#if defined IGRAPHICS_VULKAN && defined IGRAPHICS_SKIA
-      if (pView)
       {
+#if defined IGRAPHICS_VULKAN && defined IGRAPHICS_SKIA
         if (auto* ui = mOwner.GetUI())
           ui->SetHostContentScaleBypassed(true);
-      }
 #endif
+        pView = mOwner.OpenWindow(pParent);
+#if defined IGRAPHICS_VULKAN && defined IGRAPHICS_SKIA
+        if (!pView)
+        {
+          if (auto* ui = mOwner.GetUI())
+            ui->SetHostContentScaleBypassed(false);
+        }
+#endif
+      }
 #elif defined OS_MAC
       if (strcmp(type, Steinberg::kPlatformTypeNSView) == 0)
         pView = mOwner.OpenWindow(pParent);

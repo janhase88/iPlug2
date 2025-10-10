@@ -8,7 +8,7 @@ Ensure Windows VST3 editors that render with the Skia/Vulkan backend always draw
 - [ ] Phase 2 — Implementation & Integration — **validation pending** (code landed; need host runs and evidence capture)
 
 ### Current Focus
-- Run the manual validation matrix on Windows hosts, gather screenshots/logs, then decide which temporary logging to keep or wrap.
+- Re-test in DPI-virtualized hosts to confirm the decoupled window/render scales eliminate clipping while the always-on logs capture the measured vs. host DPI pairs for evidence.
 
 ## Scope & Constraints
 - Platform: Windows only.
@@ -77,8 +77,7 @@ Use the investigation results to enforce physical DPI usage across the Windows V
 - [x] Update `IPlugVST3_View::setContentScaleFactor()` to ignore or sandbox Steinberg's factor when running on Windows with Skia/Vulkan, optionally logging discrepancies for diagnostics.
 - [x] Ensure other potential host callbacks (`checkSizeConstraint`, custom attributes) do not reintroduce logical scaling—guard or bypass them as needed.
 
-### 3. Synchronize Window & Swapchain to Physical Pixels
-- [x] Adjust `IGraphicsWin::OpenWindow()` and resize paths so the HWND client size always matches `logicalSize × physicalScale`, regardless of host expectations, and confirm that `SetWindowPos` negotiations still succeed.
+- [x] Adjust `IGraphicsWin::OpenWindow()` and resize paths so the HWND client size follows the host's logical pixels while the renderer tracks the measured physical scale, preventing oversize child windows in DPI-virtualized hosts.
 - [x] When `GetScaleForHWND()` changes, update both the stored screen scale and trigger window/swapchain resizes so the client area and Vulkan images stay in sync.
 - [x] Integrate handling for `WM_DPICHANGED` (or equivalent) to react immediately to monitor DPI switches, using the suggested `RECT` to resize the window if necessary.
 

@@ -6,6 +6,16 @@
 #include <utility>
 #include <vector>
 
+#ifndef IPLUG_LOGGING_ALWAYS_ON
+#define IPLUG_LOGGING_ALWAYS_ON 1
+#endif
+
+#if defined IGRAPHICS_VULKAN
+  #ifndef IGRAPHICS_VULKAN_LOG_VERBOSITY
+    #define IGRAPHICS_VULKAN_LOG_VERBOSITY 2
+  #endif
+#endif
+
 #include "IGraphicsSkia.h"
 
 #pragma warning(push)

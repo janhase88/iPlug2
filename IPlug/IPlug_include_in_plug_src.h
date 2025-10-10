@@ -23,6 +23,8 @@
 // clang-format off
 
 #if defined OS_WIN && !defined VST3C_API
+  #include "../IGraphics/Platforms/WinDpiUtils.h"
+
   HINSTANCE gHINSTANCE = 0;
   #if defined(VST2_API) || defined(AAX_API) || defined(CLAP_API)
   #ifdef __MINGW32__
@@ -34,33 +36,6 @@
     return true;
   }
   #endif
-
-  UINT(WINAPI *__GetDpiForWindow)(HWND);
-
-  float GetScaleForHWND(HWND hWnd)
-  {
-    if (!__GetDpiForWindow)
-    {
-      HINSTANCE h = LoadLibraryW(L"user32.dll");
-      if (h) *(void **)&__GetDpiForWindow = GetProcAddress(h, "GetDpiForWindow");
-
-      if (!__GetDpiForWindow)
-        return 1;
-    }
-
-    int dpi = __GetDpiForWindow(hWnd);
-
-    if (dpi != USER_DEFAULT_SCREEN_DPI)
-    {
-#if defined IGRAPHICS_QUANTISE_SCREENSCALE
-      return std::round(static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI);
-#else
-      return static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI;
-#endif
-    }
-
-    return 1;
-  }
 
 #endif
 

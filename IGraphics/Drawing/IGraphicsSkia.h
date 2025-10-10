@@ -8,6 +8,10 @@
 #include <unordered_set>
 #include <vector>
 
+#if defined OS_WIN
+  #include <windows.h>
+#endif
+
 // N.B. - this must be defined according to the skia build, not the iPlug build
 #if (defined OS_MAC || defined OS_IOS) && !defined IGRAPHICS_SKIA_NO_METAL
   #define SK_METAL
@@ -135,12 +139,83 @@ public:
   void PathClose() override { mMainPath.close(); }
   void PathArc(float cx, float cy, float r, float a1, float a2, EWinding winding) override;
 
-  void PathMoveTo(float x, float y) override { mMainPath.moveTo(mMatrix.mapXY(x, y)); }
-  void PathLineTo(float x, float y) override { mMainPath.lineTo(mMatrix.mapXY(x, y)); }
+  void PathMoveTo(float x, float y) override
+  {
+    const SkPoint mapped = mMatrix.mapXY(x, y);
+#if defined OS_WIN
+    DBGMSG("SkiaPath.PathMoveTo: hwnd=%p src=(%.2f,%.2f) mapped=(%.2f,%.2f) points=%d
+",
+           reinterpret_cast<HWND>(GetWindow()),
+           x,
+           y,
+           mapped.x(),
+           mapped.y(),
+           mMainPath.countPoints());
+#endif
+    mMainPath.moveTo(mapped);
+  }
+  void PathLineTo(float x, float y) override
+  {
+    const SkPoint mapped = mMatrix.mapXY(x, y);
+#if defined OS_WIN
+    DBGMSG("SkiaPath.PathLineTo: hwnd=%p src=(%.2f,%.2f) mapped=(%.2f,%.2f) points=%d
+",
+           reinterpret_cast<HWND>(GetWindow()),
+           x,
+           y,
+           mapped.x(),
+           mapped.y(),
+           mMainPath.countPoints());
+#endif
+    mMainPath.lineTo(mapped);
+  }
 
-  void PathCubicBezierTo(float x1, float y1, float x2, float y2, float x3, float y3) override { mMainPath.cubicTo(mMatrix.mapXY(x1, y1), mMatrix.mapXY(x2, y2), mMatrix.mapXY(x3, y3)); }
+  void PathCubicBezierTo(float x1, float y1, float x2, float y2, float x3, float y3) override
+  {
+    const SkPoint p1 = mMatrix.mapXY(x1, y1);
+    const SkPoint p2 = mMatrix.mapXY(x2, y2);
+    const SkPoint p3 = mMatrix.mapXY(x3, y3);
+#if defined OS_WIN
+    DBGMSG("SkiaPath.PathCubicBezierTo: hwnd=%p p1=(%.2f,%.2f)->(%.2f,%.2f) p2=(%.2f,%.2f)->(%.2f,%.2f) p3=(%.2f,%.2f)->(%.2f,%.2f) points=%d
+",
+           reinterpret_cast<HWND>(GetWindow()),
+           x1,
+           y1,
+           p1.x(),
+           p1.y(),
+           x2,
+           y2,
+           p2.x(),
+           p2.y(),
+           x3,
+           y3,
+           p3.x(),
+           p3.y(),
+           mMainPath.countPoints());
+#endif
+    mMainPath.cubicTo(p1, p2, p3);
+  }
 
-  void PathQuadraticBezierTo(float cx, float cy, float x2, float y2) override { mMainPath.quadTo(mMatrix.mapXY(cx, cy), mMatrix.mapXY(x2, y2)); }
+  void PathQuadraticBezierTo(float cx, float cy, float x2, float y2) override
+  {
+    const SkPoint control = mMatrix.mapXY(cx, cy);
+    const SkPoint end = mMatrix.mapXY(x2, y2);
+#if defined OS_WIN
+    DBGMSG("SkiaPath.PathQuadraticBezierTo: hwnd=%p control=(%.2f,%.2f)->(%.2f,%.2f) end=(%.2f,%.2f)->(%.2f,%.2f) points=%d
+",
+           reinterpret_cast<HWND>(GetWindow()),
+           cx,
+           cy,
+           control.x(),
+           control.y(),
+           x2,
+           y2,
+           end.x(),
+           end.y(),
+           mMainPath.countPoints());
+#endif
+    mMainPath.quadTo(control, end);
+  }
 
   void PathStroke(const IPattern& pattern, float thickness, const IStrokeOptions& options, const IBlend* pBlend) override;
   void PathFill(const IPattern& pattern, const IFillOptions& options, const IBlend* pBlend) override;
@@ -220,8 +295,106 @@ private:
   SkMatrix mClipMatrix;
   SkMatrix mFinalMatrix;
 
+#if defined OS_WIN
+  struct SurfaceLogState
+  {
+    const SkSurface* ptr = nullptr;
+    int width = 0;
+    int height = 0;
+    int colorType = -1;
+    int alphaType = -1;
+    bool gpuBacked = false;
+    float screenScale = 0.f;
+    float windowScale = 0.f;
+    float monitorScale = 0.f;
+    float virtualization = 0.f;
+    bool valid = false;
+  };
+
+  struct SurfaceSampleState
+  {
+    const SkSurface* ptr = nullptr;
+    int width = 0;
+    int height = 0;
+    int requestedWidth = 0;
+    int requestedHeight = 0;
+    int sampleX = 0;
+    int sampleY = 0;
+    uint32_t pixel = 0;
+    bool sampleValid = false;
+    bool gpuBacked = false;
+    bool skipLogged = false;
+    bool valid = false;
+  };
+
+  int mPresentationPhysicalWidth = 0;
+  int mPresentationPhysicalHeight = 0;
+  int mPresentationLogicalWidth = 0;
+  int mPresentationLogicalHeight = 0;
+  float mPresentationWindowScale = 1.f;
+  float mPresentationMonitorScale = 1.f;
+  float mPresentationVirtualization = 1.f;
+  bool mPresentationLogValid = false;
+  int mLastPresentationDrawWidth = 0;
+  int mLastPresentationDrawHeight = 0;
+  SurfaceLogState mLastDrawSurfaceLog;
+  SurfaceLogState mLastScreenSurfaceLog;
+  SurfaceSampleState mLastDrawSurfaceSample;
+  SurfaceSampleState mLastScreenSurfaceSample;
+#endif
+
 #if defined OS_WIN && defined IGRAPHICS_CPU
   WDL_TypedBuf<uint8_t> mSurfaceMemory;
+  float mLastCpuPresentWindowScale = 0.f;
+  float mLastCpuPresentMonitorScale = 0.f;
+  float mLastCpuPresentScreenScale = 0.f;
+  float mLastCpuPresentVirtualization = 0.f;
+  int mLastCpuPresentWidth = 0;
+  int mLastCpuPresentHeight = 0;
+  int mLastCpuPresentDestWidth = 0;
+  int mLastCpuPresentDestHeight = 0;
+  bool mLastCpuPresentAppliedCompensation = false;
+  const SkSurface* mLastCpuPresentSurfacePtr = nullptr;
+  bool mCpuPresentLogValid = false;
+#endif
+
+#if defined OS_WIN && !defined IGRAPHICS_CPU
+  bool mGpuPresentLogValid = false;
+  float mLastGpuPresentScreenScale = 0.f;
+  float mLastGpuPresentWindowScale = 0.f;
+  float mLastGpuPresentMonitorScale = 0.f;
+  float mLastGpuPresentVirtualization = 0.f;
+  float mLastGpuPresentScaleX = 0.f;
+  float mLastGpuPresentScaleY = 0.f;
+  int mLastGpuPresentSrcWidth = 0;
+  int mLastGpuPresentSrcHeight = 0;
+  int mLastGpuPresentLogicalWidth = 0;
+  int mLastGpuPresentLogicalHeight = 0;
+  int mLastGpuPresentPhysicalWidth = 0;
+  int mLastGpuPresentPhysicalHeight = 0;
+  bool mLastGpuPresentAppliedScale = false;
+  const SkSurface* mLastGpuPresentSrcSurfacePtr = nullptr;
+  const SkSurface* mLastGpuPresentScreenSurfacePtr = nullptr;
+  bool mLastGpuPresentSurfacesEqual = false;
+#endif
+
+#if defined OS_WIN
+  void MaybeLogSurfaceDetails(const char* tag,
+                              const sk_sp<SkSurface>& surface,
+                              SurfaceLogState& cache,
+                              void* hwnd,
+                              int requestedWidth,
+                              int requestedHeight,
+                              float screenScale,
+                              float windowScale,
+                              float monitorScale,
+                              float virtualization);
+  void MaybeLogSurfaceSample(const char* tag,
+                             const sk_sp<SkSurface>& surface,
+                             SurfaceSampleState& cache,
+                             void* hwnd,
+                             int requestedWidth,
+                             int requestedHeight);
 #endif
 
 #ifndef IGRAPHICS_CPU

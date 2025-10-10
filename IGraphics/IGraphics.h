@@ -782,12 +782,40 @@ private:
     PathTransformReset(true);
     PathClear();
     SetClipRegion(bounds);
+#if defined OS_WIN
+    void* hwnd = GetWindow();
+    DBGMSG("IGraphics.PrepareRegion: hwnd=%p bounds=[%.2f,%.2f,%.2f,%.2f] drawScale=%.3f screenScale=%.3f backingScale=%.3f\n",
+           hwnd,
+           bounds.L,
+           bounds.T,
+           bounds.R,
+           bounds.B,
+           GetDrawScale(),
+           GetScreenScale(),
+           GetBackingPixelScale());
+#endif
     mClipRECT = bounds;
   }
 
   /** Indicate that a particular area of the display has been drawn (for instance to transfer a temporary backing) Always called after a matching call to PrepareRegion.
   * @param bounds The rectangular region that is complete  */
-  virtual void CompleteRegion(const IRECT& bounds) {}
+  virtual void CompleteRegion(const IRECT& bounds)
+  {
+#if defined OS_WIN
+    void* hwnd = GetWindow();
+    DBGMSG("IGraphics.CompleteRegion: hwnd=%p bounds=[%.2f,%.2f,%.2f,%.2f] drawScale=%.3f screenScale=%.3f backingScale=%.3f\n",
+           hwnd,
+           bounds.L,
+           bounds.T,
+           bounds.R,
+           bounds.B,
+           GetDrawScale(),
+           GetScreenScale(),
+           GetBackingPixelScale());
+#else
+    (void) bounds;
+#endif
+  }
 
   virtual void SetClipRegion(const IRECT& r) = 0;
 

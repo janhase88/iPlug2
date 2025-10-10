@@ -1,24 +1,36 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <map>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "IGraphicsSkia.h"
+#include "IPlugLogger.h"
+
+#if defined OS_WIN
+  #include "../Platforms/WinDpiUtils.h"
+#endif
 
 #pragma warning(push)
 #pragma warning(disable : 4244)
 #include "include/core/SkBitmap.h"
 #include "include/core/SkBlurTypes.h"
 #include "include/core/SkFont.h"
+#include "include/core/SkCanvas.h"
+#include "include/core/SkColorType.h"
+#include "include/core/SkImageInfo.h"
+#include "include/core/SkColor.h"
+#include "include/core/SkRect.h"
 #include "include/core/SkFontMetrics.h"
 #include "include/core/SkFontMgr.h"
 #include "include/core/SkData.h"
 #include "include/core/SkMaskFilter.h"
 #include "include/core/SkPathEffect.h"
 #include "include/core/SkPixmap.h"
+#include "include/core/SkSamplingOptions.h"
 #include "include/core/SkSwizzle.h"
 #include "include/core/SkTypeface.h"
 #include "include/core/SkVertices.h"
@@ -51,6 +63,118 @@
 #include "include/effects/SkDashPathEffect.h"
 #include "include/effects/SkGradientShader.h"
 #include "include/effects/SkImageFilters.h"
+
+using namespace iplug;
+
+#if defined OS_WIN
+namespace
+{
+const char* SkiaColorTypeToString(int colorType)
+{
+  switch (static_cast<SkColorType>(colorType))
+  {
+    case kUnknown_SkColorType: return "Unknown";
+    case kAlpha_8_SkColorType: return "Alpha8";
+    case kRGB_565_SkColorType: return "RGB565";
+    case kARGB_4444_SkColorType: return "ARGB4444";
+    case kRGBA_8888_SkColorType: return "RGBA8888";
+    case kRGB_888x_SkColorType: return "RGB888x";
+    case kBGRA_8888_SkColorType: return "BGRA8888";
+    case kRGBA_1010102_SkColorType: return "RGBA1010102";
+    case kBGRA_1010102_SkColorType: return "BGRA1010102";
+    case kRGB_101010x_SkColorType: return "RGB101010x";
+    case kBGR_101010x_SkColorType: return "BGR101010x";
+    case kGray_8_SkColorType: return "Gray8";
+    case kRGBA_F16Norm_SkColorType: return "RGBAF16Norm";
+    case kRGBA_F16_SkColorType: return "RGBAF16";
+    case kRGBA_F32_SkColorType: return "RGBAF32";
+    case kR8G8_unorm_SkColorType: return "R8G8";
+    case kA16_float_SkColorType: return "A16Float";
+    case kSRGBA_8888_SkColorType: return "SRGBA8888";
+    default: return "Other";
+  }
+}
+
+const char* SkiaAlphaTypeToString(int alphaType)
+{
+  switch (static_cast<SkAlphaType>(alphaType))
+  {
+    case kUnknown_SkAlphaType: return "Unknown";
+    case kOpaque_SkAlphaType: return "Opaque";
+    case kPremul_SkAlphaType: return "Premul";
+    case kUnpremul_SkAlphaType: return "Unpremul";
+    default: return "Other";
+  }
+}
+
+void LogCanvasMatrixAndClip(const char* tag, void* hwnd, SkCanvas* canvas, bool applyScale)
+{
+  if (!canvas)
+  {
+    DBGMSG("%s: hwnd=%p canvas=null applyScale=%s\n", tag, hwnd, applyScale ? "true" : "false");
+    return;
+  }
+
+  const SkMatrix& matrix = canvas->getTotalMatrix();
+  const float scaleX = matrix.getScaleX();
+  const float scaleY = matrix.getScaleY();
+  const float skewX = matrix.getSkewX();
+  const float skewY = matrix.getSkewY();
+  const float transX = matrix.getTranslateX();
+  const float transY = matrix.getTranslateY();
+
+  SkIRect clipBounds;
+  const bool hasClip = canvas->getDeviceClipBounds(&clipBounds);
+  if (hasClip)
+  {
+    DBGMSG("%s: hwnd=%p applyScale=%s matrix=[%.3f %.3f %.3f %.3f %.3f %.3f] clip=[%d,%d,%d,%d]\n",
+           tag,
+           hwnd,
+           applyScale ? "true" : "false",
+           scaleX,
+           skewX,
+           transX,
+           skewY,
+           scaleY,
+           transY,
+           clipBounds.left(),
+           clipBounds.top(),
+           clipBounds.right(),
+           clipBounds.bottom());
+  }
+  else
+  {
+    DBGMSG("%s: hwnd=%p applyScale=%s matrix=[%.3f %.3f %.3f %.3f %.3f %.3f] clip=none\n",
+           tag,
+           hwnd,
+           applyScale ? "true" : "false",
+           scaleX,
+           skewX,
+           transX,
+           skewY,
+           scaleY,
+           transY);
+  }
+}
+
+bool ReadSurfacePixel(SkSurface* surface, int sampleX, int sampleY, uint32_t& pixelOut)
+{
+  if (!surface)
+    return false;
+
+  SkImageInfo sampleInfo = SkImageInfo::MakeN32Premul(1, 1);
+  uint32_t pixelValue = 0;
+
+  if (surface->readPixels(sampleInfo, &pixelValue, sizeof(uint32_t), sampleX, sampleY))
+  {
+    pixelOut = pixelValue;
+    return true;
+  }
+
+  return false;
+}
+} // namespace
+#endif
 
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
   #include "modules/skparagraph/include/FontCollection.h"
@@ -88,6 +212,7 @@
 
 #elif defined OS_WIN
   #include "../Skia/SkTypefaceWinWrapper.h"
+  #include "../Platforms/WinDpiUtils.h"
 
   #pragma comment(lib, "skia.lib")
 
@@ -133,7 +258,6 @@
   #endif
 #endif
 
-using namespace iplug;
 using namespace igraphics;
 
 extern std::map<std::string, MTLTexturePtr> gTextureMap;
@@ -343,7 +467,9 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
   auto& cachedSurface = mVKSwapchainSurfaces[imageIndex];
   if (cachedSurface)
   {
-    if (cachedSurface->width() == width && cachedSurface->height() == height)
+    const int cachedWidth = cachedSurface->width();
+    const int cachedHeight = cachedSurface->height();
+    if (cachedWidth == width && cachedHeight == height)
     {
       auto backendRT = GrBackendRenderTargets::MakeVk(width, height, localInfo);
       if (backendRT.isValid())
@@ -351,9 +477,28 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
         auto colorState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, mVKQueueFamily);
         mGrContext->setBackendRenderTargetState(backendRT, colorState, nullptr, nullptr, nullptr);
         backendRT.setMutableState(colorState);
+#if defined OS_WIN
+        DBGMSG("SkiaVulkan.SwapSurface: hwnd=%p imageIndex=%u reuse width=%d height=%d\n",
+               reinterpret_cast<HWND>(GetWindow()),
+               static_cast<unsigned>(imageIndex),
+               width,
+               height);
+#endif
         return cachedSurface;
       }
     }
+#if defined OS_WIN
+    else
+    {
+      DBGMSG("SkiaVulkan.SwapSurface: hwnd=%p imageIndex=%u discardCached width=%d height=%d expected=%dx%d\n",
+             reinterpret_cast<HWND>(GetWindow()),
+             static_cast<unsigned>(imageIndex),
+             cachedWidth,
+             cachedHeight,
+             width,
+             height);
+    }
+#endif
     cachedSurface.reset();
   }
 
@@ -382,6 +527,14 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
                           vulkanlog::MakeHandleField("imageView", vulkanlog::HandleToUint64(loggedImageView)));
     return nullptr;
   }
+
+#if defined OS_WIN
+  DBGMSG("SkiaVulkan.SwapSurface: hwnd=%p imageIndex=%u create width=%d height=%d\n",
+         reinterpret_cast<HWND>(GetWindow()),
+         static_cast<unsigned>(imageIndex),
+         width,
+         height);
+#endif
 
   IGRAPHICS_VK_LOG("EnsureSwapchainSurface", "created", vulkanlog::Severity::kDebug,
                        vulkanlog::MakeField("imageIndex", imageIndex),
@@ -601,6 +754,15 @@ bool IGraphicsSkia::PrepareCurrentSwapchainImageForFlush()
       auto colorState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, mVKQueueFamily);
       mGrContext->setBackendRenderTargetState(backendRT, colorState, nullptr, nullptr, nullptr);
       backendRT.setMutableState(colorState);
+#if defined OS_WIN
+      DBGMSG("SkiaVulkan.RenderTargetState: hwnd=%p imageIndex=%d layout=%d queueFamily=%u width=%d height=%d\n",
+             reinterpret_cast<HWND>(GetWindow()),
+             static_cast<int>(mVKCurrentImage),
+             static_cast<int>(colorState.getImageLayout()),
+             static_cast<uint32_t>(colorState.getQueueFamilyIndex()),
+             width,
+             height);
+#endif
     }
   }
 
@@ -1306,8 +1468,78 @@ bool IGraphicsSkia::AssertValidSwapchainImage(VkImage image, const char* context
 void IGraphicsSkia::DrawResize()
 {
   ScopedGraphicsContext scopedGLContext{this};
-  auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * GetScreenScale()));
-  auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * GetScreenScale()));
+  const float screenScale = GetScreenScale();
+  const int drawWidth = std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * screenScale)));
+  const int drawHeight = std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * screenScale)));
+  int presentPhysicalWidth = drawWidth;
+  int presentPhysicalHeight = drawHeight;
+  int presentLogicalWidth = drawWidth;
+  int presentLogicalHeight = drawHeight;
+
+#if defined OS_WIN
+  HWND hwnd = reinterpret_cast<HWND>(GetWindow());
+#endif
+  float windowScale = 1.f;
+  float monitorScale = screenScale;
+  float virtualization = 1.f;
+
+#if defined OS_WIN
+  iplug::win::ScopedPerMonitorDpiAwarenessContext dpiScope;
+  windowScale = iplug::win::GetScaleForHWND(hwnd);
+  if (!std::isfinite(windowScale) || windowScale <= 0.f)
+    windowScale = 1.f;
+
+  monitorScale = iplug::win::GetPhysicalScaleForHWND(hwnd);
+  if (!std::isfinite(monitorScale) || monitorScale <= 0.f)
+    monitorScale = screenScale;
+
+  if (windowScale > std::numeric_limits<float>::epsilon())
+    virtualization = monitorScale / windowScale;
+  if (!std::isfinite(virtualization) || virtualization <= 0.f)
+    virtualization = 1.f;
+
+  presentLogicalWidth = std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * windowScale)));
+  presentLogicalHeight = std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * windowScale)));
+
+  const bool logPresentation =
+    !mPresentationLogValid ||
+    mPresentationPhysicalWidth != presentPhysicalWidth ||
+    mPresentationPhysicalHeight != presentPhysicalHeight ||
+    mPresentationLogicalWidth != presentLogicalWidth ||
+    mPresentationLogicalHeight != presentLogicalHeight ||
+    std::fabs(mPresentationWindowScale - windowScale) > 0.001f ||
+    std::fabs(mPresentationMonitorScale - monitorScale) > 0.001f ||
+    std::fabs(mPresentationVirtualization - virtualization) > 0.001f ||
+    mLastPresentationDrawWidth != drawWidth ||
+    mLastPresentationDrawHeight != drawHeight;
+
+  if (logPresentation)
+  {
+    DBGMSG("SkiaWin.Resize: hwnd=%p surface=%dx%d presentPhysical=%dx%d presentLogical=%dx%d screenScale=%.3f windowScale=%.3f monitorScale=%.3f virtualization=%.3f\n",
+           hwnd,
+           drawWidth,
+           drawHeight,
+           presentPhysicalWidth,
+           presentPhysicalHeight,
+           presentLogicalWidth,
+           presentLogicalHeight,
+           screenScale,
+           windowScale,
+           monitorScale,
+           virtualization);
+    mPresentationLogValid = true;
+  }
+
+  mPresentationPhysicalWidth = presentPhysicalWidth;
+  mPresentationPhysicalHeight = presentPhysicalHeight;
+  mPresentationLogicalWidth = presentLogicalWidth;
+  mPresentationLogicalHeight = presentLogicalHeight;
+  mPresentationWindowScale = windowScale;
+  mPresentationMonitorScale = monitorScale;
+  mPresentationVirtualization = virtualization;
+  mLastPresentationDrawWidth = drawWidth;
+  mLastPresentationDrawHeight = drawHeight;
+#endif
 #if defined IGRAPHICS_VULKAN
   IGRAPHICS_VK_LOG("DrawResize",
                       "begin",
@@ -1405,8 +1637,8 @@ void IGraphicsSkia::DrawResize()
     VkSurfaceCapabilitiesKHR caps{};
     if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(mVKPhysicalDevice, mVKSurface, &caps) == VK_SUCCESS)
     {
-      uint32_t width = static_cast<uint32_t>(w);
-      uint32_t height = static_cast<uint32_t>(h);
+      uint32_t width = static_cast<uint32_t>(presentPhysicalWidth);
+      uint32_t height = static_cast<uint32_t>(presentPhysicalHeight);
       if (caps.currentExtent.width != UINT32_MAX)
       {
         width = caps.currentExtent.width;
@@ -1418,26 +1650,60 @@ void IGraphicsSkia::DrawResize()
         height = std::max(caps.minImageExtent.height, std::min(height, caps.maxImageExtent.height));
       }
       IGRAPHICS_VK_LOG("DrawResize",
-                          "surfaceCapabilities",
-                          vulkanlog::Severity::kDebug,
-                          vulkanlog::MakeField("currentWidth", caps.currentExtent.width),
-                           vulkanlog::MakeField("currentHeight", caps.currentExtent.height),
-                           vulkanlog::MakeField("minWidth", caps.minImageExtent.width),
-                           vulkanlog::MakeField("minHeight", caps.minImageExtent.height),
-                           vulkanlog::MakeField("maxWidth", caps.maxImageExtent.width),
-                           vulkanlog::MakeField("maxHeight", caps.maxImageExtent.height),
-                           vulkanlog::MakeField("clampedWidth", width),
-                           vulkanlog::MakeField("clampedHeight", height));
-      w = static_cast<int>(width);
-      h = static_cast<int>(height);
+                      "surfaceCapabilities",
+                      vulkanlog::Severity::kDebug,
+                      vulkanlog::MakeField("currentWidth", caps.currentExtent.width),
+                       vulkanlog::MakeField("currentHeight", caps.currentExtent.height),
+                       vulkanlog::MakeField("minWidth", caps.minImageExtent.width),
+                       vulkanlog::MakeField("minHeight", caps.minImageExtent.height),
+                       vulkanlog::MakeField("maxWidth", caps.maxImageExtent.width),
+                       vulkanlog::MakeField("maxHeight", caps.maxImageExtent.height),
+                       vulkanlog::MakeField("clampedWidth", width),
+                       vulkanlog::MakeField("clampedHeight", height));
+      presentPhysicalWidth = static_cast<int>(width);
+      presentPhysicalHeight = static_cast<int>(height);
+      mPresentationPhysicalWidth = presentPhysicalWidth;
+      mPresentationPhysicalHeight = presentPhysicalHeight;
     }
   }
+}
+
+const char* SkiaPaintStyleToString(SkPaint::Style style)
+{
+  switch (style)
+  {
+    case SkPaint::kFill_Style: return "Fill";
+    case SkPaint::kStroke_Style: return "Stroke";
+    case SkPaint::kStrokeAndFill_Style: return "StrokeFill";
+    default: return "Unknown";
+  }
+}
+
+const char* BlendMethodToString(EBlend method)
+{
+  switch (method)
+  {
+    case EBlend::SrcOver: return "SrcOver";
+    case EBlend::SrcIn: return "SrcIn";
+    case EBlend::SrcOut: return "SrcOut";
+    case EBlend::SrcAtop: return "SrcAtop";
+    case EBlend::DstOver: return "DstOver";
+    case EBlend::DstIn: return "DstIn";
+    case EBlend::DstOut: return "DstOut";
+    case EBlend::DstAtop: return "DstAtop";
+    case EBlend::Add: return "Add";
+    case EBlend::XOR: return "XOR";
+    case EBlend::Default: return "Default";
+    default: return "Unknown";
+  }
+}
+}
 #endif
 
 #if defined IGRAPHICS_GL || defined IGRAPHICS_METAL || defined IGRAPHICS_VULKAN
   if (mGrContext.get())
   {
-    SkImageInfo info = SkImageInfo::MakeN32Premul(w, h);
+    SkImageInfo info = SkImageInfo::MakeN32Premul(drawWidth, drawHeight);
     mSurface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info);
   #if defined IGRAPHICS_VULKAN
     if (mVKDevice && mVKSurface)
@@ -1451,11 +1717,11 @@ void IGraphicsSkia::DrawResize()
         IGRAPHICS_VK_LOG("DrawResize",
                             "requestSwapchainResize",
                             vulkanlog::Severity::kInfo,
-                            vulkanlog::MakeField("width", w),
-                             vulkanlog::MakeField("height", h),
+                            vulkanlog::MakeField("width", presentPhysicalWidth),
+                             vulkanlog::MakeField("height", presentPhysicalHeight),
                              vulkanlog::MakeField("frameVersion", static_cast<uint64_t>(mVKFrameVersion)),
                              vulkanlog::MakeField("swapchainVersion", static_cast<uint64_t>(mVKSwapchainVersion)));
-        VkResult res = pWin->CreateOrResizeVulkanSwapchain(w, h, swapchain, images, format, mVKSwapchainUsageFlags, mVKSubmissionPending);
+        VkResult res = pWin->CreateOrResizeVulkanSwapchain(presentPhysicalWidth, presentPhysicalHeight, swapchain, images, format, mVKSwapchainUsageFlags, mVKSubmissionPending);
         if (res == VK_SUCCESS)
         {
           mVKSwapchain = swapchain;
@@ -1536,22 +1802,22 @@ void IGraphicsSkia::DrawResize()
   #ifdef OS_WIN
   mSurface.reset();
 
-  const size_t bmpSize = sizeof(BITMAPINFOHEADER) + (w * h * sizeof(uint32_t));
+  const size_t bmpSize = sizeof(BITMAPINFOHEADER) + (static_cast<size_t>(drawWidth) * static_cast<size_t>(drawHeight) * sizeof(uint32_t));
   mSurfaceMemory.Resize(bmpSize);
   BITMAPINFO* bmpInfo = reinterpret_cast<BITMAPINFO*>(mSurfaceMemory.Get());
   ZeroMemory(bmpInfo, sizeof(BITMAPINFO));
   bmpInfo->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-  bmpInfo->bmiHeader.biWidth = w;
-  bmpInfo->bmiHeader.biHeight = -h; // negative means top-down bitmap. Skia draws top-down.
+  bmpInfo->bmiHeader.biWidth = drawWidth;
+  bmpInfo->bmiHeader.biHeight = -drawHeight; // negative means top-down bitmap. Skia draws top-down.
   bmpInfo->bmiHeader.biPlanes = 1;
   bmpInfo->bmiHeader.biBitCount = 32;
   bmpInfo->bmiHeader.biCompression = BI_RGB;
   void* pixels = bmpInfo->bmiColors;
 
-  SkImageInfo info = SkImageInfo::Make(w, h, kN32_SkColorType, kPremul_SkAlphaType, nullptr);
-  mSurface = SkSurfaces::WrapPixels(info, pixels, sizeof(uint32_t) * w);
+  SkImageInfo info = SkImageInfo::Make(drawWidth, drawHeight, kN32_SkColorType, kPremul_SkAlphaType, nullptr);
+  mSurface = SkSurfaces::WrapPixels(info, pixels, sizeof(uint32_t) * drawWidth);
   #else
-  SkImageInfo info = SkImageInfo::MakeN32Premul(w, h);
+  SkImageInfo info = SkImageInfo::MakeN32Premul(drawWidth, drawHeight);
   mSurface = SkSurfaces::Raster(info);
   #endif
 #endif
@@ -1560,6 +1826,31 @@ void IGraphicsSkia::DrawResize()
     mCanvas = mSurface->getCanvas();
     mCanvas->save();
   }
+
+#if defined OS_WIN
+  MaybeLogSurfaceDetails("SkiaWin.DrawSurface",
+                         mSurface,
+                         mLastDrawSurfaceLog,
+                         hwnd,
+                         drawWidth,
+                         drawHeight,
+                         screenScale,
+                         windowScale,
+                         monitorScale,
+                         virtualization);
+#  if !defined IGRAPHICS_CPU
+  MaybeLogSurfaceDetails("SkiaWin.ScreenSurface",
+                         mScreenSurface,
+                         mLastScreenSurfaceLog,
+                         hwnd,
+                         presentPhysicalWidth,
+                         presentPhysicalHeight,
+                         screenScale,
+                         windowScale,
+                         monitorScale,
+                         virtualization);
+#  endif
+#endif
 }
 
 void IGraphicsSkia::BeginFrame()
@@ -1635,8 +1926,13 @@ void IGraphicsSkia::BeginFrame()
       return;
     }
 
+#if defined OS_WIN
+    int width = (mPresentationPhysicalWidth > 0) ? mPresentationPhysicalWidth : WindowWidth() * GetScreenScale();
+    int height = (mPresentationPhysicalHeight > 0) ? mPresentationPhysicalHeight : WindowHeight() * GetScreenScale();
+#else
     int width = WindowWidth() * GetScreenScale();
     int height = WindowHeight() * GetScreenScale();
+#endif
     if (mVKSubmissionPending)
     {
       IGRAPHICS_VK_LOG("BeginFrame",
@@ -2021,14 +2317,152 @@ void IGraphicsSkia::EndFrame()
   SkCGDrawBitmap(pCGContext, bmp, 0, 0);
   CGContextRestoreGState(pCGContext);
   #elif defined OS_WIN
-  auto w = WindowWidth() * GetScreenScale();
-  auto h = WindowHeight() * GetScreenScale();
+  const int srcWidth = WindowWidth() * GetScreenScale();
+  const int srcHeight = WindowHeight() * GetScreenScale();
   BITMAPINFO* bmpInfo = reinterpret_cast<BITMAPINFO*>(mSurfaceMemory.Get());
   HWND hWnd = (HWND)GetWindow();
   PAINTSTRUCT ps;
+  iplug::win::ScopedPerMonitorDpiAwarenessContext awarenessScope;
   HDC hdc = BeginPaint(hWnd, &ps);
-  StretchDIBits(hdc, 0, 0, w, h, 0, 0, w, h, bmpInfo->bmiColors, bmpInfo, DIB_RGB_COLORS, SRCCOPY);
-  ReleaseDC(hWnd, hdc);
+
+  if (hdc)
+  {
+    const float screenScale = GetScreenScale();
+    float windowScale = iplug::win::GetScaleForHWND(hWnd);
+
+    if (!std::isfinite(windowScale) || windowScale <= 0.f)
+      windowScale = 1.f;
+
+    float monitorScale = iplug::win::GetPhysicalScaleForHWND(hWnd);
+    if (!std::isfinite(monitorScale) || monitorScale <= 0.f)
+      monitorScale = screenScale;
+
+    const float virtualization =
+      (windowScale > 0.f && std::isfinite(windowScale)) ? (monitorScale / windowScale) : 0.f;
+
+    const int destLogicalWidth =
+      std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * windowScale)));
+    const int destLogicalHeight =
+      std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * windowScale)));
+
+    int destWidth = destLogicalWidth;
+    int destHeight = destLogicalHeight;
+
+    bool appliedCompensation = false;
+    int previousStretchMode = 0;
+    int previousGraphicsMode = 0;
+    XFORM previousTransform{};
+    bool restoreTransform = false;
+
+    if ((std::fabs(virtualization - 1.f) > 0.001f) && virtualization > 0.f && std::isfinite(virtualization))
+    {
+      previousStretchMode = SetStretchBltMode(hdc, HALFTONE);
+      previousGraphicsMode = SetGraphicsMode(hdc, GM_ADVANCED);
+      if (previousGraphicsMode != 0)
+      {
+        restoreTransform = GetWorldTransform(hdc, &previousTransform) != FALSE;
+        XFORM transform{};
+        transform.eM11 = virtualization;
+        transform.eM22 = virtualization;
+        transform.eM12 = 0.f;
+        transform.eM21 = 0.f;
+        transform.eDx = 0.f;
+        transform.eDy = 0.f;
+
+        if (SetWorldTransform(hdc, &transform))
+        {
+          appliedCompensation = true;
+        }
+        else if (restoreTransform)
+        {
+          SetWorldTransform(hdc, &previousTransform);
+          restoreTransform = false;
+        }
+      }
+    }
+
+    const int destPhysicalWidth =
+      (virtualization > 0.f && std::isfinite(virtualization))
+        ? static_cast<int>(std::lround(static_cast<double>(destLogicalWidth) * virtualization))
+        : destLogicalWidth;
+    const int destPhysicalHeight =
+      (virtualization > 0.f && std::isfinite(virtualization))
+        ? static_cast<int>(std::lround(static_cast<double>(destLogicalHeight) * virtualization))
+        : destLogicalHeight;
+
+    const SkSurface* const surfacePtr = mSurface.get();
+
+    const bool shouldLogPresent =
+      !mCpuPresentLogValid ||
+      std::fabs(screenScale - mLastCpuPresentScreenScale) > 0.001f ||
+      std::fabs(windowScale - mLastCpuPresentWindowScale) > 0.001f ||
+      std::fabs(monitorScale - mLastCpuPresentMonitorScale) > 0.001f ||
+      std::fabs(virtualization - mLastCpuPresentVirtualization) > 0.001f ||
+      mLastCpuPresentWidth != srcWidth ||
+      mLastCpuPresentHeight != srcHeight ||
+      mLastCpuPresentDestWidth != destLogicalWidth ||
+      mLastCpuPresentDestHeight != destLogicalHeight ||
+      mLastCpuPresentAppliedCompensation != appliedCompensation ||
+      mLastCpuPresentSurfacePtr != surfacePtr;
+
+    if (shouldLogPresent)
+    {
+      DBGMSG("SkiaCPU.EndFrame: hwnd=%p src=%dx%d destLogical=%dx%d destPhysical=%dx%d screenScale=%.3f windowScale=%.3f monitorScale=%.3f virtualization=%.3f compensated=%s surface=%p\n",
+             hWnd,
+             srcWidth,
+             srcHeight,
+             destLogicalWidth,
+             destLogicalHeight,
+             destPhysicalWidth,
+             destPhysicalHeight,
+             screenScale,
+             windowScale,
+             monitorScale,
+             virtualization,
+             appliedCompensation ? "true" : "false",
+             static_cast<const void*>(surfacePtr));
+      mCpuPresentLogValid = true;
+      mLastCpuPresentScreenScale = screenScale;
+      mLastCpuPresentWindowScale = windowScale;
+      mLastCpuPresentMonitorScale = monitorScale;
+      mLastCpuPresentVirtualization = virtualization;
+      mLastCpuPresentWidth = srcWidth;
+      mLastCpuPresentHeight = srcHeight;
+      mLastCpuPresentDestWidth = destLogicalWidth;
+      mLastCpuPresentDestHeight = destLogicalHeight;
+      mLastCpuPresentAppliedCompensation = appliedCompensation;
+      mLastCpuPresentSurfacePtr = surfacePtr;
+    }
+
+    MaybeLogSurfaceSample("SkiaCPU.SurfaceSample.draw",
+                          mSurface,
+                          mLastDrawSurfaceSample,
+                          hWnd,
+                          srcWidth,
+                          srcHeight);
+
+    StretchDIBits(hdc,
+                  0,
+                  0,
+                  destWidth,
+                  destHeight,
+                  0,
+                  0,
+                  srcWidth,
+                  srcHeight,
+                  bmpInfo->bmiColors,
+                  bmpInfo,
+                  DIB_RGB_COLORS,
+                  SRCCOPY);
+
+    if (restoreTransform)
+      SetWorldTransform(hdc, &previousTransform);
+    if (previousGraphicsMode != 0)
+      SetGraphicsMode(hdc, previousGraphicsMode);
+    if (previousStretchMode != 0)
+      SetStretchBltMode(hdc, previousStretchMode);
+  }
+
   EndPaint(hWnd, &ps);
   #else
     #error NOT IMPLEMENTED
@@ -2070,7 +2504,205 @@ void IGraphicsSkia::EndFrame()
     return;
   }
   #endif
+#if defined OS_WIN
+  const HWND hwnd = reinterpret_cast<HWND>(GetWindow());
+  if (!mScreenSurface)
+  {
+    DBGMSG("SkiaVulkan.EndFrame: hwnd=%p no screen surface skipFrame=%d currentImage=%d imageCount=%zu\n",
+           hwnd,
+           static_cast<int>(mVKSkipFrame),
+           static_cast<int>(mVKCurrentImage),
+           static_cast<size_t>(mVKSwapchainImages.size()));
+    return;
+  }
+
+  SkCanvas* screenCanvas = mScreenSurface->getCanvas();
+  if (!screenCanvas)
+  {
+    DBGMSG("SkiaVulkan.EndFrame: hwnd=%p no screen canvas skipFrame=%d currentImage=%d imageCount=%zu\n",
+           hwnd,
+           static_cast<int>(mVKSkipFrame),
+           static_cast<int>(mVKCurrentImage),
+           static_cast<size_t>(mVKSwapchainImages.size()));
+    return;
+  }
+
+  {
+    const int srcWidth = mLastPresentationDrawWidth;
+    const int srcHeight = mLastPresentationDrawHeight;
+    const int destLogicalWidth = mPresentationLogicalWidth;
+    const int destLogicalHeight = mPresentationLogicalHeight;
+    const SkSurface* const srcSurfacePtr = mSurface.get();
+    const SkSurface* const screenSurfacePtr = mScreenSurface.get();
+    const bool surfacesEqual = (srcSurfacePtr == screenSurfacePtr);
+
+    float scaleX = 1.f;
+    float scaleY = 1.f;
+
+    if (srcWidth > 0 && destLogicalWidth > 0)
+    {
+      scaleX = static_cast<float>(destLogicalWidth) /
+               static_cast<float>(srcWidth);
+    }
+    else if (mPresentationPhysicalWidth > 0 && mPresentationLogicalWidth > 0)
+    {
+      scaleX = static_cast<float>(mPresentationLogicalWidth) /
+               static_cast<float>(mPresentationPhysicalWidth);
+    }
+
+    if (srcHeight > 0 && destLogicalHeight > 0)
+    {
+      scaleY = static_cast<float>(destLogicalHeight) /
+               static_cast<float>(srcHeight);
+    }
+    else if (mPresentationPhysicalHeight > 0 && mPresentationLogicalHeight > 0)
+    {
+      scaleY = static_cast<float>(mPresentationLogicalHeight) /
+               static_cast<float>(mPresentationPhysicalHeight);
+    }
+
+    if ((!std::isfinite(scaleX) || scaleX <= 0.f) && std::isfinite(mPresentationVirtualization) &&
+        mPresentationVirtualization > 0.f)
+    {
+      scaleX = 1.f / mPresentationVirtualization;
+    }
+
+    if ((!std::isfinite(scaleY) || scaleY <= 0.f) && std::isfinite(mPresentationVirtualization) &&
+        mPresentationVirtualization > 0.f)
+    {
+      scaleY = 1.f / mPresentationVirtualization;
+    }
+
+    const bool applyScale = (std::fabs(scaleX - 1.f) > 0.001f || std::fabs(scaleY - 1.f) > 0.001f);
+
+#if defined OS_WIN
+    const float screenScale = GetScreenScale();
+    const float windowScale = mPresentationWindowScale;
+    const float monitorScale = mPresentationMonitorScale;
+    const float virtualization = mPresentationVirtualization;
+    const int destPhysicalWidth = mPresentationPhysicalWidth;
+    const int destPhysicalHeight = mPresentationPhysicalHeight;
+
+    const bool shouldLogGpuPresent =
+      !mGpuPresentLogValid ||
+      mLastGpuPresentScreenScale != screenScale ||
+      mLastGpuPresentWindowScale != windowScale ||
+      mLastGpuPresentMonitorScale != monitorScale ||
+      mLastGpuPresentVirtualization != virtualization ||
+      mLastGpuPresentScaleX != scaleX ||
+      mLastGpuPresentScaleY != scaleY ||
+      mLastGpuPresentSrcWidth != srcWidth ||
+      mLastGpuPresentSrcHeight != srcHeight ||
+      mLastGpuPresentLogicalWidth != destLogicalWidth ||
+      mLastGpuPresentLogicalHeight != destLogicalHeight ||
+      mLastGpuPresentPhysicalWidth != destPhysicalWidth ||
+      mLastGpuPresentPhysicalHeight != destPhysicalHeight ||
+      mLastGpuPresentAppliedScale != applyScale ||
+      mLastGpuPresentSrcSurfacePtr != srcSurfacePtr ||
+      mLastGpuPresentScreenSurfacePtr != screenSurfacePtr ||
+      mLastGpuPresentSurfacesEqual != surfacesEqual;
+
+    if (shouldLogGpuPresent)
+    {
+      DBGMSG("SkiaVulkan.EndFrame: hwnd=%p src=%dx%d destLogical=%dx%d destPhysical=%dx%d screenScale=%.3f windowScale=%.3f monitorScale=%.3f virtualization=%.3f scaleX=%.3f scaleY=%.3f appliedScale=%s srcSurface=%p screenSurface=%p surfacesEqual=%s\n",
+             hwnd,
+             srcWidth,
+             srcHeight,
+             destLogicalWidth,
+             destLogicalHeight,
+             destPhysicalWidth,
+             destPhysicalHeight,
+             screenScale,
+             windowScale,
+             monitorScale,
+             virtualization,
+             scaleX,
+             scaleY,
+             applyScale ? "true" : "false",
+             static_cast<const void*>(srcSurfacePtr),
+             static_cast<const void*>(screenSurfacePtr),
+             surfacesEqual ? "true" : "false");
+
+      LogCanvasMatrixAndClip("SkiaVulkan.CanvasState.beforeDraw", hwnd, screenCanvas, applyScale);
+
+      mGpuPresentLogValid = true;
+      mLastGpuPresentScreenScale = screenScale;
+      mLastGpuPresentWindowScale = windowScale;
+      mLastGpuPresentMonitorScale = monitorScale;
+      mLastGpuPresentVirtualization = virtualization;
+      mLastGpuPresentScaleX = scaleX;
+      mLastGpuPresentScaleY = scaleY;
+      mLastGpuPresentSrcWidth = srcWidth;
+      mLastGpuPresentSrcHeight = srcHeight;
+      mLastGpuPresentLogicalWidth = destLogicalWidth;
+      mLastGpuPresentLogicalHeight = destLogicalHeight;
+      mLastGpuPresentPhysicalWidth = destPhysicalWidth;
+      mLastGpuPresentPhysicalHeight = destPhysicalHeight;
+      mLastGpuPresentAppliedScale = applyScale;
+      mLastGpuPresentSrcSurfacePtr = srcSurfacePtr;
+      mLastGpuPresentScreenSurfacePtr = screenSurfacePtr;
+      mLastGpuPresentSurfacesEqual = surfacesEqual;
+    }
+#endif
+
+    sk_sp<SkImage> frameImage = mSurface ? mSurface->makeImageSnapshot() : nullptr;
+
+    if (!frameImage)
+    {
+      DBGMSG("SkiaVulkan.EndFrame: hwnd=%p snapshotFailed srcSurface=%p\n",
+             hwnd,
+             static_cast<const void*>(srcSurfacePtr));
+      return;
+    }
+
+    const SkRect srcRect = SkRect::MakeWH(static_cast<SkScalar>(srcWidth),
+                                          static_cast<SkScalar>(srcHeight));
+
+    SkRect dstRect = SkRect::MakeWH(static_cast<SkScalar>(destPhysicalWidth),
+                                    static_cast<SkScalar>(destPhysicalHeight));
+
+    if (applyScale && destLogicalWidth > 0 && destLogicalHeight > 0)
+    {
+      dstRect = SkRect::MakeWH(static_cast<SkScalar>(destLogicalWidth),
+                               static_cast<SkScalar>(destLogicalHeight));
+    }
+
+    const SkSamplingOptions samplingOptions(SkFilterMode::kLinear, SkMipmapMode::kLinear);
+
+    if (applyScale)
+      LogCanvasMatrixAndClip("SkiaVulkan.CanvasState.beforeScale", hwnd, screenCanvas, applyScale);
+    else
+      LogCanvasMatrixAndClip("SkiaVulkan.CanvasState.noScale", hwnd, screenCanvas, applyScale);
+
+    screenCanvas->save();
+    screenCanvas->clear(SK_ColorTRANSPARENT);
+    screenCanvas->drawImageRect(frameImage,
+                                srcRect,
+                                dstRect,
+                                samplingOptions,
+                                nullptr,
+                                SkCanvas::kStrict_SrcRectConstraint);
+    screenCanvas->restore();
+
+    if (applyScale)
+      LogCanvasMatrixAndClip("SkiaVulkan.CanvasState.afterRestore", hwnd, screenCanvas, applyScale);
+
+    MaybeLogSurfaceSample("SkiaVulkan.SurfaceSample.draw",
+                          mSurface,
+                          mLastDrawSurfaceSample,
+                          hwnd,
+                          srcWidth,
+                          srcHeight);
+    MaybeLogSurfaceSample("SkiaVulkan.SurfaceSample.screen",
+                          mScreenSurface,
+                          mLastScreenSurfaceSample,
+                          hwnd,
+                          destPhysicalWidth,
+                          destPhysicalHeight);
+  }
+#else
   mSurface->draw(mScreenSurface->getCanvas(), 0.0, 0.0, nullptr);
+#endif
 
   #if defined IGRAPHICS_VULKAN
   if (auto dContext = GrAsDirectContext(mScreenSurface->getCanvas()->recordingContext()))
@@ -2169,9 +2801,9 @@ void IGraphicsSkia::EndFrame()
     auto backendRT = GrBackendRenderTargets::MakeVk(width, height, imageInfo);
     if (backendRT.isValid())
     {
-      auto presentState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, mVKQueueFamily);
-      mGrContext->setBackendRenderTargetState(backendRT, presentState, nullptr, nullptr, nullptr);
-      backendRT.setMutableState(presentState);
+      auto colorState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, mVKQueueFamily);
+      mGrContext->setBackendRenderTargetState(backendRT, colorState, nullptr, nullptr, nullptr);
+      backendRT.setMutableState(colorState);
     }
   }
 
@@ -2226,6 +2858,16 @@ void IGraphicsSkia::EndFrame()
                        vulkanlog::MakeField("trackedLayout", static_cast<int>(trackedLayout)),
                        vulkanlog::MakeField("frameVersion", static_cast<uint64_t>(mVKFrameVersion)),
                        vulkanlog::MakeField("swapchainVersion", static_cast<uint64_t>(mVKSwapchainVersion)));
+#if defined OS_WIN
+  DBGMSG("SkiaVulkan.ImageBarrier: hwnd=%p imageIndex=%d oldLayout=%d newLayout=%d trackedLayout=%d frameVersion=%llu swapchainVersion=%llu\n",
+         reinterpret_cast<HWND>(GetWindow()),
+         static_cast<int>(mVKCurrentImage),
+         static_cast<int>(barrier.oldLayout),
+         static_cast<int>(barrier.newLayout),
+         static_cast<int>(trackedLayout),
+         static_cast<unsigned long long>(mVKFrameVersion),
+         static_cast<unsigned long long>(mVKSwapchainVersion));
+#endif
   vkCmdPipelineBarrier(mVKCommandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 
   vkEndCommandBuffer(mVKCommandBuffer);
@@ -2332,6 +2974,26 @@ void IGraphicsSkia::DrawBitmap(const IBitmap& bitmap, const IRECT& dest, int src
 
   double scale1 = 1.0 / (bitmap.GetScale() * bitmap.GetDrawScale());
   double scale2 = bitmap.GetScale() * bitmap.GetDrawScale();
+#if defined OS_WIN
+  DBGMSG("SkiaDraw.DrawBitmap: hwnd=%p surface=%p canvas=%p dest=[%.2f,%.2f,%.2f,%.2f] src=(%d,%d) bitmap=%dx%d drawScale=%.3f imageScale=%.3f isSurface=%d blend=%s weight=%.3f
+",
+         reinterpret_cast<HWND>(GetWindow()),
+         static_cast<const void*>(mSurface.get()),
+         static_cast<const void*>(mCanvas),
+         dest.L,
+         dest.T,
+         dest.R,
+         dest.B,
+         srcX,
+         srcY,
+         bitmap.W(),
+         bitmap.H(),
+         scale1,
+         scale2,
+         image->mIsSurface,
+         BlendMethodToString(pBlend ? pBlend->mMethod : EBlend::Default),
+         BlendWeight(pBlend));
+#endif
 
   mCanvas->save();
   mCanvas->clipRect(SkiaRect(dest));
@@ -2351,6 +3013,18 @@ void IGraphicsSkia::DrawBitmap(const IBitmap& bitmap, const IRECT& dest, int src
 
 void IGraphicsSkia::PathArc(float cx, float cy, float r, float a1, float a2, EWinding winding)
 {
+#if defined OS_WIN
+  DBGMSG("SkiaPath.PathArc: hwnd=%p center=(%.2f,%.2f) radius=%.3f angles=[%.2f,%.2f] winding=%d points=%d
+",
+         reinterpret_cast<HWND>(GetWindow()),
+         cx,
+         cy,
+         r,
+         a1,
+         a2,
+         static_cast<int>(winding),
+         mMainPath.countPoints());
+#endif
   SkPath arc;
   arc.setIsVolatile(true);
 
@@ -2543,11 +3217,38 @@ void IGraphicsSkia::DoDrawText(const IText& text, const char* str, const IRECT& 
   paraStyle.setMaxLines(1);
 
   TextStyle txtStyle;
-  txtStyle.setColor(SkiaColor(text.mFGColor, pBlend));
+  const SkColor textColor = SkiaColor(text.mFGColor, pBlend);
+  txtStyle.setColor(textColor);
   txtStyle.setFontSize(text.mSize);
   txtStyle.setTypeface(pFont->mTypeface);
 
   txtStyle.setFontFamilies({pFont->mFamily});
+
+#if defined OS_WIN
+  const int alignIndex = static_cast<int>(text.mAlign);
+  const int valignIndex = static_cast<int>(text.mVAlign);
+  const char* alignStr = (alignIndex >= 0 && alignIndex < 3) ? kEAlignStrs[alignIndex] : "Unknown";
+  const char* valignStr = (valignIndex >= 0 && valignIndex < 3) ? kEVAlignStrs[valignIndex] : "Unknown";
+  DBGMSG("SkiaText.DoDrawText: hwnd=%p text=\"%s\" bounds=[%.2f,%.2f,%.2f,%.2f] measured=[%.2f,%.2f,%.2f,%.2f] origin=(%.2f,%.2f) angle=%.2f size=%.2f align=%s valign=%s blend=%s color=0x%08X\n",
+         reinterpret_cast<HWND>(GetWindow()),
+         (str ? str : ""),
+         bounds.L,
+         bounds.T,
+         bounds.R,
+         bounds.B,
+         measured.L,
+         measured.T,
+         measured.R,
+         measured.B,
+         x,
+         y,
+         text.mAngle,
+         text.mSize,
+         alignStr,
+         valignStr,
+         BlendMethodToString(pBlend ? pBlend->mMethod : EBlend::Default),
+         static_cast<unsigned int>(textColor));
+#endif
 
   // Build the paragraph for drawing, again using the stable member collection.
   auto builder = ParagraphBuilder::make(paraStyle, mFontCollection);
@@ -2567,6 +3268,19 @@ void IGraphicsSkia::DoDrawText(const IText& text, const char* str, const IRECT& 
 }
 void IGraphicsSkia::PathStroke(const IPattern& pattern, float thickness, const IStrokeOptions& options, const IBlend* pBlend)
 {
+#if defined OS_WIN
+  DBGMSG("SkiaPath.PathStroke: hwnd=%p thickness=%.3f cap=%d join=%d dashCount=%d preserve=%d blend=%s weight=%.3f points=%d
+",
+         reinterpret_cast<HWND>(GetWindow()),
+         thickness,
+         static_cast<int>(options.mCapOption),
+         static_cast<int>(options.mJoinOption),
+         options.mDash.GetCount(),
+         options.mPreserve,
+         BlendMethodToString(pBlend ? pBlend->mMethod : EBlend::Default),
+         BlendWeight(pBlend),
+         mMainPath.countPoints());
+#endif
   SkPaint paint = SkiaPaint(pattern, pBlend);
   paint.setStyle(SkPaint::kStroke_Style);
 
@@ -2623,6 +3337,16 @@ void IGraphicsSkia::PathStroke(const IPattern& pattern, float thickness, const I
 
 void IGraphicsSkia::PathFill(const IPattern& pattern, const IFillOptions& options, const IBlend* pBlend)
 {
+#if defined OS_WIN
+  DBGMSG("SkiaPath.PathFill: hwnd=%p fillRule=%d preserve=%d blend=%s weight=%.3f points=%d
+",
+         reinterpret_cast<HWND>(GetWindow()),
+         static_cast<int>(options.mFillRule),
+         options.mPreserve,
+         BlendMethodToString(pBlend ? pBlend->mMethod : EBlend::Default),
+         BlendWeight(pBlend),
+         mMainPath.countPoints());
+#endif
   SkPaint paint = SkiaPaint(pattern, pBlend);
   paint.setStyle(SkPaint::kFill_Style);
 
@@ -2643,6 +3367,28 @@ void IGraphicsSkia::DrawRect(const IColor& color, const IRECT& bounds, const IBl
   auto paint = SkiaPaint(color, pBlend);
   paint.setStyle(SkPaint::Style::kStroke_Style);
   paint.setStrokeWidth(thickness);
+#if defined OS_WIN
+  const SkColor skColor = paint.getColor();
+  DBGMSG("SkiaDraw.DrawRect: hwnd=%p surface=%p canvas=%p bounds=[%.2f,%.2f,%.2f,%.2f] thickness=%.3f style=%s colorARGB=(%d,%d,%d,%d) blend=%s weight=%.3f drawScale=%.3f screenScale=%.3f
+",
+         reinterpret_cast<HWND>(GetWindow()),
+         static_cast<const void*>(mSurface.get()),
+         static_cast<const void*>(mCanvas),
+         bounds.L,
+         bounds.T,
+         bounds.R,
+         bounds.B,
+         thickness,
+         SkiaPaintStyleToString(paint.getStyle()),
+         SkColorGetA(skColor),
+         SkColorGetR(skColor),
+         SkColorGetG(skColor),
+         SkColorGetB(skColor),
+         BlendMethodToString(pBlend ? pBlend->mMethod : EBlend::Default),
+         BlendWeight(pBlend),
+         GetDrawScale(),
+         GetScreenScale());
+#endif
   mCanvas->drawRect(SkiaRect(bounds), paint);
 }
 
@@ -2651,6 +3397,29 @@ void IGraphicsSkia::DrawRoundRect(const IColor& color, const IRECT& bounds, floa
   auto paint = SkiaPaint(color, pBlend);
   paint.setStyle(SkPaint::Style::kStroke_Style);
   paint.setStrokeWidth(thickness);
+#if defined OS_WIN
+  const SkColor skColor = paint.getColor();
+  DBGMSG("SkiaDraw.DrawRoundRect: hwnd=%p surface=%p canvas=%p bounds=[%.2f,%.2f,%.2f,%.2f] radius=%.3f thickness=%.3f style=%s colorARGB=(%d,%d,%d,%d) blend=%s weight=%.3f drawScale=%.3f screenScale=%.3f
+",
+         reinterpret_cast<HWND>(GetWindow()),
+         static_cast<const void*>(mSurface.get()),
+         static_cast<const void*>(mCanvas),
+         bounds.L,
+         bounds.T,
+         bounds.R,
+         bounds.B,
+         cornerRadius,
+         thickness,
+         SkiaPaintStyleToString(paint.getStyle()),
+         SkColorGetA(skColor),
+         SkColorGetR(skColor),
+         SkColorGetG(skColor),
+         SkColorGetB(skColor),
+         BlendMethodToString(pBlend ? pBlend->mMethod : EBlend::Default),
+         BlendWeight(pBlend),
+         GetDrawScale(),
+         GetScreenScale());
+#endif
   mCanvas->drawRoundRect(SkiaRect(bounds), cornerRadius, cornerRadius, paint);
 }
 
@@ -2659,6 +3428,30 @@ void IGraphicsSkia::DrawArc(const IColor& color, float cx, float cy, float r, fl
   auto paint = SkiaPaint(color, pBlend);
   paint.setStyle(SkPaint::Style::kStroke_Style);
   paint.setStrokeWidth(thickness);
+#if defined OS_WIN
+  const SkColor skColor = paint.getColor();
+  DBGMSG("SkiaDraw.DrawArc: hwnd=%p surface=%p canvas=%p center=(%.2f,%.2f) radius=%.3f angles=[%.2f,%.2f] sweep=%.2f thickness=%.3f style=%s colorARGB=(%d,%d,%d,%d) blend=%s weight=%.3f drawScale=%.3f screenScale=%.3f
+",
+         reinterpret_cast<HWND>(GetWindow()),
+         static_cast<const void*>(mSurface.get()),
+         static_cast<const void*>(mCanvas),
+         cx,
+         cy,
+         r,
+         a1,
+         a2,
+         (a2 - a1),
+         thickness,
+         SkiaPaintStyleToString(paint.getStyle()),
+         SkColorGetA(skColor),
+         SkColorGetR(skColor),
+         SkColorGetG(skColor),
+         SkColorGetB(skColor),
+         BlendMethodToString(pBlend ? pBlend->mMethod : EBlend::Default),
+         BlendWeight(pBlend),
+         GetDrawScale(),
+         GetScreenScale());
+#endif
   mCanvas->drawArc(SkRect::MakeLTRB(cx - r, cy - r, cx + r, cy + r), a1 - 90.f, (a2 - a1), false, paint);
 }
 
@@ -2667,6 +3460,27 @@ void IGraphicsSkia::DrawCircle(const IColor& color, float cx, float cy, float r,
   auto paint = SkiaPaint(color, pBlend);
   paint.setStyle(SkPaint::Style::kStroke_Style);
   paint.setStrokeWidth(thickness);
+#if defined OS_WIN
+  const SkColor skColor = paint.getColor();
+  DBGMSG("SkiaDraw.DrawCircle: hwnd=%p surface=%p canvas=%p center=(%.2f,%.2f) radius=%.3f thickness=%.3f style=%s colorARGB=(%d,%d,%d,%d) blend=%s weight=%.3f drawScale=%.3f screenScale=%.3f
+",
+         reinterpret_cast<HWND>(GetWindow()),
+         static_cast<const void*>(mSurface.get()),
+         static_cast<const void*>(mCanvas),
+         cx,
+         cy,
+         r,
+         thickness,
+         SkiaPaintStyleToString(paint.getStyle()),
+         SkColorGetA(skColor),
+         SkColorGetR(skColor),
+         SkColorGetG(skColor),
+         SkColorGetB(skColor),
+         BlendMethodToString(pBlend ? pBlend->mMethod : EBlend::Default),
+         BlendWeight(pBlend),
+         GetDrawScale(),
+         GetScreenScale());
+#endif
   mCanvas->drawCircle(cx, cy, r, paint);
 }
 
@@ -2675,6 +3489,28 @@ void IGraphicsSkia::DrawEllipse(const IColor& color, const IRECT& bounds, const 
   auto paint = SkiaPaint(color, pBlend);
   paint.setStyle(SkPaint::Style::kStroke_Style);
   paint.setStrokeWidth(thickness);
+#if defined OS_WIN
+  const SkColor skColor = paint.getColor();
+  DBGMSG("SkiaDraw.DrawEllipse: hwnd=%p surface=%p canvas=%p bounds=[%.2f,%.2f,%.2f,%.2f] thickness=%.3f style=%s colorARGB=(%d,%d,%d,%d) blend=%s weight=%.3f drawScale=%.3f screenScale=%.3f
+",
+         reinterpret_cast<HWND>(GetWindow()),
+         static_cast<const void*>(mSurface.get()),
+         static_cast<const void*>(mCanvas),
+         bounds.L,
+         bounds.T,
+         bounds.R,
+         bounds.B,
+         thickness,
+         SkiaPaintStyleToString(paint.getStyle()),
+         SkColorGetA(skColor),
+         SkColorGetR(skColor),
+         SkColorGetG(skColor),
+         SkColorGetB(skColor),
+         BlendMethodToString(pBlend ? pBlend->mMethod : EBlend::Default),
+         BlendWeight(pBlend),
+         GetDrawScale(),
+         GetScreenScale());
+#endif
   mCanvas->drawOval(SkiaRect(bounds), paint);
 }
 
@@ -2682,6 +3518,27 @@ void IGraphicsSkia::FillRect(const IColor& color, const IRECT& bounds, const IBl
 {
   auto paint = SkiaPaint(color, pBlend);
   paint.setStyle(SkPaint::Style::kFill_Style);
+#if defined OS_WIN
+  const SkColor skColor = paint.getColor();
+  DBGMSG("SkiaDraw.FillRect: hwnd=%p surface=%p canvas=%p bounds=[%.2f,%.2f,%.2f,%.2f] style=%s colorARGB=(%d,%d,%d,%d) blend=%s weight=%.3f drawScale=%.3f screenScale=%.3f
+",
+         reinterpret_cast<HWND>(GetWindow()),
+         static_cast<const void*>(mSurface.get()),
+         static_cast<const void*>(mCanvas),
+         bounds.L,
+         bounds.T,
+         bounds.R,
+         bounds.B,
+         SkiaPaintStyleToString(paint.getStyle()),
+         SkColorGetA(skColor),
+         SkColorGetR(skColor),
+         SkColorGetG(skColor),
+         SkColorGetB(skColor),
+         BlendMethodToString(pBlend ? pBlend->mMethod : EBlend::Default),
+         BlendWeight(pBlend),
+         GetDrawScale(),
+         GetScreenScale());
+#endif
   mCanvas->drawRect(SkiaRect(bounds), paint);
 }
 
@@ -2689,6 +3546,28 @@ void IGraphicsSkia::FillRoundRect(const IColor& color, const IRECT& bounds, floa
 {
   auto paint = SkiaPaint(color, pBlend);
   paint.setStyle(SkPaint::Style::kFill_Style);
+#if defined OS_WIN
+  const SkColor skColor = paint.getColor();
+  DBGMSG("SkiaDraw.FillRoundRect: hwnd=%p surface=%p canvas=%p bounds=[%.2f,%.2f,%.2f,%.2f] radius=%.3f style=%s colorARGB=(%d,%d,%d,%d) blend=%s weight=%.3f drawScale=%.3f screenScale=%.3f
+",
+         reinterpret_cast<HWND>(GetWindow()),
+         static_cast<const void*>(mSurface.get()),
+         static_cast<const void*>(mCanvas),
+         bounds.L,
+         bounds.T,
+         bounds.R,
+         bounds.B,
+         cornerRadius,
+         SkiaPaintStyleToString(paint.getStyle()),
+         SkColorGetA(skColor),
+         SkColorGetR(skColor),
+         SkColorGetG(skColor),
+         SkColorGetB(skColor),
+         BlendMethodToString(pBlend ? pBlend->mMethod : EBlend::Default),
+         BlendWeight(pBlend),
+         GetDrawScale(),
+         GetScreenScale());
+#endif
   mCanvas->drawRoundRect(SkiaRect(bounds), cornerRadius, cornerRadius, paint);
 }
 
@@ -2696,6 +3575,29 @@ void IGraphicsSkia::FillArc(const IColor& color, float cx, float cy, float r, fl
 {
   auto paint = SkiaPaint(color, pBlend);
   paint.setStyle(SkPaint::Style::kFill_Style);
+#if defined OS_WIN
+  const SkColor skColor = paint.getColor();
+  DBGMSG("SkiaDraw.FillArc: hwnd=%p surface=%p canvas=%p center=(%.2f,%.2f) radius=%.3f angles=[%.2f,%.2f] sweep=%.2f style=%s colorARGB=(%d,%d,%d,%d) blend=%s weight=%.3f drawScale=%.3f screenScale=%.3f
+",
+         reinterpret_cast<HWND>(GetWindow()),
+         static_cast<const void*>(mSurface.get()),
+         static_cast<const void*>(mCanvas),
+         cx,
+         cy,
+         r,
+         a1,
+         a2,
+         (a2 - a1),
+         SkiaPaintStyleToString(paint.getStyle()),
+         SkColorGetA(skColor),
+         SkColorGetR(skColor),
+         SkColorGetG(skColor),
+         SkColorGetB(skColor),
+         BlendMethodToString(pBlend ? pBlend->mMethod : EBlend::Default),
+         BlendWeight(pBlend),
+         GetDrawScale(),
+         GetScreenScale());
+#endif
   mCanvas->drawArc(SkRect::MakeLTRB(cx - r, cy - r, cx + r, cy + r), a1 - 90.f, (a2 - a1), true, paint);
 }
 
@@ -2703,6 +3605,26 @@ void IGraphicsSkia::FillCircle(const IColor& color, float cx, float cy, float r,
 {
   auto paint = SkiaPaint(color, pBlend);
   paint.setStyle(SkPaint::Style::kFill_Style);
+#if defined OS_WIN
+  const SkColor skColor = paint.getColor();
+  DBGMSG("SkiaDraw.FillCircle: hwnd=%p surface=%p canvas=%p center=(%.2f,%.2f) radius=%.3f style=%s colorARGB=(%d,%d,%d,%d) blend=%s weight=%.3f drawScale=%.3f screenScale=%.3f
+",
+         reinterpret_cast<HWND>(GetWindow()),
+         static_cast<const void*>(mSurface.get()),
+         static_cast<const void*>(mCanvas),
+         cx,
+         cy,
+         r,
+         SkiaPaintStyleToString(paint.getStyle()),
+         SkColorGetA(skColor),
+         SkColorGetR(skColor),
+         SkColorGetG(skColor),
+         SkColorGetB(skColor),
+         BlendMethodToString(pBlend ? pBlend->mMethod : EBlend::Default),
+         BlendWeight(pBlend),
+         GetDrawScale(),
+         GetScreenScale());
+#endif
   mCanvas->drawCircle(cx, cy, r, paint);
 }
 
@@ -2710,12 +3632,41 @@ void IGraphicsSkia::FillEllipse(const IColor& color, const IRECT& bounds, const 
 {
   auto paint = SkiaPaint(color, pBlend);
   paint.setStyle(SkPaint::Style::kFill_Style);
+#if defined OS_WIN
+  const SkColor skColor = paint.getColor();
+  DBGMSG("SkiaDraw.FillEllipse: hwnd=%p surface=%p canvas=%p bounds=[%.2f,%.2f,%.2f,%.2f] style=%s colorARGB=(%d,%d,%d,%d) blend=%s weight=%.3f drawScale=%.3f screenScale=%.3f
+",
+         reinterpret_cast<HWND>(GetWindow()),
+         static_cast<const void*>(mSurface.get()),
+         static_cast<const void*>(mCanvas),
+         bounds.L,
+         bounds.T,
+         bounds.R,
+         bounds.B,
+         SkiaPaintStyleToString(paint.getStyle()),
+         SkColorGetA(skColor),
+         SkColorGetR(skColor),
+         SkColorGetG(skColor),
+         SkColorGetB(skColor),
+         BlendMethodToString(pBlend ? pBlend->mMethod : EBlend::Default),
+         BlendWeight(pBlend),
+         GetDrawScale(),
+         GetScreenScale());
+#endif
   mCanvas->drawOval(SkiaRect(bounds), paint);
 }
 #endif
 
 void IGraphicsSkia::RenderPath(SkPaint& paint)
 {
+#if defined OS_WIN
+  DBGMSG("SkiaPath.RenderPath: hwnd=%p points=%d style=%s strokeWidth=%.3f
+",
+         reinterpret_cast<HWND>(GetWindow()),
+         mMainPath.countPoints(),
+         SkiaPaintStyleToString(paint.getStyle()),
+         paint.getStrokeWidth());
+#endif
   SkMatrix invMatrix;
 
   if (!mMatrix.isIdentity() && mMatrix.invert(&invMatrix))
@@ -2731,8 +3682,228 @@ void IGraphicsSkia::RenderPath(SkPaint& paint)
   }
 }
 
+#if defined OS_WIN
+void IGraphicsSkia::MaybeLogSurfaceDetails(const char* tag,
+                                           const sk_sp<SkSurface>& surface,
+                                           SurfaceLogState& cache,
+                                           void* hwnd,
+                                           int requestedWidth,
+                                           int requestedHeight,
+                                           float screenScale,
+                                           float windowScale,
+                                           float monitorScale,
+                                           float virtualization)
+{
+  if (!surface)
+  {
+    if (cache.valid || cache.ptr != nullptr)
+    {
+      DBGMSG("%s: hwnd=%p surface=null requested=%dx%d screenScale=%.3f windowScale=%.3f monitorScale=%.3f virtualization=%.3f\n",
+             tag,
+             hwnd,
+             requestedWidth,
+             requestedHeight,
+             screenScale,
+             windowScale,
+             monitorScale,
+             virtualization);
+    }
+    cache = SurfaceLogState{};
+    return;
+  }
+
+  const SkSurface* const surfacePtr = surface.get();
+  const SkImageInfo& info = surface->imageInfo();
+  const bool gpuBacked = surface->recordingContext() != nullptr;
+  const int infoWidth = info.width();
+  const int infoHeight = info.height();
+  const int infoColorType = static_cast<int>(info.colorType());
+  const int infoAlphaType = static_cast<int>(info.alphaType());
+
+  const bool changed = !cache.valid ||
+                       cache.ptr != surfacePtr ||
+                       cache.width != infoWidth ||
+                       cache.height != infoHeight ||
+                       cache.colorType != infoColorType ||
+                       cache.alphaType != infoAlphaType ||
+                       cache.gpuBacked != gpuBacked ||
+                       std::fabs(cache.screenScale - screenScale) > 0.001f ||
+                       std::fabs(cache.windowScale - windowScale) > 0.001f ||
+                       std::fabs(cache.monitorScale - monitorScale) > 0.001f ||
+                       std::fabs(cache.virtualization - virtualization) > 0.001f;
+
+  if (changed)
+  {
+    DBGMSG("%s: hwnd=%p surface=%p actual=%dx%d requested=%dx%d colorType=%s alphaType=%s gpuBacked=%s screenScale=%.3f windowScale=%.3f monitorScale=%.3f virtualization=%.3f\n",
+           tag,
+           hwnd,
+           static_cast<const void*>(surfacePtr),
+           infoWidth,
+           infoHeight,
+           requestedWidth,
+           requestedHeight,
+           SkiaColorTypeToString(infoColorType),
+           SkiaAlphaTypeToString(infoAlphaType),
+           gpuBacked ? "true" : "false",
+           screenScale,
+           windowScale,
+           monitorScale,
+           virtualization);
+
+    cache.ptr = surfacePtr;
+    cache.width = infoWidth;
+    cache.height = infoHeight;
+    cache.colorType = infoColorType;
+    cache.alphaType = infoAlphaType;
+    cache.gpuBacked = gpuBacked;
+    cache.screenScale = screenScale;
+    cache.windowScale = windowScale;
+    cache.monitorScale = monitorScale;
+    cache.virtualization = virtualization;
+    cache.valid = true;
+  }
+}
+
+void IGraphicsSkia::MaybeLogSurfaceSample(const char* tag,
+                                          const sk_sp<SkSurface>& surface,
+                                          SurfaceSampleState& cache,
+                                          void* hwnd,
+                                          int requestedWidth,
+                                          int requestedHeight)
+{
+  if (!surface)
+  {
+    if (cache.valid || cache.ptr != nullptr)
+    {
+      DBGMSG("%s: hwnd=%p surface=null requested=%dx%d sampleValid=false\n",
+             tag,
+             hwnd,
+             requestedWidth,
+             requestedHeight);
+    }
+
+    cache = SurfaceSampleState{};
+    return;
+  }
+
+  const SkSurface* const surfacePtr = surface.get();
+  const int actualWidth = surface->width();
+  const int actualHeight = surface->height();
+  SkCanvas* canvas = surface->getCanvas();
+  const bool gpuBacked = (canvas != nullptr && canvas->recordingContext() != nullptr);
+
+  if (gpuBacked)
+  {
+    const bool changed = !cache.valid ||
+                         cache.ptr != surfacePtr ||
+                         cache.width != actualWidth ||
+                         cache.height != actualHeight ||
+                         cache.requestedWidth != requestedWidth ||
+                         cache.requestedHeight != requestedHeight ||
+                         !cache.gpuBacked ||
+                         !cache.skipLogged;
+
+    if (changed)
+    {
+      DBGMSG("%s: hwnd=%p surface=%p actual=%dx%d requested=%dx%d gpuBacked=true sampleSkipped=true\n",
+             tag,
+             hwnd,
+             static_cast<const void*>(surfacePtr),
+             actualWidth,
+             actualHeight,
+             requestedWidth,
+             requestedHeight);
+    }
+
+    cache.ptr = surfacePtr;
+    cache.width = actualWidth;
+    cache.height = actualHeight;
+    cache.requestedWidth = requestedWidth;
+    cache.requestedHeight = requestedHeight;
+    cache.sampleX = 0;
+    cache.sampleY = 0;
+    cache.pixel = 0;
+    cache.sampleValid = false;
+    cache.gpuBacked = true;
+    cache.skipLogged = true;
+    cache.valid = true;
+    return;
+  }
+
+  int sampleX = 0;
+  int sampleY = 0;
+  if (actualWidth > 0)
+    sampleX = std::min(actualWidth - 1, actualWidth / 2);
+  if (actualHeight > 0)
+    sampleY = std::min(actualHeight - 1, actualHeight / 2);
+
+  uint32_t pixel = 0;
+  bool sampleValid = false;
+
+  if (actualWidth > 0 && actualHeight > 0)
+  {
+    sampleX = std::clamp(sampleX, 0, actualWidth - 1);
+    sampleY = std::clamp(sampleY, 0, actualHeight - 1);
+    sampleValid = ReadSurfacePixel(surface.get(), sampleX, sampleY, pixel);
+  }
+
+  const bool changed = !cache.valid ||
+                       cache.ptr != surfacePtr ||
+                       cache.width != actualWidth ||
+                       cache.height != actualHeight ||
+                       cache.requestedWidth != requestedWidth ||
+                       cache.requestedHeight != requestedHeight ||
+                       cache.sampleX != sampleX ||
+                       cache.sampleY != sampleY ||
+                       cache.sampleValid != sampleValid ||
+                       cache.gpuBacked ||
+                       cache.skipLogged ||
+                       (sampleValid && cache.pixel != pixel);
+
+  if (changed)
+  {
+    DBGMSG("%s: hwnd=%p surface=%p actual=%dx%d requested=%dx%d sample=(%d,%d) valid=%s argb=0x%08X\n",
+           tag,
+           hwnd,
+           static_cast<const void*>(surfacePtr),
+           actualWidth,
+           actualHeight,
+           requestedWidth,
+           requestedHeight,
+           sampleX,
+           sampleY,
+           sampleValid ? "true" : "false",
+           static_cast<unsigned>(pixel));
+
+    cache.ptr = surfacePtr;
+    cache.width = actualWidth;
+    cache.height = actualHeight;
+    cache.requestedWidth = requestedWidth;
+    cache.requestedHeight = requestedHeight;
+    cache.sampleX = sampleX;
+    cache.sampleY = sampleY;
+    cache.pixel = pixel;
+    cache.sampleValid = sampleValid;
+    cache.gpuBacked = false;
+    cache.skipLogged = false;
+    cache.valid = true;
+  }
+}
+#endif
+
 void IGraphicsSkia::PathTransformSetMatrix(const IMatrix& m)
 {
+#if defined OS_WIN
+  DBGMSG("SkiaPath.PathTransformSetMatrix: hwnd=%p matrix=[%.3f %.3f %.3f %.3f %.3f %.3f]
+",
+         reinterpret_cast<HWND>(GetWindow()),
+         m.mXX,
+         m.mXY,
+         m.mTX,
+         m.mYX,
+         m.mYY,
+         m.mTY);
+#endif
   double xTranslate = 0.0;
   double yTranslate = 0.0;
 
@@ -2760,6 +3931,15 @@ void IGraphicsSkia::PathTransformSetMatrix(const IMatrix& m)
 
 void IGraphicsSkia::SetClipRegion(const IRECT& r)
 {
+#if defined OS_WIN
+  DBGMSG("SkiaPath.SetClipRegion: hwnd=%p rect=[%.2f,%.2f,%.2f,%.2f]
+",
+         reinterpret_cast<HWND>(GetWindow()),
+         r.L,
+         r.T,
+         r.R,
+         r.B);
+#endif
   mCanvas->restoreToCount(0);
   mCanvas->save();
   mCanvas->setMatrix(mClipMatrix);

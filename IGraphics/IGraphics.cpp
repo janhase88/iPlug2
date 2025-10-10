@@ -951,6 +951,17 @@ bool IGraphics::IsDirty(IRECTList& rects)
 
 void IGraphics::BeginFrame()
 {
+#if defined OS_WIN
+  void* hwnd = GetWindow();
+  DBGMSG("IGraphics.BeginFrame: hwnd=%p width=%d height=%d drawScale=%.3f screenScale=%.3f backingScale=%.3f controls=%d\n",
+         hwnd,
+         Width(),
+         Height(),
+         GetDrawScale(),
+         GetScreenScale(),
+         GetBackingPixelScale(),
+         NControls());
+#endif
   if(mPerfDisplay)
   {
     const double timestamp = GetTimestamp();
@@ -987,6 +998,27 @@ void IGraphics::DrawControl(IControl* pControl, const IRECT& bounds, float scale
     }
     
     PrepareRegion(clipBounds);
+#if defined OS_WIN
+    const int controlIdx = GetControlIdx(pControl);
+    void* hwnd = GetWindow();
+    DBGMSG("IGraphics.DrawControl: hwnd=%p controlIdx=%d controlName=%s bounds=[%.2f,%.2f,%.2f,%.2f] clip=[%.2f,%.2f,%.2f,%.2f] scale=%.3f drawScale=%.3f screenScale=%.3f backingScale=%.3f hidden=%d\n",
+           hwnd,
+           controlIdx,
+           pControl->GetName(),
+           pControl->GetRECT().L,
+           pControl->GetRECT().T,
+           pControl->GetRECT().R,
+           pControl->GetRECT().B,
+           clipBounds.L,
+           clipBounds.T,
+           clipBounds.R,
+           clipBounds.B,
+           scale,
+           GetDrawScale(),
+           GetScreenScale(),
+           GetBackingPixelScale(),
+           pControl->IsHidden());
+#endif
     pControl->Draw(*this);
 #ifdef AAX_API
     pControl->DrawPTHighlight(*this);
@@ -1006,6 +1038,20 @@ void IGraphics::DrawControl(IControl* pControl, const IRECT& bounds, float scale
 
 void IGraphics::Draw(const IRECT& bounds, float scale)
 {
+#if defined OS_WIN
+  void* hwnd = GetWindow();
+  DBGMSG("IGraphics.Draw: hwnd=%p bounds=[%.2f,%.2f,%.2f,%.2f] requestScale=%.3f drawScale=%.3f screenScale=%.3f backingScale=%.3f controls=%d\n",
+         hwnd,
+         bounds.L,
+         bounds.T,
+         bounds.R,
+         bounds.B,
+         scale,
+         GetDrawScale(),
+         GetScreenScale(),
+         GetBackingPixelScale(),
+         NControls());
+#endif
   ForAllControlsFunc([this, bounds, scale](IControl* pControl) { DrawControl(pControl, bounds, scale); });
 
 #ifndef NDEBUG
@@ -2869,6 +2915,9 @@ void IGraphics::PathConvexPolygon(float* x, float* y, int nPoints)
   
 void IGraphics::PathTransformSave()
 {
+#if defined OS_WIN
+  DBGMSG("IGraphics.PathTransformSave: states=%zu\n", mTransformStates.size());
+#endif
   mTransformStates.push(mTransform);
 }
 
@@ -2878,6 +2927,17 @@ void IGraphics::PathTransformRestore()
   {
     mTransform = mTransformStates.top();
     mTransformStates.pop();
+#if defined OS_WIN
+    DBGMSG("IGraphics.PathTransformRestore: remainingStates=%zu matrix=[%.3f %.3f %.3f %.3f %.3f %.3f]
+",
+           mTransformStates.size(),
+           mTransform.mXX,
+           mTransform.mXY,
+           mTransform.mTX,
+           mTransform.mYX,
+           mTransform.mYY,
+           mTransform.mTY);
+#endif
     PathTransformSetMatrix(mTransform);
   }
 }
@@ -2891,18 +2951,46 @@ void IGraphics::PathTransformReset(bool clearStates)
   }
   
   mTransform = IMatrix();
+#if defined OS_WIN
+  DBGMSG("IGraphics.PathTransformReset: clearStates=%d
+", clearStates);
+#endif
   PathTransformSetMatrix(mTransform);
 }
 
 void IGraphics::PathTransformTranslate(float x, float y)
 {
   mTransform.Translate(x, y);
+#if defined OS_WIN
+  DBGMSG("IGraphics.PathTransformTranslate: x=%.3f y=%.3f matrix=[%.3f %.3f %.3f %.3f %.3f %.3f]
+",
+         x,
+         y,
+         mTransform.mXX,
+         mTransform.mXY,
+         mTransform.mTX,
+         mTransform.mYX,
+         mTransform.mYY,
+         mTransform.mTY);
+#endif
   PathTransformSetMatrix(mTransform);
 }
 
 void IGraphics::PathTransformScale(float scaleX, float scaleY)
 {
   mTransform.Scale(scaleX, scaleY);
+#if defined OS_WIN
+  DBGMSG("IGraphics.PathTransformScale: scaleX=%.3f scaleY=%.3f matrix=[%.3f %.3f %.3f %.3f %.3f %.3f]
+",
+         scaleX,
+         scaleY,
+         mTransform.mXX,
+         mTransform.mXY,
+         mTransform.mTX,
+         mTransform.mYX,
+         mTransform.mYY,
+         mTransform.mTY);
+#endif
   PathTransformSetMatrix(mTransform);
 }
 
@@ -2920,12 +3008,34 @@ void IGraphics::PathTransformRotate(float angle)
 void IGraphics::PathTransformSkew(float xAngle, float yAngle)
 {
   mTransform.Skew(xAngle, yAngle);
+#if defined OS_WIN
+  DBGMSG("IGraphics.PathTransformSkew: xAngle=%.3f yAngle=%.3f matrix=[%.3f %.3f %.3f %.3f %.3f %.3f]
+",
+         xAngle,
+         yAngle,
+         mTransform.mXX,
+         mTransform.mXY,
+         mTransform.mTX,
+         mTransform.mYX,
+         mTransform.mYY,
+         mTransform.mTY);
+#endif
   PathTransformSetMatrix(mTransform);
 }
 
 void IGraphics::PathTransformMatrix(const IMatrix& matrix)
 {
   mTransform.Transform(matrix);
+#if defined OS_WIN
+  DBGMSG("IGraphics.PathTransformMatrix: matrix=[%.3f %.3f %.3f %.3f %.3f %.3f]
+",
+         mTransform.mXX,
+         mTransform.mXY,
+         mTransform.mTX,
+         mTransform.mYX,
+         mTransform.mYY,
+         mTransform.mTY);
+#endif
   PathTransformSetMatrix(mTransform);
 }
 

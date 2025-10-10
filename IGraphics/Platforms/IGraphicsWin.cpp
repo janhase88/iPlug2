@@ -4484,19 +4484,6 @@ void IGraphicsWin::SetHostContentScaleBypassed(bool bypass)
 
 float IGraphicsWin::GetBackingPixelScaleForParentResize() const
 {
-  if (mBypassHostContentScale)
-  {
-    const float renderScale = GetScreenScale();
-
-    if (renderScale > 0.f && std::isfinite(renderScale))
-      return renderScale;
-
-    if (mWindowDPIScale > 0.f && std::isfinite(mWindowDPIScale))
-      return mWindowDPIScale;
-
-    return 1.f;
-  }
-
   if (mWindowDPIScale > 0.f && std::isfinite(mWindowDPIScale))
     return mWindowDPIScale;
 
@@ -4548,12 +4535,9 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   const float hostScale = ComputeWindowDpiScale(mParentWnd);
   const bool hostScaleValid = hostScale > 0.f && std::isfinite(hostScale);
   const bool physicalScaleValid = physicalScale > 0.f && std::isfinite(physicalScale);
-  const bool bypassHostScale = mBypassHostContentScale && physicalScaleValid;
   float windowScale = 1.f;
 
-  if (bypassHostScale)
-    windowScale = physicalScale;
-  else if (hostScaleValid)
+  if (hostScaleValid)
     windowScale = hostScale;
   else if (physicalScaleValid)
     windowScale = physicalScale;

@@ -5,13 +5,12 @@ Ensure Windows VST3 editors that render with the Skia/Vulkan backend always draw
 
 ## Status
 - [x] Phase 1 — Investigation & Audit (see `WinVST3VulkanSkia_Audit.md`)
-- [ ] Phase 2 — Implementation & Integration — **rework in progress** (forcing VST3 host resizes to the physical pixel target while logging logical, host, and render dimensions for validation)
+- [ ] Phase 2 — Implementation & Integration — **rework in progress** (resetting the window/swapchain handshake so we stop over-sizing the host frame while we chase the blur source)
 
 ### Current Focus
-- Force the host container and child HWND hierarchy to adopt the physical pixel size reported by the bypass so the swapchain and window match, while logging both the requested and final dimensions for each resize.
-- Verify the mixed-DPI hosting path stays enabled (check the new `mixedDpi` flag in `SetHostContentScaleBypassed`) and that `PlatformResize` prints `targetPixels`, `renderPixels`, and `final` sizes matching the measured DPI ratio.
-- Capture high-DPI validation logs/screens showing a crisp image that fills the plugin window (no overflow) with `SwapchainExtent` reflecting the physical pixel dimensions (e.g. 1200×500 logical → 1800×750 physical at 150 %).
-- Confirm the expanded logging (`OpenWindow`, `PlatformResize`, `SwapchainExtent`, `DrawResize`) appears in default builds so testers can trace logical → physical conversions without extra switches.
+- Keep the host container and child HWND hierarchy at the logical bounds while we confirm the Vulkan swapchain really allocates physical-pixel images (no more manual ancestor growth that leaves gray gutters).
+- Instrument the swapchain/surface creation path so the logs reveal whether Skia still binds 1200×500 attachments after we request 1800×750, and capture the virtualization ratio beside each resize.
+- Once the blur is gone, gather high-DPI validation logs/screens to prove the canvas is crisp and fills the window before closing Phase 2.
 
 ## Scope & Constraints
 - Platform: Windows only.
@@ -82,13 +81,14 @@ Use the investigation results to enforce physical DPI usage across the Windows V
 - [x] Verify the attach-time bypass handshake reliably flips `SetHostContentScaleBypassed(true)` before any scale refresh so the logs stop reporting `bypass=false` and the renderer can adopt the physical DPI.
 - [x] Toggle the thread DPI awareness context to `PER_MONITOR_AWARE_V2` (and enable mixed-DPI hosting) whenever the bypass is active so Windows does not virtualize the plug-in child window.
 
-- [x] Adjust `IGraphicsWin::OpenWindow()` and resize paths so the HWND hierarchy expands to the physical DPI when bypassing the host scale, keeping the Skia/Vulkan surfaces and HWND bounds aligned.
+- [ ] Rework `IGraphicsWin::OpenWindow()` and resize paths so the HWND hierarchy stays aligned with the logical bounds while the renderer targets the physical DPI without introducing gray gutters.
+- [ ] Review Microsoft/Steinberg DPI guidance for child HWNDs (per-monitor aware V2 vs. host virtualization) so our bypass strategy matches documented best practices.
 - [x] When `GetScaleForHWND()` changes, update both the stored screen scale and trigger window/swapchain resizes so the client area and Vulkan images stay in sync.
 - [x] Integrate handling for `WM_DPICHANGED` (or equivalent) to react immediately to monitor DPI switches, using the suggested `RECT` to resize the window if necessary.
 
 ### 4. Align Editor Delegate Calculations
 - [x] Modify `IGEditorDelegate::OnParentWindowResize()` and related helpers so logical-to-physical conversions rely on the new physical scale, avoiding host-provided content scale factors.
-- [x] Review `IGraphics::SetScreenScale()` / `GetPlatformWindowScale()` to ensure the "platform scale" reported to layout code equals the physical DPI multiplier.
+- [ ] Review `IGraphics::SetScreenScale()` / `GetPlatformWindowScale()` so layout math consumes host logical scaling while rendering sticks to the measured physical DPI.
 - [x] Confirm `mDrawScale` (user-resizable zoom) composes cleanly with the physical scale to yield `GetTotalScale()`.
 
 ### 5. Vulkan & Skia Integration Updates

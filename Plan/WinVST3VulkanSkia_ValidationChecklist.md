@@ -12,7 +12,7 @@ This checklist verifies that Windows VST3 editors rendered with the Skia/Vulkan 
 - [ ] Launch DebugView (or attach a debugger) so the always-on `DBGMSG`/`IGRAPHICS_VK_LOG` entries from `RefreshPlatformScale()` are captured during the run.【F:IGraphics/Platforms/IGraphicsWin.cpp†L47-L62】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4381-L4416】
 
 ## 2. Baseline Attachment
-- [ ] Launch each host at 150 % scaling and open the plug-in editor. Confirm the `SetHostContentScaleBypassed` log flips to `true` with `mixedDpi=true`, then verify `PlatformResize` reports `targetPixels` and `renderPixels` at the physical dimensions (e.g. 1800×750) while the `current` size matches before the resize and the follow-up `applied` log shows the HWND reached the target. Cross-check the paired `DrawResize` and `SwapchainExtent` entries to ensure the render target dimensions equal logical size × physical scale.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3554-L3771】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4346-L4368】【F:IGraphics/Drawing/IGraphicsSkia.cpp†L1316-L1478】
+- [ ] Launch each host at 150 % scaling and open the plug-in editor. Confirm the `SetHostContentScaleBypassed` log flips to `true` with `mixedDpi=true`, then verify `PlatformResize` keeps the window scale at the host value while the virtualization ratio (`render/host`) matches the expected DPI (e.g. 1.5). The follow-up `applied` log should show the HWND stayed at the logical size, while `DrawResize`/`SwapchainExtent` report physical dimensions (1200×500 logical → 1800×750 render).【F:IGraphics/Platforms/IGraphicsWin.cpp†L3554-L3771】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4346-L4368】【F:IGraphics/Drawing/IGraphicsSkia.cpp†L1316-L1478】
 - [ ] Capture a screenshot showing the UI is crisp (no bitmap stretching) and the plug-in window bounds match the rendered content.
 
 ## 3. Host Resize Negotiation
@@ -24,7 +24,7 @@ This checklist verifies that Windows VST3 editors rendered with the Skia/Vulkan 
 - [ ] While the window straddles both monitors, ensure the measured scale matches the monitor containing the majority of the window.
 
 ## 5. Swapchain Stability
-- [ ] With the editor on the high-DPI monitor, spam rapid host resize operations. Inspect Vulkan logs to ensure `CreateOrResizeVulkanSwapchain()` selects extents that match the physical window size and report `bypassVirtualExtent=true` while the bypass is engaged.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3823-L4245】
+- [ ] With the editor on the high-DPI monitor, spam rapid host resize operations. Inspect Vulkan logs to ensure `CreateOrResizeVulkanSwapchain()` selects extents equal to logical size × physical DPI and report `bypassVirtualExtent=true` while the bypass is engaged.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3823-L4245】
 - [ ] Confirm no unexpected swapchain recreations occur when the host sends repeated logical size notifications without DPI changes.
 
 ## 6. Ancillary UI Elements

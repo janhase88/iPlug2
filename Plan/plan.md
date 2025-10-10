@@ -5,10 +5,10 @@ Ensure Windows VST3 editors that render with the Skia/Vulkan backend always draw
 
 ## Status
 - [x] Phase 1 — Investigation & Audit (see `WinVST3VulkanSkia_Audit.md`)
-- [ ] Phase 2 — Implementation & Integration — **in progress**
+- [ ] Phase 2 — Implementation & Integration — **in progress** (host/physical resize negotiation under active review)
 
 ### Current Focus
-- Validating and refining the Phase 2 changes so every Windows VST3 Skia/Vulkan editor consistently renders at the physical monitor DPI while window and swapchain sizes stay aligned.
+- Ensuring host-facing resize messages and internal Vulkan back buffers stay in sync now that the Windows VST3 Skia/Vulkan path bypasses host content scale hints and always draws at the measured physical DPI.
 
 ## Scope & Constraints
 - Platform: Windows only.
@@ -70,41 +70,41 @@ Deliverable: A detailed audit document (can extend `WinVST3VulkanSkia_CurrentSta
 Use the investigation results to enforce physical DPI usage across the Windows VST3 Skia/Vulkan pipeline, ignoring host scaling preferences while maintaining correct window/swapchain alignment.
 
 ### 1. Establish Physical DPI Source of Truth
-- Refine `GetScaleForHWND()` (or introduce a new helper) to return the effective physical scaling factor per monitor, leveraging the virtual-to-physical desktop ratio fallback for DPI-virtualized hosts.
-- Cache and expose this physical scale distinctly from any host-provided logical scale so downstream code can differentiate between "actual pixels" and "host hints".
+- [x] Refine `GetScaleForHWND()` (or introduce a new helper) to return the effective physical scaling factor per monitor, leveraging the virtual-to-physical desktop ratio fallback for DPI-virtualized hosts.
+- [x] Cache and expose this physical scale distinctly from any host-provided logical scale so downstream code can differentiate between "actual pixels" and "host hints".
 
 ### 2. Override Host Scale Inputs
-- Update `IPlugVST3_View::setContentScaleFactor()` to ignore or sandbox Steinberg's factor when running on Windows with Skia/Vulkan, optionally logging discrepancies for diagnostics.
-- Ensure other potential host callbacks (`checkSizeConstraint`, custom attributes) do not reintroduce logical scaling—guard or bypass them as needed.
+- [x] Update `IPlugVST3_View::setContentScaleFactor()` to ignore or sandbox Steinberg's factor when running on Windows with Skia/Vulkan, optionally logging discrepancies for diagnostics.
+- [x] Ensure other potential host callbacks (`checkSizeConstraint`, custom attributes) do not reintroduce logical scaling—guard or bypass them as needed.
 
 ### 3. Synchronize Window & Swapchain to Physical Pixels
-- Adjust `IGraphicsWin::OpenWindow()` and resize paths so the HWND client size always matches `logicalSize × physicalScale`, regardless of host expectations, and confirm that `SetWindowPos` negotiations still succeed.
-- When `GetScaleForHWND()` changes, update both the stored screen scale and trigger window/swapchain resizes so the client area and Vulkan images stay in sync.
-- Integrate handling for `WM_DPICHANGED` (or equivalent) to react immediately to monitor DPI switches, using the suggested `RECT` to resize the window if necessary.
+- [x] Adjust `IGraphicsWin::OpenWindow()` and resize paths so the HWND client size always matches `logicalSize × physicalScale`, regardless of host expectations, and confirm that `SetWindowPos` negotiations still succeed.
+- [x] When `GetScaleForHWND()` changes, update both the stored screen scale and trigger window/swapchain resizes so the client area and Vulkan images stay in sync.
+- [x] Integrate handling for `WM_DPICHANGED` (or equivalent) to react immediately to monitor DPI switches, using the suggested `RECT` to resize the window if necessary.
 
 ### 4. Align Editor Delegate Calculations
-- Modify `IGEditorDelegate::OnParentWindowResize()` and related helpers so logical-to-physical conversions rely on the new physical scale, avoiding host-provided content scale factors.
-- Review `IGraphics::SetScreenScale()` / `GetPlatformWindowScale()` to ensure the "platform scale" reported to layout code equals the physical DPI multiplier.
-- Confirm `mDrawScale` (user-resizable zoom) composes cleanly with the physical scale to yield `GetTotalScale()`.
+- [x] Modify `IGEditorDelegate::OnParentWindowResize()` and related helpers so logical-to-physical conversions rely on the new physical scale, avoiding host-provided content scale factors.
+- [x] Review `IGraphics::SetScreenScale()` / `GetPlatformWindowScale()` to ensure the "platform scale" reported to layout code equals the physical DPI multiplier.
+- [x] Confirm `mDrawScale` (user-resizable zoom) composes cleanly with the physical scale to yield `GetTotalScale()`.
 
 ### 5. Vulkan & Skia Integration Updates
-- Propagate the physical scale into swapchain extent calculations when `vkGetPhysicalDeviceSurfaceCapabilitiesKHR` allows free sizing, ensuring we request images sized to the current physical pixel dimensions.
-- Validate that Skia's `SkSurface` wrappers and `IGraphicsSkia::PathTransformSetMatrix()` use the updated `GetTotalScale()` so drawing aligns pixel-perfectly with the swapchain images.
-- Audit off-screen bitmaps, layers, and cached render targets to ensure their scale parameters now reflect the physical DPI, avoiding mismatched resource sizes.
+- [x] Propagate the physical scale into swapchain extent calculations when `vkGetPhysicalDeviceSurfaceCapabilitiesKHR` allows free sizing, ensuring we request images sized to the current physical pixel dimensions.
+- [x] Validate that Skia's `SkSurface` wrappers and `IGraphicsSkia::PathTransformSetMatrix()` use the updated `GetTotalScale()` so drawing aligns pixel-perfectly with the swapchain images.
+- [x] Audit off-screen bitmaps, layers, and cached render targets to ensure their scale parameters now reflect the physical DPI, avoiding mismatched resource sizes.
 
 ### 6. Ancillary Windows UI Elements
-- Ensure tooltips (`mTooltipWnd`), parameter edit controls (`mParamEditWnd`), and any embedded platform views (WebView, etc.) also adopt the physical scale so text/input fields remain aligned.
-- Update hit-testing, cursor positioning, drag-and-drop conversions, and mouse wheel math where `GetTotalScale()` or `GetPlatformWindowScale()` are used to translate between screen and logical coordinates.
+- [x] Ensure tooltips (`mTooltipWnd`), parameter edit controls (`mParamEditWnd`), and any embedded platform views (WebView, etc.) also adopt the physical scale so text/input fields remain aligned.
+- [x] Update hit-testing, cursor positioning, drag-and-drop conversions, and mouse wheel math where `GetTotalScale()` or `GetPlatformWindowScale()` are used to translate between screen and logical coordinates.
 
 ### 7. Validation & Regression Testing
-- Devise a manual test matrix covering: DPI-virtualized host at 150%+, high-DPI monitor with and without host virtualization, moving the editor between monitors, and resizing the plug-in UI.
-- Capture logs/screenshots to verify the canvas fills the window, swapchain extents match HWND client rects, and mouse interactions line up at different scales.
-- Confirm non-targeted backends (GL, CPU Skia) remain unaffected by gating changes behind appropriate compile/runtime checks.
+- [ ] Devise a manual test matrix covering: DPI-virtualized host at 150%+, high-DPI monitor with and without host virtualization, moving the editor between monitors, and resizing the plug-in UI.
+- [ ] Capture logs/screenshots to verify the canvas fills the window, swapchain extents match HWND client rects, and mouse interactions line up at different scales.
+- [ ] Confirm non-targeted backends (GL, CPU Skia) remain unaffected by gating changes behind appropriate compile/runtime checks.
 
 ### 8. Documentation & Clean-Up
-- Update developer documentation (e.g., `WinVST3VulkanSkia_CurrentState.md` or new notes) with the new physical-DPI strategy and any host compatibility considerations.
-- Remove temporary instrumentation or wrap it behind debug macros.
-- Prepare migration notes for plug-in authors relying on host scaling preferences, clarifying the new behavior on Windows VST3 with Skia/Vulkan.
+- [ ] Update developer documentation (e.g., `WinVST3VulkanSkia_CurrentState.md` or new notes) with the new physical-DPI strategy and any host compatibility considerations.
+- [ ] Remove temporary instrumentation or wrap it behind debug macros.
+- [ ] Prepare migration notes for plug-in authors relying on host scaling preferences, clarifying the new behavior on Windows VST3 with Skia/Vulkan.
 
 Deliverable: Code changes and documentation updates implementing the physical-DPI pipeline, with validation evidence that the UI renders pixel-perfectly on high-DPI Windows hosts.
 

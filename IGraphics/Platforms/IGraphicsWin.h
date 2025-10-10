@@ -30,6 +30,7 @@
 #include <array>
 #include <initializer_list>
 #include <mutex>
+#include <cmath>
 
 #ifdef IGRAPHICS_VULKAN
   #define VK_USE_PLATFORM_WIN32_KHR
@@ -87,7 +88,16 @@ public:
   void* GetWinModuleHandle() override { return mHInstance; }
 
   void ForceEndUserEdit() override;
-  float GetPlatformWindowScale() const override { return GetScreenScale(); }
+  float GetPlatformWindowScale() const override
+  {
+    if (mBypassHostContentScale)
+    {
+      if (mWindowDPIScale > 0.f && std::isfinite(mWindowDPIScale))
+        return mWindowDPIScale;
+    }
+
+    return GetScreenScale();
+  }
   void SetHostContentScaleBypassed(bool bypass) override;
   bool HostContentScaleBypassed() const override { return mBypassHostContentScale; }
   float GetBackingPixelScaleForParentResize() const override;

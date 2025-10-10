@@ -241,3 +241,8 @@ I will continue logging progress and findings here for the remainder of the task
 ## Entry 38 — Restoring DBG logging after the namespace regression
 - Your latest build error (`DBGMSG` undefined near the top of `IGraphicsSkia.cpp`) happened because the diagnostic helpers now live above the existing `using namespace iplug;` directive, so MSVC never saw the namespace alias when compiling those early functions.
 - I hoisted the directive to sit right after the Skia includes so the logging macros resolve everywhere in the file. Nothing else changes—this just restores the Windows build so you can keep testing the Vulkan presentation fixes.【F:IGraphics/Drawing/IGraphicsSkia.cpp†L35-L44】
+
+## Entry 39 — Avoiding GPU layout churn from the surface samplers
+- The centre-pixel sampler I added earlier does a `readPixels()` on every surface, which is harmless for the CPU backend but forces Ganesh to transition Vulkan images into `TRANSFER_SRC` layout. That matches the validation spam you just captured and leaves the swapchain stuck in a non-renderable state for the next frame.
+- I now detect when a surface is GPU-backed and, instead of sampling it, emit a single DBG line noting that the sample was skipped because the surface is GPU-managed. CPU/raster surfaces still report their pixel values exactly as before.【F:IGraphics/Drawing/IGraphicsSkia.cpp†L3394-L3438】
+- With this in place the diagnostic logs continue to explain which surface is bound, but we no longer disturb the Vulkan image layouts between frames. Please rebuild and grab another Bitwig run so we can confirm the validation errors disappear and the screen surface starts receiving real pixels.

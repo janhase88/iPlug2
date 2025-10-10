@@ -3406,6 +3406,46 @@ void IGraphicsSkia::MaybeLogSurfaceSample(const char* tag,
   const SkSurface* const surfacePtr = surface.get();
   const int actualWidth = surface->width();
   const int actualHeight = surface->height();
+  SkCanvas* canvas = surface->getCanvas();
+  const bool gpuBacked = (canvas != nullptr && canvas->recordingContext() != nullptr);
+
+  if (gpuBacked)
+  {
+    const bool changed = !cache.valid ||
+                         cache.ptr != surfacePtr ||
+                         cache.width != actualWidth ||
+                         cache.height != actualHeight ||
+                         cache.requestedWidth != requestedWidth ||
+                         cache.requestedHeight != requestedHeight ||
+                         !cache.gpuBacked ||
+                         !cache.skipLogged;
+
+    if (changed)
+    {
+      DBGMSG("%s: hwnd=%p surface=%p actual=%dx%d requested=%dx%d gpuBacked=true sampleSkipped=true\n",
+             tag,
+             hwnd,
+             static_cast<const void*>(surfacePtr),
+             actualWidth,
+             actualHeight,
+             requestedWidth,
+             requestedHeight);
+    }
+
+    cache.ptr = surfacePtr;
+    cache.width = actualWidth;
+    cache.height = actualHeight;
+    cache.requestedWidth = requestedWidth;
+    cache.requestedHeight = requestedHeight;
+    cache.sampleX = 0;
+    cache.sampleY = 0;
+    cache.pixel = 0;
+    cache.sampleValid = false;
+    cache.gpuBacked = true;
+    cache.skipLogged = true;
+    cache.valid = true;
+    return;
+  }
 
   int sampleX = 0;
   int sampleY = 0;
@@ -3433,6 +3473,8 @@ void IGraphicsSkia::MaybeLogSurfaceSample(const char* tag,
                        cache.sampleX != sampleX ||
                        cache.sampleY != sampleY ||
                        cache.sampleValid != sampleValid ||
+                       cache.gpuBacked ||
+                       cache.skipLogged ||
                        (sampleValid && cache.pixel != pixel);
 
   if (changed)
@@ -3459,6 +3501,8 @@ void IGraphicsSkia::MaybeLogSurfaceSample(const char* tag,
     cache.sampleY = sampleY;
     cache.pixel = pixel;
     cache.sampleValid = sampleValid;
+    cache.gpuBacked = false;
+    cache.skipLogged = false;
     cache.valid = true;
   }
 }

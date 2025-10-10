@@ -247,6 +247,8 @@ private:
     int sampleY = 0;
     uint32_t pixel = 0;
     bool sampleValid = false;
+    bool gpuBacked = false;
+    bool skipLogged = false;
     bool valid = false;
   };
 

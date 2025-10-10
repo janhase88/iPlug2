@@ -1,16 +1,10 @@
 # Agent Chat Log
 
-## Status Update (after commit 0ef4752)
-- The latest commit on this branch is `0ef4752` titled "Revert Windows DPI debugging changes". That commit removed the DPI helpers, Vulkan logging, and every investigative change we added earlier.
-- Because of that revert, the project has returned to the baseline implementation that existed before our multi-day debugging session. None of the instrumentation, scaling fixes, or notes remain in the tree right now.
+## Entry 41 — Reapplying the DPI/Vulkan instrumentation
+- Reverted the rollback commit so all of the per-monitor DPI helpers, WinSKIA logging, and Vulkan swapchain diagnostics are back in the tree.
+- Existing Skia/Win telemetry (EnsureSwapchainSurface, PrepareCurrentSwapchainImageForFlush, EndFrame, etc.) is restored so we can continue from the point where the Bitwig captures were producing white frames.
 
-## Current Situation
-- There are **no active DPI fixes or logging** in the codebase at this point; everything we tested has been stripped out by the revert.
-- The previous investigation notes were also deleted along with `AgentChat.md`, so I have recreated this file to document the rollback and make clear that progress has been reset.
-
-## Next Steps
-1. Decide whether we want to recommit the investigative changes (fix the build issues that triggered the revert) or start a fresh approach.
-2. If we reintroduce the work, we must do it incrementally with clean builds on Windows to avoid another wholesale rollback.
-3. Rebuild the logging/journal so we can track findings without losing context again.
-
-Let me know how you would like to proceed from here.
+## Entry 42 — Next immediate steps
+- Rebuild the Windows VST3 (Skia/Vulkan) target to verify the instrumentation compiles cleanly again.
+- Collect a new Bitwig debug capture focusing on `SkiaVulkan.EndFrame`, `SkiaVulkan.SurfaceSample`, and the per-monitor DPI readings to confirm whether pixels reach the swapchain after the restoration.
+- If the frame is still white, pivot to the queued validation errors (`vkQueueSubmit` layout mismatches) and address the missing layout transitions while the detailed telemetry is available.

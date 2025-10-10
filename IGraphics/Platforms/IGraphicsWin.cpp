@@ -4205,8 +4205,13 @@ EMsgBoxResult IGraphicsWin::ShowMessageBox(const char* str, const char* title, E
 void* IGraphicsWin::OpenWindow(void* pParent)
 {
   mParentWnd = (HWND)pParent;
-  int screenScale = GetScaleForHWND(mParentWnd);
-  int x = 0, y = 0, w = WindowWidth() * screenScale, h = WindowHeight() * screenScale;
+  const float screenScale = GetScaleForHWND(mParentWnd);
+  const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * screenScale));
+  const int scaledHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * screenScale));
+  int x = 0;
+  int y = 0;
+  int w = scaledWidth;
+  int h = scaledHeight;
 
   if (mPlugWnd)
   {

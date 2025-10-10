@@ -8,7 +8,7 @@ Ensure Windows VST3 editors that render with the Skia/Vulkan backend always draw
 - [ ] Phase 2 — Implementation & Integration — **validation pending** (code landed; need host runs and evidence capture)
 
 ### Current Focus
-- Re-test in DPI-virtualized hosts to confirm the window now adopts the measured physical DPI (with matching swapchain logs) while host callbacks continue to operate in logical pixels.
+- Re-run DPI-virtualized hosts and confirm the Vulkan logs show `SetHostContentScaleBypassed` toggling to `true` before the first `RefreshPlatformScale` and that every swapchain resize reports `bypassVirtualExtent=true` with image extents equal to the physical pixel dimensions.
 
 ## Scope & Constraints
 - Platform: Windows only.

@@ -19,8 +19,8 @@
 
 ## Swapchain and Skia Surface Sizing
 - `OpenWindow()` initializes Vulkan, then calls `RefreshPlatformScale(true)` before laying out controls, ensuring the initial swapchain and Skia surfaces use the measured physical DPI even on the first frame.【F:IGraphics/Platforms/IGraphicsWin.cpp†L4348-L4412】
-- `CreateVulkanContext()` pulls `vkGetPhysicalDeviceSurfaceCapabilitiesKHR`, then delegates to `CreateOrResizeVulkanSwapchain()`, which clamps requested extents to the surface limits and rebuilds swapchain images whenever the window size changes.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3823-L4098】
-- Skia's `DrawResize()` (invoked via `RefreshPlatformScale()` and `Resize()`) recalculates the render target size from `WindowWidth() * GetScreenScale()`, so off-screen layers and swapchain-backed surfaces stay matched to the physical DPI.【F:IGraphics/IGraphics.cpp†L70-L120】
+- `CreateVulkanContext()` pulls `vkGetPhysicalDeviceSurfaceCapabilitiesKHR`, then delegates to `CreateOrResizeVulkanSwapchain()`, which now ignores `currentExtent` whenever the bypass is active so Vulkan images are sized to the physical pixel dimensions rather than the host's virtualized width/height.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3823-L4239】
+- Skia's `DrawResize()` (invoked via `RefreshPlatformScale()` and `Resize()`) recalculates the render target size from `WindowWidth() * GetScreenScale()`, and likewise bypasses the host's `currentExtent` when the bypass flag is set so cached surfaces stay aligned with the physical DPI.【F:IGraphics/Drawing/IGraphicsSkia.cpp†L1346-L1478】
 
 ## Input, Tooltips, and Auxiliary Windows
 - Mouse-wheel, touch, and cursor APIs translate between screen pixels and logical coordinates using `GetTotalScale()`, ensuring hit-testing remains accurate when the physical DPI diverges from the host's logical scale.【F:IGraphics/Platforms/IGraphicsWin.cpp†L2590-L2679】【F:IGraphics/IGraphics.h†L1133-L1150】
@@ -28,4 +28,5 @@
 
 ## Diagnostics and Logging
 - Every platform-scale refresh now emits both a `DBGMSG` and an `IGRAPHICS_VK_LOG` info event with the measured physical scale, host DPI scale, bypass state, and whether the refresh was forced. Logging stays enabled even in release builds by forcing `DBGMSG` on and setting the Vulkan logger verbosity to verbose.【F:IGraphics/Platforms/IGraphicsWin.cpp†L47-L62】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4327-L4334】
-- Vulkan swapchain helpers already log surface capabilities and extent selections through `IGRAPHICS_VK_LOG`, so DPI-driven resize churn can be reviewed without additional instrumentation.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3974-L4195】
+- `SetHostContentScaleBypassed()` logs its state transition and records a matching Vulkan event, giving immediate confirmation that the bypass engaged before the first scale refresh.【F:IGraphics/Platforms/IGraphicsWin.cpp†L4335-L4345】
+- Vulkan swapchain helpers now record whether the virtualized `currentExtent` was bypassed alongside the chosen dimensions, simplifying DPI validation from logs alone.【F:IGraphics/Drawing/IGraphicsSkia.cpp†L1346-L1478】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4015-L4245】

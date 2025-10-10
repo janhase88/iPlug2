@@ -1417,7 +1417,13 @@ void IGraphicsSkia::DrawResize()
     {
       uint32_t width = static_cast<uint32_t>(w);
       uint32_t height = static_cast<uint32_t>(h);
-      if (caps.currentExtent.width != UINT32_MAX)
+      bool bypassVirtualExtent = false;
+#if defined OS_WIN
+      if (auto* pWin = static_cast<IGraphicsWin*>(this))
+        bypassVirtualExtent = pWin->HostContentScaleBypassed();
+#endif
+
+      if (caps.currentExtent.width != UINT32_MAX && !bypassVirtualExtent)
       {
         width = caps.currentExtent.width;
         height = caps.currentExtent.height;
@@ -1436,6 +1442,7 @@ void IGraphicsSkia::DrawResize()
                            vulkanlog::MakeField("minHeight", caps.minImageExtent.height),
                            vulkanlog::MakeField("maxWidth", caps.maxImageExtent.width),
                            vulkanlog::MakeField("maxHeight", caps.maxImageExtent.height),
+                           vulkanlog::MakeField("bypassVirtualExtent", bypassVirtualExtent),
                            vulkanlog::MakeField("clampedWidth", width),
                            vulkanlog::MakeField("clampedHeight", height));
       w = static_cast<int>(width);

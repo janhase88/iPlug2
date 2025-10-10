@@ -1,4 +1,4 @@
 # AgentChat
 
-- I just pushed the window-resize math to log the host vs. render scales and now force the child window to follow the measured (physical) DPI whenever the bypass is active—this should eliminate the blur while keeping the parent bounds in sync.
-- Rebuild the Skia/Vulkan sample and check the output window: you should now see `RefreshPlatformScale` and `PlatformResize` lines that report both the host and render scales without needing to toggle any debug switches.
+- Just taught the Vulkan swapchain to ignore the host-provided `currentExtent` whenever the bypass is on, so it now allocates images at the measured physical pixel size instead of the virtualized one (which was causing the blur).
+- Added explicit `SetHostContentScaleBypassed` telemetry plus a `bypassVirtualExtent` field in the Vulkan logs—after rebuilding you should see a toggle log followed by `RefreshPlatformScale`, `PlatformResize`, and swapchain messages that all report `bypass=true` and the physical dimensions.

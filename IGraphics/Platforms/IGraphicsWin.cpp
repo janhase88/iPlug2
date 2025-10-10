@@ -4163,7 +4163,9 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
   swapInfo.imageColorSpace = surfaceFormat.colorSpace;
   uint32_t swapWidth = width;
   uint32_t swapHeight = height;
-  if (caps.currentExtent.width != UINT32_MAX)
+  const bool bypassVirtualExtent = mBypassHostContentScale;
+
+  if (caps.currentExtent.width != UINT32_MAX && !bypassVirtualExtent)
   {
     swapWidth = caps.currentExtent.width;
     swapHeight = caps.currentExtent.height;
@@ -4193,6 +4195,7 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
                       vulkanlog::MakeField("width", static_cast<uint32_t>(swapInfo.imageExtent.width)),
                        vulkanlog::MakeField("height", static_cast<uint32_t>(swapInfo.imageExtent.height)),
                        vulkanlog::MakeField("minImageCount", static_cast<uint32_t>(swapInfo.minImageCount)),
+                       vulkanlog::MakeField("bypassVirtualExtent", bypassVirtualExtent),
                        vulkanlog::MakeField("usage", static_cast<uint32_t>(swapInfo.imageUsage)),
                        vulkanlog::MakeHandleField("oldSwapchain", vulkanlog::HandleToUint64(reinterpret_cast<uintptr_t>(mVkSwapchain.handle))));
 
@@ -4337,7 +4340,20 @@ void IGraphicsWin::SetHostContentScaleBypassed(bool bypass)
   if (mBypassHostContentScale == bypass)
     return;
 
+  const bool previous = mBypassHostContentScale;
   mBypassHostContentScale = bypass;
+
+  DBGMSG("IGraphicsWin: SetHostContentScaleBypassed %s -> %s\n",
+         previous ? "true" : "false",
+         mBypassHostContentScale ? "true" : "false");
+
+#if defined IGRAPHICS_VULKAN
+  IGRAPHICS_VK_LOG("SetHostContentScaleBypassed",
+                   "toggle",
+                   vulkanlog::Severity::kInfo,
+                   vulkanlog::MakeField("previous", previous),
+                   vulkanlog::MakeField("current", mBypassHostContentScale));
+#endif
 
   if (WindowIsOpen())
     RefreshPlatformScale(true);

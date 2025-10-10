@@ -12,7 +12,7 @@ This checklist verifies that Windows VST3 editors rendered with the Skia/Vulkan 
 - [ ] Launch DebugView (or attach a debugger) so the always-on `DBGMSG`/`IGRAPHICS_VK_LOG` entries from `RefreshPlatformScale()` are captured during the run.【F:IGraphics/Platforms/IGraphicsWin.cpp†L47-L62】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4327-L4334】
 
 ## 2. Baseline Attachment
-- [ ] Launch each host at 150 % scaling and open the plug-in editor. Confirm the paired debug logs report a physical scale ≈1.5 while the host DPI scale remains ≈1.0, and that `PlatformResize` shows the target scale matching the physical value.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3526-L3571】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4327-L4334】
+- [ ] Launch each host at 150 % scaling and open the plug-in editor. Confirm the `SetHostContentScaleBypassed` log flips to `true`, the paired debug logs report a physical scale ≈1.5 while the host DPI scale remains ≈1.0, and that `PlatformResize` shows the target scale matching the physical value.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3526-L3571】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4327-L4345】
 - [ ] Capture a screenshot showing the UI is crisp (no bitmap stretching) and the plug-in window bounds match the rendered content.
 
 ## 3. Host Resize Negotiation
@@ -24,7 +24,7 @@ This checklist verifies that Windows VST3 editors rendered with the Skia/Vulkan 
 - [ ] While the window straddles both monitors, ensure the measured scale matches the monitor containing the majority of the window.
 
 ## 5. Swapchain Stability
-- [ ] With the editor on the high-DPI monitor, spam rapid host resize operations. Inspect Vulkan logs to ensure `CreateOrResizeVulkanSwapchain()` selects extents that match the physical window size with no failures.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3823-L4098】
+- [ ] With the editor on the high-DPI monitor, spam rapid host resize operations. Inspect Vulkan logs to ensure `CreateOrResizeVulkanSwapchain()` selects extents that match the physical window size and report `bypassVirtualExtent=true` while the bypass is engaged.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3823-L4245】
 - [ ] Confirm no unexpected swapchain recreations occur when the host sends repeated logical size notifications without DPI changes.
 
 ## 6. Ancillary UI Elements

@@ -92,6 +92,11 @@ namespace
 {
 constexpr uint32_t kVBlankQueueDepthWarningMultiplier = 2;
 
+#if defined IGRAPHICS_VULKAN && defined IGRAPHICS_SKIA
+constexpr bool kForcePhysicalDpiExperiment = true;
+constexpr float kForcedPhysicalDpiScale = 1.5f;
+#endif
+
 void RecordVBlankQueueDepthSample(uint32_t depth);
 void IncrementVBlankQueueWarnCount();
 void RecordVBlankDispatchSuccess();
@@ -4523,6 +4528,35 @@ void IGraphicsWin::RefreshPlatformScale(bool force)
     mWindowDPIScale = 1.f;
 
   const float current = GetScreenScale();
+
+#if defined IGRAPHICS_VULKAN && defined IGRAPHICS_SKIA
+  const bool forceDpiExperiment = kForcePhysicalDpiExperiment && mBypassHostContentScale;
+  if (forceDpiExperiment)
+  {
+    const float forcedScale = kForcedPhysicalDpiScale;
+
+    if (!force && std::fabs(forcedScale - current) < 0.001f)
+      return;
+
+    DBGMSG("IGraphicsWin: RefreshPlatformScale forcing render scale=%.3f measured=%.3f host=%.3f\n",
+           forcedScale,
+           measured,
+           mWindowDPIScale);
+
+#if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG("RefreshPlatformScale",
+                     "forcedScale",
+                     vulkanlog::Severity::kInfo,
+                     vulkanlog::MakeField("forced", std::to_string(forcedScale)),
+                     vulkanlog::MakeField("measured", std::to_string(measured)),
+                     vulkanlog::MakeField("host", std::to_string(mWindowDPIScale)),
+                     vulkanlog::MakeField("forceParam", force));
+#endif
+
+    SetScreenScale(forcedScale);
+    return;
+  }
+#endif
 
   if (!force)
   {

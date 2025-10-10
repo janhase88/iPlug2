@@ -12,6 +12,7 @@ Ensure Windows VST3 editors that render with the Skia/Vulkan backend always draw
 - Auto-enable the DPI bypass before `OpenWindow()` so the HWND is created inside the per-monitor-aware context—next validation run should show `OpenWindow ... bypass=true` followed by swapchain extents at the physical pixel size.
 - Seed the initial Vulkan swapchain request with the logical size × physical DPI whenever the bypass is active so the very first frame targets the native pixels instead of the host’s virtualized extent.
 - Instrument the swapchain/surface creation path so the logs reveal whether Skia still binds 1200×500 attachments after we request 1800×750, and capture the virtualization ratio beside each resize.
+- Force a hard-coded 1.5× render DPI when the bypass is active to prove whether Skia/Vulkan honours the physical scale we feed it (baseline for the crispness experiment).
 - Once the blur is gone, gather high-DPI validation logs/screens to prove the canvas is crisp and fills the window before closing Phase 2.
 
 ## Scope & Constraints
@@ -82,6 +83,7 @@ Use the investigation results to enforce physical DPI usage across the Windows V
 - [x] Ensure other potential host callbacks (`checkSizeConstraint`, custom attributes) do not reintroduce logical scaling—guard or bypass them as needed.
 - [x] Verify the attach-time bypass handshake reliably flips `SetHostContentScaleBypassed(true)` before any scale refresh so the logs stop reporting `bypass=false` and the renderer can adopt the physical DPI.
 - [x] Toggle the thread DPI awareness context to `PER_MONITOR_AWARE_V2` (and enable mixed-DPI hosting) whenever the bypass is active so Windows does not virtualize the plug-in child window.
+- [ ] Temporarily clamp the render scale to 1.5× during validation to determine whether the backend respects the forced DPI or the blur originates later in the pipeline.
 
 - [ ] Rework `IGraphicsWin::OpenWindow()` and resize paths so the HWND hierarchy stays aligned with the logical bounds while the renderer targets the physical DPI without introducing gray gutters.
 - [ ] Review Microsoft/Steinberg DPI guidance for child HWNDs (per-monitor aware V2 vs. host virtualization) so our bypass strategy matches documented best practices.

@@ -4331,6 +4331,12 @@ void IGraphicsWin::RefreshPlatformScale(bool force)
       return;
   }
 
+  DBGMSG("IGraphicsWin: RefreshPlatformScale measured=%.3f host=%.3f bypass=%s force=%s\n",
+         measured,
+         mWindowDPIScale,
+         mBypassHostContentScale ? "true" : "false",
+         force ? "true" : "false");
+
   if (measured > 0.f && std::isfinite(measured))
     SetScreenScale(measured);
 }

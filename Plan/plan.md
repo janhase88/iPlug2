@@ -5,10 +5,10 @@ Ensure Windows VST3 editors that render with the Skia/Vulkan backend always draw
 
 ## Status
 - [x] Phase 1 — Investigation & Audit (see `WinVST3VulkanSkia_Audit.md`)
-- [ ] Phase 2 — Implementation & Integration — **in progress** (host/physical resize negotiation under active review)
+- [ ] Phase 2 — Implementation & Integration — **in progress** (validation assets prepared; awaiting hands-on host runs)
 
 ### Current Focus
-- Ensuring host-facing resize messages and internal Vulkan back buffers stay in sync now that the Windows VST3 Skia/Vulkan path bypasses host content scale hints and always draws at the measured physical DPI.
+- Finalising validation collateral and monitoring guidance so the physical-DPI path can be exercised across hosts while we watch for resize or swapchain regressions.
 
 ## Scope & Constraints
 - Platform: Windows only.
@@ -97,12 +97,12 @@ Use the investigation results to enforce physical DPI usage across the Windows V
 - [x] Update hit-testing, cursor positioning, drag-and-drop conversions, and mouse wheel math where `GetTotalScale()` or `GetPlatformWindowScale()` are used to translate between screen and logical coordinates.
 
 ### 7. Validation & Regression Testing
-- [ ] Devise a manual test matrix covering: DPI-virtualized host at 150%+, high-DPI monitor with and without host virtualization, moving the editor between monitors, and resizing the plug-in UI.
+- [x] Devise a manual test matrix covering: DPI-virtualized host at 150%+, high-DPI monitor with and without host virtualization, moving the editor between monitors, and resizing the plug-in UI. *(See `WinVST3VulkanSkia_ValidationChecklist.md`.)*
 - [ ] Capture logs/screenshots to verify the canvas fills the window, swapchain extents match HWND client rects, and mouse interactions line up at different scales.
 - [ ] Confirm non-targeted backends (GL, CPU Skia) remain unaffected by gating changes behind appropriate compile/runtime checks.
 
 ### 8. Documentation & Clean-Up
-- [ ] Update developer documentation (e.g., `WinVST3VulkanSkia_CurrentState.md` or new notes) with the new physical-DPI strategy and any host compatibility considerations.
+- [x] Update developer documentation (e.g., `WinVST3VulkanSkia_CurrentState.md` or new notes) with the new physical-DPI strategy and any host compatibility considerations.
 - [ ] Remove temporary instrumentation or wrap it behind debug macros.
 - [ ] Prepare migration notes for plug-in authors relying on host scaling preferences, clarifying the new behavior on Windows VST3 with Skia/Vulkan.
 

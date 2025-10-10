@@ -1,45 +1,38 @@
-# Windows Vulkan/Skia Scheduler Validation Checklist
+# Windows VST3 Skia/Vulkan DPI Validation Checklist
 
-This checklist captures the manual verification loops required before enabling the adaptive scheduler for production hosts. All steps assume the new scheduler logging categories `/IGRAPHICS/SCHED/*` are enabled at `kInfo` severity (or lower) so structured JSON telemetry is emitted.
+This checklist verifies that Windows VST3 editors rendered with the Skia/Vulkan backend always draw at the physical monitor DPI while maintaining correct host negotiations.
 
 ## 1. Environment Preparation
-- [ ] Install host builds that exercise both Vulkan and Skia backends (e.g. Reaper x64, Cubase x64, Studio One x64).
-- [ ] Ensure each DAW runs with two DPI contexts: native (100–125 %) and high-DPI (150–200 %).
-- [ ] Place the `%LOCALAPPDATA%\iPlug2\IPlugSettings.json` file with the intended default `idlePacingMode` for the test run.
-- [ ] Enable debug logging capture (DebugView, trace pipe, or the in-host log sink) so `/IGRAPHICS/SCHED/*` messages are persisted.
+- [ ] Install DAWs that exercise Steinberg DPI virtualization (Cubase/Nuendo, Studio One) and a per-monitor aware host (Reaper) on Windows 10/11.
+- [ ] Configure at least two monitors: one at 100 % scaling and another at ≥150 % scaling. Enable “Let Windows try to fix apps so they’re not blurry” so virtualization paths activate.
+- [ ] Build the plug-in with Skia+Vulkan enabled and `IGRAPHICS_DEBUG` logging (or attach a debugger) so `DBGMSG` output from `RefreshPlatformScale()` is visible.【F:IGraphics/Platforms/IGraphicsWin.cpp†L4327-L4334】
 
-## 2. Baseline Capture
-- [ ] Launch a single plug-in instance in each host using the `Legacy` pacing mode.
-- [ ] Capture 60 seconds of logs while idling to confirm `mode_changed` and `mode_applied` events surface with `Legacy`.
-- [ ] Save a screenshot of the HUD overlay showing baseline counters for queued paints, idle stretch, and VBlank status.
+## 2. Baseline Attachment
+- [ ] Launch each host at 150 % scaling and open the plug-in editor. Confirm the debug log reports a physical scale ≈1.5 while the host DPI scale remains ≈1.0, proving host virtualization is bypassed.【F:IGraphics/Platforms/IGraphicsWin.cpp†L4327-L4334】
+- [ ] Capture a screenshot showing the UI is crisp (no bitmap stretching) and the plug-in window bounds match the rendered content.
 
-## 3. Adaptive Mode Stress (per host, per DPI)
-- [ ] Switch the instance to `Adaptive` via console command (`sched_idle_adaptive`) or configuration reload and confirm `/IGRAPHICS/SCHED/Rollout` logs a `mode_applied` event.
-- [ ] Open at least three editors simultaneously. Trigger meter-heavy animations (e.g. preset morph, moving faders) for 30 seconds.
-- [ ] Verify `/IGRAPHICS/SCHED/PaintBudget` and `/IGRAPHICS/SCHED/IdleState` logs show burst cooling entries while `OnIdle` events continue (HUD idle timer < 120 ms).
-- [ ] Confirm `/IGRAPHICS/SCHED/VBlankDispatch` logs contain `health_check` without escalating to `/IGRAPHICS/SCHED/Alerts`.
-- [ ] Record queue depth metrics from the HUD (queued invalidates, pending paints) at start, peak load, and recovery.
+## 3. Host Resize Negotiation
+- [ ] Drag the host’s resize handle (if available) or trigger `IPlugView::checkSizeConstraint()` to request a new editor size. Verify the editor redraws sharply with no clipping and the logged scale values remain unchanged during the resize.【F:IGraphics/IGraphicsEditorDelegate.cpp†L58-L102】【F:IGraphics/Platforms/IGraphicsWin.cpp†L3526-L3562】
+- [ ] Use any in-plugin resizer (corner drag) to change the logical size. Ensure the host window follows the physical dimensions while the debug log shows the same bypassed scale.
 
-## 4. VBlank Pause Recovery
-- [ ] Force a temporary pause by suspending the UI thread for ~250 ms (Debug -> Break All or synthetic load).
-- [ ] Confirm `/IGRAPHICS/SCHED/VBlankDispatch` shows `pause`, `health_check`, and `resume` events.
-- [ ] Ensure `/IGRAPHICS/SCHED/Alerts` only fires if the pause exceeds 180 ms or requires more than six health checks.
-- [ ] Capture the HUD overlay before and after recovery, verifying `VBlankPaused` clears.
+## 4. Monitor Handover
+- [ ] Move the host window between the 100 % and ≥150 % monitors. Confirm `WM_DPICHANGED` fires (scale log updates immediately) and the swapchain redraws without blurring or letterboxing.【F:IGraphics/Platforms/IGraphicsWin.cpp†L2682-L2707】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4348-L4412】
+- [ ] While the window straddles both monitors, ensure the measured scale matches the monitor containing the majority of the window.
 
-## 5. Locked 60 Hz Mode Regression
-- [ ] Set pacing to `Locked60Hz` and repeat adaptive stress for 15 seconds.
-- [ ] Confirm `/IGRAPHICS/SCHED/Rollout` logs `mode_applied` with `Locked60Hz` and that `Scheduler.IdleState` never enters burst cooling.
-- [ ] Validate parameter queues drain (HUD backlog returns to zero) while paint counts remain ≤ 2.
+## 5. Swapchain Stability
+- [ ] With the editor on the high-DPI monitor, spam rapid host resize operations. Inspect Vulkan logs to ensure `CreateOrResizeVulkanSwapchain()` selects extents that match the physical window size with no failures.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3823-L4098】
+- [ ] Confirm no unexpected swapchain recreations occur when the host sends repeated logical size notifications without DPI changes.
 
-## 6. Reporting Template
-For each host/DPI combination attach the following artifacts to the validation report:
-- Log excerpt (JSON or structured text) covering `mode_applied`, `health_check`, `mode_changed`, and any `/IGRAPHICS/SCHED/Alerts` events.
-- HUD screenshots at idle, peak load, and post-recovery.
-- Notes on perceived responsiveness, including any automation jitter or visual tearing.
-- Pass/Fail verdict for each scenario with references to log timestamps.
+## 6. Ancillary UI Elements
+- [ ] Open parameter edit boxes and tooltips on the high-DPI monitor. Verify text renders sharply and aligns with controls, confirming auxiliary HWNDs adopted the physical scale.【F:IGraphics/Platforms/IGraphicsWin.cpp†L4414-L4499】
+- [ ] Check mouse wheel, drag, and touch interactions land on the correct controls at both DPI settings, demonstrating consistent input scaling.【F:IGraphics/Platforms/IGraphicsWin.cpp†L2590-L2679】
 
-## 7. Sign-off Gate
-- [ ] Adaptive mode passes in all hosts without `/IGRAPHICS/SCHED/Alerts` firing unintentionally.
-- [ ] Locked 60 Hz and Legacy behave as expected with no queue starvation.
-- [ ] Documentation updated with log paths and troubleshooting steps for operators.
+## 7. Regression Sweep
+- [ ] Repeat baseline attachment with the plug-in forced to CPU Skia or NanoVG to confirm the bypass flag is not activated and the host DPI scale matches the physical scale (serves as control group).【F:IPlug/VST3/IPlugVST3_View.h†L99-L132】
+- [ ] Run a legacy host that never calls `setContentScaleFactor()` to ensure the plugin still measures a physical scale and renders correctly.
 
+## 8. Reporting
+For each host/monitor combination attach:
+- The `DBGMSG` excerpt showing physical vs. host DPI scales.
+- Vulkan log snippets covering any swapchain resize.
+- Screenshots demonstrating crisp rendering at both DPI settings.

@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "IGraphicsSkia.h"
+#include "IPlugLogger.h"
 
 #if defined OS_WIN
   #include "../Platforms/WinDpiUtils.h"
@@ -86,11 +87,7 @@ const char* SkiaColorTypeToString(int colorType)
     case kRGBA_F32_SkColorType: return "RGBAF32";
     case kR8G8_unorm_SkColorType: return "R8G8";
     case kA16_float_SkColorType: return "A16Float";
-    case kR16_float_SkColorType: return "R16Float";
-    case kRG16_float_SkColorType: return "RG16Float";
-    case kRGBA16_float_SkColorType: return "RGBA16Float";
     case kSRGBA_8888_SkColorType: return "SRGBA8888";
-    case kSBGRA_8888_SkColorType: return "SBGRA8888";
     default: return "Other";
   }
 }

@@ -213,19 +213,6 @@ private:
 
   void RenderPath(SkPaint& paint);
 
-#if defined OS_WIN
-  void MaybeLogSurfaceDetails(const char* tag,
-                              const sk_sp<SkSurface>& surface,
-                              SurfaceLogState& cache,
-                              void* hwnd,
-                              int requestedWidth,
-                              int requestedHeight,
-                              float screenScale,
-                              float windowScale,
-                              float monitorScale,
-                              float virtualization);
-#endif
-
   sk_sp<SkSurface> mSurface;
   SkCanvas* mCanvas = nullptr;
   SkPath mMainPath;
@@ -296,6 +283,19 @@ private:
   const SkSurface* mLastGpuPresentSrcSurfacePtr = nullptr;
   const SkSurface* mLastGpuPresentScreenSurfacePtr = nullptr;
   bool mLastGpuPresentSurfacesEqual = false;
+#endif
+
+#if defined OS_WIN
+  void MaybeLogSurfaceDetails(const char* tag,
+                              const sk_sp<SkSurface>& surface,
+                              SurfaceLogState& cache,
+                              void* hwnd,
+                              int requestedWidth,
+                              int requestedHeight,
+                              float screenScale,
+                              float windowScale,
+                              float monitorScale,
+                              float virtualization);
 #endif
 
 #ifndef IGRAPHICS_CPU

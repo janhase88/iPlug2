@@ -197,6 +197,7 @@ protected:
   void DoDrawText(const IText& text, const char* str, const IRECT& bounds, const IBlend* pBlend) override;
 
   float GetBackendPixelScale() const;
+  float GetBackingPixelScale() const override;
 
   bool LoadAPIFont(const char* fontID, const PlatformFontPtr& font) override;
 

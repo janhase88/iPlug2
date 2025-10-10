@@ -147,6 +147,11 @@ float IGraphicsSkia::GetBackendPixelScale() const
 #endif
 }
 
+float IGraphicsSkia::GetBackingPixelScale() const
+{
+  return GetBackendPixelScale() * GetDrawScale();
+}
+
 #if defined IGRAPHICS_VULKAN
 namespace
 {
@@ -2778,6 +2783,8 @@ void IGraphicsSkia::SetClipRegion(const IRECT& r)
 
 APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, double drawScale, bool cacheable, int MSAASampleCount)
 {
+  const float backendScale = GetBackendPixelScale();
+  (void) scale;
   sk_sp<SkSurface> surface;
   SkImageInfo info = SkImageInfo::MakeN32Premul(width, height);
 
@@ -2823,7 +2830,7 @@ APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, do
 
   surface->getCanvas()->save();
 
-  return new Bitmap(std::move(surface), width, height, scale, drawScale);
+  return new Bitmap(std::move(surface), width, height, backendScale, drawScale);
 }
 
 void IGraphicsSkia::UpdateLayer() { mCanvas = mLayers.empty() ? mSurface->getCanvas() : mLayers.top()->GetAPIBitmap()->GetBitmap()->mSurface->getCanvas(); }

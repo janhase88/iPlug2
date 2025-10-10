@@ -18,6 +18,7 @@
 #include "include/core/SkBitmap.h"
 #include "include/core/SkBlurTypes.h"
 #include "include/core/SkFont.h"
+#include "include/core/SkCanvas.h"
 #include "include/core/SkFontMetrics.h"
 #include "include/core/SkFontMgr.h"
 #include "include/core/SkData.h"
@@ -2433,10 +2434,24 @@ void IGraphicsSkia::EndFrame()
 
     if (applyScale)
     {
-      screenCanvas->save();
-      screenCanvas->scale(scaleX, scaleY);
-      mSurface->draw(screenCanvas, 0.0, 0.0, nullptr);
-      screenCanvas->restore();
+      SkSamplingOptions sampling{SkFilterMode::kLinear, SkMipmapMode::kLinear};
+      const SkRect srcRect = SkRect::MakeWH(static_cast<SkScalar>(srcWidth), static_cast<SkScalar>(srcHeight));
+      const SkRect destRect =
+        SkRect::MakeWH(static_cast<SkScalar>(destLogicalWidth), static_cast<SkScalar>(destLogicalHeight));
+
+      if (auto scaledImage = mSurface->makeImageSnapshot())
+      {
+        screenCanvas->drawImageRect(scaledImage.get(),
+                                    srcRect,
+                                    destRect,
+                                    sampling,
+                                    nullptr,
+                                    SkCanvas::kStrict_SrcRectConstraint);
+      }
+      else
+      {
+        screenCanvas->drawSurface(mSurface.get(), 0.0f, 0.0f, sampling);
+      }
     }
     else
     {

@@ -8,7 +8,8 @@ Ensure Windows VST3 editors that render with the Skia/Vulkan backend always draw
 - [ ] Phase 2 — Implementation & Integration — **validation pending** (code landed; need host runs and evidence capture)
 
 ### Current Focus
-- Re-run DPI-virtualized hosts and confirm the Vulkan logs show `SetHostContentScaleBypassed` toggling to `true` before the first `RefreshPlatformScale` and that every swapchain resize reports `bypassVirtualExtent=true` with image extents equal to the physical pixel dimensions.
+- Restore a clean Windows build (header include fix) so the VST3 view can toggle the bypass path again.
+- Re-run DPI-virtualized hosts and confirm the Vulkan logs show `SetHostContentScaleBypassed` toggling to `true` before the first `RefreshPlatformScale`; if the log still reports `bypass=false`, trace the attach path and fix the bypass handshake so we actually render at the physical extent.
 
 ## Scope & Constraints
 - Platform: Windows only.
@@ -76,6 +77,7 @@ Use the investigation results to enforce physical DPI usage across the Windows V
 ### 2. Override Host Scale Inputs
 - [x] Update `IPlugVST3_View::setContentScaleFactor()` to ignore or sandbox Steinberg's factor when running on Windows with Skia/Vulkan, optionally logging discrepancies for diagnostics.
 - [x] Ensure other potential host callbacks (`checkSizeConstraint`, custom attributes) do not reintroduce logical scaling—guard or bypass them as needed.
+- [ ] Verify the attach-time bypass handshake reliably flips `SetHostContentScaleBypassed(true)` before any scale refresh so the logs stop reporting `bypass=false` and the renderer can adopt the physical DPI.
 
 - [x] Adjust `IGraphicsWin::OpenWindow()` and resize paths so the HWND client size follows the host's logical pixels while the renderer tracks the measured physical scale, preventing oversize child windows in DPI-virtualized hosts.
 - [x] When `GetScaleForHWND()` changes, update both the stored screen scale and trigger window/swapchain resizes so the client area and Vulkan images stay in sync.

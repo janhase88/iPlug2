@@ -1,4 +1,4 @@
 # AgentChat
 
-- Just taught the Vulkan swapchain to ignore the host-provided `currentExtent` whenever the bypass is on, so it now allocates images at the measured physical pixel size instead of the virtualized one (which was causing the blur).
-- Added explicit `SetHostContentScaleBypassed` telemetry plus a `bypassVirtualExtent` field in the Vulkan logs—after rebuilding you should see a toggle log followed by `RefreshPlatformScale`, `PlatformResize`, and swapchain messages that all report `bypass=true` and the physical dimensions.
+- Pulled `IGraphics.h` into the VST3 view so the bypass toggle compiles again—please rebuild and confirm you now see `SetHostContentScaleBypassed -> true` before the first scale refresh.
+- Once we verify the toggle fires, I'll use that telemetry to chase why the canvas is still blurry even when the swapchain resizes to the physical extent.

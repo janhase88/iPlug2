@@ -270,6 +270,8 @@ private:
   DWORD mPID = 0;
   float mWindowDPIScale = 1.f;
   bool mBypassHostContentScale = false;
+  void* mPreviousDpiContext = nullptr;
+  bool mMixedDpiHostingEnabled = false;
 
   void StartVBlankThread(HWND hWnd);
   void StopVBlankThread();

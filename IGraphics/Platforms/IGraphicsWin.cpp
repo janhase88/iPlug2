@@ -108,6 +108,74 @@ void RecordSchedulerSample(const IGraphicsWin::InstancePaintBudget::Snapshot& sn
                            uint32_t droppedVBlank,
                            bool forgivenessActive);
 #endif
+
+using SetThreadDpiAwarenessContextFn = void* (WINAPI*)(void*);
+using SetThreadDpiHostingBehaviorFn = int (WINAPI*)(int);
+
+SetThreadDpiAwarenessContextFn ResolveSetThreadDpiAwarenessContext()
+{
+  static SetThreadDpiAwarenessContextFn fn = []() -> SetThreadDpiAwarenessContextFn {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (!user32)
+      user32 = LoadLibraryW(L"user32.dll");
+    if (!user32)
+      return nullptr;
+
+    return reinterpret_cast<SetThreadDpiAwarenessContextFn>(
+      GetProcAddress(user32, "SetThreadDpiAwarenessContext"));
+  }();
+
+  return fn;
+}
+
+void* EnterPerMonitorAwareV2Context()
+{
+  auto fn = ResolveSetThreadDpiAwarenessContext();
+  if (!fn)
+    return nullptr;
+
+  return fn(reinterpret_cast<void*>(static_cast<intptr_t>(-4)));
+}
+
+void RestoreThreadDpiAwareness(void*& token)
+{
+  if (!token)
+    return;
+
+  auto fn = ResolveSetThreadDpiAwarenessContext();
+  if (!fn)
+    return;
+
+  fn(token);
+  token = nullptr;
+}
+
+bool EnableMixedDpiHosting()
+{
+  constexpr int kDpiHostingBehaviorMixed = 1;
+  static bool attempted = false;
+  static bool enabled = false;
+
+  if (attempted)
+    return enabled;
+
+  attempted = true;
+
+  HMODULE user32 = GetModuleHandleW(L"user32.dll");
+  if (!user32)
+    user32 = LoadLibraryW(L"user32.dll");
+  if (!user32)
+    return false;
+
+  auto fn = reinterpret_cast<SetThreadDpiHostingBehaviorFn>(
+    GetProcAddress(user32, "SetThreadDpiHostingBehavior"));
+  if (!fn)
+    return false;
+
+  fn(kDpiHostingBehaviorMixed);
+  enabled = true;
+  return enabled;
+}
 } // namespace
 
 class VBlankDispatchWorker
@@ -4350,8 +4418,26 @@ float IGraphicsWin::MeasureWindowDPIScale() const
 
 void IGraphicsWin::SetHostContentScaleBypassed(bool bypass)
 {
+  if (bypass)
+  {
+    if (!mMixedDpiHostingEnabled)
+      mMixedDpiHostingEnabled = EnableMixedDpiHosting();
+
+    if (!mPreviousDpiContext)
+      mPreviousDpiContext = EnterPerMonitorAwareV2Context();
+  }
+  else
+  {
+    RestoreThreadDpiAwareness(mPreviousDpiContext);
+  }
+
   if (mBypassHostContentScale == bypass)
+  {
+    if (bypass && WindowIsOpen())
+      RefreshPlatformScale(true);
+
     return;
+  }
 
   const bool previous = mBypassHostContentScale;
   mBypassHostContentScale = bypass;
@@ -4740,6 +4826,9 @@ void IGraphicsWin::CloseWindow()
 
 
     mPlugWnd = 0;
+
+    if (mBypassHostContentScale)
+      RestoreThreadDpiAwareness(mPreviousDpiContext);
 
     if (--nWndClassReg == 0)
     {

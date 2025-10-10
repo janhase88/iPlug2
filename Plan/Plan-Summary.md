@@ -24,4 +24,4 @@
   - 8. Documentation & Clean-Up — PREVIOUS STATUS: PARTIAL / CURRENT STATUS: PARTIAL (docs refreshed; logging cleanup waits on validation evidence)
 
 [x] Message to User:
-HWND sizing now follows the host’s logical scale while rendering sticks to the measured DPI, and logging is forced on (DBGMSG + Vulkan info) so you can grab scale pairs immediately—please rebuild the Vulkan/Skia plug-in and rerun the validation matrix to confirm the window alignment fix.
+The resize path now logs the host vs. render scales and actively resizes the child window using the measured DPI when the bypass is enabled—rebuild the Skia/Vulkan plug-in and capture the new `RefreshPlatformScale`/`PlatformResize` lines at 150% to verify the blur is gone.

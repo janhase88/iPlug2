@@ -14,7 +14,7 @@
 - The helper records `mWindowDPIScale` separately from `mScreenScale`, allowing host-space conversions to stay stable while the renderer consumes the physical scale.【F:IGraphics/Platforms/IGraphicsWin.cpp†L4270-L4346】【F:IGraphics/Platforms/IGraphicsWin.h†L91-L107】
 
 ## Window Resizing and DPI Events
-- `PlatformResize()` now targets the host-facing DPI (`GetBackingPixelScaleForParentResize()`) when sizing HWNDs, so DPI-virtualized hosts keep their expected logical dimensions while the renderer continues to use the measured physical scale for swapchains.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3526-L3562】
+- `PlatformResize()` keeps host callbacks in logical pixels via `GetBackingPixelScaleForParentResize()` but resizes the actual HWND hierarchy using the measured physical scale whenever the bypass is active, ensuring the window and swapchain share the same DPI with full logging of the chosen scales.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3526-L3571】
 - `WM_DPICHANGED` messages apply the suggested rectangle, refresh the platform scale immediately, and trigger a Skia/Vulkan relayout so moving between monitors adopts the new physical DPI without waiting for idle polling.【F:IGraphics/Platforms/IGraphicsWin.cpp†L2682-L2707】
 
 ## Swapchain and Skia Surface Sizing

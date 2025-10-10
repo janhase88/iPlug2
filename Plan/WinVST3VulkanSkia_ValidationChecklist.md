@@ -12,7 +12,7 @@ This checklist verifies that Windows VST3 editors rendered with the Skia/Vulkan 
 - [ ] Launch DebugView (or attach a debugger) so the always-on `DBGMSG`/`IGRAPHICS_VK_LOG` entries from `RefreshPlatformScale()` are captured during the run.【F:IGraphics/Platforms/IGraphicsWin.cpp†L47-L62】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4327-L4334】
 
 ## 2. Baseline Attachment
-- [ ] Launch each host at 150 % scaling and open the plug-in editor. Confirm the paired debug logs report a physical scale ≈1.5 while the host DPI scale remains ≈1.0, proving host virtualization is bypassed.【F:IGraphics/Platforms/IGraphicsWin.cpp†L4327-L4334】
+- [ ] Launch each host at 150 % scaling and open the plug-in editor. Confirm the paired debug logs report a physical scale ≈1.5 while the host DPI scale remains ≈1.0, and that `PlatformResize` shows the target scale matching the physical value.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3526-L3571】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4327-L4334】
 - [ ] Capture a screenshot showing the UI is crisp (no bitmap stretching) and the plug-in window bounds match the rendered content.
 
 ## 3. Host Resize Negotiation

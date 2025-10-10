@@ -7,6 +7,7 @@ The physical-DPI pipeline relies on a mix of Win32 metrics and Vulkan surface ch
 | --- | --- | --- |
 | `DBGMSG` / `IGRAPHICS_VK_LOG` (event: `RefreshPlatformScale`) | Emitted together for every scale refresh, capturing the measured physical scale, host DPI scale, bypass flag, and force flag. Verbose logging is forced on even for release builds.【F:IGraphics/Platforms/IGraphicsWin.cpp†L47-L62】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4327-L4334】 | Capture with DebugView or a debugger. Treat repeated flips between two scales as a sign the host is fighting the bypass. |
 | `IGRAPHICS_VK_LOG` (`CreateOrResizeVulkanSwapchain`) | Records surface capability ranges and chosen extents for every swapchain recreation.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3974-L4195】 | Alert on extents that diverge from the HWND client size or frequent recreations triggered without DPI changes. |
+| `DBGMSG` / `IGRAPHICS_VK_LOG` (event: `PlatformResize`) | Logged on each platform resize, showing the window (host) scale, render (physical) scale, chosen target scale, bypass flag, and whether the parent already resized.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3526-L3571】 | Use to confirm the child window is adopting the physical DPI and to diagnose hosts that fight the enforced size. |
 | Host resize traces (optional) | Some DAWs expose verbose resize logging. Enable when available to confirm the host continues to request logical pixels. | Look for hosts repeatedly sending “restore” sizes after we grow the HWND; log a bug if windows visibly fight. |
 
 ## 2. Dashboards & Alerts

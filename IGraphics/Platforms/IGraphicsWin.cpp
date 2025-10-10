@@ -3559,19 +3559,22 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
     GetWindowSize(mPlugWnd, &dlgW, &dlgH);
     const float windowScale = GetPlatformWindowScale();
     const float renderScale = GetScreenScale();
-    const float hostScale = GetBackingPixelScaleForParentResize();
+    const float hostScale = (mWindowDPIScale > 0.f && std::isfinite(mWindowDPIScale)) ? mWindowDPIScale : 1.f;
     const bool renderScaleValid = renderScale > 0.f && std::isfinite(renderScale);
     const bool windowScaleValid = windowScale > 0.f && std::isfinite(windowScale);
-    const float windowTargetScale = windowScaleValid ? windowScale : 1.f;
     const bool hostScaleValid = hostScale > 0.f && std::isfinite(hostScale);
-    const float virtualizationRatio = (hostScaleValid && renderScaleValid)
+    const float windowTargetScale = windowScaleValid ? windowScale : 1.f;
+    const float virtualizationRatio = (hostScaleValid && renderScaleValid && hostScale > 0.f)
                                         ? (renderScale / hostScale)
-                                        : (renderScaleValid ? renderScale : 1.f);
+                                        : 1.f;
+    const bool usePhysicalWindowScale = mBypassHostContentScale && renderScaleValid;
+    const float windowPhysicalScale = usePhysicalWindowScale ? renderScale : windowTargetScale;
 
-    DBGMSG("IGraphicsWin: PlatformResize windowScale=%.3f renderScale=%.3f targetScale=%.3f bypass=%s parentHasResized=%s ratio=%.3f\n",
+    DBGMSG("IGraphicsWin: PlatformResize windowScale=%.3f renderScale=%.3f targetScale=%.3f physicalScale=%.3f bypass=%s parentHasResized=%s ratio=%.3f\n",
            windowScale,
            renderScale,
            windowTargetScale,
+           windowPhysicalScale,
            mBypassHostContentScale ? "true" : "false",
            parentHasResized ? "true" : "false",
            virtualizationRatio);
@@ -3583,13 +3586,14 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
                      vulkanlog::MakeField("window", std::to_string(windowScale)),
                      vulkanlog::MakeField("render", std::to_string(renderScale)),
                      vulkanlog::MakeField("target", std::to_string(windowTargetScale)),
+                     vulkanlog::MakeField("physical", std::to_string(windowPhysicalScale)),
                      vulkanlog::MakeField("bypass", mBypassHostContentScale),
                      vulkanlog::MakeField("parentHasResized", parentHasResized),
                      vulkanlog::MakeField("host", std::to_string(hostScale)),
                      vulkanlog::MakeField("ratio", std::to_string(virtualizationRatio)));
 #endif
-    const int targetWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * windowTargetScale));
-    const int targetHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * windowTargetScale));
+    const int targetWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * windowPhysicalScale));
+    const int targetHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * windowPhysicalScale));
     int dw = targetWidth - dlgW;
     int dh = targetHeight - dlgH;
 
@@ -3609,21 +3613,21 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
     if (!dw && !dh)
       return;
 
-    SetWindowPos(mPlugWnd, 0, 0, 0, dlgW + dw, dlgH + dh, SETPOS_FLAGS);
-
     const bool forceParentResize = mBypassHostContentScale;
 
     if (!ancestorSizes.empty() && (!parentHasResized || forceParentResize))
     {
-      for (auto& entry : ancestorSizes)
+      for (auto it = ancestorSizes.rbegin(); it != ancestorSizes.rend(); ++it)
       {
-        HWND hwnd = entry.first;
-        const int ancW = entry.second.first;
-        const int ancH = entry.second.second;
+        HWND hwnd = it->first;
+        const int ancW = it->second.first;
+        const int ancH = it->second.second;
         if (hwnd)
           SetWindowPos(hwnd, 0, 0, 0, ancW + dw, ancH + dh, SETPOS_FLAGS);
       }
     }
+
+    SetWindowPos(mPlugWnd, 0, 0, 0, dlgW + dw, dlgH + dh, SETPOS_FLAGS);
   }
 }
 
@@ -4372,6 +4376,11 @@ float IGraphicsWin::GetBackingPixelScaleForParentResize() const
 {
   if (mBypassHostContentScale)
   {
+    const float renderScale = GetScreenScale();
+
+    if (renderScale > 0.f && std::isfinite(renderScale))
+      return renderScale;
+
     if (mWindowDPIScale > 0.f && std::isfinite(mWindowDPIScale))
       return mWindowDPIScale;
 

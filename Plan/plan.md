@@ -5,12 +5,12 @@ Ensure Windows VST3 editors that render with the Skia/Vulkan backend always draw
 
 ## Status
 - [x] Phase 1 — Investigation & Audit (see `WinVST3VulkanSkia_Audit.md`)
-- [ ] Phase 2 — Implementation & Integration — **rework in progress** (decoupling window/layout scale from render scale and adding end-to-end diagnostics)
+- [ ] Phase 2 — Implementation & Integration — **rework in progress** (realigning window hierarchy sizing with the physical swapchain while keeping host-facing dimensions logical and instrumented)
 
 ### Current Focus
-- Verify the plug-in and ancestor HWNDs remain at the host DPI while the renderer scales to the physical pixels, using the refreshed `PlatformResize` and `SwapchainExtent` logs to confirm the split.
-- Capture high-DPI validation logs/screens showing a crisp image that fills the plugin window (no overflow) with swapchain extents matching the measured physical DPI.
-- Extend logging coverage from `RefreshPlatformScale` through swapchain creation so testers can trace logical → render scale at a glance and spot virtualization mismatches quickly.
+- Validate that `PlatformResize` now reports `physicalScale≈renderScale` while `window≈host`, and that the HWND chain physically resizes before `DrawResize` to prevent overflow.
+- Capture high-DPI validation logs/screens showing a crisp image that fills the plugin window (no overflow) with `SwapchainExtent` reflecting the physical pixel dimensions (e.g. 1200×500 logical → 1800×750 physical at 150 %).
+- Confirm the expanded logging (`physicalScale` in `PlatformResize`, `SwapchainExtent`, `DrawResize`) appears in default builds so testers can trace logical → physical conversions without extra switches.
 
 ## Scope & Constraints
 - Platform: Windows only.

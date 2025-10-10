@@ -14,7 +14,7 @@
 - The helper records `mWindowDPIScale` separately from `mScreenScale`, allowing host-space conversions to stay stable while the renderer consumes the physical scale.【F:IGraphics/Platforms/IGraphicsWin.cpp†L4381-L4416】【F:IGraphics/Platforms/IGraphicsWin.h†L91-L107】
 
 ## Window Resizing and DPI Events
-- `PlatformResize()` keeps the plug-in HWND hierarchy at the host DPI (`GetPlatformWindowScale()` now resolves to the cached host scale) while the renderer consumes the measured physical DPI. The resize log records the host, window, and render scales so virtualization ratios (`renderScale / hostScale`) are visible alongside the enforced physical target.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3526-L3594】【F:IGraphics/Platforms/IGraphicsWin.h†L91-L106】
+- `PlatformResize()` keeps the plug-in HWND hierarchy sized logically (`window≈host`) while expanding the actual HWND/client pixels to the measured physical DPI (`physicalScale≈renderScale`). The log now includes `physicalScale` so virtualization ratios (`renderScale / hostScale`) and the applied window target are visible together.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3554-L3634】【F:IGraphics/Platforms/IGraphicsWin.h†L91-L106】
 - `WM_DPICHANGED` messages apply the suggested rectangle, refresh the platform scale immediately, and trigger a Skia/Vulkan relayout so moving between monitors adopts the new physical DPI without waiting for idle polling.【F:IGraphics/Platforms/IGraphicsWin.cpp†L2682-L2707】
 
 - `OpenWindow()` initializes Vulkan, then calls `RefreshPlatformScale(true)` before laying out controls, ensuring the initial swapchain and Skia surfaces use the measured physical DPI even on the first frame.【F:IGraphics/Platforms/IGraphicsWin.cpp†L4420-L4505】

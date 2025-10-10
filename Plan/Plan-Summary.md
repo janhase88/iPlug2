@@ -1,21 +1,19 @@
 [x] Continued From Previous Snapshot: YES — Advancing the Windows VST3 Skia/Vulkan physical-DPI rollout with refreshed documentation and instrumentation.
 -----------------
 [x] File Overview:
-- Num files Changed: 9
+- Num files Changed: 7
 - Num files Created: 0
-- Num lines Modified: 85
+- Num lines Modified: 100+
 
 [x] List of Files changed/created:
 - Changed:
   - AgentChat.md
-  - IGraphics/Drawing/IGraphicsSkia.cpp
   - IGraphics/Platforms/IGraphicsWin.cpp
-  - IPlug/VST3/IPlugVST3_View.h
   - Plan/plan.md
+  - Plan/Plan-Summary.md
   - Plan/WinVST3VulkanSkia_CurrentState.md
   - Plan/WinVST3VulkanSkia_RolloutMonitoring.md
   - Plan/WinVST3VulkanSkia_ValidationChecklist.md
-  - Plan/Plan-Summary.md
 
 -----------------
 [x] Current plan:
@@ -24,4 +22,4 @@
   - 8. Documentation & Clean-Up — PREVIOUS STATUS: PARTIAL / CURRENT STATUS: PARTIAL (docs refreshed; logging cleanup waits on validation evidence)
 
 [x] Message to User:
-Please rebuild and run at 150 % DPI. `SetHostContentScaleBypassed` should read `true`, `RefreshPlatformScale` will show physical vs. host, `PlatformResize` should report `window` ≈ host and `ratio=physical/host`, the new `SwapchainExtent` `DBGMSG` should echo the physical render size, and `DrawResize` should list logical/render dimensions that align. Let me know whether the UI fills the window crisply and share the relevant log lines.
+Please rebuild and run at 150 % DPI. `SetHostContentScaleBypassed` should read `true`, `RefreshPlatformScale` will show physical vs. host, `PlatformResize` now logs `physicalScale` (expected ≈ measured render scale) while `window` stays at the host value, and `SwapchainExtent` should report the physical pixel extent (e.g. 1800×750). Share those lines plus `DrawResize` so we can confirm the swapchain resized before rendering and check crispness.

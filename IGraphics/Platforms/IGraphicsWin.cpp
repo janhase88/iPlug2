@@ -2185,9 +2185,7 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
   // TODO: move this... listen to the right messages in windows for screen resolution changes, etc.
   if (!GetCapture()) // workaround Windows issues with window sizing during mouse move
   {
-    float scale = GetScaleForHWND(mPlugWnd);
-    if (scale != GetScreenScale())
-      SetScreenScale(scale);
+    RefreshPlatformScale(false);
   }
 
   // TODO: this is far too aggressive for slow drawing animations and data changing.  We need to
@@ -2630,6 +2628,21 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
       pGraphics->OnMouseWheel(info.x - (r.left / scale), info.y - (r.top / scale), info.ms, d);
       return 0;
     }
+  }
+  case WM_DPICHANGED: {
+    if (const RECT* suggested = reinterpret_cast<const RECT*>(lParam))
+    {
+      SetWindowPos(hWnd,
+                   nullptr,
+                   suggested->left,
+                   suggested->top,
+                   suggested->right - suggested->left,
+                   suggested->bottom - suggested->top,
+                   SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+
+    pGraphics->RefreshPlatformScale(true);
+    return 0;
   }
   case WM_WINDOWPOSCHANGING: {
     if (WINDOWPOS* wp = reinterpret_cast<WINDOWPOS*>(lParam))
@@ -4202,6 +4215,34 @@ EMsgBoxResult IGraphicsWin::ShowMessageBox(const char* str, const char* title, E
   return result;
 }
 
+float IGraphicsWin::MeasureWindowScale() const
+{
+  const HWND target = mPlugWnd ? mPlugWnd : mParentWnd;
+  if (!target)
+    return 1.f;
+
+  const float measured = GetScaleForHWND(target);
+  if (!std::isfinite(measured) || measured <= 0.f)
+    return 1.f;
+
+  return measured;
+}
+
+void IGraphicsWin::RefreshPlatformScale(bool force)
+{
+  const float measured = MeasureWindowScale();
+  const float current = GetScreenScale();
+
+  if (!force)
+  {
+    if (std::fabs(measured - current) < 0.001f)
+      return;
+  }
+
+  if (measured > 0.f && std::isfinite(measured))
+    SetScreenScale(measured);
+}
+
 void* IGraphicsWin::OpenWindow(void* pParent)
 {
   mParentWnd = (HWND)pParent;
@@ -4269,7 +4310,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   #endif
 #endif
 
-  SetScreenScale(screenScale); // resizes draw context
+  RefreshPlatformScale(true); // resizes draw context using measured physical DPI
 
   GetDelegate()->LayoutUI(this);
 

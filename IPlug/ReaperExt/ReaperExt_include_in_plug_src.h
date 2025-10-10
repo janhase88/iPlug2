@@ -140,7 +140,8 @@ float GetScaleForHWND(HWND hWnd)
       scale = static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI;
   }
 
-  HDC screenDC = GetDC(nullptr);
+  HWND dcWindow = hWnd ? hWnd : nullptr;
+  HDC screenDC = GetDC(dcWindow);
 
   if (screenDC)
   {
@@ -151,11 +152,11 @@ float GetScaleForHWND(HWND hWnd)
     {
       const float virtualizationScale = static_cast<float>(physicalWidth) / static_cast<float>(virtualizedWidth);
 
-      if (virtualizationScale > 0.f)
+      if (virtualizationScale > 0.f && virtualizationScale != 1.f)
         scale *= virtualizationScale;
     }
 
-    ReleaseDC(nullptr, screenDC);
+    ReleaseDC(dcWindow, screenDC);
   }
 
   return (scale > 0.f) ? scale : 1.f;

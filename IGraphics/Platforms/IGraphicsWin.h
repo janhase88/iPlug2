@@ -184,6 +184,9 @@ protected:
   IRECT GetWindowRECT();
 
 private:
+  void RefreshPlatformScale(bool force);
+  float MeasureWindowScale() const;
+
   // OLE drag & drop
   DragAndDropHelpers::DropTarget* mDropTarget = nullptr;
   bool mOLEInited = false;

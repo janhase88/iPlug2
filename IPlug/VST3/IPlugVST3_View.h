@@ -139,7 +139,11 @@ public:
 
   Steinberg::tresult PLUGIN_API setContentScaleFactor(ScaleFactor factor) override
   {
+#if defined OS_WIN && defined IGRAPHICS_VULKAN && defined IGRAPHICS_SKIA
+    (void) factor;
+#else
     mOwner.SetScreenScale(factor);
+#endif
 
     return Steinberg::kResultOk;
   }

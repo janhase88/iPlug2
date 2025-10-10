@@ -58,7 +58,8 @@
         scale = static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI;
     }
 
-    HDC screenDC = GetDC(nullptr);
+    HWND dcWindow = hWnd ? hWnd : nullptr;
+    HDC screenDC = GetDC(dcWindow);
 
     if (screenDC)
     {
@@ -69,11 +70,11 @@
       {
         const float virtualizationScale = static_cast<float>(physicalWidth) / static_cast<float>(virtualizedWidth);
 
-        if (virtualizationScale > 0.f)
+        if (virtualizationScale > 0.f && virtualizationScale != 1.f)
           scale *= virtualizationScale;
       }
 
-      ReleaseDC(nullptr, screenDC);
+      ReleaseDC(dcWindow, screenDC);
     }
 
 #if defined IGRAPHICS_QUANTISE_SCREENSCALE

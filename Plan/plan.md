@@ -3,6 +3,10 @@
 ## Goal
 Ensure Windows VST3 editors that render with the Skia/Vulkan backend always draw at the physical monitor DPI, independent of host-provided UI scaling hints, while keeping the plug-in window and swapchain sizes synchronized so the UI is not clipped or oversized.
 
+## Status
+- [x] Phase 1 — Investigation & Audit (see `WinVST3VulkanSkia_Audit.md`)
+- [x] Phase 2 — Implementation & Integration
+
 ## Scope & Constraints
 - Platform: Windows only.
 - Plug-in format: VST3 only.

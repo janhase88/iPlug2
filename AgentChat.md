@@ -1,4 +1,4 @@
 # AgentChat
 
-- Pulled `IGraphics.h` into the VST3 view so the bypass toggle compiles again—please rebuild and confirm you now see `SetHostContentScaleBypassed -> true` before the first scale refresh.
-- Once we verify the toggle fires, I'll use that telemetry to chase why the canvas is still blurry even when the swapchain resizes to the physical extent.
+- Reordered the VST3 attach path so the bypass flips right after the window opens; rebuild and you should see `SetHostContentScaleBypassed -> true` followed by `PlatformResize` reporting `targetScale=1.0` while `render=1.5`.
+- If the UI still looks blurry, grab the `RefreshPlatformScale` and `PlatformResize` logs from that run so we can confirm the swapchain is actually using the physical pixels.

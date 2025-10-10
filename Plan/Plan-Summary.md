@@ -20,9 +20,9 @@
 
 -----------------
 [x] Current plan:
-- Phase 2 — Implementation & Integration — PREVIOUS STATUS: IN PROGRESS / CURRENT STATUS: VALIDATION PENDING (Windows build fixed; need to confirm bypass toggles before scale refresh)
+- Phase 2 — Implementation & Integration — PREVIOUS STATUS: IN PROGRESS / CURRENT STATUS: VALIDATION PENDING (bypass handshake fixed; awaiting crisp-render validation logs)
   - 7. Validation & Regression Testing — PREVIOUS STATUS: PARTIAL / CURRENT STATUS: EXECUTION OUTSTANDING (manual checklist ready; need host sessions and artefacts)
   - 8. Documentation & Clean-Up — PREVIOUS STATUS: PARTIAL / CURRENT STATUS: PARTIAL (docs refreshed; logging cleanup waits on validation evidence)
 
 [x] Message to User:
-The Windows build now pulls in `IGraphics.h`, so the VST3 view compiles again. After rebuilding, please check that the attach log prints `SetHostContentScaleBypassed -> true`; if it still shows `bypass=false` we'll dive into the handshake next.
+Rebuild and rerun at 150 % DPI—`SetHostContentScaleBypassed` should flip to `true` immediately after `OpenWindow()`, `RefreshPlatformScale` should log `bypass=true`, and `PlatformResize` should now report `targetScale=1.0` while the render scale stays ≈1.5. If the UI is still blurry, capture those logs so we can dig into the remaining rendering path.

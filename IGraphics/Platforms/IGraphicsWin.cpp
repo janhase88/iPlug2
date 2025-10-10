@@ -3562,9 +3562,17 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
     const float renderScale = GetScreenScale();
     const bool renderScaleValid = renderScale > 0.f && std::isfinite(renderScale);
     const bool windowScaleValid = windowScale > 0.f && std::isfinite(windowScale);
-    float targetScale = (mBypassHostContentScale && renderScaleValid)
-                          ? renderScale
-                          : (windowScaleValid ? windowScale : renderScale);
+    float targetScale = windowScaleValid ? windowScale : 1.f;
+
+    if (mBypassHostContentScale)
+    {
+      if (!windowScaleValid && renderScaleValid)
+        targetScale = renderScale;
+    }
+    else if (renderScaleValid)
+    {
+      targetScale = renderScale;
+    }
 
     if (!(targetScale > 0.f && std::isfinite(targetScale)))
       targetScale = 1.f;

@@ -9,10 +9,10 @@ This checklist verifies that Windows VST3 editors rendered with the Skia/Vulkan 
   - [ ] In `Examples/IPlugEffect/config/IPlugEffect-win.props`, change `IGRAPHICS_NANOVG;IGRAPHICS_GL2` to `IGRAPHICS_SKIA;IGRAPHICS_VULKAN` (mirror the CI script behaviour).【F:Scripts/ci/build_project-win.yml†L26-L35】
   - [ ] Open `Examples/IPlugEffect/IPlugEffect.sln` in Visual Studio 2022, select the `IPlugEffect-vst3` target, and build the x64 configuration.
   - [ ] Copy the generated `.vst3` bundle from `Examples/IPlugEffect/build-win/` into your VST3 plug-in folder.
-- [ ] Launch DebugView (or attach a debugger) so the always-on `DBGMSG`/`IGRAPHICS_VK_LOG` entries from `RefreshPlatformScale()` are captured during the run.【F:IGraphics/Platforms/IGraphicsWin.cpp†L47-L62】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4327-L4334】
+- [ ] Launch DebugView (or attach a debugger) so the always-on `DBGMSG`/`IGRAPHICS_VK_LOG` entries from `RefreshPlatformScale()` are captured during the run.【F:IGraphics/Platforms/IGraphicsWin.cpp†L47-L62】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4381-L4416】
 
 ## 2. Baseline Attachment
-- [ ] Launch each host at 150 % scaling and open the plug-in editor. Confirm the `SetHostContentScaleBypassed` log flips to `true`, the paired debug logs report a physical scale ≈1.5 while the host DPI scale remains ≈1.0, and that `PlatformResize` shows the target scale matching the physical value.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3526-L3571】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4327-L4345】
+- [ ] Launch each host at 150 % scaling and open the plug-in editor. Confirm the `SetHostContentScaleBypassed` log flips to `true`, the paired debug logs report a physical scale ≈1.5 while the host DPI scale remains ≈1.0, and that `PlatformResize` shows `targetScale` ≈1.0 (host pixels) while `render` stays at the physical value.【F:IGraphics/Platforms/IGraphicsWin.cpp†L3526-L3571】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4346-L4416】
 - [ ] Capture a screenshot showing the UI is crisp (no bitmap stretching) and the plug-in window bounds match the rendered content.
 
 ## 3. Host Resize Negotiation
@@ -20,7 +20,7 @@ This checklist verifies that Windows VST3 editors rendered with the Skia/Vulkan 
 - [ ] Use any in-plugin resizer (corner drag) to change the logical size. Ensure the host window follows the physical dimensions while the debug log shows the same bypassed scale.
 
 ## 4. Monitor Handover
-- [ ] Move the host window between the 100 % and ≥150 % monitors. Confirm `WM_DPICHANGED` fires (scale log updates immediately) and the swapchain redraws without blurring or letterboxing.【F:IGraphics/Platforms/IGraphicsWin.cpp†L2682-L2707】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4348-L4412】
+- [ ] Move the host window between the 100 % and ≥150 % monitors. Confirm `WM_DPICHANGED` fires (scale log updates immediately) and the swapchain redraws without blurring or letterboxing.【F:IGraphics/Platforms/IGraphicsWin.cpp†L2682-L2707】【F:IGraphics/Platforms/IGraphicsWin.cpp†L4420-L4505】
 - [ ] While the window straddles both monitors, ensure the measured scale matches the monitor containing the majority of the window.
 
 ## 5. Swapchain Stability
@@ -32,7 +32,7 @@ This checklist verifies that Windows VST3 editors rendered with the Skia/Vulkan 
 - [ ] Check mouse wheel, drag, and touch interactions land on the correct controls at both DPI settings, demonstrating consistent input scaling.【F:IGraphics/Platforms/IGraphicsWin.cpp†L2590-L2679】
 
 ## 7. Regression Sweep
-- [ ] Repeat baseline attachment with the plug-in forced to CPU Skia or NanoVG to confirm the bypass flag is not activated and the host DPI scale matches the physical scale (serves as control group).【F:IPlug/VST3/IPlugVST3_View.h†L99-L132】
+- [ ] Repeat baseline attachment with the plug-in forced to CPU Skia or NanoVG to confirm the bypass flag is not activated and the host DPI scale matches the physical scale (serves as control group).【F:IPlug/VST3/IPlugVST3_View.h†L101-L136】
 - [ ] Run a legacy host that never calls `setContentScaleFactor()` to ensure the plugin still measures a physical scale and renders correctly.
 
 ## 8. Reporting

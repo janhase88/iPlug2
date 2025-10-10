@@ -213,6 +213,19 @@ private:
 
   void RenderPath(SkPaint& paint);
 
+#if defined OS_WIN
+  void MaybeLogSurfaceDetails(const char* tag,
+                              const sk_sp<SkSurface>& surface,
+                              SurfaceLogState& cache,
+                              void* hwnd,
+                              int requestedWidth,
+                              int requestedHeight,
+                              float screenScale,
+                              float windowScale,
+                              float monitorScale,
+                              float virtualization);
+#endif
+
   sk_sp<SkSurface> mSurface;
   SkCanvas* mCanvas = nullptr;
   SkPath mMainPath;
@@ -221,6 +234,21 @@ private:
   SkMatrix mFinalMatrix;
 
 #if defined OS_WIN
+  struct SurfaceLogState
+  {
+    const SkSurface* ptr = nullptr;
+    int width = 0;
+    int height = 0;
+    int colorType = -1;
+    int alphaType = -1;
+    bool gpuBacked = false;
+    float screenScale = 0.f;
+    float windowScale = 0.f;
+    float monitorScale = 0.f;
+    float virtualization = 0.f;
+    bool valid = false;
+  };
+
   int mPresentationPhysicalWidth = 0;
   int mPresentationPhysicalHeight = 0;
   int mPresentationLogicalWidth = 0;
@@ -231,6 +259,8 @@ private:
   bool mPresentationLogValid = false;
   int mLastPresentationDrawWidth = 0;
   int mLastPresentationDrawHeight = 0;
+  SurfaceLogState mLastDrawSurfaceLog;
+  SurfaceLogState mLastScreenSurfaceLog;
 #endif
 
 #if defined OS_WIN && defined IGRAPHICS_CPU
@@ -244,6 +274,7 @@ private:
   int mLastCpuPresentDestWidth = 0;
   int mLastCpuPresentDestHeight = 0;
   bool mLastCpuPresentAppliedCompensation = false;
+  const SkSurface* mLastCpuPresentSurfacePtr = nullptr;
   bool mCpuPresentLogValid = false;
 #endif
 

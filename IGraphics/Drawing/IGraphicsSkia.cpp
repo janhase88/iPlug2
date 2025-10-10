@@ -1318,6 +1318,14 @@ void IGraphicsSkia::DrawResize()
   ScopedGraphicsContext scopedGLContext{this};
   auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * GetScreenScale()));
   auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * GetScreenScale()));
+  DBGMSG("IGraphicsSkia: DrawResize logical=%dx%d render=%dx%d screenScale=%.3f drawScale=%.3f total=%.3f\n",
+         WindowWidth(),
+         WindowHeight(),
+         w,
+         h,
+         GetScreenScale(),
+         GetDrawScale(),
+         GetTotalScale());
 #if defined IGRAPHICS_VULKAN
   IGRAPHICS_VK_LOG("DrawResize",
                       "begin",

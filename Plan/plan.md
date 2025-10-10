@@ -5,11 +5,12 @@ Ensure Windows VST3 editors that render with the Skia/Vulkan backend always draw
 
 ## Status
 - [x] Phase 1 — Investigation & Audit (see `WinVST3VulkanSkia_Audit.md`)
-- [ ] Phase 2 — Implementation & Integration — **validation pending** (code landed; need host runs and evidence capture)
+- [ ] Phase 2 — Implementation & Integration — **rework in progress** (decoupling window/layout scale from render scale and adding end-to-end diagnostics)
 
 ### Current Focus
-- Confirm the attach-time bypass now fires before the first scale refresh so `RefreshPlatformScale` logs `bypass=true` and `PlatformResize` reports the measured physical scale (`targetScale≈renderScale`) while the ancestor HWNDs expand accordingly.
-- Capture high-DPI validation logs/screens to prove the swapchain is sized to the physical pixels and the editor stays crisp at 150 %+ without the UI overflowing its host container.
+- Verify the window/layout scale remains at the host DPI while the renderer uses the physical scale by watching `PlatformResize` virtualization ratios and the new Skia `DrawResize` logs end to end.
+- Capture high-DPI validation logs/screens showing a crisp image inside the host bounds (no overflow) with swapchain extents matching the physical pixel dimensions.
+- Iterate on logging coverage from `RefreshPlatformScale` through `DrawResize` so testers can trace logical → render scale at a glance.
 
 ## Scope & Constraints
 - Platform: Windows only.
@@ -79,7 +80,7 @@ Use the investigation results to enforce physical DPI usage across the Windows V
 - [x] Ensure other potential host callbacks (`checkSizeConstraint`, custom attributes) do not reintroduce logical scaling—guard or bypass them as needed.
 - [x] Verify the attach-time bypass handshake reliably flips `SetHostContentScaleBypassed(true)` before any scale refresh so the logs stop reporting `bypass=false` and the renderer can adopt the physical DPI.
 
-- [x] Adjust `IGraphicsWin::OpenWindow()` and resize paths so the HWND hierarchy grows to the measured physical pixels while host callbacks stay in logical units, preventing DPI-virtualized hosts from downscaling the swapchain and reintroducing blur.
+- [ ] Adjust `IGraphicsWin::OpenWindow()` and resize paths so the HWND hierarchy stays at the host DPI while the renderer uses the physical pixels, preventing DPI-virtualized hosts from overflowing and documenting the virtualization ratio for every resize.
 - [x] When `GetScaleForHWND()` changes, update both the stored screen scale and trigger window/swapchain resizes so the client area and Vulkan images stay in sync.
 - [x] Integrate handling for `WM_DPICHANGED` (or equivalent) to react immediately to monitor DPI switches, using the suggested `RECT` to resize the window if necessary.
 
@@ -92,6 +93,7 @@ Use the investigation results to enforce physical DPI usage across the Windows V
 - [x] Propagate the physical scale into swapchain extent calculations when `vkGetPhysicalDeviceSurfaceCapabilitiesKHR` allows free sizing, ensuring we request images sized to the current physical pixel dimensions.
 - [x] Validate that Skia's `SkSurface` wrappers and `IGraphicsSkia::PathTransformSetMatrix()` use the updated `GetTotalScale()` so drawing aligns pixel-perfectly with the swapchain images.
 - [x] Audit off-screen bitmaps, layers, and cached render targets to ensure their scale parameters now reflect the physical DPI, avoiding mismatched resource sizes.
+- [x] Emit per-resize logging from `IGraphicsSkia::DrawResize()` summarizing logical dimensions, render target size, and composed scales to trace the pipeline during validation.
 
 ### 6. Ancillary Windows UI Elements
 - [x] Ensure tooltips (`mTooltipWnd`), parameter edit controls (`mParamEditWnd`), and any embedded platform views (WebView, etc.) also adopt the physical scale so text/input fields remain aligned.

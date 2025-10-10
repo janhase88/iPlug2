@@ -14,7 +14,10 @@
 #include "pluginterfaces/base/keycodes.h"
 
 #include "IPlugStructs.h"
-#include "IGraphics/IGraphics.h"
+#include "IGraphics.h"
+
+using namespace iplug;
+using namespace igraphics;
 
 /** IPlug VST3 View  */
 template <class T>

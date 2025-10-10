@@ -1,4 +1,4 @@
 # AgentChat
 
-- Bypass now enables before `OpenWindow()`, and `PlatformResize` logs the virtualization ratio with `targetScale` matching the measured physical DPI.
-- Next step: rerun at 150 % scaling, confirm the logs show `bypass=true`, `targetScale≈renderScale`, and report whether the window stays crisp without overflowing.
+- Window/layout sizing now stays at the host DPI while the renderer logs the virtualization ratio; `DrawResize` also dumps logical vs. render dimensions so we can trace the pipeline.
+- Next step: rerun at 150 % scaling, confirm `bypass=true`, `targetScale≈host`, `ratio≈physical/host`, share the new `DrawResize` lines, and tell me if the image is finally crisp inside the window.

@@ -3561,25 +3561,15 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
     const float renderScale = GetScreenScale();
     const bool renderScaleValid = renderScale > 0.f && std::isfinite(renderScale);
     const bool windowScaleValid = windowScale > 0.f && std::isfinite(windowScale);
-    float targetScale = 1.f;
-    if (renderScaleValid)
-    {
-      targetScale = renderScale;
-    }
-    else if (windowScaleValid)
-    {
-      targetScale = windowScale;
-    }
-
-    if (!(targetScale > 0.f && std::isfinite(targetScale)))
-      targetScale = 1.f;
-
-    const float virtualizationRatio = (windowScaleValid && windowScale > 0.f) ? (renderScale / windowScale) : renderScale;
+    const float windowTargetScale = windowScaleValid ? windowScale : 1.f;
+    const float virtualizationRatio = (windowScaleValid && windowScale > 0.f && renderScaleValid)
+                                        ? (renderScale / windowScale)
+                                        : (renderScaleValid ? renderScale : 1.f);
 
     DBGMSG("IGraphicsWin: PlatformResize windowScale=%.3f renderScale=%.3f targetScale=%.3f bypass=%s parentHasResized=%s ratio=%.3f\n",
            windowScale,
            renderScale,
-           targetScale,
+           windowTargetScale,
            mBypassHostContentScale ? "true" : "false",
            parentHasResized ? "true" : "false",
            virtualizationRatio);
@@ -3590,13 +3580,13 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
                      vulkanlog::Severity::kInfo,
                      vulkanlog::MakeField("window", std::to_string(windowScale)),
                      vulkanlog::MakeField("render", std::to_string(renderScale)),
-                     vulkanlog::MakeField("target", std::to_string(targetScale)),
+                     vulkanlog::MakeField("target", std::to_string(windowTargetScale)),
                      vulkanlog::MakeField("bypass", mBypassHostContentScale),
                      vulkanlog::MakeField("parentHasResized", parentHasResized),
                      vulkanlog::MakeField("ratio", std::to_string(virtualizationRatio)));
 #endif
-    const int targetWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * targetScale));
-    const int targetHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * targetScale));
+    const int targetWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * windowTargetScale));
+    const int targetHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * windowTargetScale));
     int dw = targetWidth - dlgW;
     int dh = targetHeight - dlgH;
 
@@ -4373,13 +4363,10 @@ void IGraphicsWin::SetHostContentScaleBypassed(bool bypass)
 
 float IGraphicsWin::GetBackingPixelScaleForParentResize() const
 {
-  if (!mBypassHostContentScale)
-    return GetScreenScale();
+  if (mWindowDPIScale > 0.f && std::isfinite(mWindowDPIScale))
+    return mWindowDPIScale;
 
-  if (mWindowDPIScale <= 0.f || !std::isfinite(mWindowDPIScale))
-    return GetScreenScale();
-
-  return mWindowDPIScale;
+  return GetScreenScale();
 }
 
 void IGraphicsWin::RefreshPlatformScale(bool force)
@@ -4429,8 +4416,9 @@ void* IGraphicsWin::OpenWindow(void* pParent)
 
   const bool hostScaleValid = hostScale > 0.f && std::isfinite(hostScale);
   const bool physicalScaleValid = physicalScale > 0.f && std::isfinite(physicalScale);
+  const bool virtualizationActive = physicalScaleValid && hostScaleValid && std::fabs(physicalScale - hostScale) > 0.001f;
 
-  if (mBypassHostContentScale && hostScaleValid)
+  if ((mBypassHostContentScale || virtualizationActive) && hostScaleValid)
     windowScale = hostScale;
   else if (!physicalScaleValid && hostScaleValid)
     windowScale = hostScale;

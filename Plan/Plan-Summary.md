@@ -1,13 +1,14 @@
 [x] Continued From Previous Snapshot: YES — Advancing the Windows VST3 Skia/Vulkan physical-DPI rollout with refreshed documentation and instrumentation.
 -----------------
 [x] File Overview:
-- Num files Changed: 8
+- Num files Changed: 9
 - Num files Created: 0
-- Num lines Modified: 164
+- Num lines Modified: 85
 
 [x] List of Files changed/created:
 - Changed:
   - AgentChat.md
+  - IGraphics/Drawing/IGraphicsSkia.cpp
   - IGraphics/Platforms/IGraphicsWin.cpp
   - IPlug/VST3/IPlugVST3_View.h
   - Plan/plan.md
@@ -18,9 +19,9 @@
 
 -----------------
 [x] Current plan:
-- Phase 2 — Implementation & Integration — PREVIOUS STATUS: IN PROGRESS / CURRENT STATUS: VALIDATION PENDING (bypass primed pre-open, window hierarchy now targets physical pixels; awaiting crisp-render validation logs)
+- Phase 2 — Implementation & Integration — PREVIOUS STATUS: IN PROGRESS / CURRENT STATUS: REWORKING (window/layout stay at host DPI while renderer targets physical; need crisp-render validation with new logs)
   - 7. Validation & Regression Testing — PREVIOUS STATUS: PARTIAL / CURRENT STATUS: EXECUTION OUTSTANDING (manual checklist ready; need host sessions and artefacts)
   - 8. Documentation & Clean-Up — PREVIOUS STATUS: PARTIAL / CURRENT STATUS: PARTIAL (docs refreshed; logging cleanup waits on validation evidence)
 
 [x] Message to User:
-Rebuild and rerun at 150 % DPI—`SetHostContentScaleBypassed` should flip to `true`, `RefreshPlatformScale` should log the physical vs. host pair, and `PlatformResize` should now show `targetScale≈renderScale` with a virtualization ratio ≈1.5 while the window stays crisp. If it’s still blurry or clips, please share those logs and what you see on screen.
+Please rebuild and run at 150 % DPI. `SetHostContentScaleBypassed` should read `true`, `RefreshPlatformScale` will show physical vs. host, `PlatformResize` should report `targetScale≈host` with a virtualization ratio ≈physical/host, and the new `DrawResize` `DBGMSG` should list the logical and render sizes. Let me know whether the UI is crisp inside the window and share the relevant log lines.

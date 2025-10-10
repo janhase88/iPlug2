@@ -262,6 +262,9 @@ private:
   int mLastGpuPresentPhysicalWidth = 0;
   int mLastGpuPresentPhysicalHeight = 0;
   bool mLastGpuPresentAppliedScale = false;
+  const SkSurface* mLastGpuPresentSrcSurfacePtr = nullptr;
+  const SkSurface* mLastGpuPresentScreenSurfacePtr = nullptr;
+  bool mLastGpuPresentSurfacesEqual = false;
 #endif
 
 #ifndef IGRAPHICS_CPU

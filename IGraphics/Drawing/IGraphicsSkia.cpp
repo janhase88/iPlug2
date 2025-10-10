@@ -2334,6 +2334,9 @@ void IGraphicsSkia::EndFrame()
     const int srcHeight = mLastPresentationDrawHeight;
     const int destLogicalWidth = mPresentationLogicalWidth;
     const int destLogicalHeight = mPresentationLogicalHeight;
+    const SkSurface* const srcSurfacePtr = mSurface.get();
+    const SkSurface* const screenSurfacePtr = mScreenSurface.get();
+    const bool surfacesEqual = (srcSurfacePtr == screenSurfacePtr);
 
     float scaleX = 1.f;
     float scaleY = 1.f;
@@ -2396,11 +2399,14 @@ void IGraphicsSkia::EndFrame()
       mLastGpuPresentLogicalHeight != destLogicalHeight ||
       mLastGpuPresentPhysicalWidth != destPhysicalWidth ||
       mLastGpuPresentPhysicalHeight != destPhysicalHeight ||
-      mLastGpuPresentAppliedScale != applyScale;
+      mLastGpuPresentAppliedScale != applyScale ||
+      mLastGpuPresentSrcSurfacePtr != srcSurfacePtr ||
+      mLastGpuPresentScreenSurfacePtr != screenSurfacePtr ||
+      mLastGpuPresentSurfacesEqual != surfacesEqual;
 
     if (shouldLogGpuPresent)
     {
-      DBGMSG("SkiaVulkan.EndFrame: hwnd=%p src=%dx%d destLogical=%dx%d destPhysical=%dx%d screenScale=%.3f windowScale=%.3f monitorScale=%.3f virtualization=%.3f scaleX=%.3f scaleY=%.3f appliedScale=%s\n",
+      DBGMSG("SkiaVulkan.EndFrame: hwnd=%p src=%dx%d destLogical=%dx%d destPhysical=%dx%d screenScale=%.3f windowScale=%.3f monitorScale=%.3f virtualization=%.3f scaleX=%.3f scaleY=%.3f appliedScale=%s srcSurface=%p screenSurface=%p surfacesEqual=%s\n",
              hwnd,
              srcWidth,
              srcHeight,
@@ -2414,7 +2420,10 @@ void IGraphicsSkia::EndFrame()
              virtualization,
              scaleX,
              scaleY,
-             applyScale ? "true" : "false");
+             applyScale ? "true" : "false",
+             static_cast<const void*>(srcSurfacePtr),
+             static_cast<const void*>(screenSurfacePtr),
+             surfacesEqual ? "true" : "false");
 
       mGpuPresentLogValid = true;
       mLastGpuPresentScreenScale = screenScale;
@@ -2430,6 +2439,9 @@ void IGraphicsSkia::EndFrame()
       mLastGpuPresentPhysicalWidth = destPhysicalWidth;
       mLastGpuPresentPhysicalHeight = destPhysicalHeight;
       mLastGpuPresentAppliedScale = applyScale;
+      mLastGpuPresentSrcSurfacePtr = srcSurfacePtr;
+      mLastGpuPresentScreenSurfacePtr = screenSurfacePtr;
+      mLastGpuPresentSurfacesEqual = surfacesEqual;
     }
 #endif
 

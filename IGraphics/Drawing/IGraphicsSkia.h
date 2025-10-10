@@ -236,6 +236,20 @@ private:
     bool valid = false;
   };
 
+  struct SurfaceSampleState
+  {
+    const SkSurface* ptr = nullptr;
+    int width = 0;
+    int height = 0;
+    int requestedWidth = 0;
+    int requestedHeight = 0;
+    int sampleX = 0;
+    int sampleY = 0;
+    uint32_t pixel = 0;
+    bool sampleValid = false;
+    bool valid = false;
+  };
+
   int mPresentationPhysicalWidth = 0;
   int mPresentationPhysicalHeight = 0;
   int mPresentationLogicalWidth = 0;
@@ -248,6 +262,8 @@ private:
   int mLastPresentationDrawHeight = 0;
   SurfaceLogState mLastDrawSurfaceLog;
   SurfaceLogState mLastScreenSurfaceLog;
+  SurfaceSampleState mLastDrawSurfaceSample;
+  SurfaceSampleState mLastScreenSurfaceSample;
 #endif
 
 #if defined OS_WIN && defined IGRAPHICS_CPU
@@ -296,6 +312,12 @@ private:
                               float windowScale,
                               float monitorScale,
                               float virtualization);
+  void MaybeLogSurfaceSample(const char* tag,
+                             const sk_sp<SkSurface>& surface,
+                             SurfaceSampleState& cache,
+                             void* hwnd,
+                             int requestedWidth,
+                             int requestedHeight);
 #endif
 
 #ifndef IGRAPHICS_CPU

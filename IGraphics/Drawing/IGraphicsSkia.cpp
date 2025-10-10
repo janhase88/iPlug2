@@ -153,6 +153,23 @@ void LogCanvasMatrixAndClip(const char* tag, void* hwnd, SkCanvas* canvas, bool 
            transY);
   }
 }
+
+bool ReadSurfacePixel(SkSurface* surface, int sampleX, int sampleY, uint32_t& pixelOut)
+{
+  if (!surface)
+    return false;
+
+  SkImageInfo sampleInfo = SkImageInfo::MakeN32Premul(1, 1);
+  uint32_t pixelValue = 0;
+
+  if (surface->readPixels(sampleInfo, &pixelValue, sizeof(uint32_t), sampleX, sampleY))
+  {
+    pixelOut = pixelValue;
+    return true;
+  }
+
+  return false;
+}
 } // namespace
 #endif
 
@@ -2374,6 +2391,13 @@ void IGraphicsSkia::EndFrame()
       mLastCpuPresentSurfacePtr = surfacePtr;
     }
 
+    MaybeLogSurfaceSample("SkiaCPU.SurfaceSample.draw",
+                          mSurface,
+                          mLastDrawSurfaceSample,
+                          hWnd,
+                          srcWidth,
+                          srcHeight);
+
     StretchDIBits(hdc,
                   0,
                   0,
@@ -2597,6 +2621,19 @@ void IGraphicsSkia::EndFrame()
       LogCanvasMatrixAndClip("SkiaVulkan.CanvasState.noScale", hwnd, screenCanvas, applyScale);
       mSurface->draw(screenCanvas, 0.0, 0.0, nullptr);
     }
+
+    MaybeLogSurfaceSample("SkiaVulkan.SurfaceSample.draw",
+                          mSurface,
+                          mLastDrawSurfaceSample,
+                          hwnd,
+                          srcWidth,
+                          srcHeight);
+    MaybeLogSurfaceSample("SkiaVulkan.SurfaceSample.screen",
+                          mScreenSurface,
+                          mLastScreenSurfaceSample,
+                          hwnd,
+                          destPhysicalWidth,
+                          destPhysicalHeight);
   }
 #else
   mSurface->draw(mScreenSurface->getCanvas(), 0.0, 0.0, nullptr);
@@ -3339,6 +3376,88 @@ void IGraphicsSkia::MaybeLogSurfaceDetails(const char* tag,
     cache.windowScale = windowScale;
     cache.monitorScale = monitorScale;
     cache.virtualization = virtualization;
+    cache.valid = true;
+  }
+}
+
+void IGraphicsSkia::MaybeLogSurfaceSample(const char* tag,
+                                          const sk_sp<SkSurface>& surface,
+                                          SurfaceSampleState& cache,
+                                          void* hwnd,
+                                          int requestedWidth,
+                                          int requestedHeight)
+{
+  if (!surface)
+  {
+    if (cache.valid || cache.ptr != nullptr)
+    {
+      DBGMSG("%s: hwnd=%p surface=null requested=%dx%d sampleValid=false\n",
+             tag,
+             hwnd,
+             requestedWidth,
+             requestedHeight);
+    }
+
+    cache = SurfaceSampleState{};
+    return;
+  }
+
+  const SkSurface* const surfacePtr = surface.get();
+  const int actualWidth = surface->width();
+  const int actualHeight = surface->height();
+
+  int sampleX = 0;
+  int sampleY = 0;
+  if (actualWidth > 0)
+    sampleX = std::min(actualWidth - 1, actualWidth / 2);
+  if (actualHeight > 0)
+    sampleY = std::min(actualHeight - 1, actualHeight / 2);
+
+  uint32_t pixel = 0;
+  bool sampleValid = false;
+
+  if (actualWidth > 0 && actualHeight > 0)
+  {
+    sampleX = std::clamp(sampleX, 0, actualWidth - 1);
+    sampleY = std::clamp(sampleY, 0, actualHeight - 1);
+    sampleValid = ReadSurfacePixel(surface.get(), sampleX, sampleY, pixel);
+  }
+
+  const bool changed = !cache.valid ||
+                       cache.ptr != surfacePtr ||
+                       cache.width != actualWidth ||
+                       cache.height != actualHeight ||
+                       cache.requestedWidth != requestedWidth ||
+                       cache.requestedHeight != requestedHeight ||
+                       cache.sampleX != sampleX ||
+                       cache.sampleY != sampleY ||
+                       cache.sampleValid != sampleValid ||
+                       (sampleValid && cache.pixel != pixel);
+
+  if (changed)
+  {
+    DBGMSG("%s: hwnd=%p surface=%p actual=%dx%d requested=%dx%d sample=(%d,%d) valid=%s argb=0x%08X\n",
+           tag,
+           hwnd,
+           static_cast<const void*>(surfacePtr),
+           actualWidth,
+           actualHeight,
+           requestedWidth,
+           requestedHeight,
+           sampleX,
+           sampleY,
+           sampleValid ? "true" : "false",
+           static_cast<unsigned>(pixel));
+
+    cache.ptr = surfacePtr;
+    cache.width = actualWidth;
+    cache.height = actualHeight;
+    cache.requestedWidth = requestedWidth;
+    cache.requestedHeight = requestedHeight;
+    cache.sampleX = sampleX;
+    cache.sampleY = sampleY;
+    cache.pixel = pixel;
+    cache.sampleValid = sampleValid;
     cache.valid = true;
   }
 }

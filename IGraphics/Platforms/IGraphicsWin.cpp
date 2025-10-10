@@ -92,11 +92,6 @@ namespace
 {
 constexpr uint32_t kVBlankQueueDepthWarningMultiplier = 2;
 
-#if defined IGRAPHICS_VULKAN && defined IGRAPHICS_SKIA
-constexpr bool kForcePhysicalDpiExperiment = true;
-constexpr float kForcedPhysicalDpiScale = 1.5f;
-#endif
-
 void RecordVBlankQueueDepthSample(uint32_t depth);
 void IncrementVBlankQueueWarnCount();
 void RecordVBlankDispatchSuccess();
@@ -3633,6 +3628,7 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
     const float windowScale = GetPlatformWindowScale();
     const float renderScale = GetScreenScale();
     const float hostScale = (mWindowDPIScale > 0.f && std::isfinite(mWindowDPIScale)) ? mWindowDPIScale : 1.f;
+    const float physicalScale = (mPhysicalWindowScale > 0.f && std::isfinite(mPhysicalWindowScale)) ? mPhysicalWindowScale : renderScale;
     const bool renderScaleValid = renderScale > 0.f && std::isfinite(renderScale);
     const bool windowScaleValid = windowScale > 0.f && std::isfinite(windowScale);
     const bool hostScaleValid = hostScale > 0.f && std::isfinite(hostScale);
@@ -3649,10 +3645,11 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
                                         ? (renderScale / hostScale)
                                         : 1.f;
 
-    DBGMSG("IGraphicsWin: PlatformResize windowScale=%.3f renderScale=%.3f hostScale=%.3f targetPixels=%dx%d renderPixels=%dx%d current=%dx%d bypass=%s parentHasResized=%s ratio=%.3f\n",
+    DBGMSG("IGraphicsWin: PlatformResize windowScale=%.3f renderScale=%.3f hostScale=%.3f physicalScale=%.3f targetPixels=%dx%d renderPixels=%dx%d current=%dx%d bypass=%s parentHasResized=%s ratio=%.3f\n",
            windowScale,
            renderScale,
            hostScale,
+           physicalScale,
            targetWidth,
            targetHeight,
            renderWidth,
@@ -3669,6 +3666,7 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
                      vulkanlog::Severity::kInfo,
                      vulkanlog::MakeField("window", std::to_string(windowScale)),
                      vulkanlog::MakeField("render", std::to_string(renderScale)),
+                     vulkanlog::MakeField("physical", std::to_string(physicalScale)),
                      vulkanlog::MakeField("targetPixels", std::to_string(targetWidth) + "x" + std::to_string(targetHeight)),
                      vulkanlog::MakeField("renderPixels", std::to_string(renderWidth) + "x" + std::to_string(renderHeight)),
                      vulkanlog::MakeField("bypass", mBypassHostContentScale),
@@ -4514,7 +4512,7 @@ float IGraphicsWin::GetBackingPixelScaleForParentResize() const
   if (mWindowDPIScale > 0.f && std::isfinite(mWindowDPIScale))
     return mWindowDPIScale;
 
-  return GetScreenScale();
+  return 1.f;
 }
 
 void IGraphicsWin::RefreshPlatformScale(bool force)
@@ -4527,37 +4525,12 @@ void IGraphicsWin::RefreshPlatformScale(bool force)
   else
     mWindowDPIScale = 1.f;
 
+  if (measured > 0.f && std::isfinite(measured))
+    mPhysicalWindowScale = measured;
+  else if (!std::isfinite(mPhysicalWindowScale) || mPhysicalWindowScale <= 0.f)
+    mPhysicalWindowScale = 1.f;
+
   const float current = GetScreenScale();
-
-#if defined IGRAPHICS_VULKAN && defined IGRAPHICS_SKIA
-  const bool forceDpiExperiment = kForcePhysicalDpiExperiment && mBypassHostContentScale;
-  if (forceDpiExperiment)
-  {
-    const float forcedScale = kForcedPhysicalDpiScale;
-
-    if (!force && std::fabs(forcedScale - current) < 0.001f)
-      return;
-
-    DBGMSG("IGraphicsWin: RefreshPlatformScale forcing render scale=%.3f measured=%.3f host=%.3f\n",
-           forcedScale,
-           measured,
-           mWindowDPIScale);
-
-#if defined IGRAPHICS_VULKAN
-    IGRAPHICS_VK_LOG("RefreshPlatformScale",
-                     "forcedScale",
-                     vulkanlog::Severity::kInfo,
-                     vulkanlog::MakeField("forced", std::to_string(forcedScale)),
-                     vulkanlog::MakeField("measured", std::to_string(measured)),
-                     vulkanlog::MakeField("host", std::to_string(mWindowDPIScale)),
-                     vulkanlog::MakeField("forceParam", force));
-#endif
-
-    SetScreenScale(forcedScale);
-    return;
-  }
-#endif
-
   if (!force)
   {
     if (std::fabs(measured - current) < 0.001f)
@@ -4611,10 +4584,13 @@ void* IGraphicsWin::OpenWindow(void* pParent)
 
   if (hostScaleValid)
     mWindowDPIScale = hostScale;
-  else if (physicalScaleValid)
-    mWindowDPIScale = physicalScale;
   else if (!std::isfinite(mWindowDPIScale) || mWindowDPIScale <= 0.f)
     mWindowDPIScale = 1.f;
+
+  if (physicalScaleValid)
+    mPhysicalWindowScale = physicalScale;
+  else if (!std::isfinite(mPhysicalWindowScale) || mPhysicalWindowScale <= 0.f)
+    mPhysicalWindowScale = 1.f;
 
   if (!std::isfinite(windowScale) || windowScale <= 0.f)
     windowScale = 1.f;

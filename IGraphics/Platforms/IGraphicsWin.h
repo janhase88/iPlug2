@@ -90,10 +90,12 @@ public:
   void ForceEndUserEdit() override;
   float GetPlatformWindowScale() const override
   {
-    if (mWindowDPIScale > 0.f && std::isfinite(mWindowDPIScale))
-      return mWindowDPIScale;
+    const float preferred = mBypassHostContentScale ? mPhysicalWindowScale : mWindowDPIScale;
 
-    const float fallback = GetScreenScale();
+    if (preferred > 0.f && std::isfinite(preferred))
+      return preferred;
+
+    const float fallback = mBypassHostContentScale ? mWindowDPIScale : GetScreenScale();
     return (fallback > 0.f && std::isfinite(fallback)) ? fallback : 1.f;
   }
 
@@ -270,6 +272,7 @@ private:
   HFONT mEditFont = nullptr;
   DWORD mPID = 0;
   float mWindowDPIScale = 1.f;
+  float mPhysicalWindowScale = 1.f;
   bool mBypassHostContentScale = false;
   void* mPreviousDpiContext = nullptr;
   bool mMixedDpiHostingEnabled = false;

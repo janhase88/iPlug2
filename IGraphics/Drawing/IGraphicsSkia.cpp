@@ -25,6 +25,7 @@
 #include "include/core/SkMaskFilter.h"
 #include "include/core/SkPathEffect.h"
 #include "include/core/SkPixmap.h"
+#include "include/core/SkSamplingOptions.h"
 #include "include/core/SkSwizzle.h"
 #include "include/core/SkTypeface.h"
 #include "include/core/SkVertices.h"
@@ -2437,12 +2438,10 @@ void IGraphicsSkia::EndFrame()
       const SkScalar canvasScaleX = static_cast<SkScalar>(scaleX);
       const SkScalar canvasScaleY = static_cast<SkScalar>(scaleY);
 
-      SkPaint paint;
-      paint.setFilterQuality(kHigh_SkFilterQuality);
-
       screenCanvas->save();
       screenCanvas->scale(canvasScaleX, canvasScaleY);
-      mSurface->draw(screenCanvas, 0.0, 0.0, &paint);
+      const SkSamplingOptions samplingOptions(SkFilterMode::kLinear, SkMipmapMode::kLinear);
+      mSurface->draw(screenCanvas, 0.0, 0.0, samplingOptions, nullptr);
       screenCanvas->restore();
     }
     else

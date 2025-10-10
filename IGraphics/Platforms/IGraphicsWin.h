@@ -90,10 +90,19 @@ public:
   void ForceEndUserEdit() override;
   float GetPlatformWindowScale() const override
   {
+    if (mBypassHostContentScale)
+    {
+      const float renderScale = GetScreenScale();
+
+      if (renderScale > 0.f && std::isfinite(renderScale))
+        return renderScale;
+    }
+
     if (mWindowDPIScale > 0.f && std::isfinite(mWindowDPIScale))
       return mWindowDPIScale;
 
-    return GetScreenScale();
+    const float fallback = GetScreenScale();
+    return (fallback > 0.f && std::isfinite(fallback)) ? fallback : 1.f;
   }
 
   void SetHostContentScaleBypassed(bool bypass) override;

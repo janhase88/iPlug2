@@ -3631,18 +3631,29 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
     const bool renderScaleValid = renderScale > 0.f && std::isfinite(renderScale);
     const bool windowScaleValid = windowScale > 0.f && std::isfinite(windowScale);
     const bool hostScaleValid = hostScale > 0.f && std::isfinite(hostScale);
-    const float windowTargetScale = windowScaleValid ? windowScale : 1.f;
+    const int logicalWidth = WindowWidth();
+    const int logicalHeight = WindowHeight();
+    const float targetScale = windowScaleValid ? windowScale : 1.f;
+    const int targetWidth = static_cast<int>(std::round(static_cast<float>(logicalWidth) * targetScale));
+    const int targetHeight = static_cast<int>(std::round(static_cast<float>(logicalHeight) * targetScale));
+    const int renderWidth = renderScaleValid ? static_cast<int>(std::round(static_cast<float>(logicalWidth) * renderScale))
+                                             : targetWidth;
+    const int renderHeight = renderScaleValid ? static_cast<int>(std::round(static_cast<float>(logicalHeight) * renderScale))
+                                              : targetHeight;
     const float virtualizationRatio = (hostScaleValid && renderScaleValid && hostScale > 0.f)
                                         ? (renderScale / hostScale)
                                         : 1.f;
-    const bool usePhysicalWindowScale = mBypassHostContentScale && renderScaleValid;
-    const float windowPhysicalScale = usePhysicalWindowScale ? renderScale : windowTargetScale;
 
-    DBGMSG("IGraphicsWin: PlatformResize windowScale=%.3f renderScale=%.3f targetScale=%.3f physicalScale=%.3f bypass=%s parentHasResized=%s ratio=%.3f\n",
+    DBGMSG("IGraphicsWin: PlatformResize windowScale=%.3f renderScale=%.3f hostScale=%.3f targetPixels=%dx%d renderPixels=%dx%d current=%dx%d bypass=%s parentHasResized=%s ratio=%.3f\n",
            windowScale,
            renderScale,
-           windowTargetScale,
-           windowPhysicalScale,
+           hostScale,
+           targetWidth,
+           targetHeight,
+           renderWidth,
+           renderHeight,
+           dlgW,
+           dlgH,
            mBypassHostContentScale ? "true" : "false",
            parentHasResized ? "true" : "false",
            virtualizationRatio);
@@ -3653,15 +3664,13 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
                      vulkanlog::Severity::kInfo,
                      vulkanlog::MakeField("window", std::to_string(windowScale)),
                      vulkanlog::MakeField("render", std::to_string(renderScale)),
-                     vulkanlog::MakeField("target", std::to_string(windowTargetScale)),
-                     vulkanlog::MakeField("physical", std::to_string(windowPhysicalScale)),
+                     vulkanlog::MakeField("targetPixels", std::to_string(targetWidth) + "x" + std::to_string(targetHeight)),
+                     vulkanlog::MakeField("renderPixels", std::to_string(renderWidth) + "x" + std::to_string(renderHeight)),
                      vulkanlog::MakeField("bypass", mBypassHostContentScale),
                      vulkanlog::MakeField("parentHasResized", parentHasResized),
                      vulkanlog::MakeField("host", std::to_string(hostScale)),
                      vulkanlog::MakeField("ratio", std::to_string(virtualizationRatio)));
 #endif
-    const int targetWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * windowPhysicalScale));
-    const int targetHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * windowPhysicalScale));
     int dw = targetWidth - dlgW;
     int dh = targetHeight - dlgH;
 
@@ -3696,6 +3705,20 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
     }
 
     SetWindowPos(mPlugWnd, 0, 0, 0, dlgW + dw, dlgH + dh, SETPOS_FLAGS);
+
+    if (mPlugWnd)
+    {
+      int finalW = 0;
+      int finalH = 0;
+      GetWindowSize(mPlugWnd, &finalW, &finalH);
+      DBGMSG("IGraphicsWin: PlatformResize applied target=%dx%d final=%dx%d render=%dx%d\n",
+             targetWidth,
+             targetHeight,
+             finalW,
+             finalH,
+             renderWidth,
+             renderHeight);
+    }
   }
 }
 
@@ -4442,9 +4465,10 @@ void IGraphicsWin::SetHostContentScaleBypassed(bool bypass)
   const bool previous = mBypassHostContentScale;
   mBypassHostContentScale = bypass;
 
-  DBGMSG("IGraphicsWin: SetHostContentScaleBypassed %s -> %s\n",
+  DBGMSG("IGraphicsWin: SetHostContentScaleBypassed %s -> %s mixedDpi=%s\n",
          previous ? "true" : "false",
-         mBypassHostContentScale ? "true" : "false");
+         mBypassHostContentScale ? "true" : "false",
+         mMixedDpiHostingEnabled ? "true" : "false");
 
 #if defined IGRAPHICS_VULKAN
   IGRAPHICS_VK_LOG("SetHostContentScaleBypassed",
@@ -4524,7 +4548,17 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   const float hostScale = ComputeWindowDpiScale(mParentWnd);
   const bool hostScaleValid = hostScale > 0.f && std::isfinite(hostScale);
   const bool physicalScaleValid = physicalScale > 0.f && std::isfinite(physicalScale);
-  float windowScale = hostScaleValid ? hostScale : physicalScale;
+  const bool bypassHostScale = mBypassHostContentScale && physicalScaleValid;
+  float windowScale = 1.f;
+
+  if (bypassHostScale)
+    windowScale = physicalScale;
+  else if (hostScaleValid)
+    windowScale = hostScale;
+  else if (physicalScaleValid)
+    windowScale = physicalScale;
+  else
+    windowScale = 1.f;
 
   if (hostScaleValid)
     mWindowDPIScale = hostScale;
@@ -4533,13 +4567,14 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   else if (!std::isfinite(mWindowDPIScale) || mWindowDPIScale <= 0.f)
     mWindowDPIScale = 1.f;
 
-  if (!physicalScaleValid && !hostScaleValid)
-    windowScale = 1.f;
-  else if (!hostScaleValid && physicalScaleValid)
-    windowScale = physicalScale;
-
   if (!std::isfinite(windowScale) || windowScale <= 0.f)
     windowScale = 1.f;
+
+  DBGMSG("IGraphicsWin: OpenWindow hostScale=%.3f physicalScale=%.3f bypass=%s windowScale=%.3f\n",
+         hostScaleValid ? hostScale : -1.f,
+         physicalScaleValid ? physicalScale : -1.f,
+         mBypassHostContentScale ? "true" : "false",
+         windowScale);
 
   const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * windowScale));
   const int scaledHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * windowScale));

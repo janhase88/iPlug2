@@ -18,9 +18,9 @@
 
 -----------------
 [x] Current plan:
-- Phase 2 — Implementation & Integration — PREVIOUS STATUS: REWORKING / CURRENT STATUS: VALIDATION PENDING (thread DPI awareness now flips to per-monitor-aware V2 while the window stays at the host scale; need crisp-render validation with the new logs)
+- Phase 2 — Implementation & Integration — PREVIOUS STATUS: REWORKING / CURRENT STATUS: VALIDATION PENDING (thread DPI awareness stays at per-monitor-aware V2 and we now push host/child HWNDs to the physical pixel size while logging requested vs. final dimensions)
   - 7. Validation & Regression Testing — PREVIOUS STATUS: PARTIAL / CURRENT STATUS: EXECUTION OUTSTANDING (manual checklist ready; need host sessions and artefacts)
   - 8. Documentation & Clean-Up — PREVIOUS STATUS: PARTIAL / CURRENT STATUS: PARTIAL (docs refreshed; logging cleanup waits on validation evidence)
 
 [x] Message to User:
-Please rebuild and run at 150 % DPI. `SetHostContentScaleBypassed` should flip to `true` (showing the thread entered per-monitor-aware mode), `RefreshPlatformScale` will report host vs. physical scales, `PlatformResize` should keep `window` ≈ host while `physicalScale` ≈ render scale, and `SwapchainExtent` needs to jump to the physical pixels (e.g. 1800×750). Share those lines plus `DrawResize` so we can confirm the swapchain matches the DPI and check sharpness.
+Please rebuild and run at 150 % DPI. Capture the new `OpenWindow`, `SetHostContentScaleBypassed` (look for `mixedDpi=true`), and `PlatformResize` logs so we can verify the target/render/final pixel sizes all match (e.g. 1200×500 logical → 1800×750 physical). Share those alongside `SwapchainExtent` and `DrawResize` so we can confirm the host and swapchain are aligned and check sharpness.

@@ -5,13 +5,13 @@ Ensure Windows VST3 editors that render with the Skia/Vulkan backend always draw
 
 ## Status
 - [x] Phase 1 — Investigation & Audit (see `WinVST3VulkanSkia_Audit.md`)
-- [ ] Phase 2 — Implementation & Integration — **rework in progress** (realigning window hierarchy sizing with the physical swapchain while keeping host-facing dimensions logical and instrumented)
+- [ ] Phase 2 — Implementation & Integration — **rework in progress** (forcing VST3 host resizes to the physical pixel target while logging logical, host, and render dimensions for validation)
 
 ### Current Focus
-- Activate a per-monitor-aware DPI context when the bypass engages so Windows stops virtualizing the child HWND while keeping the host-facing size logical, then verify the mixed-DPI hosting call succeeds on default builds.
-- Validate that `PlatformResize` now reports `physicalScale≈renderScale` while `window≈host`, and that the HWND chain physically resizes before `DrawResize` to prevent overflow.
+- Force the host container and child HWND hierarchy to adopt the physical pixel size reported by the bypass so the swapchain and window match, while logging both the requested and final dimensions for each resize.
+- Verify the mixed-DPI hosting path stays enabled (check the new `mixedDpi` flag in `SetHostContentScaleBypassed`) and that `PlatformResize` prints `targetPixels`, `renderPixels`, and `final` sizes matching the measured DPI ratio.
 - Capture high-DPI validation logs/screens showing a crisp image that fills the plugin window (no overflow) with `SwapchainExtent` reflecting the physical pixel dimensions (e.g. 1200×500 logical → 1800×750 physical at 150 %).
-- Confirm the expanded logging (`physicalScale` in `PlatformResize`, `SwapchainExtent`, `DrawResize`) appears in default builds so testers can trace logical → physical conversions without extra switches.
+- Confirm the expanded logging (`OpenWindow`, `PlatformResize`, `SwapchainExtent`, `DrawResize`) appears in default builds so testers can trace logical → physical conversions without extra switches.
 
 ## Scope & Constraints
 - Platform: Windows only.
@@ -80,7 +80,7 @@ Use the investigation results to enforce physical DPI usage across the Windows V
 - [x] Update `IPlugVST3_View::setContentScaleFactor()` to ignore or sandbox Steinberg's factor when running on Windows with Skia/Vulkan, optionally logging discrepancies for diagnostics.
 - [x] Ensure other potential host callbacks (`checkSizeConstraint`, custom attributes) do not reintroduce logical scaling—guard or bypass them as needed.
 - [x] Verify the attach-time bypass handshake reliably flips `SetHostContentScaleBypassed(true)` before any scale refresh so the logs stop reporting `bypass=false` and the renderer can adopt the physical DPI.
-- [ ] Toggle the thread DPI awareness context to `PER_MONITOR_AWARE_V2` (and enable mixed-DPI hosting) whenever the bypass is active so Windows does not virtualize the plug-in child window.
+- [x] Toggle the thread DPI awareness context to `PER_MONITOR_AWARE_V2` (and enable mixed-DPI hosting) whenever the bypass is active so Windows does not virtualize the plug-in child window.
 
 - [x] Adjust `IGraphicsWin::OpenWindow()` and resize paths so the HWND hierarchy expands to the physical DPI when bypassing the host scale, keeping the Skia/Vulkan surfaces and HWND bounds aligned.
 - [x] When `GetScaleForHWND()` changes, update both the stored screen scale and trigger window/swapchain resizes so the client area and Vulkan images stay in sync.

@@ -2356,8 +2356,8 @@ void IGraphicsSkia::EndFrame()
     else
     {
       SkCanvas* screenCanvas = mScreenSurface->getCanvas();
-      const SkScalar sx = static_cast<SkScalar>(screenCanvas->width()) / static_cast<SkScalar>(mSurface->width());
-      const SkScalar sy = static_cast<SkScalar>(screenCanvas->height()) / static_cast<SkScalar>(mSurface->height());
+      const SkScalar sx = static_cast<SkScalar>(mScreenSurface->width()) / static_cast<SkScalar>(mSurface->width());
+      const SkScalar sy = static_cast<SkScalar>(mScreenSurface->height()) / static_cast<SkScalar>(mSurface->height());
       screenCanvas->save();
       screenCanvas->scale(sx, sy);
       mSurface->draw(screenCanvas, 0.f, 0.f, nullptr);
@@ -2380,8 +2380,8 @@ void IGraphicsSkia::EndFrame()
     else
     {
       SkCanvas* screenCanvas = mScreenSurface->getCanvas();
-      const SkScalar sx = static_cast<SkScalar>(screenCanvas->width()) / static_cast<SkScalar>(mSurface->width());
-      const SkScalar sy = static_cast<SkScalar>(screenCanvas->height()) / static_cast<SkScalar>(mSurface->height());
+      const SkScalar sx = static_cast<SkScalar>(mScreenSurface->width()) / static_cast<SkScalar>(mSurface->width());
+      const SkScalar sy = static_cast<SkScalar>(mScreenSurface->height()) / static_cast<SkScalar>(mSurface->height());
       screenCanvas->save();
       screenCanvas->scale(sx, sy);
       mSurface->draw(screenCanvas, 0.f, 0.f, nullptr);

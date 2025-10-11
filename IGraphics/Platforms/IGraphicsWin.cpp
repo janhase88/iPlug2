@@ -99,6 +99,117 @@ float GetHostScaleForWindow(HWND hwnd)
   return 1.f;
 }
 
+#if defined(DPI_HOSTING_BEHAVIOR_MIXED) && defined(DPI_HOSTING_BEHAVIOR_DEFAULT)
+using SetThreadDpiHostingBehaviorProc = DPI_HOSTING_BEHAVIOR(WINAPI*)(DPI_HOSTING_BEHAVIOR);
+using GetThreadDpiHostingBehaviorProc = DPI_HOSTING_BEHAVIOR(WINAPI*)();
+
+SetThreadDpiHostingBehaviorProc ResolveSetThreadDpiHostingBehavior()
+{
+  static SetThreadDpiHostingBehaviorProc proc = []() -> SetThreadDpiHostingBehaviorProc {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (!user32)
+      user32 = LoadLibraryW(L"user32.dll");
+    if (!user32)
+      return nullptr;
+    return reinterpret_cast<SetThreadDpiHostingBehaviorProc>(
+      GetProcAddress(user32, "SetThreadDpiHostingBehavior"));
+  }();
+  return proc;
+}
+
+GetThreadDpiHostingBehaviorProc ResolveGetThreadDpiHostingBehavior()
+{
+  static GetThreadDpiHostingBehaviorProc proc = []() -> GetThreadDpiHostingBehaviorProc {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (!user32)
+      user32 = LoadLibraryW(L"user32.dll");
+    if (!user32)
+      return nullptr;
+    return reinterpret_cast<GetThreadDpiHostingBehaviorProc>(
+      GetProcAddress(user32, "GetThreadDpiHostingBehavior"));
+  }();
+  return proc;
+}
+
+class ScopedThreadDpiHostingBehavior
+{
+public:
+  explicit ScopedThreadDpiHostingBehavior(DPI_HOSTING_BEHAVIOR behavior)
+  {
+    mSetProc = ResolveSetThreadDpiHostingBehavior();
+    mGetProc = ResolveGetThreadDpiHostingBehavior();
+
+    if (mSetProc)
+    {
+      mPrevious = mGetProc ? mGetProc() : DPI_HOSTING_BEHAVIOR_DEFAULT;
+      mSetProc(behavior);
+      mActive = true;
+    }
+  }
+
+  ~ScopedThreadDpiHostingBehavior()
+  {
+    if (mActive && mSetProc)
+    {
+      mSetProc(mPrevious);
+    }
+  }
+
+private:
+  SetThreadDpiHostingBehaviorProc mSetProc = nullptr;
+  GetThreadDpiHostingBehaviorProc mGetProc = nullptr;
+  DPI_HOSTING_BEHAVIOR mPrevious = DPI_HOSTING_BEHAVIOR_DEFAULT;
+  bool mActive = false;
+};
+#else
+class ScopedThreadDpiHostingBehavior
+{
+public:
+  explicit ScopedThreadDpiHostingBehavior(int) {}
+};
+#endif
+
+#if defined(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
+using SetWindowDpiAwarenessContextProc = DPI_AWARENESS_CONTEXT(WINAPI*)(HWND, DPI_AWARENESS_CONTEXT);
+
+SetWindowDpiAwarenessContextProc ResolveSetWindowDpiAwarenessContext()
+{
+  static SetWindowDpiAwarenessContextProc proc = []() -> SetWindowDpiAwarenessContextProc {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (!user32)
+      user32 = LoadLibraryW(L"user32.dll");
+    if (!user32)
+      return nullptr;
+    return reinterpret_cast<SetWindowDpiAwarenessContextProc>(
+      GetProcAddress(user32, "SetWindowDpiAwarenessContext"));
+  }();
+  return proc;
+}
+
+bool EnsureWindowPerMonitorAware(HWND hwnd)
+{
+  if (!hwnd)
+    return false;
+
+  auto proc = ResolveSetWindowDpiAwarenessContext();
+  if (!proc)
+    return false;
+
+  DPI_AWARENESS_CONTEXT previous = proc(hwnd, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
+  if (!previous)
+  {
+    IGRAPHICS_DPI_TRACE("IGraphicsWin[DPI] SetWindowDpiAwarenessContext failed hwnd=%p\n", hwnd);
+    return false;
+  }
+
+  IGRAPHICS_DPI_TRACE("IGraphicsWin[DPI] SetWindowDpiAwarenessContext hwnd=%p previous=%p\n", hwnd, previous);
+  return true;
+}
+#else
+bool EnsureWindowPerMonitorAware(HWND) { return false; }
+#endif
+
 #if IGRAPHICS_DPI_LOGGING
 using GetDpiForMonitorProc = HRESULT(WINAPI*)(HMONITOR, int, UINT*, UINT*);
 constexpr int kMonitorDpiTypeEffective = 0;
@@ -2391,13 +2502,15 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
     const WindowDpiScales scales = GatherWindowDpiScales(mPlugWnd);
     const float hostScale = scales.hostScale > 0.f ? scales.hostScale : 1.f;
     const float physicalScale = scales.physicalScale > 0.f ? scales.physicalScale : hostScale;
+    const float virtualization = scales.virtualization > 0.f ? scales.virtualization :
+                                                          ((hostScale > 0.f) ? (physicalScale / hostScale) : 1.f);
 
     const bool hostChanged = std::fabs(hostScale - mHostWindowScale) > 0.0001f;
     const bool physicalChanged = std::fabs(physicalScale - mPhysicalWindowScale) > 0.0001f;
 
     if (hostChanged || physicalChanged)
     {
-      ApplyWindowDpiScales(hostScale, physicalScale);
+      ApplyWindowDpiScales(hostScale, physicalScale, virtualization);
     }
   }
 
@@ -3253,7 +3366,7 @@ LRESULT CALLBACK IGraphicsWin::ParamEditProc(HWND hWnd, UINT msg, WPARAM wParam,
   return DefWindowProcW(hWnd, msg, wParam, lParam);
 }
 
-void IGraphicsWin::ApplyWindowDpiScales(float hostScale, float physicalScale)
+void IGraphicsWin::ApplyWindowDpiScales(float hostScale, float physicalScale, float virtualization)
 {
   if (hostScale <= 0.f)
     hostScale = 1.f;
@@ -3261,15 +3374,49 @@ void IGraphicsWin::ApplyWindowDpiScales(float hostScale, float physicalScale)
   if (physicalScale <= 0.f)
     physicalScale = hostScale;
 
-  const bool hostChanged = std::fabs(hostScale - mHostWindowScale) > 0.0001f;
-  const bool physicalChanged = std::fabs(physicalScale - mPhysicalWindowScale) > 0.0001f;
+  if (virtualization <= 0.f)
+    virtualization = (hostScale > 0.f) ? (physicalScale / hostScale) : 1.f;
+
+  const float previousHostScale = mHostWindowScale;
+  const float previousPhysicalScale = mPhysicalWindowScale;
+  const float previousVirtualization = mVirtualizationScale;
 
   mHostWindowScale = hostScale;
   mPhysicalWindowScale = physicalScale;
+  mVirtualizationScale = virtualization;
+
+  const bool hostChanged = std::fabs(hostScale - previousHostScale) > 0.0001f;
+  const bool physicalChanged = std::fabs(physicalScale - previousPhysicalScale) > 0.0001f;
+  const bool virtualizationChanged = std::fabs(virtualization - previousVirtualization) > 0.0001f;
+  const bool virtualizationActive = (virtualization > 1.0001f) && (physicalScale > hostScale + 0.0001f);
+
+  if (virtualizationChanged)
+  {
+    if (virtualizationActive)
+    {
+      IGRAPHICS_DPI_TRACE("IGraphicsWin[DPI] virtualization active hostScale=%.3f physicalScale=%.3f virtualization=%.3f\n",
+                          hostScale,
+                          physicalScale,
+                          virtualization);
+    }
+    else if (previousVirtualization > 1.0001f)
+    {
+      IGRAPHICS_DPI_TRACE("IGraphicsWin[DPI] virtualization cleared hostScale=%.3f physicalScale=%.3f\n",
+                          hostScale,
+                          physicalScale);
+    }
+  }
+
+  if (virtualizationActive)
+  {
+    IGRAPHICS_DPI_TRACE("IGraphicsWin[DPI] applying hostScale %.3f for window layout while backing %.3f renders\n",
+                        hostScale,
+                        physicalScale);
+  }
 
   if (hostChanged || physicalChanged)
   {
-    SetScreenScale(mPhysicalWindowScale);
+    SetScreenScale(mHostWindowScale);
   }
 }
 
@@ -4453,6 +4600,8 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   const WindowDpiScales parentScales = GatherWindowDpiScales(mParentWnd);
   const float hostScale = parentScales.hostScale > 0.f ? parentScales.hostScale : 1.f;
   const float physicalScale = parentScales.physicalScale > 0.f ? parentScales.physicalScale : hostScale;
+  const float virtualization = parentScales.virtualization > 0.f ? parentScales.virtualization :
+                                                           ((hostScale > 0.f) ? (physicalScale / hostScale) : 1.f);
 
   const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * hostScale));
   const int scaledHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * hostScale));
@@ -4491,7 +4640,25 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     RegisterClassW(&wndClass);
   }
 
+  if (!mThreadDpiContextActive)
+  {
+    void* previousContext = _WDL_dpi_func(reinterpret_cast<void*>(static_cast<intptr_t>(-4)));
+    if (previousContext)
+    {
+      mThreadDpiContextCookie = previousContext;
+      mThreadDpiContextActive = true;
+      IGRAPHICS_DPI_TRACE("IGraphicsWin[DPI] SetThreadDpiAwarenessContext previous=%p\n", previousContext);
+    }
+    else
+    {
+      IGRAPHICS_DPI_TRACE("IGraphicsWin[DPI] SetThreadDpiAwarenessContext unsupported\n");
+    }
+  }
+
   WDL_dpi_aware_scope dpiScope(-4);
+#if defined(DPI_HOSTING_BEHAVIOR_MIXED) && defined(DPI_HOSTING_BEHAVIOR_DEFAULT)
+  ScopedThreadDpiHostingBehavior hostingScope(DPI_HOSTING_BEHAVIOR_MIXED);
+#endif
 
   mPlugWnd = CreateWindowW(wndClassName,
                            L"IPlug",
@@ -4541,11 +4708,29 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   #endif
 #endif
 
-  ApplyWindowDpiScales(hostScale, physicalScale);
+  WindowDpiScales childScales = mPlugWnd ? GatherWindowDpiScales(mPlugWnd) : WindowDpiScales{};
 
   if (mPlugWnd)
   {
-    LogDpiSnapshot("OpenWindow-child", mPlugWnd, *this, hostScale);
+    const bool appliedAwareness = EnsureWindowPerMonitorAware(mPlugWnd);
+    if (appliedAwareness)
+    {
+      childScales = GatherWindowDpiScales(mPlugWnd);
+    }
+  }
+
+  if (childScales.hostScale <= 0.f)
+  {
+    childScales.hostScale = hostScale;
+    childScales.physicalScale = physicalScale;
+    childScales.virtualization = virtualization;
+  }
+
+  ApplyWindowDpiScales(childScales.hostScale, childScales.physicalScale, childScales.virtualization);
+
+  if (mPlugWnd)
+  {
+    LogDpiSnapshot("OpenWindow-child", mPlugWnd, *this, childScales.hostScale);
   }
 
   GetDelegate()->LayoutUI(this);
@@ -4772,6 +4957,16 @@ void IGraphicsWin::CloseWindow()
     if (--nWndClassReg == 0)
     {
       UnregisterClassW(wndClassName, mHInstance);
+    }
+
+    if (mThreadDpiContextActive)
+    {
+      void* restored = _WDL_dpi_func(mThreadDpiContextCookie);
+      IGRAPHICS_DPI_TRACE("IGraphicsWin[DPI] RestoreThreadDpiAwarenessContext previous=%p restored=%p\n",
+                          mThreadDpiContextCookie,
+                          restored);
+      mThreadDpiContextCookie = nullptr;
+      mThreadDpiContextActive = false;
     }
   }
 }

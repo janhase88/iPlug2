@@ -17,13 +17,21 @@
 #include "include/core/SkFontMetrics.h"
 #include "include/core/SkFontMgr.h"
 #include "include/core/SkData.h"
+#include "include/core/SkColorSpace.h"
 #include "include/core/SkMaskFilter.h"
+#include "include/core/SkPaint.h"
 #include "include/core/SkPathEffect.h"
 #include "include/core/SkPixmap.h"
 #include "include/core/SkSwizzle.h"
 #include "include/core/SkTypeface.h"
 #include "include/core/SkVertices.h"
 #include "include/core/SkImage.h"
+#if defined(__has_include)
+  #if __has_include("include/core/SkSamplingOptions.h")
+    #include "include/core/SkSamplingOptions.h"
+    #define IGRAPHICS_HAS_SAMPLING_OPTIONS 1
+  #endif
+#endif
 
 #include "include/codec/SkCodec.h"
 
@@ -585,7 +593,7 @@ float IGraphicsSkia::GetRenderScale() const
   const float forcedScale = ResolveForcedRenderScale();
   if (forcedScale > 0.f)
     return forcedScale;
-  return GetScreenScale();
+  return GetBackingPixelScale();
 }
 #else
 float IGraphicsSkia::GetRenderScale() const
@@ -1533,19 +1541,31 @@ void IGraphicsSkia::DrawResize()
   ScopedGraphicsContext scopedGLContext{this};
   const float screenScale = GetScreenScale();
   const float renderScale = GetRenderScale();
+  const float presentationScale = GetPlatformWindowScale();
+  const float virtualizationScale = GetWindowVirtualizationScale();
   const bool forcedScale = std::fabs(renderScale - screenScale) > 0.0001f;
-  auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * renderScale));
-  auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * renderScale));
+  const int renderW = std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * renderScale)));
+  const int renderH = std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * renderScale)));
+  const int presentW = std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * presentationScale)));
+  const int presentH = std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * presentationScale)));
 
-  IGRAPHICS_DPI_TRACE("IGraphicsSkia[DPI] DrawResize logical=%dx%d screenScale=%.3f drawScale=%.3f renderScale=%.3f forced=%d target=%dx%d\n",
+  IGRAPHICS_DPI_TRACE("IGraphicsSkia[DPI] DrawResize logical=%dx%d screenScale=%.3f drawScale=%.3f renderScale=%.3f forced=%d renderTarget=%dx%d presentTarget=%dx%d virtualization=%.3f\n",
                       WindowWidth(),
                       WindowHeight(),
                       screenScale,
                       GetDrawScale(),
                       renderScale,
                       forcedScale ? 1 : 0,
-                      w,
-                      h);
+                      renderW,
+                      renderH,
+                      presentW,
+                      presentH,
+                      virtualizationScale);
+
+  int swapchainW = presentW;
+  int swapchainH = presentH;
+  int surfaceW = renderW;
+  int surfaceH = renderH;
 #if defined IGRAPHICS_VULKAN
   IGRAPHICS_VK_LOG("DrawResize",
                       "begin",
@@ -1643,8 +1663,8 @@ void IGraphicsSkia::DrawResize()
     VkSurfaceCapabilitiesKHR caps{};
     if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(mVKPhysicalDevice, mVKSurface, &caps) == VK_SUCCESS)
     {
-      uint32_t width = static_cast<uint32_t>(w);
-      uint32_t height = static_cast<uint32_t>(h);
+      uint32_t width = static_cast<uint32_t>(swapchainW);
+      uint32_t height = static_cast<uint32_t>(swapchainH);
       if (caps.currentExtent.width != UINT32_MAX)
       {
         width = caps.currentExtent.width;
@@ -1666,8 +1686,8 @@ void IGraphicsSkia::DrawResize()
                            vulkanlog::MakeField("maxHeight", caps.maxImageExtent.height),
                            vulkanlog::MakeField("clampedWidth", width),
                            vulkanlog::MakeField("clampedHeight", height));
-      w = static_cast<int>(width);
-      h = static_cast<int>(height);
+      swapchainW = static_cast<int>(width);
+      swapchainH = static_cast<int>(height);
     }
   }
 #endif
@@ -1675,9 +1695,9 @@ void IGraphicsSkia::DrawResize()
 #if defined IGRAPHICS_GL || defined IGRAPHICS_METAL || defined IGRAPHICS_VULKAN
   if (mGrContext.get())
   {
-    SkImageInfo info = SkImageInfo::MakeN32Premul(w, h);
+    SkImageInfo info = SkImageInfo::MakeN32Premul(surfaceW, surfaceH);
     mSurface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info);
-  #if defined IGRAPHICS_VULKAN
+#if defined IGRAPHICS_VULKAN
     if (mVKDevice && mVKSurface)
     {
     #if defined OS_WIN
@@ -1689,11 +1709,11 @@ void IGraphicsSkia::DrawResize()
         IGRAPHICS_VK_LOG("DrawResize",
                             "requestSwapchainResize",
                             vulkanlog::Severity::kInfo,
-                            vulkanlog::MakeField("width", w),
-                             vulkanlog::MakeField("height", h),
+                            vulkanlog::MakeField("width", swapchainW),
+                             vulkanlog::MakeField("height", swapchainH),
                              vulkanlog::MakeField("frameVersion", static_cast<uint64_t>(mVKFrameVersion)),
                              vulkanlog::MakeField("swapchainVersion", static_cast<uint64_t>(mVKSwapchainVersion)));
-        VkResult res = pWin->CreateOrResizeVulkanSwapchain(w, h, swapchain, images, format, mVKSwapchainUsageFlags, mVKSubmissionPending);
+        VkResult res = pWin->CreateOrResizeVulkanSwapchain(swapchainW, swapchainH, swapchain, images, format, mVKSwapchainUsageFlags, mVKSubmissionPending);
         if (res == VK_SUCCESS)
         {
           mVKSwapchain = swapchain;
@@ -1774,24 +1794,24 @@ void IGraphicsSkia::DrawResize()
   #ifdef OS_WIN
   mSurface.reset();
 
-  const size_t bmpSize = sizeof(BITMAPINFOHEADER) + (w * h * sizeof(uint32_t));
+  const size_t bmpSize = sizeof(BITMAPINFOHEADER) + (surfaceW * surfaceH * sizeof(uint32_t));
   mSurfaceMemory.Resize(bmpSize);
   BITMAPINFO* bmpInfo = reinterpret_cast<BITMAPINFO*>(mSurfaceMemory.Get());
   ZeroMemory(bmpInfo, sizeof(BITMAPINFO));
   bmpInfo->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-  bmpInfo->bmiHeader.biWidth = w;
-  bmpInfo->bmiHeader.biHeight = -h; // negative means top-down bitmap. Skia draws top-down.
+  bmpInfo->bmiHeader.biWidth = surfaceW;
+  bmpInfo->bmiHeader.biHeight = -surfaceH; // negative means top-down bitmap. Skia draws top-down.
   bmpInfo->bmiHeader.biPlanes = 1;
   bmpInfo->bmiHeader.biBitCount = 32;
   bmpInfo->bmiHeader.biCompression = BI_RGB;
   void* pixels = bmpInfo->bmiColors;
 
-  SkImageInfo info = SkImageInfo::Make(w, h, kN32_SkColorType, kPremul_SkAlphaType, nullptr);
-  mSurface = SkSurfaces::WrapPixels(info, pixels, sizeof(uint32_t) * w);
-  #else
-  SkImageInfo info = SkImageInfo::MakeN32Premul(w, h);
+  SkImageInfo info = SkImageInfo::Make(surfaceW, surfaceH, kN32_SkColorType, kPremul_SkAlphaType, nullptr);
+  mSurface = SkSurfaces::WrapPixels(info, pixels, sizeof(uint32_t) * surfaceW);
+#else
+  SkImageInfo info = SkImageInfo::MakeN32Premul(surfaceW, surfaceH);
   mSurface = SkSurfaces::Raster(info);
-  #endif
+#endif
 #endif
   if (mSurface)
   {
@@ -2317,7 +2337,58 @@ void IGraphicsSkia::EndFrame()
     return;
   }
   #endif
-  mSurface->draw(mScreenSurface->getCanvas(), 0.0, 0.0, nullptr);
+  if (mSurface && mScreenSurface)
+  {
+#if defined(IGRAPHICS_HAS_SAMPLING_OPTIONS) || (SK_MILESTONE >= 106)
+    SkSamplingOptions sampling(SkFilterMode::kNearest, SkMipmapMode::kNone);
+    sk_sp<SkImage> frameImage = mSurface->makeImageSnapshot();
+    if (frameImage)
+    {
+      const SkRect srcRect = SkRect::MakeWH(static_cast<float>(frameImage->width()), static_cast<float>(frameImage->height()));
+      const SkRect dstRect = SkRect::MakeWH(static_cast<float>(mScreenSurface->width()), static_cast<float>(mScreenSurface->height()));
+      mScreenSurface->getCanvas()->drawImageRect(frameImage,
+                                                srcRect,
+                                                dstRect,
+                                                sampling,
+                                                nullptr,
+                                                SkCanvas::kStrict_SrcRectConstraint);
+    }
+    else
+    {
+      SkCanvas* screenCanvas = mScreenSurface->getCanvas();
+      const SkScalar sx = static_cast<SkScalar>(screenCanvas->width()) / static_cast<SkScalar>(mSurface->width());
+      const SkScalar sy = static_cast<SkScalar>(screenCanvas->height()) / static_cast<SkScalar>(mSurface->height());
+      screenCanvas->save();
+      screenCanvas->scale(sx, sy);
+      mSurface->draw(screenCanvas, 0.f, 0.f, nullptr);
+      screenCanvas->restore();
+    }
+#else
+    SkPaint blitPaint;
+    blitPaint.setFilterQuality(kNone_SkFilterQuality);
+    sk_sp<SkImage> frameImage = mSurface->makeImageSnapshot();
+    if (frameImage)
+    {
+      const SkRect srcRect = SkRect::MakeWH(static_cast<float>(frameImage->width()), static_cast<float>(frameImage->height()));
+      const SkRect dstRect = SkRect::MakeWH(static_cast<float>(mScreenSurface->width()), static_cast<float>(mScreenSurface->height()));
+      mScreenSurface->getCanvas()->drawImageRect(frameImage.get(),
+                                                srcRect,
+                                                dstRect,
+                                                &blitPaint,
+                                                SkCanvas::kStrict_SrcRectConstraint);
+    }
+    else
+    {
+      SkCanvas* screenCanvas = mScreenSurface->getCanvas();
+      const SkScalar sx = static_cast<SkScalar>(screenCanvas->width()) / static_cast<SkScalar>(mSurface->width());
+      const SkScalar sy = static_cast<SkScalar>(screenCanvas->height()) / static_cast<SkScalar>(mSurface->height());
+      screenCanvas->save();
+      screenCanvas->scale(sx, sy);
+      mSurface->draw(screenCanvas, 0.f, 0.f, nullptr);
+      screenCanvas->restore();
+    }
+#endif
+  }
 
   #if defined IGRAPHICS_VULKAN
   if (auto dContext = GrAsDirectContext(mScreenSurface->getCanvas()->recordingContext()))
@@ -2588,12 +2659,10 @@ void IGraphicsSkia::DrawBitmap(const IBitmap& bitmap, const IRECT& dest, int src
   mCanvas->scale(scale1, scale1);
   mCanvas->translate(-srcX * scale2, -srcY * scale2);
 
-  auto samplingOptions = SkSamplingOptions(SkFilterMode::kLinear, SkMipmapMode::kLinear);
-
   if (image->mIsSurface)
-    image->mSurface->draw(mCanvas, 0.0, 0.0, samplingOptions, &p);
+    image->mSurface->draw(mCanvas, 0.0f, 0.0f, &p);
   else
-    mCanvas->drawImage(image->mImage, 0.0, 0.0, samplingOptions, &p);
+    mCanvas->drawImage(image->mImage, 0.0, 0.0, SkSamplingOptions(), &p);
 
   mCanvas->restore();
 }
@@ -3027,50 +3096,105 @@ APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, do
                       MSAASampleCount);
 
   sk_sp<SkSurface> surface;
-  SkImageInfo info = SkImageInfo::MakeN32Premul(width, height);
+  sk_sp<SkColorSpace> colorSpace;
+  SkSurfaceProps surfaceProps(0, kUnknown_SkPixelGeometry);
+
+  if (mSurface)
+  {
+    colorSpace = mSurface->imageInfo().refColorSpace();
+    surfaceProps = mSurface->props();
+  }
+
+  SkImageInfo info = SkImageInfo::Make(width, height, kN32_SkColorType, kPremul_SkAlphaType, colorSpace);
 
 #ifndef IGRAPHICS_CPU
-  if (cacheable)
+  skgpu::Budgeted budget = cacheable ? skgpu::Budgeted::kYes : skgpu::Budgeted::kNo;
+  const bool canUseGPU = mGrContext != nullptr;
+  const bool wantsMSAA = canUseGPU && (MSAASampleCount > 0) &&
+                         (mGrContext->maxSurfaceSampleCountForColorType(info.colorType()) >= MSAASampleCount);
+
+  const auto tryCreateRenderTarget = [&](skgpu::Budgeted budgetFlag, int sampleCount) -> sk_sp<SkSurface> {
+    if (!canUseGPU)
+      return nullptr;
+
+    return SkSurfaces::RenderTarget(
+      mGrContext.get(), budgetFlag, info, sampleCount, kTopLeft_GrSurfaceOrigin, &surfaceProps);
+  };
+
+  if (wantsMSAA)
   {
-    surface = SkSurfaces::Raster(info);
+    surface = tryCreateRenderTarget(budget, MSAASampleCount);
+
+    if (!surface)
+    {
+      surface = tryCreateRenderTarget(budget, 1);
+    }
   }
-  else
+
+  if (!surface)
   {
-    bool supported = (MSAASampleCount != 0) && (mGrContext->maxSurfaceSampleCountForColorType(info.colorType()) >= MSAASampleCount);
+    surface = tryCreateRenderTarget(budget, 1);
+  }
 
-    if (supported)
+  if (!surface && budget == skgpu::Budgeted::kNo)
+  {
+    budget = skgpu::Budgeted::kYes;
+
+    if (wantsMSAA)
     {
-      // SkDebugf("IGraphicsSkia: MSAA x4 reported as supported. Attempting new RenderTarget.\n");
-      SkSurfaceProps surfaceProps(0, kUnknown_SkPixelGeometry);
-      surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kNo, info, MSAASampleCount, kTopLeft_GrSurfaceOrigin, &surfaceProps);
+      surface = tryCreateRenderTarget(budget, MSAASampleCount);
 
-      if (!surface) // Budgeted MSAA
+      if (!surface)
       {
-        surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info, MSAASampleCount, kTopLeft_GrSurfaceOrigin, &surfaceProps);
-      }
-
-      if (!surface) // <-- DEFAULT ORIGINAL DRAWING, THIS DOES NOT FAIL
-      {
-        surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info);
-      }
-
-      if (!surface) // If all GPU attempts (MSAA and non-MSAA) failed
-      {
-        surface = SkSurfaces::Raster(info);
+        surface = tryCreateRenderTarget(budget, 1);
       }
     }
-    else
+
+    if (!surface)
     {
-      // SkDebugf("IGraphicsSkia: MSAA x4 reported as NOT supported. Attempting original RenderTarget.\n");
-      surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info);
+      surface = tryCreateRenderTarget(budget, 1);
     }
+  }
+
+  if (!surface && canUseGPU)
+  {
+    surface = SkSurfaces::RenderTarget(mGrContext.get(), budget, info);
+  }
+
+  if (!surface)
+  {
+#if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG("RenderPass",
+                      "CreateAPIBitmap.gpuFallback",
+                      vulkanlog::Severity::kInfo,
+                      vulkanlog::MakeField("width", info.width()),
+                      vulkanlog::MakeField("height", info.height()),
+                      vulkanlog::MakeField("msaaRequested", wantsMSAA ? MSAASampleCount : 0),
+                      vulkanlog::MakeField("budgeted", budget == skgpu::Budgeted::kYes));
+#endif
+    surface = SkSurfaces::Raster(info);
   }
 #else
   surface = SkSurfaces::Raster(info);
 #endif
 
+#if !defined IGRAPHICS_CPU
+  const int loggedMSAA = wantsMSAA ? MSAASampleCount : 0;
+#else
+  const int loggedMSAA = (MSAASampleCount > 0) ? MSAASampleCount : 0;
+#endif
+
   surface->getCanvas()->save();
 #if defined IGRAPHICS_VULKAN
+  if (surface && !surface->recordingContext())
+  {
+    IGRAPHICS_VK_LOG("RenderPass",
+                      "CreateAPIBitmap.recordingContextMissing",
+                      vulkanlog::Severity::kInfo,
+                      vulkanlog::MakeField("width", info.width()),
+                      vulkanlog::MakeField("height", info.height()),
+                      vulkanlog::MakeField("msaaRequested", loggedMSAA));
+  }
   LogSkSurfaceRenderTarget("CreateAPIBitmap.surface", surface.get(), vulkanlog::Severity::kDebug);
 #endif
 

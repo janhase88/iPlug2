@@ -4633,6 +4633,21 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     RegisterClassW(&wndClass);
   }
 
+  if (!mThreadDpiContextActive)
+  {
+    void* previousContext = _WDL_dpi_func(reinterpret_cast<void*>(static_cast<intptr_t>(-4)));
+    if (previousContext)
+    {
+      mThreadDpiContextCookie = previousContext;
+      mThreadDpiContextActive = true;
+      IGRAPHICS_DPI_TRACE("IGraphicsWin[DPI] SetThreadDpiAwarenessContext previous=%p\n", previousContext);
+    }
+    else
+    {
+      IGRAPHICS_DPI_TRACE("IGraphicsWin[DPI] SetThreadDpiAwarenessContext unsupported\n");
+    }
+  }
+
   WDL_dpi_aware_scope dpiScope(-4);
 #if defined(DPI_HOSTING_BEHAVIOR_MIXED) && defined(DPI_HOSTING_BEHAVIOR_DEFAULT)
   ScopedThreadDpiHostingBehavior hostingScope(DPI_HOSTING_BEHAVIOR_MIXED);
@@ -4935,6 +4950,16 @@ void IGraphicsWin::CloseWindow()
     if (--nWndClassReg == 0)
     {
       UnregisterClassW(wndClassName, mHInstance);
+    }
+
+    if (mThreadDpiContextActive)
+    {
+      void* restored = _WDL_dpi_func(mThreadDpiContextCookie);
+      IGRAPHICS_DPI_TRACE("IGraphicsWin[DPI] RestoreThreadDpiAwarenessContext previous=%p restored=%p\n",
+                          mThreadDpiContextCookie,
+                          restored);
+      mThreadDpiContextCookie = nullptr;
+      mThreadDpiContextActive = false;
     }
   }
 }

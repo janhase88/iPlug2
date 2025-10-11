@@ -121,6 +121,12 @@ auto GetVkImageInfoCompat(const BackendRT& backendRT, GrVkImageInfo* out, long)
   return backendRT.getVulkanImageInfo(out);
 }
 
+template <typename BackendRT>
+bool GetVkImageInfoCompat(const BackendRT&, GrVkImageInfo*, ...)
+{
+  return false;
+}
+
 template <typename Surface>
 auto GetBackendRenderTargetCompat(Surface* surface, GrBackendRenderTarget* out, int)
   -> decltype(surface->getBackendRenderTarget(SkSurface::BackendHandleAccess::kFlushRead, out))
@@ -133,6 +139,12 @@ auto GetBackendRenderTargetCompat(Surface* surface, GrBackendRenderTarget* out, 
   -> decltype(surface->getBackendRenderTarget(out))
 {
   return surface->getBackendRenderTarget(out);
+}
+
+template <typename Surface>
+bool GetBackendRenderTargetCompat(Surface*, GrBackendRenderTarget*, ...)
+{
+  return false;
 }
 
 void LogVkImageInfoSnapshot(const char* stage,

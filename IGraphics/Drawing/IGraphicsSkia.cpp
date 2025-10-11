@@ -1595,8 +1595,9 @@ void IGraphicsSkia::BeginFrame()
 #if defined IGRAPHICS_GL
   if (mGrContext.get())
   {
-    int width = WindowWidth() * GetBackendPixelScale();
-    int height = WindowHeight() * GetBackendPixelScale();
+    const double backendScale = static_cast<double>(GetBackendPixelScale());
+    const int width = static_cast<int>(std::ceil(static_cast<double>(WindowWidth()) * backendScale));
+    const int height = static_cast<int>(std::ceil(static_cast<double>(WindowHeight()) * backendScale));
 
     // Bind to the current main framebuffer
     int fbo = 0, samples = 0, stencilBits = 0;
@@ -1620,8 +1621,9 @@ void IGraphicsSkia::BeginFrame()
 #elif defined IGRAPHICS_METAL
   if (mGrContext.get())
   {
-    int width = WindowWidth() * GetBackendPixelScale();
-    int height = WindowHeight() * GetBackendPixelScale();
+    const double backendScale = static_cast<double>(GetBackendPixelScale());
+    const int width = static_cast<int>(std::ceil(static_cast<double>(WindowWidth()) * backendScale));
+    const int height = static_cast<int>(std::ceil(static_cast<double>(WindowHeight()) * backendScale));
 
     id<CAMetalDrawable> drawable = [(CAMetalLayer*)mMTLLayer nextDrawable];
 
@@ -1649,8 +1651,9 @@ void IGraphicsSkia::BeginFrame()
       return;
     }
 
-    int width = WindowWidth() * GetBackendPixelScale();
-    int height = WindowHeight() * GetBackendPixelScale();
+    const double backendScale = static_cast<double>(GetBackendPixelScale());
+    const int width = static_cast<int>(std::ceil(static_cast<double>(WindowWidth()) * backendScale));
+    const int height = static_cast<int>(std::ceil(static_cast<double>(WindowHeight()) * backendScale));
     if (mVKSubmissionPending)
     {
       IGRAPHICS_VK_LOG("BeginFrame",
@@ -2035,8 +2038,9 @@ void IGraphicsSkia::EndFrame()
   SkCGDrawBitmap(pCGContext, bmp, 0, 0);
   CGContextRestoreGState(pCGContext);
   #elif defined OS_WIN
-  auto w = WindowWidth() * GetBackendPixelScale();
-  auto h = WindowHeight() * GetBackendPixelScale();
+  const double backendScale = static_cast<double>(GetBackendPixelScale());
+  const int w = static_cast<int>(std::ceil(static_cast<double>(WindowWidth()) * backendScale));
+  const int h = static_cast<int>(std::ceil(static_cast<double>(WindowHeight()) * backendScale));
   BITMAPINFO* bmpInfo = reinterpret_cast<BITMAPINFO*>(mSurfaceMemory.Get());
   HWND hWnd = (HWND)GetWindow();
   PAINTSTRUCT ps;

@@ -2088,7 +2088,8 @@ void IGraphicsSkia::EndFrame()
     return;
   }
   #endif
-  mSurface->draw(mScreenSurface->getCanvas(), 0.0, 0.0, nullptr);
+  static const SkSamplingOptions kPresentSampling(SkFilterMode::kNearest, SkMipmapMode::kNone);
+  mSurface->draw(mScreenSurface->getCanvas(), 0.0, 0.0, kPresentSampling, nullptr);
 
   #if defined IGRAPHICS_VULKAN
   if (auto dContext = GrAsDirectContext(mScreenSurface->getCanvas()->recordingContext()))
@@ -2348,8 +2349,8 @@ void IGraphicsSkia::DrawBitmap(const IBitmap& bitmap, const IRECT& dest, int src
 
   SkiaDrawable* image = bitmap.GetAPIBitmap()->GetBitmap();
 
-  double scale1 = 1.0 / (bitmap.GetScale() * bitmap.GetDrawScale());
-  double scale2 = bitmap.GetScale() * bitmap.GetDrawScale();
+  const double scale1 = 1.0 / (bitmap.GetScale() * bitmap.GetDrawScale());
+  const double scale2 = bitmap.GetScale() * bitmap.GetDrawScale();
 
   mCanvas->save();
   mCanvas->clipRect(SkiaRect(dest));
@@ -2357,7 +2358,12 @@ void IGraphicsSkia::DrawBitmap(const IBitmap& bitmap, const IRECT& dest, int src
   mCanvas->scale(scale1, scale1);
   mCanvas->translate(-srcX * scale2, -srcY * scale2);
 
-  auto samplingOptions = SkSamplingOptions(SkFilterMode::kLinear, SkMipmapMode::kLinear);
+  const SkMatrix totalMatrix = mCanvas->getTotalMatrix();
+  const SkScalar scaleX = totalMatrix.getScaleX();
+  const SkScalar scaleY = totalMatrix.getScaleY();
+  const bool needsFiltering = (std::fabs(scaleX - 1.0f) > 1e-6f) || (std::fabs(scaleY - 1.0f) > 1e-6f);
+  const SkSamplingOptions samplingOptions = needsFiltering ? SkSamplingOptions(SkFilterMode::kLinear, SkMipmapMode::kLinear)
+                                                           : SkSamplingOptions(SkFilterMode::kNearest, SkMipmapMode::kNone);
 
   if (image->mIsSurface)
     image->mSurface->draw(mCanvas, 0.0, 0.0, samplingOptions, &p);

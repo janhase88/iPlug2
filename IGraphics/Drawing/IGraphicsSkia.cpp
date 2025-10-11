@@ -105,6 +105,36 @@ float ResolveForcedRenderScale()
 #endif
 
 #if defined IGRAPHICS_VULKAN
+namespace vulkanlog = ::iplug::igraphics::vulkanlog;
+
+template <typename BackendRT>
+auto GetVkImageInfoCompat(const BackendRT& backendRT, GrVkImageInfo* out, int)
+  -> decltype(backendRT.getVkImageInfo(out))
+{
+  return backendRT.getVkImageInfo(out);
+}
+
+template <typename BackendRT>
+auto GetVkImageInfoCompat(const BackendRT& backendRT, GrVkImageInfo* out, long)
+  -> decltype(backendRT.getVulkanImageInfo(out))
+{
+  return backendRT.getVulkanImageInfo(out);
+}
+
+template <typename Surface>
+auto GetBackendRenderTargetCompat(Surface* surface, GrBackendRenderTarget* out, int)
+  -> decltype(surface->getBackendRenderTarget(SkSurface::BackendHandleAccess::kFlushRead, out))
+{
+  return surface->getBackendRenderTarget(SkSurface::BackendHandleAccess::kFlushRead, out);
+}
+
+template <typename Surface>
+auto GetBackendRenderTargetCompat(Surface* surface, GrBackendRenderTarget* out, long)
+  -> decltype(surface->getBackendRenderTarget(out))
+{
+  return surface->getBackendRenderTarget(out);
+}
+
 void LogVkImageInfoSnapshot(const char* stage,
                             const GrBackendRenderTarget& backendRT,
                             const GrVkImageInfo* imageInfo,
@@ -127,7 +157,7 @@ void LogVkImageInfoSnapshot(const char* stage,
   const GrVkImageInfo* info = imageInfo;
   if (!info)
   {
-    if (backendRT.getVulkanImageInfo(&localInfo))
+    if (GetVkImageInfoCompat(backendRT, &localInfo, 0))
     {
       info = &localInfo;
     }
@@ -175,7 +205,7 @@ void LogSkSurfaceRenderTarget(const char* stage, SkSurface* surface, vulkanlog::
   }
 
   GrBackendRenderTarget backendRT;
-  if (surface->getBackendRenderTarget(SkSurface::BackendHandleAccess::kFlushRead, &backendRT))
+  if (GetBackendRenderTargetCompat(surface, &backendRT, 0))
   {
     LogVkImageInfoSnapshot(stage, backendRT, nullptr, severity);
   }

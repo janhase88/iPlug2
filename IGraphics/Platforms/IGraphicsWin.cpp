@@ -210,20 +210,32 @@ WindowDpiScales GatherWindowDpiScales(HWND hwnd, float hostScaleOverride = 0.f)
     virtualization = 1.f;
   }
 
+  if (virtualization < 1.f)
+  {
+    virtualization = 1.f;
+  }
+
   scales.virtualization = virtualization;
 
-  if (scales.effectiveScale > 0.f)
+  const float maxReportedScale = std::max(scales.rawScale, scales.effectiveScale);
+
+  if (maxReportedScale > 0.f && maxReportedScale > scales.hostScale + 0.0001f)
   {
-    scales.physicalScale = scales.effectiveScale;
+    scales.physicalScale = maxReportedScale;
   }
   else if (scales.hostScale > 0.f)
   {
-    scales.physicalScale = scales.hostScale * virtualization;
+    const float derived = scales.hostScale * virtualization;
+    scales.physicalScale = derived > 0.f ? derived : scales.hostScale;
+  }
+  else
+  {
+    scales.physicalScale = 1.f;
   }
 
   if (scales.physicalScale <= 0.f)
   {
-    scales.physicalScale = scales.hostScale;
+    scales.physicalScale = 1.f;
   }
 
   return scales;

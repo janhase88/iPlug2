@@ -3030,32 +3030,43 @@ APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, do
   SkImageInfo info = SkImageInfo::MakeN32Premul(width, height);
 
 #ifndef IGRAPHICS_CPU
-  const bool wantsMSAA = (MSAASampleCount > 0) && (mGrContext->maxSurfaceSampleCountForColorType(info.colorType()) >= MSAASampleCount);
+  const bool wantsMSAA = (MSAASampleCount > 0) &&
+                         (mGrContext->maxSurfaceSampleCountForColorType(info.colorType()) >= MSAASampleCount);
   const skgpu::Budgeted budget = cacheable ? skgpu::Budgeted::kYes : skgpu::Budgeted::kNo;
+  SkSurfaceProps surfaceProps(0, kUnknown_SkPixelGeometry);
 
-  if (wantsMSAA)
-  {
-    SkSurfaceProps surfaceProps(0, kUnknown_SkPixelGeometry);
-    surface = SkSurfaces::RenderTarget(mGrContext.get(), budget, info, MSAASampleCount, kTopLeft_GrSurfaceOrigin, &surfaceProps);
+  const auto tryCreateRenderTarget = [&](skgpu::Budgeted budgetFlag) -> sk_sp<SkSurface> {
+    const int requestedSampleCount = wantsMSAA ? MSAASampleCount : 1;
+    sk_sp<SkSurface> gpuSurface = SkSurfaces::RenderTarget(
+      mGrContext.get(), budgetFlag, info, requestedSampleCount, kTopLeft_GrSurfaceOrigin, &surfaceProps);
 
-    if (!surface && budget == skgpu::Budgeted::kNo)
+    if (!gpuSurface && wantsMSAA)
     {
-      surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info, MSAASampleCount, kTopLeft_GrSurfaceOrigin, &surfaceProps);
+      gpuSurface = SkSurfaces::RenderTarget(
+        mGrContext.get(), budgetFlag, info, 1, kTopLeft_GrSurfaceOrigin, &surfaceProps);
     }
-  }
 
-  if (!surface)
-  {
-    surface = SkSurfaces::RenderTarget(mGrContext.get(), budget, info);
-  }
+    return gpuSurface;
+  };
+
+  surface = tryCreateRenderTarget(budget);
 
   if (!surface && budget == skgpu::Budgeted::kNo)
   {
-    surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info);
+    surface = tryCreateRenderTarget(skgpu::Budgeted::kYes);
   }
 
   if (!surface)
   {
+#if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG("RenderPass",
+                      "CreateAPIBitmap.gpuFallback",
+                      vulkanlog::Severity::kInfo,
+                      vulkanlog::MakeField("width", info.width()),
+                      vulkanlog::MakeField("height", info.height()),
+                      vulkanlog::MakeField("msaaRequested", wantsMSAA ? MSAASampleCount : 0),
+                      vulkanlog::MakeField("budgeted", budget == skgpu::Budgeted::kYes));
+#endif
     surface = SkSurfaces::Raster(info);
   }
 #else

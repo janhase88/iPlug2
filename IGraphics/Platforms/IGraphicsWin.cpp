@@ -1747,7 +1747,7 @@ void IGraphicsWin::InstancePaintBudget::SnapshotState(Snapshot& out) const
 inline IMouseInfo IGraphicsWin::GetMouseInfo(LPARAM lParam, WPARAM wParam)
 {
   IMouseInfo info;
-  const float scale = GetTotalScale();
+  const float scale = GetBackingPixelScale();
   info.x = mCursorX = GET_X_LPARAM(lParam) / scale;
   info.y = mCursorY = GET_Y_LPARAM(lParam) / scale;
   info.ms = IMouseMod((wParam & MK_LBUTTON), (wParam & MK_RBUTTON), (wParam & MK_SHIFT), (wParam & MK_CONTROL),
@@ -2193,13 +2193,15 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
   // TODO: this is far too aggressive for slow drawing animations and data changing.  We need to
   // gate the rate of updates to a certain percentage of the wall clock time.
   IRECTList rects;
-  const float totalScale = GetTotalScale();
+  const float backingScale = GetBackingPixelScale();
+  const float drawScale = GetDrawScale();
+  const float backendScale = (drawScale != 0.f) ? (backingScale / drawScale) : backingScale;
   if (IsDirty(rects))
   {
     SetAllControlsClean();
 
-    const int surfaceWidth = std::max<int>(1, static_cast<int>(std::ceil(WindowWidth() * totalScale)));
-    const int surfaceHeight = std::max<int>(1, static_cast<int>(std::ceil(WindowHeight() * totalScale)));
+    const int surfaceWidth = std::max<int>(1, static_cast<int>(std::ceil(WindowWidth() * backendScale)));
+    const int surfaceHeight = std::max<int>(1, static_cast<int>(std::ceil(WindowHeight() * backendScale)));
     mInstancePaintBudget.Configure(surfaceWidth, surfaceHeight);
 
     RECT surfaceRect{0, 0, surfaceWidth, surfaceHeight};
@@ -2217,7 +2219,7 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
     for (int i = 0; i < rects.Size(); ++i)
     {
       IRECT dirtyR = rects.Get(i);
-      dirtyR.Scale(totalScale);
+      dirtyR.Scale(backingScale);
       dirtyR.PixelAlign();
 
       RECT r = {(LONG)dirtyR.L, (LONG)dirtyR.T, (LONG)dirtyR.R, (LONG)dirtyR.B};
@@ -2624,7 +2626,7 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
     {
       IMouseInfo info = pGraphics->GetMouseInfo(lParam, wParam);
       float d = GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA;
-      const float scale = pGraphics->GetTotalScale();
+      const float scale = pGraphics->GetBackingPixelScale();
       RECT r;
       GetWindowRect(hWnd, &r);
       pGraphics->OnMouseWheel(info.x - (r.left / scale), info.y - (r.top / scale), info.ms, d);
@@ -2664,7 +2666,7 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
       std::vector<IMouseInfo> downlist;
       std::vector<IMouseInfo> uplist;
       std::vector<IMouseInfo> movelist;
-      const float scale = pGraphics->GetTotalScale();
+      const float scale = pGraphics->GetBackingPixelScale();
 
       GetTouchInputInfo(hTouchInput, nTouches, touches.Get(), sizeof(TOUCHINPUT));
 
@@ -2750,7 +2752,7 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
       IKeyPress keyPress{
         str, static_cast<int>(wParam), static_cast<bool>(GetKeyState(VK_SHIFT) & 0x8000), static_cast<bool>(GetKeyState(VK_CONTROL) & 0x8000), static_cast<bool>(GetKeyState(VK_MENU) & 0x8000)};
 
-      const float scale = pGraphics->GetTotalScale();
+      const float scale = pGraphics->GetBackingPixelScale();
 
       if (msg == WM_KEYDOWN)
         handle = pGraphics->OnKeyDown(p.x / scale, p.y / scale, keyPress);
@@ -2768,7 +2770,7 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
       return 0;
   }
   case WM_PAINT: {
-    const float scale = pGraphics->GetTotalScale();
+    const float scale = pGraphics->GetBackingPixelScale();
     const bool hadPaintPending = pGraphics->mPaintPending.exchange(false, std::memory_order_acq_rel);
     auto addDrawRect = [pGraphics, scale](IRECTList& rects, RECT r) {
       IRECT ir(r.left, r.top, r.right, r.bottom);
@@ -2911,7 +2913,7 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
     POINT p;
     DragQueryPoint(hdrop, &p);
 
-    const float scale = pGraphics->GetTotalScale();
+    const float scale = pGraphics->GetBackingPixelScale();
 
     if (numDroppedFiles == 1)
     {
@@ -3485,7 +3487,12 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
     HWND pParent = 0, pGrandparent = 0;
     int dlgW = 0, dlgH = 0, parentW = 0, parentH = 0, grandparentW = 0, grandparentH = 0;
     GetWindowSize(mPlugWnd, &dlgW, &dlgH);
-    int dw = (WindowWidth() * GetScreenScale()) - dlgW, dh = (WindowHeight() * GetScreenScale()) - dlgH;
+    const float drawScale = GetDrawScale();
+    const float backingScale = GetBackingPixelScale();
+    const float backendScale = (drawScale != 0.f) ? (backingScale / drawScale) : backingScale;
+    const int targetW = static_cast<int>(std::lround(WindowWidth() * backendScale));
+    const int targetH = static_cast<int>(std::lround(WindowHeight() * backendScale));
+    int dw = targetW - dlgW, dh = targetH - dlgH;
 
     if (IsChildWindow(mPlugWnd))
     {
@@ -3546,7 +3553,7 @@ void IGraphicsWin::MoveMouseCursor(float x, float y)
   if (mTabletInput)
     return;
 
-  const float scale = GetTotalScale();
+  const float scale = GetBackingPixelScale();
 
   POINT p;
   p.x = std::round(x * scale);
@@ -3628,7 +3635,7 @@ void IGraphicsWin::GetMouseLocation(float& x, float& y) const
   GetCursorPos(&p);
   ScreenToClient(mPlugWnd, &p);
 
-  const float scale = GetTotalScale();
+  const float scale = GetBackingPixelScale();
 
   x = p.x / scale;
   y = p.y / scale;
@@ -4505,7 +4512,7 @@ void IGraphicsWin::OnOLEDropFiles(const std::vector<std::wstring>& filesW, LONG 
   // Convert screen -> client coords and scale to IGraphics space
   POINT p{(LONG)xScreen, (LONG)yScreen};
   ScreenToClient(mPlugWnd, &p);
-  const float scale = GetTotalScale();
+  const float scale = GetBackingPixelScale();
 
   // Convert wide strings to UTF-8 and build buffers/pointers like WM_DROPFILES path
   const int count = static_cast<int>(filesW.size());
@@ -4653,7 +4660,7 @@ IPopupMenu* IGraphicsWin::CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT 
     IPopupMenu* result = nullptr;
 
     POINT cPos;
-    const float scale = GetTotalScale();
+    const float scale = GetBackingPixelScale();
 
     cPos.x = bounds.L * scale;
     cPos.y = bounds.B * scale;
@@ -4688,7 +4695,12 @@ IPopupMenu* IGraphicsWin::CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT 
     }
     DestroyMenu(hMenu);
 
-    RECT r = {0, 0, static_cast<LONG>(WindowWidth() * GetScreenScale()), static_cast<LONG>(WindowHeight() * GetScreenScale())};
+    const float drawScale = GetDrawScale();
+    const float backingScale = GetBackingPixelScale();
+    const float backendScale = (drawScale != 0.f) ? (backingScale / drawScale) : backingScale;
+    const LONG width = static_cast<LONG>(std::lround(WindowWidth() * backendScale));
+    const LONG height = static_cast<LONG>(std::lround(WindowHeight() * backendScale));
+    RECT r = {0, 0, width, height};
     InvalidateRect(mPlugWnd, &r, FALSE);
 
     return result;
@@ -4718,7 +4730,7 @@ void IGraphicsWin::CreatePlatformTextEntry(int paramIdx, const IText& text, cons
     break;
   }
 
-  const float scale = GetTotalScale();
+  const float scale = GetBackingPixelScale();
   IRECT scaledBounds = bounds.GetScaled(scale);
 
   mParamEditWnd = CreateWindowW(L"EDIT", UTF8AsUTF16(str).Get(), ES_AUTOHSCROLL | WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_VISIBLE | editStyle, scaledBounds.L, scaledBounds.T,

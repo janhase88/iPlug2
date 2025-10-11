@@ -87,7 +87,14 @@ public:
   void* GetWinModuleHandle() override { return mHInstance; }
 
   void ForceEndUserEdit() override;
-  float GetPlatformWindowScale() const override { return GetScreenScale(); }
+  float GetPlatformWindowScale() const override
+  {
+    const float drawScale = GetDrawScale();
+    const float backingScale = GetBackingPixelScale();
+    if (drawScale == 0.f)
+      return backingScale;
+    return backingScale / drawScale;
+  }
 
   void PlatformResize(bool parentHasResized) override;
 

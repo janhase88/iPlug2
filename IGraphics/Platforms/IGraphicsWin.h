@@ -88,6 +88,7 @@ public:
 
   void ForceEndUserEdit() override;
   float GetPlatformWindowScale() const override { return mPhysicalWindowScale; }
+  float GetHostWindowScale() const override { return mHostWindowScale; }
 
   void ApplyWindowDpiScales(float hostScale, float physicalScale);
 

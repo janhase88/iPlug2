@@ -248,18 +248,23 @@ void LogDpiSnapshot(const char* stage, HWND hwnd, const IGraphicsWin& win, float
 {
   const WindowDpiScales scales = GatherWindowDpiScales(hwnd, hostScaleOverride);
   const float screenScale = win.GetScreenScale();
+  const float hostScale = win.GetHostWindowScale();
   const float drawScale = win.GetDrawScale();
   const float backingScale = screenScale * drawScale;
   const int logicalW = win.WindowWidth();
   const int logicalH = win.WindowHeight();
+  const int hostPixelW = static_cast<int>(std::round(static_cast<float>(logicalW) * hostScale));
+  const int hostPixelH = static_cast<int>(std::round(static_cast<float>(logicalH) * hostScale));
   const int pixelW = static_cast<int>(std::round(static_cast<float>(logicalW) * screenScale));
   const int pixelH = static_cast<int>(std::round(static_cast<float>(logicalH) * screenScale));
 
-  IGRAPHICS_DPI_TRACE("IGraphicsWin[DPI] %s hwnd=%p logical=%dx%d pixels=%dx%d screenScale=%.3f drawScale=%.3f backing=%.3f hostScale=%.3f physicalScale=%.3f virtualization=%.3f effectiveScale=%.3f rawScale=%.3f\n",
+  IGRAPHICS_DPI_TRACE("IGraphicsWin[DPI] %s hwnd=%p logical=%dx%d hostPixels=%dx%d pixels=%dx%d screenScale=%.3f drawScale=%.3f backing=%.3f hostScale=%.3f physicalScale=%.3f virtualization=%.3f effectiveScale=%.3f rawScale=%.3f\n",
                       stage,
                       hwnd,
                       logicalW,
                       logicalH,
+                      hostPixelW,
+                      hostPixelH,
                       pixelW,
                       pixelH,
                       screenScale,
@@ -3719,8 +3724,8 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
     HWND pParent = 0, pGrandparent = 0;
     int dlgW = 0, dlgH = 0, parentW = 0, parentH = 0, grandparentW = 0, grandparentH = 0;
     GetWindowSize(mPlugWnd, &dlgW, &dlgH);
-    const int targetW = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * GetPlatformWindowScale()));
-    const int targetH = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * GetPlatformWindowScale()));
+    const int targetW = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * GetHostWindowScale()));
+    const int targetH = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * GetHostWindowScale()));
     int dw = targetW - dlgW;
     int dh = targetH - dlgH;
 

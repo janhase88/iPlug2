@@ -1274,6 +1274,7 @@ public:
   /** Returns a scaling factor for resizing parent windows via the host/plugin API
    * @return A scaling factor for resizing parent windows */
   virtual float GetPlatformWindowScale() const { return 1.f; }
+  virtual float GetHostWindowScale() const { return GetPlatformWindowScale(); }
 
 private:
   

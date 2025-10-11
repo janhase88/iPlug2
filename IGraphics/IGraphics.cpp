@@ -77,21 +77,28 @@ IGraphics::~IGraphics()
 void IGraphics::SetScreenScale(float scale)
 {
   mScreenScale = scale;
-  int windowWidth = WindowWidth() * GetPlatformWindowScale();
-  int windowHeight = WindowHeight() * GetPlatformWindowScale();
+  const float hostScale = GetHostWindowScale();
+  const float platformScale = GetPlatformWindowScale();
+  const int hostWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * hostScale));
+  const int hostHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * hostScale));
+  const int renderWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * platformScale));
+  const int renderHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * platformScale));
 
-  IGRAPHICS_DPI_TRACE("IGraphics[DPI] SetScreenScale logical=%dx%d platformScale=%.3f drawScale=%.3f backing=%.3f pixel=%dx%d\n",
+  IGRAPHICS_DPI_TRACE("IGraphics[DPI] SetScreenScale logical=%dx%d hostScale=%.3f platformScale=%.3f drawScale=%.3f backing=%.3f hostPixels=%dx%d renderPixels=%dx%d\n",
                       WindowWidth(),
                       WindowHeight(),
-                      GetPlatformWindowScale(),
+                      hostScale,
+                      platformScale,
                       GetDrawScale(),
                       GetBackingPixelScale(),
-                      windowWidth,
-                      windowHeight);
-  
-  assert(windowWidth > 0 && windowHeight > 0 && "Window dimensions invalid");
+                      hostWidth,
+                      hostHeight,
+                      renderWidth,
+                      renderHeight);
 
-  bool parentResized = GetDelegate()->EditorResizeFromUI(windowWidth, windowHeight, true);
+  assert(hostWidth > 0 && hostHeight > 0 && "Window dimensions invalid");
+
+  bool parentResized = GetDelegate()->EditorResizeFromUI(hostWidth, hostHeight, true);
   PlatformResize(parentResized);
   ForAllControls(&IControl::OnRescale);
   SetAllControlsDirty();

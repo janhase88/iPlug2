@@ -99,6 +99,76 @@ float GetHostScaleForWindow(HWND hwnd)
   return 1.f;
 }
 
+#if defined(DPI_HOSTING_BEHAVIOR_MIXED) && defined(DPI_HOSTING_BEHAVIOR_DEFAULT)
+using SetThreadDpiHostingBehaviorProc = DPI_HOSTING_BEHAVIOR(WINAPI*)(DPI_HOSTING_BEHAVIOR);
+using GetThreadDpiHostingBehaviorProc = DPI_HOSTING_BEHAVIOR(WINAPI*)();
+
+SetThreadDpiHostingBehaviorProc ResolveSetThreadDpiHostingBehavior()
+{
+  static SetThreadDpiHostingBehaviorProc proc = []() -> SetThreadDpiHostingBehaviorProc {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (!user32)
+      user32 = LoadLibraryW(L"user32.dll");
+    if (!user32)
+      return nullptr;
+    return reinterpret_cast<SetThreadDpiHostingBehaviorProc>(
+      GetProcAddress(user32, "SetThreadDpiHostingBehavior"));
+  }();
+  return proc;
+}
+
+GetThreadDpiHostingBehaviorProc ResolveGetThreadDpiHostingBehavior()
+{
+  static GetThreadDpiHostingBehaviorProc proc = []() -> GetThreadDpiHostingBehaviorProc {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (!user32)
+      user32 = LoadLibraryW(L"user32.dll");
+    if (!user32)
+      return nullptr;
+    return reinterpret_cast<GetThreadDpiHostingBehaviorProc>(
+      GetProcAddress(user32, "GetThreadDpiHostingBehavior"));
+  }();
+  return proc;
+}
+
+class ScopedThreadDpiHostingBehavior
+{
+public:
+  explicit ScopedThreadDpiHostingBehavior(DPI_HOSTING_BEHAVIOR behavior)
+  {
+    mSetProc = ResolveSetThreadDpiHostingBehavior();
+    mGetProc = ResolveGetThreadDpiHostingBehavior();
+
+    if (mSetProc)
+    {
+      mPrevious = mGetProc ? mGetProc() : DPI_HOSTING_BEHAVIOR_DEFAULT;
+      mSetProc(behavior);
+      mActive = true;
+    }
+  }
+
+  ~ScopedThreadDpiHostingBehavior()
+  {
+    if (mActive && mSetProc)
+    {
+      mSetProc(mPrevious);
+    }
+  }
+
+private:
+  SetThreadDpiHostingBehaviorProc mSetProc = nullptr;
+  GetThreadDpiHostingBehaviorProc mGetProc = nullptr;
+  DPI_HOSTING_BEHAVIOR mPrevious = DPI_HOSTING_BEHAVIOR_DEFAULT;
+  bool mActive = false;
+};
+#else
+class ScopedThreadDpiHostingBehavior
+{
+public:
+  explicit ScopedThreadDpiHostingBehavior(int) {}
+};
+#endif
+
 #if IGRAPHICS_DPI_LOGGING
 using GetDpiForMonitorProc = HRESULT(WINAPI*)(HMONITOR, int, UINT*, UINT*);
 constexpr int kMonitorDpiTypeEffective = 0;
@@ -4492,6 +4562,9 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   }
 
   WDL_dpi_aware_scope dpiScope(-4);
+#if defined(DPI_HOSTING_BEHAVIOR_MIXED) && defined(DPI_HOSTING_BEHAVIOR_DEFAULT)
+  ScopedThreadDpiHostingBehavior hostingScope(DPI_HOSTING_BEHAVIOR_MIXED);
+#endif
 
   mPlugWnd = CreateWindowW(wndClassName,
                            L"IPlug",

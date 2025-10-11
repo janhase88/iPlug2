@@ -2589,16 +2589,10 @@ void IGraphicsSkia::DrawBitmap(const IBitmap& bitmap, const IRECT& dest, int src
   mCanvas->scale(scale1, scale1);
   mCanvas->translate(-srcX * scale2, -srcY * scale2);
 
-  const double absScale = bitmap.GetScale() * bitmap.GetDrawScale();
-  const bool needsExactSampling = (absScale > 1.0) || (std::abs(scale1 - 1.0) > 1e-6);
-  const SkSamplingOptions samplingOptions = needsExactSampling
-                                             ? SkSamplingOptions(SkFilterMode::kNearest, SkMipmapMode::kNone)
-                                             : SkSamplingOptions(SkFilterMode::kLinear, SkMipmapMode::kNone);
-
   if (image->mIsSurface)
-    image->mSurface->draw(mCanvas, 0.0, 0.0, samplingOptions, &p);
+    image->mSurface->draw(mCanvas, 0.0, 0.0, nullptr, &p);
   else
-    mCanvas->drawImage(image->mImage, 0.0, 0.0, samplingOptions, &p);
+    mCanvas->drawImage(image->mImage, 0.0, 0.0, SkSamplingOptions(), &p);
 
   mCanvas->restore();
 }

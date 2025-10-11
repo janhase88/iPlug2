@@ -101,48 +101,130 @@ using GetDpiForMonitorProc = HRESULT(WINAPI*)(HMONITOR, int, UINT*, UINT*);
 constexpr int kMonitorDpiTypeEffective = 0;
 constexpr int kMonitorDpiTypeRaw = 2;
 
-float GetPhysicalScaleForWindow(HWND hwnd)
+struct WindowDpiScales
+{
+  float hostScale = 1.f;
+  float physicalScale = 1.f;
+  float virtualization = 1.f;
+  float rawScale = 0.f;
+};
+
+float QueryMonitorRawScale(HWND hwnd)
 {
   static HMODULE shcore = LoadLibraryW(L"shcore.dll");
   static GetDpiForMonitorProc getDpiForMonitor =
     shcore ? reinterpret_cast<GetDpiForMonitorProc>(GetProcAddress(shcore, "GetDpiForMonitor")) : nullptr;
 
-  if (getDpiForMonitor)
-  {
-    HMONITOR monitor = MonitorFromWindow(hwnd ? hwnd : GetDesktopWindow(), MONITOR_DEFAULTTONEAREST);
-    if (monitor)
-    {
-      UINT dpiX = 0;
-      UINT dpiY = 0;
-      if (SUCCEEDED(getDpiForMonitor(monitor, kMonitorDpiTypeRaw, &dpiX, &dpiY)) && dpiX > 0)
-      {
-        return static_cast<float>(dpiX) / USER_DEFAULT_SCREEN_DPI;
-      }
+  if (!getDpiForMonitor)
+    return 0.f;
 
-      if (SUCCEEDED(getDpiForMonitor(monitor, kMonitorDpiTypeEffective, &dpiX, &dpiY)) && dpiX > 0)
-      {
-        return static_cast<float>(dpiX) / USER_DEFAULT_SCREEN_DPI;
-      }
-    }
+  HMONITOR monitor = MonitorFromWindow(hwnd ? hwnd : GetDesktopWindow(), MONITOR_DEFAULTTONEAREST);
+  if (!monitor)
+    return 0.f;
+
+  UINT dpiX = 0;
+  UINT dpiY = 0;
+
+  if (SUCCEEDED(getDpiForMonitor(monitor, kMonitorDpiTypeRaw, &dpiX, &dpiY)) && dpiX > 0)
+  {
+    return static_cast<float>(dpiX) / USER_DEFAULT_SCREEN_DPI;
   }
 
-  return GetHostScaleForWindow(hwnd);
+  if (SUCCEEDED(getDpiForMonitor(monitor, kMonitorDpiTypeEffective, &dpiX, &dpiY)) && dpiX > 0)
+  {
+    return static_cast<float>(dpiX) / USER_DEFAULT_SCREEN_DPI;
+  }
+
+  return 0.f;
+}
+
+float QueryMonitorVirtualization(HWND hwnd)
+{
+  HMONITOR monitor = MonitorFromWindow(hwnd ? hwnd : GetDesktopWindow(), MONITOR_DEFAULTTONEAREST);
+  if (!monitor)
+    return 0.f;
+
+  MONITORINFOEXW info{};
+  info.cbSize = sizeof(info);
+  if (!GetMonitorInfoW(monitor, &info))
+    return 0.f;
+
+  HDC dc = CreateDCW(info.szDevice, nullptr, nullptr, nullptr);
+  if (!dc)
+    return 0.f;
+
+  const int logicalW = GetDeviceCaps(dc, HORZRES);
+  const int logicalH = GetDeviceCaps(dc, VERTRES);
+  const int physicalW = GetDeviceCaps(dc, DESKTOPHORZRES);
+  const int physicalH = GetDeviceCaps(dc, DESKTOPVERTRES);
+  DeleteDC(dc);
+
+  float ratioW = 0.f;
+  float ratioH = 0.f;
+
+  if (logicalW > 0 && physicalW > 0)
+    ratioW = static_cast<float>(physicalW) / static_cast<float>(logicalW);
+
+  if (logicalH > 0 && physicalH > 0)
+    ratioH = static_cast<float>(physicalH) / static_cast<float>(logicalH);
+
+  if (ratioW > 0.f && ratioH > 0.f)
+    return 0.5f * (ratioW + ratioH);
+
+  return ratioW > 0.f ? ratioW : ratioH;
+}
+
+WindowDpiScales GatherWindowDpiScales(HWND hwnd, float hostScaleOverride = 0.f)
+{
+  WindowDpiScales scales{};
+  scales.hostScale = hostScaleOverride > 0.f ? hostScaleOverride : GetHostScaleForWindow(hwnd);
+  if (scales.hostScale <= 0.f)
+    scales.hostScale = 1.f;
+
+  scales.rawScale = QueryMonitorRawScale(hwnd);
+  float virtualization = QueryMonitorVirtualization(hwnd);
+
+  if (virtualization <= 0.f && scales.rawScale > 0.f && scales.hostScale > 0.f)
+  {
+    virtualization = scales.rawScale / scales.hostScale;
+  }
+
+  if (virtualization <= 0.f)
+  {
+    virtualization = 1.f;
+  }
+
+  scales.virtualization = virtualization;
+
+  if (scales.rawScale > 0.f)
+  {
+    scales.physicalScale = scales.rawScale;
+  }
+  else
+  {
+    scales.physicalScale = scales.hostScale * virtualization;
+  }
+
+  if (scales.physicalScale <= 0.f)
+  {
+    scales.physicalScale = scales.hostScale;
+  }
+
+  return scales;
 }
 
 void LogDpiSnapshot(const char* stage, HWND hwnd, const IGraphicsWin& win, float hostScaleOverride = 0.f)
 {
-  const float hostScale = hostScaleOverride > 0.f ? hostScaleOverride : GetHostScaleForWindow(hwnd);
-  const float physicalScale = GetPhysicalScaleForWindow(hwnd);
+  const WindowDpiScales scales = GatherWindowDpiScales(hwnd, hostScaleOverride);
   const float screenScale = win.GetScreenScale();
   const float drawScale = win.GetDrawScale();
   const float backingScale = screenScale * drawScale;
-  const float virtualization = (hostScale > 0.f) ? (physicalScale / hostScale) : 0.f;
   const int logicalW = win.WindowWidth();
   const int logicalH = win.WindowHeight();
   const int pixelW = static_cast<int>(std::round(static_cast<float>(logicalW) * screenScale));
   const int pixelH = static_cast<int>(std::round(static_cast<float>(logicalH) * screenScale));
 
-  IGRAPHICS_DPI_TRACE("IGraphicsWin[DPI] %s hwnd=%p logical=%dx%d pixels=%dx%d screenScale=%.3f drawScale=%.3f backing=%.3f hostScale=%.3f physicalScale=%.3f virtualization=%.3f\n",
+  IGRAPHICS_DPI_TRACE("IGraphicsWin[DPI] %s hwnd=%p logical=%dx%d pixels=%dx%d screenScale=%.3f drawScale=%.3f backing=%.3f hostScale=%.3f physicalScale=%.3f virtualization=%.3f rawScale=%.3f\n",
                       stage,
                       hwnd,
                       logicalW,
@@ -152,9 +234,10 @@ void LogDpiSnapshot(const char* stage, HWND hwnd, const IGraphicsWin& win, float
                       screenScale,
                       drawScale,
                       backingScale,
-                      hostScale,
-                      physicalScale,
-                      virtualization);
+                      scales.hostScale,
+                      scales.physicalScale,
+                      scales.virtualization,
+                      scales.rawScale);
 }
 #else
 inline void LogDpiSnapshot(const char*, HWND, const IGraphicsWin&, float = 0.f) {}

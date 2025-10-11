@@ -2461,13 +2461,15 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
     const WindowDpiScales scales = GatherWindowDpiScales(mPlugWnd);
     const float hostScale = scales.hostScale > 0.f ? scales.hostScale : 1.f;
     const float physicalScale = scales.physicalScale > 0.f ? scales.physicalScale : hostScale;
+    const float virtualization = scales.virtualization > 0.f ? scales.virtualization :
+                                                          ((hostScale > 0.f) ? (physicalScale / hostScale) : 1.f);
 
     const bool hostChanged = std::fabs(hostScale - mHostWindowScale) > 0.0001f;
     const bool physicalChanged = std::fabs(physicalScale - mPhysicalWindowScale) > 0.0001f;
 
     if (hostChanged || physicalChanged)
     {
-      ApplyWindowDpiScales(hostScale, physicalScale);
+      ApplyWindowDpiScales(hostScale, physicalScale, virtualization);
     }
   }
 
@@ -3323,7 +3325,7 @@ LRESULT CALLBACK IGraphicsWin::ParamEditProc(HWND hWnd, UINT msg, WPARAM wParam,
   return DefWindowProcW(hWnd, msg, wParam, lParam);
 }
 
-void IGraphicsWin::ApplyWindowDpiScales(float hostScale, float physicalScale)
+void IGraphicsWin::ApplyWindowDpiScales(float hostScale, float physicalScale, float virtualization)
 {
   if (hostScale <= 0.f)
     hostScale = 1.f;
@@ -3331,15 +3333,69 @@ void IGraphicsWin::ApplyWindowDpiScales(float hostScale, float physicalScale)
   if (physicalScale <= 0.f)
     physicalScale = hostScale;
 
-  const bool hostChanged = std::fabs(hostScale - mHostWindowScale) > 0.0001f;
-  const bool physicalChanged = std::fabs(physicalScale - mPhysicalWindowScale) > 0.0001f;
+  if (virtualization <= 0.f)
+    virtualization = (hostScale > 0.f) ? (physicalScale / hostScale) : 1.f;
+
+  const float previousHostScale = mHostWindowScale;
+  const float previousPhysicalScale = mPhysicalWindowScale;
+  const float previousVirtualization = mVirtualizationScale;
+  const float previousDrawScale = GetDrawScale();
+  const float previousScreenScale = GetScreenScale();
+
+  const bool virtualizationActive = (virtualization > 1.0001f) &&
+                                    (physicalScale > hostScale + 0.0001f);
+
+  float targetScreenScale = physicalScale;
+  float targetPhysicalScale = physicalScale;
+  float desiredDrawScale = mInitialDrawScale;
+  float appliedVirtualization = 1.f;
+
+  if (virtualizationActive)
+  {
+    appliedVirtualization = virtualization;
+    targetScreenScale = hostScale;
+    targetPhysicalScale = hostScale;
+    desiredDrawScale = mInitialDrawScale * virtualization;
+  }
+
+  const bool hostChanged = std::fabs(hostScale - previousHostScale) > 0.0001f;
+  const bool physicalChanged = std::fabs(targetPhysicalScale - previousPhysicalScale) > 0.0001f;
+  const bool virtualizationChanged = std::fabs(appliedVirtualization - previousVirtualization) > 0.0001f;
+  const bool drawChanged = std::fabs(desiredDrawScale - previousDrawScale) > 0.0001f;
+  const bool screenScaleChanged = std::fabs(targetScreenScale - previousScreenScale) > 0.0001f;
 
   mHostWindowScale = hostScale;
-  mPhysicalWindowScale = physicalScale;
+  mPhysicalWindowScale = targetPhysicalScale;
+  mVirtualizationScale = appliedVirtualization;
 
-  if (hostChanged || physicalChanged)
+  if (drawChanged)
   {
-    SetScreenScale(mPhysicalWindowScale);
+    IGRAPHICS_DPI_TRACE("IGraphicsWin[DPI] ApplyWindowDpiScales forcing drawScale=%.3f base=%.3f virtualization=%.3f host=%.3f physical=%.3f\n",
+                        desiredDrawScale,
+                        mInitialDrawScale,
+                        appliedVirtualization,
+                        hostScale,
+                        physicalScale);
+    Resize(Width(), Height(), desiredDrawScale, true);
+  }
+
+  if (hostChanged || physicalChanged || virtualizationChanged || screenScaleChanged || drawChanged)
+  {
+    if (virtualizationActive && (virtualizationChanged || hostChanged || physicalChanged))
+    {
+      IGRAPHICS_DPI_TRACE("IGraphicsWin[DPI] virtualization active hostScale=%.3f physicalScale=%.3f virtualization=%.3f\n",
+                          hostScale,
+                          physicalScale,
+                          virtualization);
+    }
+    else if (!virtualizationActive && previousVirtualization > 1.0001f)
+    {
+      IGRAPHICS_DPI_TRACE("IGraphicsWin[DPI] virtualization cleared hostScale=%.3f physicalScale=%.3f\n",
+                          hostScale,
+                          physicalScale);
+    }
+
+    SetScreenScale(targetScreenScale);
   }
 }
 
@@ -3359,6 +3415,7 @@ IGraphicsWin::IGraphicsWin(IGEditorDelegate& dlg, int w, int h, int fps, float s
 #if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
   InitializeIdleSchedulerState();
 #endif
+  mInitialDrawScale = GetDrawScale();
 }
 
 IGraphicsWin::~IGraphicsWin()
@@ -4523,6 +4580,8 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   const WindowDpiScales parentScales = GatherWindowDpiScales(mParentWnd);
   const float hostScale = parentScales.hostScale > 0.f ? parentScales.hostScale : 1.f;
   const float physicalScale = parentScales.physicalScale > 0.f ? parentScales.physicalScale : hostScale;
+  const float virtualization = parentScales.virtualization > 0.f ? parentScales.virtualization :
+                                                           ((hostScale > 0.f) ? (physicalScale / hostScale) : 1.f);
 
   const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * hostScale));
   const int scaledHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * hostScale));
@@ -4614,7 +4673,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   #endif
 #endif
 
-  ApplyWindowDpiScales(hostScale, physicalScale);
+  ApplyWindowDpiScales(hostScale, physicalScale, virtualization);
 
   if (mPlugWnd)
   {

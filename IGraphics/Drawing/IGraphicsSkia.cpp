@@ -17,6 +17,7 @@
 #include "include/core/SkFontMetrics.h"
 #include "include/core/SkFontMgr.h"
 #include "include/core/SkData.h"
+#include "include/core/SkColorSpace.h"
 #include "include/core/SkMaskFilter.h"
 #include "include/core/SkPathEffect.h"
 #include "include/core/SkPixmap.h"
@@ -3027,13 +3028,21 @@ APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, do
                       MSAASampleCount);
 
   sk_sp<SkSurface> surface;
-  SkImageInfo info = SkImageInfo::MakeN32Premul(width, height);
+  sk_sp<SkColorSpace> colorSpace;
+  SkSurfaceProps surfaceProps(0, kUnknown_SkPixelGeometry);
+
+  if (mSurface)
+  {
+    colorSpace = mSurface->imageInfo().refColorSpace();
+    surfaceProps = mSurface->props();
+  }
+
+  SkImageInfo info = SkImageInfo::Make(width, height, kN32_SkColorType, kPremul_SkAlphaType, colorSpace);
 
 #ifndef IGRAPHICS_CPU
   const bool wantsMSAA = (MSAASampleCount > 0) &&
                          (mGrContext->maxSurfaceSampleCountForColorType(info.colorType()) >= MSAASampleCount);
   const skgpu::Budgeted budget = cacheable ? skgpu::Budgeted::kYes : skgpu::Budgeted::kNo;
-  SkSurfaceProps surfaceProps(0, kUnknown_SkPixelGeometry);
 
   const auto tryCreateRenderTarget = [&](skgpu::Budgeted budgetFlag) -> sk_sp<SkSurface> {
     const int requestedSampleCount = wantsMSAA ? MSAASampleCount : 1;
@@ -3073,8 +3082,23 @@ APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, do
   surface = SkSurfaces::Raster(info);
 #endif
 
+#if !defined IGRAPHICS_CPU
+  const int loggedMSAA = wantsMSAA ? MSAASampleCount : 0;
+#else
+  const int loggedMSAA = (MSAASampleCount > 0) ? MSAASampleCount : 0;
+#endif
+
   surface->getCanvas()->save();
 #if defined IGRAPHICS_VULKAN
+  if (surface && !surface->recordingContext())
+  {
+    IGRAPHICS_VK_LOG("RenderPass",
+                      "CreateAPIBitmap.recordingContextMissing",
+                      vulkanlog::Severity::kInfo,
+                      vulkanlog::MakeField("width", info.width()),
+                      vulkanlog::MakeField("height", info.height()),
+                      vulkanlog::MakeField("msaaRequested", loggedMSAA));
+  }
   LogSkSurfaceRenderTarget("CreateAPIBitmap.surface", surface.get(), vulkanlog::Severity::kDebug);
 #endif
 

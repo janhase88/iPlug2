@@ -16,7 +16,7 @@
 #include "heapbuf.h"
 
 #define WDL_WIN32_HIDPI_IMPL
-#include "WDL/win32_hidpi.h"
+#include "win32_hidpi.h"
 
 #include "IGraphicsWin.h"
 #include "IGraphicsWin_dnd.h"

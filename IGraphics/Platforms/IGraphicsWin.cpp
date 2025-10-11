@@ -15,6 +15,9 @@
 
 #include "heapbuf.h"
 
+#define WDL_WIN32_HIDPI_IMPL
+#include "WDL/win32_hidpi.h"
+
 #include "IGraphicsWin.h"
 #include "IGraphicsWin_dnd.h"
 #include "IPlugParameter.h"
@@ -4471,7 +4474,19 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     RegisterClassW(&wndClass);
   }
 
-  mPlugWnd = CreateWindowW(wndClassName, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
+  WDL_dpi_aware_scope dpiScope(-4);
+
+  mPlugWnd = CreateWindowW(wndClassName,
+                           L"IPlug",
+                           WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
+                           x,
+                           y,
+                           w,
+                           h,
+                           mParentWnd,
+                           0,
+                           mHInstance,
+                           this);
 #if defined IGRAPHICS_VULKAN
   SetPlatformContext(mPlugWnd);
   if (!CreateVulkanContext())

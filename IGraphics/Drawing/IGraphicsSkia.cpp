@@ -141,6 +141,17 @@ extern std::map<std::string, MTLTexturePtr> gTextureMap;
 float IGraphicsSkia::GetBackendPixelScale() const
 {
 #if defined IGRAPHICS_VULKAN
+  if (mVKSwapchainWidth > 0)
+  {
+    const int logicalWidth = WindowWidth();
+    if (logicalWidth > 0)
+    {
+      const float computedScale = static_cast<float>(mVKSwapchainWidth) / static_cast<float>(logicalWidth);
+      if (computedScale > 0.f)
+        return computedScale;
+    }
+  }
+
   return 1.5f;
 #else
   return GetScreenScale();
@@ -644,6 +655,8 @@ void IGraphicsSkia::ResetVulkanSwapchainCaches()
 
   mVKSwapchainImageViews.clear();
   mVKSwapchainSurfaces.clear();
+  mVKSwapchainWidth = 0;
+  mVKSwapchainHeight = 0;
   mScreenSurface.reset();
 }
 
@@ -1444,6 +1457,8 @@ void IGraphicsSkia::DrawResize()
                            vulkanlog::MakeField("clampedHeight", height));
       w = static_cast<int>(width);
       h = static_cast<int>(height);
+      mVKSwapchainWidth = w;
+      mVKSwapchainHeight = h;
     }
   }
 #endif
@@ -1472,6 +1487,8 @@ void IGraphicsSkia::DrawResize()
         VkResult res = pWin->CreateOrResizeVulkanSwapchain(w, h, swapchain, images, format, mVKSwapchainUsageFlags, mVKSubmissionPending);
         if (res == VK_SUCCESS)
         {
+          mVKSwapchainWidth = w;
+          mVKSwapchainHeight = h;
           mVKSwapchain = swapchain;
           mVKSwapchainImages = images;
           mVKSwapchainImageViews.assign(mVKSwapchainImages.size(), VK_NULL_HANDLE);
@@ -1525,6 +1542,8 @@ void IGraphicsSkia::DrawResize()
         }
         else
         {
+          mVKSwapchainWidth = 0;
+          mVKSwapchainHeight = 0;
           IGRAPHICS_VK_LOG("DrawResize",
                               "createOrResizeFailure",
                               vulkanlog::Severity::kError,

@@ -261,6 +261,8 @@ private:
   std::vector<VkImageView> mVKSwapchainImageViews;
   std::vector<VkImageLayout> mVKImageLayouts;
   std::vector<sk_sp<SkSurface>> mVKSwapchainSurfaces;
+  int mVKSwapchainWidth = 0;
+  int mVKSwapchainHeight = 0;
   uint32_t mVKCurrentImage = kInvalidImageIndex;
   VkSemaphore mVKImageAvailableSemaphore = VK_NULL_HANDLE;
   VkSemaphore mVKRenderFinishedSemaphore = VK_NULL_HANDLE;

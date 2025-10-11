@@ -99,6 +99,7 @@ float GetHostScaleForWindow(HWND hwnd)
 #if IGRAPHICS_DPI_LOGGING
 using GetDpiForMonitorProc = HRESULT(WINAPI*)(HMONITOR, int, UINT*, UINT*);
 constexpr int kMonitorDpiTypeEffective = 0;
+constexpr int kMonitorDpiTypeRaw = 2;
 
 float GetPhysicalScaleForWindow(HWND hwnd)
 {
@@ -113,6 +114,11 @@ float GetPhysicalScaleForWindow(HWND hwnd)
     {
       UINT dpiX = 0;
       UINT dpiY = 0;
+      if (SUCCEEDED(getDpiForMonitor(monitor, kMonitorDpiTypeRaw, &dpiX, &dpiY)) && dpiX > 0)
+      {
+        return static_cast<float>(dpiX) / USER_DEFAULT_SCREEN_DPI;
+      }
+
       if (SUCCEEDED(getDpiForMonitor(monitor, kMonitorDpiTypeEffective, &dpiX, &dpiY)) && dpiX > 0)
       {
         return static_cast<float>(dpiX) / USER_DEFAULT_SCREEN_DPI;

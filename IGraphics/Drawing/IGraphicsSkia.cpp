@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <map>
 #include <type_traits>
 #include <utility>
@@ -68,10 +69,39 @@
 #include "include/gpu/ganesh/SkSurfaceGanesh.h"
 
 namespace {
-#if defined OS_WIN && IGRAPHICS_SKIA_FORCE_DEVICE_SCALE_MILLIS > 0
-constexpr float kForcedRenderScale = static_cast<float>(IGRAPHICS_SKIA_FORCE_DEVICE_SCALE_MILLIS) / 1000.f;
-#elif defined OS_WIN
-constexpr float kForcedRenderScale = 0.f;
+#if defined OS_WIN
+#if IGRAPHICS_SKIA_FORCE_DEVICE_SCALE_MILLIS > 0
+constexpr float kCompileTimeForcedRenderScale =
+  static_cast<float>(IGRAPHICS_SKIA_FORCE_DEVICE_SCALE_MILLIS) / 1000.f;
+#else
+constexpr float kCompileTimeForcedRenderScale = 0.f;
+#endif
+
+float ResolveForcedRenderScale()
+{
+  static bool sInitialized = false;
+  static float sForcedScale = kCompileTimeForcedRenderScale;
+
+  if (!sInitialized)
+  {
+    sInitialized = true;
+
+    if (sForcedScale <= 0.f)
+    {
+      if (const char* env = std::getenv("IGRAPHICS_SKIA_FORCE_DEVICE_SCALE"))
+      {
+        char* end = nullptr;
+        const double parsed = std::strtod(env, &end);
+        if (end != env && std::isfinite(parsed) && parsed > 0.0)
+        {
+          sForcedScale = static_cast<float>(parsed);
+        }
+      }
+    }
+  }
+
+  return sForcedScale;
+}
 #endif
 } // namespace
 
@@ -419,8 +449,9 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
 #if defined OS_WIN
 float IGraphicsSkia::GetRenderScale() const
 {
-  if (kForcedRenderScale > 0.f)
-    return kForcedRenderScale;
+  const float forcedScale = ResolveForcedRenderScale();
+  if (forcedScale > 0.f)
+    return forcedScale;
   return GetScreenScale();
 }
 #else

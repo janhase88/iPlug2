@@ -68,7 +68,6 @@
 #include "include/gpu/GrBackendSemaphore.h"
 #include "include/gpu/GrBackendSurface.h"
 #include "include/gpu/ganesh/SkSurfaceGanesh.h"
-#include "include/gpu/ganesh/SkSurfaces.h"
 
 namespace {
 #if defined OS_WIN

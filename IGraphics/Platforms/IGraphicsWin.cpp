@@ -34,7 +34,7 @@
 #endif
 
 #define WDL_WIN32_HIDPI_IMPL
-#include "WDL/win32_hidpi.h"
+#include "win32_hidpi.h"
 #undef WDL_WIN32_HIDPI_IMPL
 
 #include <VersionHelpers.h>

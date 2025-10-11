@@ -68,14 +68,35 @@ static double sFPS = 0.0;
 #define WM_VBLANK (WM_USER + 1)
 #define WM_VBLANK_TICK WM_VBLANK
 
-extern float GetScaleForHWND(HWND hWnd);
-
 namespace iplug::igraphics
 {
 
-#if IGRAPHICS_DPI_LOGGING
 namespace
 {
+float GetHostScaleForWindow(HWND hwnd)
+{
+  static HMODULE user32 = LoadLibraryW(L"user32.dll");
+  static UINT(WINAPI * getDpiForWindow)(HWND) =
+    user32 ? reinterpret_cast<UINT(WINAPI*)(HWND)>(GetProcAddress(user32, "GetDpiForWindow")) : nullptr;
+
+  if (getDpiForWindow)
+  {
+    const UINT dpi = getDpiForWindow(hwnd ? hwnd : GetDesktopWindow());
+
+    if (dpi > 0)
+    {
+      float scale = static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI;
+#if defined IGRAPHICS_QUANTISE_SCREENSCALE
+      scale = std::round(scale);
+#endif
+      return scale;
+    }
+  }
+
+  return 1.f;
+}
+
+#if IGRAPHICS_DPI_LOGGING
 using GetDpiForMonitorProc = HRESULT(WINAPI*)(HMONITOR, int, UINT*, UINT*);
 constexpr int kMonitorDpiTypeEffective = 0;
 
@@ -99,12 +120,12 @@ float GetPhysicalScaleForWindow(HWND hwnd)
     }
   }
 
-  return GetScaleForHWND(hwnd);
+  return GetHostScaleForWindow(hwnd);
 }
 
 void LogDpiSnapshot(const char* stage, HWND hwnd, const IGraphicsWin& win, float hostScaleOverride = 0.f)
 {
-  const float hostScale = hostScaleOverride > 0.f ? hostScaleOverride : GetScaleForHWND(hwnd);
+  const float hostScale = hostScaleOverride > 0.f ? hostScaleOverride : GetHostScaleForWindow(hwnd);
   const float physicalScale = GetPhysicalScaleForWindow(hwnd);
   const float screenScale = win.GetScreenScale();
   const float drawScale = win.GetDrawScale();
@@ -129,10 +150,10 @@ void LogDpiSnapshot(const char* stage, HWND hwnd, const IGraphicsWin& win, float
                       physicalScale,
                       virtualization);
 }
-} // namespace
 #else
 inline void LogDpiSnapshot(const char*, HWND, const IGraphicsWin&, float = 0.f) {}
 #endif
+} // namespace
 
 struct VBlankSubscription
 {
@@ -2246,7 +2267,7 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
   // TODO: move this... listen to the right messages in windows for screen resolution changes, etc.
   if (!GetCapture()) // workaround Windows issues with window sizing during mouse move
   {
-    float scale = GetScaleForHWND(mPlugWnd);
+    float scale = GetHostScaleForWindow(mPlugWnd);
     if (scale != GetScreenScale())
       SetScreenScale(scale);
   }
@@ -4277,7 +4298,7 @@ EMsgBoxResult IGraphicsWin::ShowMessageBox(const char* str, const char* title, E
 void* IGraphicsWin::OpenWindow(void* pParent)
 {
   mParentWnd = (HWND)pParent;
-  const float screenScale = GetScaleForHWND(mParentWnd);
+  const float screenScale = GetHostScaleForWindow(mParentWnd);
   const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * screenScale));
   const int scaledHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * screenScale));
   int x = 0;

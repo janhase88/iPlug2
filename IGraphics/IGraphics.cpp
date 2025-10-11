@@ -2147,8 +2147,10 @@ void IGraphics::StartLayer(IControl* pControl, const IRECT& r, bool cacheable, i
   IRECT alignedBounds = r.GetPixelAligned(pixelBackingScale);
   const int w = static_cast<int>(std::ceil(pixelBackingScale * std::ceil(alignedBounds.W())));
   const int h = static_cast<int>(std::ceil(pixelBackingScale * std::ceil(alignedBounds.H())));
+  const float drawScale = GetDrawScale();
+  const float bitmapScale = drawScale != 0.f ? pixelBackingScale / drawScale : 0.f;
 
-  PushLayer(new ILayer(CreateAPIBitmap(w, h, GetScreenScale(), GetDrawScale(), cacheable, MSAASampleCount), alignedBounds, pControl, pControl ? pControl->GetRECT() : IRECT()));
+  PushLayer(new ILayer(CreateAPIBitmap(w, h, bitmapScale, drawScale, cacheable, MSAASampleCount), alignedBounds, pControl, pControl ? pControl->GetRECT() : IRECT()));
 }
 
 void IGraphics::ResumeLayer(ILayerPtr& layer)
@@ -2206,7 +2208,10 @@ bool IGraphics::CheckLayer(const ILayerPtr& layer)
     layer->Invalidate();
   }
 
-  return pBitmap && !layer->mInvalid && pBitmap->GetDrawScale() == GetDrawScale() && pBitmap->GetScale() == GetScreenScale();
+  const float drawScale = GetDrawScale();
+  const float expectedScale = drawScale != 0.f ? GetBackingPixelScale() / drawScale : 0.f;
+
+  return pBitmap && !layer->mInvalid && pBitmap->GetDrawScale() == drawScale && pBitmap->GetScale() == expectedScale;
 }
 
 void IGraphics::DrawLayer(const ILayerPtr& layer, const IBlend* pBlend)

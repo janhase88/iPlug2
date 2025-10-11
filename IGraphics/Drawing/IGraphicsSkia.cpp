@@ -67,6 +67,14 @@
 #include "include/gpu/GrBackendSurface.h"
 #include "include/gpu/ganesh/SkSurfaceGanesh.h"
 
+namespace {
+#if defined OS_WIN && IGRAPHICS_SKIA_FORCE_DEVICE_SCALE_MILLIS > 0
+constexpr float kForcedRenderScale = static_cast<float>(IGRAPHICS_SKIA_FORCE_DEVICE_SCALE_MILLIS) / 1000.f;
+#elif defined OS_WIN
+constexpr float kForcedRenderScale = 0.f;
+#endif
+} // namespace
+
 #if defined OS_MAC || defined OS_IOS
   #include "include/utils/mac/SkCGUtils.h"
   #if defined IGRAPHICS_GL2
@@ -312,6 +320,14 @@ VkImageView IGraphicsSkia::EnsureSwapchainImageView(uint32_t imageIndex, VkImage
 
 sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int width, int height, const GrVkImageInfo& imageInfo)
 {
+  IGRAPHICS_DPI_TRACE("IGraphicsSkia[DPI] EnsureSwapchainSurface image=%u requested=%dx%d screenScale=%.3f drawScale=%.3f renderScale=%.3f\n",
+                      imageIndex,
+                      width,
+                      height,
+                      GetScreenScale(),
+                      GetDrawScale(),
+                      GetRenderScale());
+
   GrVkImageInfo localInfo = imageInfo;
   if (imageIndex >= mVKSwapchainSurfaces.size())
   {
@@ -345,6 +361,10 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
   {
     if (cachedSurface->width() == width && cachedSurface->height() == height)
     {
+      IGRAPHICS_DPI_TRACE("IGraphicsSkia[DPI] EnsureSwapchainSurface reuse image=%u cached=%dx%d\n",
+                          imageIndex,
+                          cachedSurface->width(),
+                          cachedSurface->height());
       auto backendRT = GrBackendRenderTargets::MakeVk(width, height, localInfo);
       if (backendRT.isValid())
       {
@@ -389,8 +409,26 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
                         vulkanlog::MakeHandleField("imageView", vulkanlog::HandleToUint64(loggedImageView)),
                         vulkanlog::MakeField("width", width),
                         vulkanlog::MakeField("height", height));
+  IGRAPHICS_DPI_TRACE("IGraphicsSkia[DPI] EnsureSwapchainSurface created image=%u surface=%dx%d\n",
+                      imageIndex,
+                      cachedSurface->width(),
+                      cachedSurface->height());
   return cachedSurface;
 }
+
+#if defined OS_WIN
+float IGraphicsSkia::GetRenderScale() const
+{
+  if (kForcedRenderScale > 0.f)
+    return kForcedRenderScale;
+  return GetScreenScale();
+}
+#else
+float IGraphicsSkia::GetRenderScale() const
+{
+  return GetScreenScale();
+}
+#endif
 
 // Lazily create and reuse a single command pool/primary command buffer for the frame loop.
 // The pool is reset when BeginFrame starts recording, eliminating vkCreate/vkAllocate churn
@@ -758,6 +796,12 @@ IGraphicsSkia::Bitmap::Bitmap(sk_sp<SkSurface> surface, int width, int height, f
   mDrawable.mSurface = surface;
   mDrawable.mIsSurface = true;
 
+  IGRAPHICS_DPI_TRACE("IGraphicsSkia[DPI] BitmapSurface width=%d height=%d scale=%.3f drawScale=%.3f\n",
+                      width,
+                      height,
+                      scale,
+                      drawScale);
+
   SetBitmap(&mDrawable, width, height, scale, drawScale);
 }
 
@@ -773,6 +817,10 @@ IGraphicsSkia::Bitmap::Bitmap(const char* path, double sourceScale)
   mDrawable.mImage = std::move(image);
 
   mDrawable.mIsSurface = false;
+  IGRAPHICS_DPI_TRACE("IGraphicsSkia[DPI] BitmapData width=%d height=%d scale=%.3f\n",
+                      mDrawable.mImage->width(),
+                      mDrawable.mImage->height(),
+                      static_cast<float>(sourceScale));
   SetBitmap(&mDrawable, mDrawable.mImage->width(), mDrawable.mImage->height(), sourceScale, 1.f);
 }
 
@@ -785,6 +833,10 @@ IGraphicsSkia::Bitmap::Bitmap(const void* pData, int size, double sourceScale)
   mDrawable.mImage = std::move(image);
 
   mDrawable.mIsSurface = false;
+  IGRAPHICS_DPI_TRACE("IGraphicsSkia[DPI] BitmapPath width=%d height=%d scale=%.3f\n",
+                      mDrawable.mImage->width(),
+                      mDrawable.mImage->height(),
+                      static_cast<float>(sourceScale));
   SetBitmap(&mDrawable, mDrawable.mImage->width(), mDrawable.mImage->height(), sourceScale, 1.f);
 }
 
@@ -792,6 +844,10 @@ IGraphicsSkia::Bitmap::Bitmap(sk_sp<SkImage> image, double sourceScale)
 {
   mDrawable.mImage = EnsureRasterImage(std::move(image));
 
+  IGRAPHICS_DPI_TRACE("IGraphicsSkia[DPI] BitmapImage width=%d height=%d scale=%.3f\n",
+                      mDrawable.mImage->width(),
+                      mDrawable.mImage->height(),
+                      static_cast<float>(sourceScale));
   SetBitmap(&mDrawable, mDrawable.mImage->width(), mDrawable.mImage->height(), sourceScale, 1.f);
 }
 
@@ -1306,8 +1362,21 @@ bool IGraphicsSkia::AssertValidSwapchainImage(VkImage image, const char* context
 void IGraphicsSkia::DrawResize()
 {
   ScopedGraphicsContext scopedGLContext{this};
-  auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * GetScreenScale()));
-  auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * GetScreenScale()));
+  const float screenScale = GetScreenScale();
+  const float renderScale = GetRenderScale();
+  const bool forcedScale = std::fabs(renderScale - screenScale) > 0.0001f;
+  auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * renderScale));
+  auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * renderScale));
+
+  IGRAPHICS_DPI_TRACE("IGraphicsSkia[DPI] DrawResize logical=%dx%d screenScale=%.3f drawScale=%.3f renderScale=%.3f forced=%d target=%dx%d\n",
+                      WindowWidth(),
+                      WindowHeight(),
+                      screenScale,
+                      GetDrawScale(),
+                      renderScale,
+                      forcedScale ? 1 : 0,
+                      w,
+                      h);
 #if defined IGRAPHICS_VULKAN
   IGRAPHICS_VK_LOG("DrawResize",
                       "begin",
@@ -1581,8 +1650,8 @@ void IGraphicsSkia::BeginFrame()
 #if defined IGRAPHICS_GL
   if (mGrContext.get())
   {
-    int width = WindowWidth() * GetScreenScale();
-    int height = WindowHeight() * GetScreenScale();
+    int width = static_cast<int>(WindowWidth() * GetRenderScale());
+    int height = static_cast<int>(WindowHeight() * GetRenderScale());
 
     // Bind to the current main framebuffer
     int fbo = 0, samples = 0, stencilBits = 0;
@@ -1606,8 +1675,8 @@ void IGraphicsSkia::BeginFrame()
 #elif defined IGRAPHICS_METAL
   if (mGrContext.get())
   {
-    int width = WindowWidth() * GetScreenScale();
-    int height = WindowHeight() * GetScreenScale();
+    int width = static_cast<int>(WindowWidth() * GetRenderScale());
+    int height = static_cast<int>(WindowHeight() * GetRenderScale());
 
     id<CAMetalDrawable> drawable = [(CAMetalLayer*)mMTLLayer nextDrawable];
 
@@ -1635,8 +1704,16 @@ void IGraphicsSkia::BeginFrame()
       return;
     }
 
-    int width = WindowWidth() * GetScreenScale();
-    int height = WindowHeight() * GetScreenScale();
+    int width = static_cast<int>(WindowWidth() * GetRenderScale());
+    int height = static_cast<int>(WindowHeight() * GetRenderScale());
+    IGRAPHICS_DPI_TRACE("IGraphicsSkia[DPI] BeginFrame swapchain logical=%dx%d render=%dx%d screenScale=%.3f renderScale=%.3f images=%zu\n",
+                        WindowWidth(),
+                        WindowHeight(),
+                        width,
+                        height,
+                        GetScreenScale(),
+                        GetRenderScale(),
+                        mVKSwapchainImages.size());
     if (mVKSubmissionPending)
     {
       IGRAPHICS_VK_LOG("BeginFrame",
@@ -2769,6 +2846,14 @@ void IGraphicsSkia::SetClipRegion(const IRECT& r)
 
 APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, double drawScale, bool cacheable, int MSAASampleCount)
 {
+  IGRAPHICS_DPI_TRACE("IGraphicsSkia[DPI] CreateAPIBitmap width=%d height=%d scale=%.3f drawScale=%.3f cacheable=%d msaa=%d\n",
+                      width,
+                      height,
+                      scale,
+                      drawScale,
+                      cacheable ? 1 : 0,
+                      MSAASampleCount);
+
   sk_sp<SkSurface> surface;
   SkImageInfo info = SkImageInfo::MakeN32Premul(width, height);
 

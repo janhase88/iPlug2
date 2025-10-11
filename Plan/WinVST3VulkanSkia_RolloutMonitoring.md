@@ -39,3 +39,7 @@ This document describes the telemetry hooks and alert thresholds that must be wi
 - When repeated `vblank_pause_alert` events trigger, capture HUD telemetry and consider disabling Adaptive pacing for the affected host using the console or configuration override.
 - Always attach the latest log excerpt, HUD screenshot, and host version when filing tickets so engineers can correlate with telemetry snapshots.
 
+## 7. DPI Instrumentation Notes
+- `IGraphicsWin[DPI]` traces report host vs physical DPI, virtualization ratios, and resize deltas. Capture these alongside `/IGRAPHICS/SCHED/*` logs whenever investigating scale issues.【F:IGraphics/Platforms/IGraphicsWin.cpp†L58-L116】【F:IGraphics/Platforms/IGraphicsWin.cpp†L3490-L3532】
+- `IGraphicsSkia[DPI]` traces log swapchain requests, reuse decisions, and bitmap allocations; monitor them when forced device-pixel ratios (`IGRAPHICS_SKIA_FORCE_DEVICE_SCALE_MILLIS`) are enabled to validate crisp rendering.【F:IGraphics/Drawing/IGraphicsSkia.cpp†L1307-L1336】【F:IGraphics/Drawing/IGraphicsSkia.cpp†L313-L385】【F:IGraphics/Drawing/IGraphicsSkia.cpp†L2727-L2762】
+

@@ -1,16 +1,23 @@
 [x] Continued From Previous Snapshot: YES — Continuing Vulkan/Skia hardening focus while adding implementation-phase tasking.
 -----------------
 [x] File Overview:
-- Num files Changed: 4
+- Num files Changed: 11
 - Num files Created: 0
-- Num lines Modified: 60
+- Num lines Modified: n/a (instrumentation and documentation updates)
 
 [x] List of Files changed/created:
 - Changed:
+  - IGraphics/IGraphicsConstants.h
+  - IGraphics/IGraphics.cpp
   - IGraphics/Platforms/IGraphicsWin.cpp
-  - IGraphics/Platforms/IGraphicsWin.h
-  - Plan/Current-Plan.xml
+  - IGraphics/Drawing/IGraphicsSkia.h
+  - IGraphics/Drawing/IGraphicsSkia.cpp
   - Plan/Plan-Summary.md
+  - Plan/WinVST3VulkanSkia_CurrentState.md
+  - Plan/WinVST3VulkanSkia_FinalReview.md
+  - Plan/WinVST3VulkanSkia_RolloutMonitoring.md
+  - Plan/WinVST3VulkanSkia_ValidationChecklist.md
+  - AgentChat.md
 
 -----------------
 [x] Current plan:
@@ -84,4 +91,4 @@
   - Restore VBlank worker visibility and subscription safety on MSVC — PREVIOUS STATUS: N/A / CURRENT STATUS: OPEN (worker must move into igraphics and shared_ptr updates need mutex protection before MSVC build will pass)
 
 [x] Message to User:
-Reopening the Windows scheduler regression follow-up: Host idle telemetry is unblocked, but the VBlank dispatch worker still needs to move into the igraphics namespace, replace atomic shared_ptr usage with a mutex-guarded subscription, and align scheduler logging calls so MSVC can compile.
+DPI instrumentation and the forced Skia DPR toggle are in place—grab a fresh build to record the new `IGraphicsWin[DPI]` / `IGraphicsSkia[DPI]` logs and try a 1.5× render-scale run so we can see whether crispness improves before digging into the Vulkan renderpass.

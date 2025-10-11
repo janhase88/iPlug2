@@ -71,6 +71,67 @@ static double sFPS = 0.0;
 namespace iplug::igraphics
 {
 
+#if IGRAPHICS_DPI_LOGGING
+namespace
+{
+using GetDpiForMonitorProc = HRESULT(WINAPI*)(HMONITOR, int, UINT*, UINT*);
+constexpr int kMonitorDpiTypeEffective = 0;
+
+float GetPhysicalScaleForWindow(HWND hwnd)
+{
+  static HMODULE shcore = LoadLibraryW(L"shcore.dll");
+  static GetDpiForMonitorProc getDpiForMonitor =
+    shcore ? reinterpret_cast<GetDpiForMonitorProc>(GetProcAddress(shcore, "GetDpiForMonitor")) : nullptr;
+
+  if (getDpiForMonitor)
+  {
+    HMONITOR monitor = MonitorFromWindow(hwnd ? hwnd : GetDesktopWindow(), MONITOR_DEFAULTTONEAREST);
+    if (monitor)
+    {
+      UINT dpiX = 0;
+      UINT dpiY = 0;
+      if (SUCCEEDED(getDpiForMonitor(monitor, kMonitorDpiTypeEffective, &dpiX, &dpiY)) && dpiX > 0)
+      {
+        return static_cast<float>(dpiX) / USER_DEFAULT_SCREEN_DPI;
+      }
+    }
+  }
+
+  return GetScaleForHWND(hwnd);
+}
+
+void LogDpiSnapshot(const char* stage, HWND hwnd, const IGraphicsWin& win, float hostScaleOverride = 0.f)
+{
+  const float hostScale = hostScaleOverride > 0.f ? hostScaleOverride : GetScaleForHWND(hwnd);
+  const float physicalScale = GetPhysicalScaleForWindow(hwnd);
+  const float screenScale = win.GetScreenScale();
+  const float drawScale = win.GetDrawScale();
+  const float backingScale = win.GetBackingPixelScale();
+  const float virtualization = (hostScale > 0.f) ? (physicalScale / hostScale) : 0.f;
+  const int logicalW = win.WindowWidth();
+  const int logicalH = win.WindowHeight();
+  const int pixelW = static_cast<int>(std::round(static_cast<float>(logicalW) * screenScale));
+  const int pixelH = static_cast<int>(std::round(static_cast<float>(logicalH) * screenScale));
+
+  IGRAPHICS_DPI_TRACE("IGraphicsWin[DPI] %s hwnd=%p logical=%dx%d pixels=%dx%d screenScale=%.3f drawScale=%.3f backing=%.3f hostScale=%.3f physicalScale=%.3f virtualization=%.3f\n",
+                      stage,
+                      hwnd,
+                      logicalW,
+                      logicalH,
+                      pixelW,
+                      pixelH,
+                      screenScale,
+                      drawScale,
+                      backingScale,
+                      hostScale,
+                      physicalScale,
+                      virtualization);
+}
+} // namespace
+#else
+inline void LogDpiSnapshot(const char*, HWND, const IGraphicsWin&, float = 0.f) {}
+#endif
+
 struct VBlankSubscription
 {
   IGraphicsWin* owner = nullptr;
@@ -3480,6 +3541,9 @@ static UINT SETPOS_FLAGS = SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE;
 
 void IGraphicsWin::PlatformResize(bool parentHasResized)
 {
+  const char* stage = parentHasResized ? "PlatformResize-host" : "PlatformResize-local";
+  LogDpiSnapshot(stage, mPlugWnd ? mPlugWnd : mParentWnd, *this);
+
   if (WindowIsOpen())
   {
     HWND pParent = 0, pGrandparent = 0;
@@ -3498,6 +3562,14 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
         GetWindowSize(pGrandparent, &grandparentW, &grandparentH);
       }
     }
+
+    IGRAPHICS_DPI_TRACE("IGraphicsWin[DPI] PlatformResize delta=%dx%d parentHasResized=%d hwnd=%p parent=%p grandparent=%p\n",
+                        dw,
+                        dh,
+                        parentHasResized ? 1 : 0,
+                        mPlugWnd,
+                        pParent,
+                        pGrandparent);
 
     if (!dw && !dh)
       return;
@@ -4213,6 +4285,18 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   int w = scaledWidth;
   int h = scaledHeight;
 
+  IGRAPHICS_DPI_TRACE("IGraphicsWin[DPI] OpenWindow request parent=%p logical=%dx%d hostScale=%.3f scaled=%dx%d\n",
+                      mParentWnd,
+                      WindowWidth(),
+                      WindowHeight(),
+                      screenScale,
+                      scaledWidth,
+                      scaledHeight);
+  if (mParentWnd)
+  {
+    LogDpiSnapshot("OpenWindow-parent", mParentWnd, *this, screenScale);
+  }
+
   if (mPlugWnd)
   {
     RECT pR, cR;
@@ -4270,6 +4354,11 @@ void* IGraphicsWin::OpenWindow(void* pParent)
 #endif
 
   SetScreenScale(screenScale); // resizes draw context
+
+  if (mPlugWnd)
+  {
+    LogDpiSnapshot("OpenWindow-child", mPlugWnd, *this, screenScale);
+  }
 
   GetDelegate()->LayoutUI(this);
 

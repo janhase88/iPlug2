@@ -25,6 +25,7 @@
 ## Host integration and scaling
 - The VST3 view class accepts `kPlatformTypeHWND`, opens the editor window, and mirrors host-driven resize requests into `IGraphicsWin::OnParentWindowResize()` only when host resizing is enabled.【F:IPlug/VST3/IPlugVST3_View.h†L41-L130】
 - `setContentScaleFactor()` directly updates the editor's screen scale so DPI changes propagate before the next render tick.【F:IPlug/VST3/IPlugVST3_View.h†L140-L145】
+- New DPI instrumentation traces `IGraphicsWin[DPI]` emit host, physical, and virtualization ratios when windows open or resize, while `IGraphicsSkia[DPI]` logs swapchain extents and bitmap scale/drawScale pairs. A compile-time flag (`IGRAPHICS_SKIA_FORCE_DEVICE_SCALE_MILLIS`) now allows forcing the Skia render scale (e.g. 1500 = 1.5×) to validate crispness independent of host hints.【F:IGraphics/Platforms/IGraphicsWin.cpp†L58-L116】【F:IGraphics/Platforms/IGraphicsWin.cpp†L3490-L3532】【F:IGraphics/Drawing/IGraphicsSkia.cpp†L25-L40】【F:IGraphics/Drawing/IGraphicsSkia.cpp†L1307-L1336】【F:IGraphics/Drawing/IGraphicsSkia.cpp†L313-L385】【F:IGraphics/Drawing/IGraphicsSkia.cpp†L2727-L2762】
 
 ## Idle/timer interaction
 - `IPlugAPIBase::CreateTimer()` (not shown) provisions a 20 Hz UI timer; `OnTimer()` drains MIDI/parameter queues on the UI thread and always calls `OnIdle()` so DSP/editor synchronization keeps running even if rendering is throttled.【F:IPlug/IPlugAPIBase.cpp†L134-L195】

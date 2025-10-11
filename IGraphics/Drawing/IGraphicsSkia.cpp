@@ -19,12 +19,19 @@
 #include "include/core/SkData.h"
 #include "include/core/SkColorSpace.h"
 #include "include/core/SkMaskFilter.h"
+#include "include/core/SkPaint.h"
 #include "include/core/SkPathEffect.h"
 #include "include/core/SkPixmap.h"
 #include "include/core/SkSwizzle.h"
 #include "include/core/SkTypeface.h"
 #include "include/core/SkVertices.h"
 #include "include/core/SkImage.h"
+#if defined(__has_include)
+  #if __has_include("include/core/SkSamplingOptions.h")
+    #include "include/core/SkSamplingOptions.h"
+    #define IGRAPHICS_HAS_SAMPLING_OPTIONS 1
+  #endif
+#endif
 
 #include "include/codec/SkCodec.h"
 
@@ -2318,7 +2325,33 @@ void IGraphicsSkia::EndFrame()
     return;
   }
   #endif
-  mSurface->draw(mScreenSurface->getCanvas(), 0.0, 0.0, nullptr);
+  if (mSurface && mScreenSurface)
+  {
+#if defined(IGRAPHICS_HAS_SAMPLING_OPTIONS) || (SK_MILESTONE >= 106)
+    SkSamplingOptions sampling(SkFilterMode::kNearest, SkMipmapMode::kNone);
+    sk_sp<SkImage> frameImage = mSurface->makeImageSnapshot();
+    if (frameImage)
+    {
+      mScreenSurface->getCanvas()->drawImage(frameImage, 0.f, 0.f, sampling);
+    }
+    else
+    {
+      mSurface->draw(mScreenSurface->getCanvas(), 0.f, 0.f, nullptr);
+    }
+#else
+    SkPaint blitPaint;
+    blitPaint.setFilterQuality(kNone_SkFilterQuality);
+    sk_sp<SkImage> frameImage = mSurface->makeImageSnapshot();
+    if (frameImage)
+    {
+      mScreenSurface->getCanvas()->drawImage(frameImage, 0.f, 0.f, &blitPaint);
+    }
+    else
+    {
+      mSurface->draw(mScreenSurface->getCanvas(), 0.f, 0.f, nullptr);
+    }
+#endif
+  }
 
   #if defined IGRAPHICS_VULKAN
   if (auto dContext = GrAsDirectContext(mScreenSurface->getCanvas()->recordingContext()))

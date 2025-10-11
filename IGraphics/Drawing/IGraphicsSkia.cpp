@@ -2590,7 +2590,7 @@ void IGraphicsSkia::DrawBitmap(const IBitmap& bitmap, const IRECT& dest, int src
   mCanvas->translate(-srcX * scale2, -srcY * scale2);
 
   if (image->mIsSurface)
-    image->mSurface->draw(mCanvas, 0.0, 0.0, nullptr, &p);
+    image->mSurface->draw(mCanvas, 0.0f, 0.0f, &p);
   else
     mCanvas->drawImage(image->mImage, 0.0, 0.0, SkSamplingOptions(), &p);
 

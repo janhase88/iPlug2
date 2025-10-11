@@ -106,10 +106,11 @@ struct WindowDpiScales
   float hostScale = 1.f;
   float physicalScale = 1.f;
   float virtualization = 1.f;
+  float effectiveScale = 0.f;
   float rawScale = 0.f;
 };
 
-float QueryMonitorRawScale(HWND hwnd)
+float QueryMonitorScale(HWND hwnd, int type)
 {
   static HMODULE shcore = LoadLibraryW(L"shcore.dll");
   static GetDpiForMonitorProc getDpiForMonitor =
@@ -125,17 +126,25 @@ float QueryMonitorRawScale(HWND hwnd)
   UINT dpiX = 0;
   UINT dpiY = 0;
 
-  if (SUCCEEDED(getDpiForMonitor(monitor, kMonitorDpiTypeRaw, &dpiX, &dpiY)) && dpiX > 0)
-  {
-    return static_cast<float>(dpiX) / USER_DEFAULT_SCREEN_DPI;
-  }
-
-  if (SUCCEEDED(getDpiForMonitor(monitor, kMonitorDpiTypeEffective, &dpiX, &dpiY)) && dpiX > 0)
+  if (SUCCEEDED(getDpiForMonitor(monitor, type, &dpiX, &dpiY)) && dpiX > 0)
   {
     return static_cast<float>(dpiX) / USER_DEFAULT_SCREEN_DPI;
   }
 
   return 0.f;
+}
+
+float QueryMonitorEffectiveScale(HWND hwnd)
+{
+  return QueryMonitorScale(hwnd, kMonitorDpiTypeEffective);
+}
+
+float QueryMonitorRawScale(HWND hwnd)
+{
+  float raw = QueryMonitorScale(hwnd, kMonitorDpiTypeRaw);
+  if (raw <= 0.f)
+    raw = QueryMonitorScale(hwnd, kMonitorDpiTypeEffective);
+  return raw;
 }
 
 float QueryMonitorVirtualization(HWND hwnd)
@@ -181,8 +190,15 @@ WindowDpiScales GatherWindowDpiScales(HWND hwnd, float hostScaleOverride = 0.f)
   if (scales.hostScale <= 0.f)
     scales.hostScale = 1.f;
 
+  scales.effectiveScale = QueryMonitorEffectiveScale(hwnd);
   scales.rawScale = QueryMonitorRawScale(hwnd);
+
   float virtualization = QueryMonitorVirtualization(hwnd);
+
+  if (virtualization <= 0.f && scales.effectiveScale > 0.f && scales.hostScale > 0.f)
+  {
+    virtualization = scales.effectiveScale / scales.hostScale;
+  }
 
   if (virtualization <= 0.f && scales.rawScale > 0.f && scales.hostScale > 0.f)
   {
@@ -196,11 +212,11 @@ WindowDpiScales GatherWindowDpiScales(HWND hwnd, float hostScaleOverride = 0.f)
 
   scales.virtualization = virtualization;
 
-  if (scales.rawScale > 0.f)
+  if (scales.effectiveScale > 0.f)
   {
-    scales.physicalScale = scales.rawScale;
+    scales.physicalScale = scales.effectiveScale;
   }
-  else
+  else if (scales.hostScale > 0.f)
   {
     scales.physicalScale = scales.hostScale * virtualization;
   }
@@ -224,7 +240,7 @@ void LogDpiSnapshot(const char* stage, HWND hwnd, const IGraphicsWin& win, float
   const int pixelW = static_cast<int>(std::round(static_cast<float>(logicalW) * screenScale));
   const int pixelH = static_cast<int>(std::round(static_cast<float>(logicalH) * screenScale));
 
-  IGRAPHICS_DPI_TRACE("IGraphicsWin[DPI] %s hwnd=%p logical=%dx%d pixels=%dx%d screenScale=%.3f drawScale=%.3f backing=%.3f hostScale=%.3f physicalScale=%.3f virtualization=%.3f rawScale=%.3f\n",
+  IGRAPHICS_DPI_TRACE("IGraphicsWin[DPI] %s hwnd=%p logical=%dx%d pixels=%dx%d screenScale=%.3f drawScale=%.3f backing=%.3f hostScale=%.3f physicalScale=%.3f virtualization=%.3f effectiveScale=%.3f rawScale=%.3f\n",
                       stage,
                       hwnd,
                       logicalW,
@@ -237,6 +253,7 @@ void LogDpiSnapshot(const char* stage, HWND hwnd, const IGraphicsWin& win, float
                       scales.hostScale,
                       scales.physicalScale,
                       scales.virtualization,
+                      scales.effectiveScale,
                       scales.rawScale);
 }
 #else
@@ -2356,9 +2373,18 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
   // TODO: move this... listen to the right messages in windows for screen resolution changes, etc.
   if (!GetCapture()) // workaround Windows issues with window sizing during mouse move
   {
-    float scale = GetHostScaleForWindow(mPlugWnd);
-    if (scale != GetScreenScale())
-      SetScreenScale(scale);
+    const WindowDpiScales scales = GatherWindowDpiScales(mPlugWnd);
+    const float hostScale = scales.hostScale > 0.f ? scales.hostScale : 1.f;
+    const float physicalScale = scales.physicalScale > 0.f ? scales.physicalScale : hostScale;
+
+    const bool hostChanged = std::fabs(hostScale - mHostWindowScale) > 0.0001f;
+    const bool physicalChanged = std::fabs(physicalScale - GetScreenScale()) > 0.0001f;
+
+    if (hostChanged || physicalChanged)
+    {
+      mHostWindowScale = hostScale;
+      SetScreenScale(physicalScale);
+    }
   }
 
   // TODO: this is far too aggressive for slow drawing animations and data changing.  We need to
@@ -3659,7 +3685,10 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
     HWND pParent = 0, pGrandparent = 0;
     int dlgW = 0, dlgH = 0, parentW = 0, parentH = 0, grandparentW = 0, grandparentH = 0;
     GetWindowSize(mPlugWnd, &dlgW, &dlgH);
-    int dw = (WindowWidth() * GetScreenScale()) - dlgW, dh = (WindowHeight() * GetScreenScale()) - dlgH;
+    const int targetW = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * GetPlatformWindowScale()));
+    const int targetH = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * GetPlatformWindowScale()));
+    int dw = targetW - dlgW;
+    int dh = targetH - dlgH;
 
     if (IsChildWindow(mPlugWnd))
     {
@@ -4387,9 +4416,14 @@ EMsgBoxResult IGraphicsWin::ShowMessageBox(const char* str, const char* title, E
 void* IGraphicsWin::OpenWindow(void* pParent)
 {
   mParentWnd = (HWND)pParent;
-  const float screenScale = GetHostScaleForWindow(mParentWnd);
-  const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * screenScale));
-  const int scaledHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * screenScale));
+  const WindowDpiScales parentScales = GatherWindowDpiScales(mParentWnd);
+  const float hostScale = parentScales.hostScale > 0.f ? parentScales.hostScale : 1.f;
+  const float physicalScale = parentScales.physicalScale > 0.f ? parentScales.physicalScale : hostScale;
+
+  mHostWindowScale = hostScale;
+
+  const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * hostScale));
+  const int scaledHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * hostScale));
   int x = 0;
   int y = 0;
   int w = scaledWidth;
@@ -4399,12 +4433,12 @@ void* IGraphicsWin::OpenWindow(void* pParent)
                       mParentWnd,
                       WindowWidth(),
                       WindowHeight(),
-                      screenScale,
+                      hostScale,
                       scaledWidth,
                       scaledHeight);
   if (mParentWnd)
   {
-    LogDpiSnapshot("OpenWindow-parent", mParentWnd, *this, screenScale);
+    LogDpiSnapshot("OpenWindow-parent", mParentWnd, *this, hostScale);
   }
 
   if (mPlugWnd)
@@ -4463,11 +4497,11 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   #endif
 #endif
 
-  SetScreenScale(screenScale); // resizes draw context
+  SetScreenScale(physicalScale); // resizes draw context
 
   if (mPlugWnd)
   {
-    LogDpiSnapshot("OpenWindow-child", mPlugWnd, *this, screenScale);
+    LogDpiSnapshot("OpenWindow-child", mPlugWnd, *this, hostScale);
   }
 
   GetDelegate()->LayoutUI(this);

@@ -1541,15 +1541,20 @@ void IGraphicsSkia::DrawResize()
   ScopedGraphicsContext scopedGLContext{this};
   const float screenScale = GetScreenScale();
   const float renderScale = GetRenderScale();
-  const float presentationScale = GetPlatformWindowScale();
   const float virtualizationScale = GetWindowVirtualizationScale();
+  const float rawPresentationScale = GetPlatformWindowScale();
+  float presentationScale = rawPresentationScale;
+  if (virtualizationScale > 1.0001f)
+  {
+    presentationScale = rawPresentationScale / virtualizationScale;
+  }
   const bool forcedScale = std::fabs(renderScale - screenScale) > 0.0001f;
   const int renderW = std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * renderScale)));
   const int renderH = std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * renderScale)));
   const int presentW = std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * presentationScale)));
   const int presentH = std::max(1, static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * presentationScale)));
 
-  IGRAPHICS_DPI_TRACE("IGraphicsSkia[DPI] DrawResize logical=%dx%d screenScale=%.3f drawScale=%.3f renderScale=%.3f forced=%d renderTarget=%dx%d presentTarget=%dx%d virtualization=%.3f\n",
+  IGRAPHICS_DPI_TRACE("IGraphicsSkia[DPI] DrawResize logical=%dx%d screenScale=%.3f drawScale=%.3f renderScale=%.3f forced=%d renderTarget=%dx%d presentTarget=%dx%d hostPresentationScale=%.3f virtualization=%.3f\n",
                       WindowWidth(),
                       WindowHeight(),
                       screenScale,
@@ -1560,6 +1565,7 @@ void IGraphicsSkia::DrawResize()
                       renderH,
                       presentW,
                       presentH,
+                      rawPresentationScale,
                       virtualizationScale);
 
   int swapchainW = presentW;
@@ -2339,13 +2345,27 @@ void IGraphicsSkia::EndFrame()
   #endif
   if (mSurface && mScreenSurface)
   {
+    const float hostScale = GetPlatformWindowScale();
+    const float backingScale = GetBackingPixelScale();
+    float presentationDownscale = 1.f;
+    if (hostScale > 0.f && backingScale > hostScale + 0.0001f)
+    {
+      presentationDownscale = backingScale / hostScale;
+    }
+    if (presentationDownscale <= 0.f)
+    {
+      presentationDownscale = 1.f;
+    }
+    const SkScalar dstWidth = static_cast<SkScalar>(mScreenSurface->width()) / static_cast<SkScalar>(presentationDownscale);
+    const SkScalar dstHeight = static_cast<SkScalar>(mScreenSurface->height()) / static_cast<SkScalar>(presentationDownscale);
+    const SkRect dstRect = SkRect::MakeWH(dstWidth, dstHeight);
+
 #if defined(IGRAPHICS_HAS_SAMPLING_OPTIONS) || (SK_MILESTONE >= 106)
     SkSamplingOptions sampling(SkFilterMode::kNearest, SkMipmapMode::kNone);
     sk_sp<SkImage> frameImage = mSurface->makeImageSnapshot();
     if (frameImage)
     {
       const SkRect srcRect = SkRect::MakeWH(static_cast<float>(frameImage->width()), static_cast<float>(frameImage->height()));
-      const SkRect dstRect = SkRect::MakeWH(static_cast<float>(mScreenSurface->width()), static_cast<float>(mScreenSurface->height()));
       mScreenSurface->getCanvas()->drawImageRect(frameImage,
                                                 srcRect,
                                                 dstRect,
@@ -2356,8 +2376,8 @@ void IGraphicsSkia::EndFrame()
     else
     {
       SkCanvas* screenCanvas = mScreenSurface->getCanvas();
-      const SkScalar sx = static_cast<SkScalar>(mScreenSurface->width()) / static_cast<SkScalar>(mSurface->width());
-      const SkScalar sy = static_cast<SkScalar>(mScreenSurface->height()) / static_cast<SkScalar>(mSurface->height());
+      const SkScalar sx = dstWidth / static_cast<SkScalar>(mSurface->width());
+      const SkScalar sy = dstHeight / static_cast<SkScalar>(mSurface->height());
       screenCanvas->save();
       screenCanvas->scale(sx, sy);
       mSurface->draw(screenCanvas, 0.f, 0.f, nullptr);
@@ -2370,7 +2390,6 @@ void IGraphicsSkia::EndFrame()
     if (frameImage)
     {
       const SkRect srcRect = SkRect::MakeWH(static_cast<float>(frameImage->width()), static_cast<float>(frameImage->height()));
-      const SkRect dstRect = SkRect::MakeWH(static_cast<float>(mScreenSurface->width()), static_cast<float>(mScreenSurface->height()));
       mScreenSurface->getCanvas()->drawImageRect(frameImage.get(),
                                                 srcRect,
                                                 dstRect,
@@ -2380,8 +2399,8 @@ void IGraphicsSkia::EndFrame()
     else
     {
       SkCanvas* screenCanvas = mScreenSurface->getCanvas();
-      const SkScalar sx = static_cast<SkScalar>(mScreenSurface->width()) / static_cast<SkScalar>(mSurface->width());
-      const SkScalar sy = static_cast<SkScalar>(mScreenSurface->height()) / static_cast<SkScalar>(mSurface->height());
+      const SkScalar sx = dstWidth / static_cast<SkScalar>(mSurface->width());
+      const SkScalar sy = dstHeight / static_cast<SkScalar>(mSurface->height());
       screenCanvas->save();
       screenCanvas->scale(sx, sy);
       mSurface->draw(screenCanvas, 0.f, 0.f, nullptr);

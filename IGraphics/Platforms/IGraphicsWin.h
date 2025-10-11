@@ -193,7 +193,6 @@ private:
   float mHostWindowScale = 1.f;
   float mPhysicalWindowScale = 1.f;
   float mVirtualizationScale = 1.f;
-  float mInitialDrawScale = 1.f;
 
   /** Called either in response to WM_TIMER tick or user message WM_VBLANK, triggered by VSYNC thread
    * @param vBlankCount will allow redraws to get paced by the vblank message. Passing 0 is a WM_TIMER fallback.

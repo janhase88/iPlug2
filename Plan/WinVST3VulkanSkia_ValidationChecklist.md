@@ -11,7 +11,7 @@ This checklist captures the manual verification loops required before enabling t
 ## 2. DPI Instrumentation Capture
 - [ ] Build with `IGRAPHICS_DPI_LOGGING=1` (default) to capture `IGraphicsWin[DPI]` and `IGraphicsSkia[DPI]` traces.
 - [ ] Verify logs show `OpenWindow`, `PlatformResize`, and `EnsureSwapchainSurface` entries listing host/physical DPI, swapchain extents, and bitmap scales.
-- [ ] For forced-DPI experiments either set `IGRAPHICS_SKIA_FORCE_DEVICE_SCALE_MILLIS` in the Visual Studio project (Project Properties → C/C++ → Preprocessor → append `IGRAPHICS_SKIA_FORCE_DEVICE_SCALE_MILLIS=1500`) or export `IGRAPHICS_SKIA_FORCE_DEVICE_SCALE` before launching the host, then confirm the logs flag `forced=1` in `DrawResize` output before proceeding to host testing.
+- [ ] For forced-DPI experiments confirm the build uses the default `IGRAPHICS_SKIA_FORCE_DEVICE_SCALE_MILLIS=1500` (already defined in `common-win.props`/`IGraphicsConstants.h`) or override it as needed; ensure the logs flag `forced=1` in `DrawResize` before proceeding.
 
 ## 3. Baseline Capture
 - [ ] Launch a single plug-in instance in each host using the `Legacy` pacing mode.

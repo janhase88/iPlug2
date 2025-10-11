@@ -41,5 +41,5 @@ This document describes the telemetry hooks and alert thresholds that must be wi
 
 ## 7. DPI Instrumentation Notes
 - `IGraphicsWin[DPI]` traces report host vs physical DPI, virtualization ratios, and resize deltas. Capture these alongside `/IGRAPHICS/SCHED/*` logs whenever investigating scale issues.【F:IGraphics/Platforms/IGraphicsWin.cpp†L58-L116】【F:IGraphics/Platforms/IGraphicsWin.cpp†L3490-L3532】
-- `IGraphicsSkia[DPI]` traces log swapchain requests, reuse decisions, and bitmap allocations; monitor them when forced device-pixel ratios (compile-time `IGRAPHICS_SKIA_FORCE_DEVICE_SCALE_MILLIS` or runtime `IGRAPHICS_SKIA_FORCE_DEVICE_SCALE`) are enabled to validate crisp rendering.【F:IGraphics/Drawing/IGraphicsSkia.cpp†L1309-L1338】【F:IGraphics/Drawing/IGraphicsSkia.cpp†L313-L385】【F:IGraphics/Drawing/IGraphicsSkia.cpp†L2727-L2762】
+- `IGraphicsSkia[DPI]` traces log swapchain requests, reuse decisions, and bitmap allocations; monitor them now that the branch defaults `IGRAPHICS_SKIA_FORCE_DEVICE_SCALE_MILLIS=1500` (and optional runtime `IGRAPHICS_SKIA_FORCE_DEVICE_SCALE`) to validate crisp rendering.【F:IGraphics/Drawing/IGraphicsSkia.cpp†L1309-L1338】【F:IGraphics/Drawing/IGraphicsSkia.cpp†L313-L385】【F:IGraphics/Drawing/IGraphicsSkia.cpp†L2727-L2762】【F:IGraphics/IGraphicsConstants.h†L19-L23】【F:common-win.props†L27-L34】
 

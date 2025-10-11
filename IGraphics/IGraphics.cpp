@@ -11,6 +11,7 @@
 #include "IGraphics.h"
 
 #include <cinttypes>
+#include <cmath>
 
 #define NANOSVG_IMPLEMENTATION
 #pragma warning(disable:4244) // float conversion
@@ -2145,8 +2146,18 @@ void IGraphics::StartLayer(IControl* pControl, const IRECT& r, bool cacheable, i
 {
   auto pixelBackingScale = GetBackingPixelScale();
   IRECT alignedBounds = r.GetPixelAligned(pixelBackingScale);
-  const int w = static_cast<int>(std::ceil(pixelBackingScale * std::ceil(alignedBounds.W())));
-  const int h = static_cast<int>(std::ceil(pixelBackingScale * std::ceil(alignedBounds.H())));
+  const double scaledWidth = static_cast<double>(alignedBounds.W()) * static_cast<double>(pixelBackingScale);
+  const double scaledHeight = static_cast<double>(alignedBounds.H()) * static_cast<double>(pixelBackingScale);
+  int w = static_cast<int>(std::round(scaledWidth));
+  int h = static_cast<int>(std::round(scaledHeight));
+  if (w < 0)
+    w = 0;
+  if (h < 0)
+    h = 0;
+  if (w <= 0 && alignedBounds.W() > 0.0f)
+    w = 1;
+  if (h <= 0 && alignedBounds.H() > 0.0f)
+    h = 1;
   const float drawScale = GetDrawScale();
   const float bitmapScale = drawScale != 0.f ? pixelBackingScale / drawScale : 0.f;
 

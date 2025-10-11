@@ -8,7 +8,9 @@
 - [x] Emit `DBGMSG` telemetry from `GetScaleForHWND`/`IGraphicsWin` so every DPI query shows host DPI, virtualization ratio, and effective scale.
 - [x] Add Skia bitmap/surface diagnostics to track logical vs render pixels for each swapchain image.
 - [x] Promote the Vulkan logger to verbose mode and annotate swapchain extent selection so we can see when caps clamp the render target.
+- [x] Split host layout DPI from render DPI inside `IGraphicsWin`, expose the render scale to the backend, and update Skia/Vulkan surfaces to size themselves from the backing pixel scale instead of the logical host scale.
 
 ## Phase 3 – Validation 🚧
 - [ ] Run a Windows VST3 build at 100 % and 150 % scale, capture the new backend/Skia/Vulkan logs, and confirm the swapchain extent matches the physical pixels now that host vs. render DPI are separated.
-- [ ] If the swapchain still reports the virtual extent, trace through the captured logs to spot which stage falls back and decide on the next corrective action.
+- [ ] Verify that the editor HWND hierarchy remains at the host-reported logical size while the Skia/Vulkan render targets jump to the physical pixel dimensions (e.g. 1800×750 at 150 %).
+- [ ] If the swapchain still reports the virtual extent or the window resizes unexpectedly, trace through the new log fields to decide whether to adjust the render/layout split or dive into Skia image provider / Vulkan renderpass configuration next.

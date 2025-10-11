@@ -7,10 +7,10 @@
 
 [x] List of Files changed/created:
 - AgentChat.md
+- IGraphics/Drawing/IGraphicsSkia.cpp
 - IGraphics/Platforms/IGraphicsWin.cpp
 - IGraphics/Platforms/IGraphicsWin.h
 - Plan/plan.md
-- Plan/Plan-Summary.md
 
 -----------------
 [x] Current plan:
@@ -19,4 +19,4 @@
 - Phase 3 — PREVIOUS STATUS: OPEN / CURRENT STATUS: OPEN
 
 [x] Message to User:
-Host and render DPI are now separated on Windows: hosts keep seeing the virtual scale while the renderer allocates at the measured physical DPI, and every refresh logs both values. Please rebuild the Windows VST3 Skia/Vulkan target at 100 % and 150 %, capture the updated `RefreshPlatformScale`/`SwapchainExtent` lines, and confirm whether the swapchain extent now reaches the physical pixel size (e.g. 1800×750 at 150 %).
+Host layout and render DPI are now decoupled: Windows keeps the editor HWNDs at the host-reported logical size while Skia/Vulkan allocate surfaces using the backing pixel scale. Rebuild the Windows VST3 Skia/Vulkan target at 100 % and 150 %, capture the new `RefreshPlatformScale`, `DrawResize`, and `SwapchainRequest` logs, and confirm that the swapchain jumps to the physical pixel dimensions without the child window overflowing its parent.

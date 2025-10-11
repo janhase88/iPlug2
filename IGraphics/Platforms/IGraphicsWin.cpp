@@ -179,14 +179,15 @@ bool IGraphicsWin::ApplyWindowDpiScales(HWND hwnd, bool force)
   const float physicalScale = NormalizeScale(hostScale * virtualization, hostScale);
 
   if (!force && std::fabs(hostScale - mHostScale) < kScaleEpsilon &&
-      std::fabs(physicalScale - GetScreenScale()) < kScaleEpsilon)
+      std::fabs(physicalScale - mRenderScale) < kScaleEpsilon)
   {
     return false;
   }
 
   mHostScale = hostScale;
+  mRenderScale = physicalScale;
   LogDpiDebug("RefreshPlatformScale", hwnd, physicalScale);
-  SetScreenScale(physicalScale);
+  SetScreenScale(hostScale);
   return true;
 }
 
@@ -3599,11 +3600,15 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
 {
   if (WindowIsOpen())
   {
-    LogDpiDebug("PlatformResize", mPlugWnd, GetScreenScale());
+    LogDpiDebug("PlatformResize", mPlugWnd, GetRenderScale());
     HWND pParent = 0, pGrandparent = 0;
     int dlgW = 0, dlgH = 0, parentW = 0, parentH = 0, grandparentW = 0, grandparentH = 0;
     GetWindowSize(mPlugWnd, &dlgW, &dlgH);
-    int dw = (WindowWidth() * GetScreenScale()) - dlgW, dh = (WindowHeight() * GetScreenScale()) - dlgH;
+    const float layoutScale = GetPlatformWindowScale();
+    const int targetW = static_cast<int>(std::round(WindowWidth() * layoutScale));
+    const int targetH = static_cast<int>(std::round(WindowHeight() * layoutScale));
+    int dw = targetW - dlgW;
+    int dh = targetH - dlgH;
 
     if (IsChildWindow(mPlugWnd))
     {
@@ -4027,7 +4032,7 @@ bool IGraphicsWin::RecreateVulkanContext()
 VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
   uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format, VkImageUsageFlags& usage, bool& submissionPending)
 {
-  LogDpiDebug("SwapchainRequest", mPlugWnd, GetScreenScale());
+  LogDpiDebug("SwapchainRequest", mPlugWnd, GetRenderScale());
   IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
                       "request",
                       vulkanlog::Severity::kInfo,
@@ -4402,7 +4407,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
 #endif
 
   ApplyWindowDpiScales(mPlugWnd, true);
-  LogDpiDebug("OpenWindow-child", mPlugWnd, GetScreenScale());
+  LogDpiDebug("OpenWindow-child", mPlugWnd, GetRenderScale());
 
   GetDelegate()->LayoutUI(this);
 
@@ -4821,7 +4826,11 @@ IPopupMenu* IGraphicsWin::CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT 
     }
     DestroyMenu(hMenu);
 
-    RECT r = {0, 0, static_cast<LONG>(WindowWidth() * GetScreenScale()), static_cast<LONG>(WindowHeight() * GetScreenScale())};
+    const float layoutScale = GetPlatformWindowScale();
+    RECT r = {0,
+              0,
+              static_cast<LONG>(std::round(WindowWidth() * layoutScale)),
+              static_cast<LONG>(std::round(WindowHeight() * layoutScale))};
     InvalidateRect(mPlugWnd, &r, FALSE);
 
     return result;

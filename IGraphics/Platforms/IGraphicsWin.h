@@ -88,6 +88,8 @@ public:
 
   void ForceEndUserEdit() override;
   float GetPlatformWindowScale() const override { return mHostScale; }
+  float GetBackingPixelScale() const override { return mRenderScale * GetDrawScale(); }
+  float GetRenderScale() const { return mRenderScale; }
 
   void PlatformResize(bool parentHasResized) override;
 
@@ -254,6 +256,7 @@ private:
   HFONT mEditFont = nullptr;
   DWORD mPID = 0;
   float mHostScale = 1.f;
+  float mRenderScale = 1.f;
 
   void StartVBlankThread(HWND hWnd);
   void StopVBlankThread();

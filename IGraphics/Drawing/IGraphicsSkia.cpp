@@ -1334,13 +1334,15 @@ bool IGraphicsSkia::AssertValidSwapchainImage(VkImage image, const char* context
 void IGraphicsSkia::DrawResize()
 {
   ScopedGraphicsContext scopedGLContext{this};
-  auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * GetScreenScale()));
-  auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * GetScreenScale()));
-  DBGMSG("IGraphicsSkia::DrawResize window=%dx%d screenScale=%.3f totalScale=%.3f renderTarget=%dx%d\n",
+  const float backingScale = GetBackingPixelScale();
+  auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * backingScale));
+  auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * backingScale));
+  DBGMSG("IGraphicsSkia::DrawResize window=%dx%d screenScale=%.3f totalScale=%.3f renderScale=%.3f renderTarget=%dx%d\n",
          WindowWidth(),
          WindowHeight(),
          GetScreenScale(),
          GetTotalScale(),
+         backingScale,
          w,
          h);
 #if defined IGRAPHICS_VULKAN
@@ -1616,8 +1618,8 @@ void IGraphicsSkia::BeginFrame()
 #if defined IGRAPHICS_GL
   if (mGrContext.get())
   {
-    int width = WindowWidth() * GetScreenScale();
-    int height = WindowHeight() * GetScreenScale();
+    const int width = static_cast<int>(std::ceil(WindowWidth() * GetBackingPixelScale()));
+    const int height = static_cast<int>(std::ceil(WindowHeight() * GetBackingPixelScale()));
 
     // Bind to the current main framebuffer
     int fbo = 0, samples = 0, stencilBits = 0;
@@ -1641,8 +1643,8 @@ void IGraphicsSkia::BeginFrame()
 #elif defined IGRAPHICS_METAL
   if (mGrContext.get())
   {
-    int width = WindowWidth() * GetScreenScale();
-    int height = WindowHeight() * GetScreenScale();
+    const int width = static_cast<int>(std::ceil(WindowWidth() * GetBackingPixelScale()));
+    const int height = static_cast<int>(std::ceil(WindowHeight() * GetBackingPixelScale()));
 
     id<CAMetalDrawable> drawable = [(CAMetalLayer*)mMTLLayer nextDrawable];
 
@@ -1670,8 +1672,8 @@ void IGraphicsSkia::BeginFrame()
       return;
     }
 
-    int width = WindowWidth() * GetScreenScale();
-    int height = WindowHeight() * GetScreenScale();
+    const int width = static_cast<int>(std::ceil(WindowWidth() * GetBackingPixelScale()));
+    const int height = static_cast<int>(std::ceil(WindowHeight() * GetBackingPixelScale()));
     if (mVKSubmissionPending)
     {
       IGRAPHICS_VK_LOG("BeginFrame",
@@ -2056,8 +2058,8 @@ void IGraphicsSkia::EndFrame()
   SkCGDrawBitmap(pCGContext, bmp, 0, 0);
   CGContextRestoreGState(pCGContext);
   #elif defined OS_WIN
-  auto w = WindowWidth() * GetScreenScale();
-  auto h = WindowHeight() * GetScreenScale();
+  const auto w = static_cast<int>(std::ceil(WindowWidth() * GetBackingPixelScale()));
+  const auto h = static_cast<int>(std::ceil(WindowHeight() * GetBackingPixelScale()));
   BITMAPINFO* bmpInfo = reinterpret_cast<BITMAPINFO*>(mSurfaceMemory.Get());
   HWND hWnd = (HWND)GetWindow();
   PAINTSTRUCT ps;
@@ -2795,7 +2797,7 @@ void IGraphicsSkia::PathTransformSetMatrix(const IMatrix& m)
   }
 
   mMatrix = SkMatrix::MakeAll(m.mXX, m.mXY, m.mTX, m.mYX, m.mYY, m.mTY, 0, 0, 1);
-  auto scale = GetTotalScale();
+  const auto scale = GetBackingPixelScale();
   SkMatrix globalMatrix = SkMatrix::Scale(scale, scale);
   mClipMatrix = SkMatrix();
   mFinalMatrix = mMatrix;

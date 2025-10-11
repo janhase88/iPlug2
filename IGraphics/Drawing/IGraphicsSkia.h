@@ -211,6 +211,8 @@ private:
   void PathTransformSetMatrix(const IMatrix& m) override;
   void SetClipRegion(const IRECT& r) override;
 
+  float GetRenderScale() const;
+
   void RenderPath(SkPaint& paint);
 
   sk_sp<SkSurface> mSurface;

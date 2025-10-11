@@ -87,7 +87,9 @@ public:
   void* GetWinModuleHandle() override { return mHInstance; }
 
   void ForceEndUserEdit() override;
-  float GetPlatformWindowScale() const override { return GetScreenScale(); }
+  float GetPlatformWindowScale() const override { return mPhysicalWindowScale; }
+
+  void ApplyWindowDpiScales(float hostScale, float physicalScale);
 
   void PlatformResize(bool parentHasResized) override;
 
@@ -187,6 +189,9 @@ private:
   // OLE drag & drop
   DragAndDropHelpers::DropTarget* mDropTarget = nullptr;
   bool mOLEInited = false;
+
+  float mHostWindowScale = 1.f;
+  float mPhysicalWindowScale = 1.f;
 
   /** Called either in response to WM_TIMER tick or user message WM_VBLANK, triggered by VSYNC thread
    * @param vBlankCount will allow redraws to get paced by the vblank message. Passing 0 is a WM_TIMER fallback.

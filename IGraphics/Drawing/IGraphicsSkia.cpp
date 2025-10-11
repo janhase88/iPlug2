@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <map>
 #include <type_traits>
 #include <utility>
@@ -66,6 +67,130 @@
 #include "include/gpu/GrBackendSemaphore.h"
 #include "include/gpu/GrBackendSurface.h"
 #include "include/gpu/ganesh/SkSurfaceGanesh.h"
+
+namespace {
+#if defined OS_WIN
+#if IGRAPHICS_SKIA_FORCE_DEVICE_SCALE_MILLIS > 0
+constexpr float kCompileTimeForcedRenderScale =
+  static_cast<float>(IGRAPHICS_SKIA_FORCE_DEVICE_SCALE_MILLIS) / 1000.f;
+#else
+constexpr float kCompileTimeForcedRenderScale = 0.f;
+#endif
+
+float ResolveForcedRenderScale()
+{
+  static bool sInitialized = false;
+  static float sForcedScale = kCompileTimeForcedRenderScale;
+
+  if (!sInitialized)
+  {
+    sInitialized = true;
+
+    if (sForcedScale <= 0.f)
+    {
+      if (const char* env = std::getenv("IGRAPHICS_SKIA_FORCE_DEVICE_SCALE"))
+      {
+        char* end = nullptr;
+        const double parsed = std::strtod(env, &end);
+        if (end != env && std::isfinite(parsed) && parsed > 0.0)
+        {
+          sForcedScale = static_cast<float>(parsed);
+        }
+      }
+    }
+  }
+
+  return sForcedScale;
+}
+#endif
+
+#if defined IGRAPHICS_VULKAN
+void LogVkImageInfoSnapshot(const char* stage,
+                            const GrBackendRenderTarget& backendRT,
+                            const GrVkImageInfo* imageInfo,
+                            vulkanlog::Severity severity)
+{
+  if (!backendRT.isValid())
+  {
+    IGRAPHICS_VK_LOG("RenderPass",
+                      stage,
+                      severity,
+                      vulkanlog::MakeField("width", backendRT.width()),
+                      vulkanlog::MakeField("height", backendRT.height()),
+                      vulkanlog::MakeField("sampleCnt", backendRT.sampleCnt()),
+                      vulkanlog::MakeField("stencilBits", backendRT.stencilBits()),
+                      vulkanlog::MakeField("valid", false));
+    return;
+  }
+
+  GrVkImageInfo localInfo{};
+  const GrVkImageInfo* info = imageInfo;
+  if (!info)
+  {
+    if (backendRT.getVulkanImageInfo(&localInfo))
+    {
+      info = &localInfo;
+    }
+  }
+
+  if (info)
+  {
+    IGRAPHICS_VK_LOG("RenderPass",
+                      stage,
+                      severity,
+                      vulkanlog::MakeField("width", backendRT.width()),
+                      vulkanlog::MakeField("height", backendRT.height()),
+                      vulkanlog::MakeField("sampleCnt", backendRT.sampleCnt()),
+                      vulkanlog::MakeField("stencilBits", backendRT.stencilBits()),
+                      vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(info->fImage)),
+                      vulkanlog::MakeField("imageLayout", static_cast<int>(info->fImageLayout)),
+                      vulkanlog::MakeField("format", static_cast<int>(info->fFormat)),
+                      vulkanlog::MakeField("usage", static_cast<uint32_t>(info->fImageUsageFlags)),
+                      vulkanlog::MakeField("sampleCount", static_cast<int>(info->fSampleCount)),
+                      vulkanlog::MakeField("levelCount", static_cast<int>(info->fLevelCount)),
+                      vulkanlog::MakeField("currentQueueFamily", static_cast<uint32_t>(info->fCurrentQueueFamily)));
+  }
+  else
+  {
+    IGRAPHICS_VK_LOG("RenderPass",
+                      stage,
+                      severity,
+                      vulkanlog::MakeField("width", backendRT.width()),
+                      vulkanlog::MakeField("height", backendRT.height()),
+                      vulkanlog::MakeField("sampleCnt", backendRT.sampleCnt()),
+                      vulkanlog::MakeField("stencilBits", backendRT.stencilBits()),
+                      vulkanlog::MakeField("hasVkImageInfo", false));
+  }
+}
+
+void LogSkSurfaceRenderTarget(const char* stage, SkSurface* surface, vulkanlog::Severity severity)
+{
+  if (!surface)
+  {
+    IGRAPHICS_VK_LOG("RenderPass",
+                      stage,
+                      severity,
+                      vulkanlog::MakeField("surface", "null"));
+    return;
+  }
+
+  GrBackendRenderTarget backendRT;
+  if (surface->getBackendRenderTarget(SkSurface::BackendHandleAccess::kFlushRead, &backendRT))
+  {
+    LogVkImageInfoSnapshot(stage, backendRT, nullptr, severity);
+  }
+  else
+  {
+    IGRAPHICS_VK_LOG("RenderPass",
+                      stage,
+                      severity,
+                      vulkanlog::MakeField("width", surface->width()),
+                      vulkanlog::MakeField("height", surface->height()),
+                      vulkanlog::MakeField("backendAccessible", false));
+  }
+}
+#endif
+} // namespace
 
 #if defined OS_MAC || defined OS_IOS
   #include "include/utils/mac/SkCGUtils.h"
@@ -312,6 +437,14 @@ VkImageView IGraphicsSkia::EnsureSwapchainImageView(uint32_t imageIndex, VkImage
 
 sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int width, int height, const GrVkImageInfo& imageInfo)
 {
+  IGRAPHICS_DPI_TRACE("IGraphicsSkia[DPI] EnsureSwapchainSurface image=%u requested=%dx%d screenScale=%.3f drawScale=%.3f renderScale=%.3f\n",
+                      imageIndex,
+                      width,
+                      height,
+                      GetScreenScale(),
+                      GetDrawScale(),
+                      GetRenderScale());
+
   GrVkImageInfo localInfo = imageInfo;
   if (imageIndex >= mVKSwapchainSurfaces.size())
   {
@@ -345,12 +478,18 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
   {
     if (cachedSurface->width() == width && cachedSurface->height() == height)
     {
+      IGRAPHICS_DPI_TRACE("IGraphicsSkia[DPI] EnsureSwapchainSurface reuse image=%u cached=%dx%d\n",
+                          imageIndex,
+                          cachedSurface->width(),
+                          cachedSurface->height());
       auto backendRT = GrBackendRenderTargets::MakeVk(width, height, localInfo);
       if (backendRT.isValid())
       {
         auto colorState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, mVKQueueFamily);
         mGrContext->setBackendRenderTargetState(backendRT, colorState, nullptr, nullptr, nullptr);
         backendRT.setMutableState(colorState);
+        LogVkImageInfoSnapshot("EnsureSwapchainSurface.reuse", backendRT, &localInfo, vulkanlog::Severity::kDebug);
+        LogSkSurfaceRenderTarget("EnsureSwapchainSurface.cachedSurface", cachedSurface.get(), vulkanlog::Severity::kDebug);
         return cachedSurface;
       }
     }
@@ -372,6 +511,7 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
   auto colorState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, mVKQueueFamily);
   mGrContext->setBackendRenderTargetState(backendRT, colorState, nullptr, nullptr, nullptr);
   backendRT.setMutableState(colorState);
+  LogVkImageInfoSnapshot("EnsureSwapchainSurface.renderTarget", backendRT, &localInfo, vulkanlog::Severity::kDebug);
 
   cachedSurface = SkSurfaces::WrapBackendRenderTarget(mGrContext.get(), backendRT, kTopLeft_GrSurfaceOrigin, colorType, nullptr, nullptr);
   if (!cachedSurface)
@@ -389,8 +529,28 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
                         vulkanlog::MakeHandleField("imageView", vulkanlog::HandleToUint64(loggedImageView)),
                         vulkanlog::MakeField("width", width),
                         vulkanlog::MakeField("height", height));
+  LogSkSurfaceRenderTarget("EnsureSwapchainSurface.surface", cachedSurface.get(), vulkanlog::Severity::kDebug);
+  IGRAPHICS_DPI_TRACE("IGraphicsSkia[DPI] EnsureSwapchainSurface created image=%u surface=%dx%d\n",
+                      imageIndex,
+                      cachedSurface->width(),
+                      cachedSurface->height());
   return cachedSurface;
 }
+
+#if defined OS_WIN
+float IGraphicsSkia::GetRenderScale() const
+{
+  const float forcedScale = ResolveForcedRenderScale();
+  if (forcedScale > 0.f)
+    return forcedScale;
+  return GetScreenScale();
+}
+#else
+float IGraphicsSkia::GetRenderScale() const
+{
+  return GetScreenScale();
+}
+#endif
 
 // Lazily create and reuse a single command pool/primary command buffer for the frame loop.
 // The pool is reset when BeginFrame starts recording, eliminating vkCreate/vkAllocate churn
@@ -601,6 +761,8 @@ bool IGraphicsSkia::PrepareCurrentSwapchainImageForFlush()
       auto colorState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, mVKQueueFamily);
       mGrContext->setBackendRenderTargetState(backendRT, colorState, nullptr, nullptr, nullptr);
       backendRT.setMutableState(colorState);
+      LogVkImageInfoSnapshot("PrepareCurrentSwapchainImageForFlush.renderTarget", backendRT, &imageInfo, vulkanlog::Severity::kDebug);
+      LogSkSurfaceRenderTarget("PrepareCurrentSwapchainImageForFlush.surface", mScreenSurface.get(), vulkanlog::Severity::kDebug);
     }
   }
 
@@ -758,6 +920,15 @@ IGraphicsSkia::Bitmap::Bitmap(sk_sp<SkSurface> surface, int width, int height, f
   mDrawable.mSurface = surface;
   mDrawable.mIsSurface = true;
 
+  IGRAPHICS_DPI_TRACE("IGraphicsSkia[DPI] BitmapSurface width=%d height=%d scale=%.3f drawScale=%.3f\n",
+                      width,
+                      height,
+                      scale,
+                      drawScale);
+#if defined IGRAPHICS_VULKAN
+  LogSkSurfaceRenderTarget("Bitmap.surface", mDrawable.mSurface.get(), vulkanlog::Severity::kDebug);
+#endif
+
   SetBitmap(&mDrawable, width, height, scale, drawScale);
 }
 
@@ -773,6 +944,10 @@ IGraphicsSkia::Bitmap::Bitmap(const char* path, double sourceScale)
   mDrawable.mImage = std::move(image);
 
   mDrawable.mIsSurface = false;
+  IGRAPHICS_DPI_TRACE("IGraphicsSkia[DPI] BitmapData width=%d height=%d scale=%.3f\n",
+                      mDrawable.mImage->width(),
+                      mDrawable.mImage->height(),
+                      static_cast<float>(sourceScale));
   SetBitmap(&mDrawable, mDrawable.mImage->width(), mDrawable.mImage->height(), sourceScale, 1.f);
 }
 
@@ -785,6 +960,10 @@ IGraphicsSkia::Bitmap::Bitmap(const void* pData, int size, double sourceScale)
   mDrawable.mImage = std::move(image);
 
   mDrawable.mIsSurface = false;
+  IGRAPHICS_DPI_TRACE("IGraphicsSkia[DPI] BitmapPath width=%d height=%d scale=%.3f\n",
+                      mDrawable.mImage->width(),
+                      mDrawable.mImage->height(),
+                      static_cast<float>(sourceScale));
   SetBitmap(&mDrawable, mDrawable.mImage->width(), mDrawable.mImage->height(), sourceScale, 1.f);
 }
 
@@ -792,6 +971,10 @@ IGraphicsSkia::Bitmap::Bitmap(sk_sp<SkImage> image, double sourceScale)
 {
   mDrawable.mImage = EnsureRasterImage(std::move(image));
 
+  IGRAPHICS_DPI_TRACE("IGraphicsSkia[DPI] BitmapImage width=%d height=%d scale=%.3f\n",
+                      mDrawable.mImage->width(),
+                      mDrawable.mImage->height(),
+                      static_cast<float>(sourceScale));
   SetBitmap(&mDrawable, mDrawable.mImage->width(), mDrawable.mImage->height(), sourceScale, 1.f);
 }
 
@@ -1306,8 +1489,21 @@ bool IGraphicsSkia::AssertValidSwapchainImage(VkImage image, const char* context
 void IGraphicsSkia::DrawResize()
 {
   ScopedGraphicsContext scopedGLContext{this};
-  auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * GetScreenScale()));
-  auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * GetScreenScale()));
+  const float screenScale = GetScreenScale();
+  const float renderScale = GetRenderScale();
+  const bool forcedScale = std::fabs(renderScale - screenScale) > 0.0001f;
+  auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * renderScale));
+  auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * renderScale));
+
+  IGRAPHICS_DPI_TRACE("IGraphicsSkia[DPI] DrawResize logical=%dx%d screenScale=%.3f drawScale=%.3f renderScale=%.3f forced=%d target=%dx%d\n",
+                      WindowWidth(),
+                      WindowHeight(),
+                      screenScale,
+                      GetDrawScale(),
+                      renderScale,
+                      forcedScale ? 1 : 0,
+                      w,
+                      h);
 #if defined IGRAPHICS_VULKAN
   IGRAPHICS_VK_LOG("DrawResize",
                       "begin",
@@ -1581,8 +1777,8 @@ void IGraphicsSkia::BeginFrame()
 #if defined IGRAPHICS_GL
   if (mGrContext.get())
   {
-    int width = WindowWidth() * GetScreenScale();
-    int height = WindowHeight() * GetScreenScale();
+    int width = static_cast<int>(WindowWidth() * GetRenderScale());
+    int height = static_cast<int>(WindowHeight() * GetRenderScale());
 
     // Bind to the current main framebuffer
     int fbo = 0, samples = 0, stencilBits = 0;
@@ -1606,8 +1802,8 @@ void IGraphicsSkia::BeginFrame()
 #elif defined IGRAPHICS_METAL
   if (mGrContext.get())
   {
-    int width = WindowWidth() * GetScreenScale();
-    int height = WindowHeight() * GetScreenScale();
+    int width = static_cast<int>(WindowWidth() * GetRenderScale());
+    int height = static_cast<int>(WindowHeight() * GetRenderScale());
 
     id<CAMetalDrawable> drawable = [(CAMetalLayer*)mMTLLayer nextDrawable];
 
@@ -1635,8 +1831,16 @@ void IGraphicsSkia::BeginFrame()
       return;
     }
 
-    int width = WindowWidth() * GetScreenScale();
-    int height = WindowHeight() * GetScreenScale();
+    int width = static_cast<int>(WindowWidth() * GetRenderScale());
+    int height = static_cast<int>(WindowHeight() * GetRenderScale());
+    IGRAPHICS_DPI_TRACE("IGraphicsSkia[DPI] BeginFrame swapchain logical=%dx%d render=%dx%d screenScale=%.3f renderScale=%.3f images=%zu\n",
+                        WindowWidth(),
+                        WindowHeight(),
+                        width,
+                        height,
+                        GetScreenScale(),
+                        GetRenderScale(),
+                        mVKSwapchainImages.size());
     if (mVKSubmissionPending)
     {
       IGRAPHICS_VK_LOG("BeginFrame",
@@ -1995,6 +2199,7 @@ void IGraphicsSkia::BeginFrame()
                         "surfaceReady",
                         vulkanlog::Severity::kDebug,
                         vulkanlog::MakeField("imageIndex", imageIndex));
+    LogSkSurfaceRenderTarget("BeginFrame.swapchainSurface", mScreenSurface.get(), vulkanlog::Severity::kDebug);
     mVKSkipFrame = false;
     IGRAPHICS_VK_LOG("BeginFrame",
                         "readyToDraw",
@@ -2172,6 +2377,8 @@ void IGraphicsSkia::EndFrame()
       auto presentState = skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, mVKQueueFamily);
       mGrContext->setBackendRenderTargetState(backendRT, presentState, nullptr, nullptr, nullptr);
       backendRT.setMutableState(presentState);
+      LogVkImageInfoSnapshot("EndFrame.presentTarget", backendRT, &imageInfo, vulkanlog::Severity::kDebug);
+      LogSkSurfaceRenderTarget("EndFrame.surface", mScreenSurface.get(), vulkanlog::Severity::kDebug);
     }
   }
 
@@ -2769,6 +2976,14 @@ void IGraphicsSkia::SetClipRegion(const IRECT& r)
 
 APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, double drawScale, bool cacheable, int MSAASampleCount)
 {
+  IGRAPHICS_DPI_TRACE("IGraphicsSkia[DPI] CreateAPIBitmap width=%d height=%d scale=%.3f drawScale=%.3f cacheable=%d msaa=%d\n",
+                      width,
+                      height,
+                      scale,
+                      drawScale,
+                      cacheable ? 1 : 0,
+                      MSAASampleCount);
+
   sk_sp<SkSurface> surface;
   SkImageInfo info = SkImageInfo::MakeN32Premul(width, height);
 
@@ -2813,6 +3028,9 @@ APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, do
 #endif
 
   surface->getCanvas()->save();
+#if defined IGRAPHICS_VULKAN
+  LogSkSurfaceRenderTarget("CreateAPIBitmap.surface", surface.get(), vulkanlog::Severity::kDebug);
+#endif
 
   return new Bitmap(std::move(surface), width, height, scale, drawScale);
 }

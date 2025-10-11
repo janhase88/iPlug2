@@ -79,6 +79,15 @@ void IGraphics::SetScreenScale(float scale)
   mScreenScale = scale;
   int windowWidth = WindowWidth() * GetPlatformWindowScale();
   int windowHeight = WindowHeight() * GetPlatformWindowScale();
+
+  IGRAPHICS_DPI_TRACE("IGraphics[DPI] SetScreenScale logical=%dx%d platformScale=%.3f drawScale=%.3f backing=%.3f pixel=%dx%d\n",
+                      WindowWidth(),
+                      WindowHeight(),
+                      GetPlatformWindowScale(),
+                      GetDrawScale(),
+                      GetBackingPixelScale(),
+                      windowWidth,
+                      windowHeight);
   
   assert(windowWidth > 0 && windowHeight > 0 && "Window dimensions invalid");
 

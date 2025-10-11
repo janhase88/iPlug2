@@ -10,14 +10,6 @@
 
 // #define IGRAPHICS_DISABLE_VSYNC
 
-#ifndef IPLUG_ENABLE_DBGMSG
-  #define IPLUG_ENABLE_DBGMSG 1
-#endif
-
-#ifndef IGRAPHICS_VULKAN_LOG_VERBOSITY
-  #define IGRAPHICS_VULKAN_LOG_VERBOSITY 2
-#endif
-
 #include <Shlobj.h>
 #include <commctrl.h>
 
@@ -32,10 +24,6 @@
 #if defined IGRAPHICS_VULKAN
   #include "VulkanLogging.h"
 #endif
-
-#define WDL_WIN32_HIDPI_IMPL
-#include "win32_hidpi.h"
-#undef WDL_WIN32_HIDPI_IMPL
 
 #include <VersionHelpers.h>
 #include <algorithm>
@@ -82,118 +70,6 @@ static double sFPS = 0.0;
 
 namespace iplug::igraphics
 {
-
-namespace
-{
-struct DpiDebugInfo
-{
-  UINT windowDpi = USER_DEFAULT_SCREEN_DPI;
-  float hostScale = 1.f;
-  float virtualizationScale = 1.f;
-};
-
-constexpr float kScaleEpsilon = 1e-3f;
-
-static float NormalizeScale(float value, float fallback = 1.f)
-{
-  if (!(value > 0.f) || !std::isfinite(value))
-    return fallback;
-  return value;
-}
-
-using GetDpiForWindowFn = UINT(WINAPI*)(HWND);
-
-DpiDebugInfo QueryDpiDebugInfo(HWND hwnd)
-{
-  static GetDpiForWindowFn sGetDpiForWindow = nullptr;
-  static bool sAttemptedLoad = false;
-
-  if (!sGetDpiForWindow && !sAttemptedLoad)
-  {
-    sAttemptedLoad = true;
-    if (HINSTANCE user32 = LoadLibraryW(L"user32.dll"))
-      sGetDpiForWindow = reinterpret_cast<GetDpiForWindowFn>(GetProcAddress(user32, "GetDpiForWindow"));
-  }
-
-  DpiDebugInfo info{};
-  if (sGetDpiForWindow)
-  {
-    UINT dpi = sGetDpiForWindow(hwnd);
-    if (dpi > 0)
-    {
-      info.windowDpi = dpi;
-      info.hostScale = static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI;
-    }
-  }
-
-  if (!hwnd)
-    return info;
-
-  HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-  if (monitor)
-  {
-    MONITORINFOEXW monitorInfo{};
-    monitorInfo.cbSize = sizeof(monitorInfo);
-    if (GetMonitorInfoW(monitor, &monitorInfo))
-    {
-      const LONG logicalWidth = monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left;
-      const LONG logicalHeight = monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top;
-      if (logicalWidth > 0 && logicalHeight > 0)
-      {
-        DEVMODEW mode{};
-        mode.dmSize = sizeof(mode);
-        if (EnumDisplaySettingsW(monitorInfo.szDevice, ENUM_CURRENT_SETTINGS, &mode))
-        {
-          if (mode.dmPelsWidth > 0 && mode.dmPelsHeight > 0)
-          {
-            const float widthRatio = static_cast<float>(mode.dmPelsWidth) / static_cast<float>(logicalWidth);
-            const float heightRatio = static_cast<float>(mode.dmPelsHeight) / static_cast<float>(logicalHeight);
-            const float candidate = std::max(widthRatio, heightRatio);
-            if (candidate > 0.f && std::isfinite(candidate))
-              info.virtualizationScale = candidate;
-          }
-        }
-      }
-    }
-  }
-
-  return info;
-}
-
-void LogDpiDebug(const char* stage, HWND hwnd, float screenScale)
-{
-  DpiDebugInfo info = QueryDpiDebugInfo(hwnd);
-  const float physicalScale = info.hostScale * info.virtualizationScale;
-  DBGMSG("IGraphicsWin[%s]: hwnd=%p dpi=%u hostScale=%.3f virtualization=%.3f physical=%.3f screenScale=%.3f\n",
-         stage,
-         hwnd,
-         info.windowDpi,
-         info.hostScale,
-         info.virtualizationScale,
-         physicalScale,
-         screenScale);
-}
-} // namespace
-
-bool IGraphicsWin::ApplyWindowDpiScales(HWND hwnd, bool force)
-{
-  DpiDebugInfo info = QueryDpiDebugInfo(hwnd);
-  const float hostScale = NormalizeScale(info.hostScale);
-  const float virtualization = NormalizeScale(info.virtualizationScale, 1.f);
-  const float physicalScale = NormalizeScale(hostScale * virtualization, hostScale);
-
-  if (!force && std::fabs(hostScale - mHostScale) < kScaleEpsilon &&
-      std::fabs(physicalScale - mRenderScale) < kScaleEpsilon)
-  {
-    return false;
-  }
-
-  mHostScale = hostScale;
-  mRenderScale = physicalScale;
-  LogDpiDebug("RefreshPlatformScale", hwnd, physicalScale);
-  SetScreenScale(hostScale);
-  return true;
-}
 
 struct VBlankSubscription
 {
@@ -2309,7 +2185,9 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
   // TODO: move this... listen to the right messages in windows for screen resolution changes, etc.
   if (!GetCapture()) // workaround Windows issues with window sizing during mouse move
   {
-    ApplyWindowDpiScales(mPlugWnd, false);
+    float scale = GetScaleForHWND(mPlugWnd);
+    if (scale != GetScreenScale())
+      SetScreenScale(scale);
   }
 
   // TODO: this is far too aggressive for slow drawing animations and data changing.  We need to
@@ -3604,15 +3482,10 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
 {
   if (WindowIsOpen())
   {
-    LogDpiDebug("PlatformResize", mPlugWnd, GetRenderScale());
     HWND pParent = 0, pGrandparent = 0;
     int dlgW = 0, dlgH = 0, parentW = 0, parentH = 0, grandparentW = 0, grandparentH = 0;
     GetWindowSize(mPlugWnd, &dlgW, &dlgH);
-    const float layoutScale = GetPlatformWindowScale();
-    const int targetW = static_cast<int>(std::round(WindowWidth() * layoutScale));
-    const int targetH = static_cast<int>(std::round(WindowHeight() * layoutScale));
-    int dw = targetW - dlgW;
-    int dh = targetH - dlgH;
+    int dw = (WindowWidth() * GetScreenScale()) - dlgW, dh = (WindowHeight() * GetScreenScale()) - dlgH;
 
     if (IsChildWindow(mPlugWnd))
     {
@@ -3920,11 +3793,8 @@ bool IGraphicsWin::CreateVulkanContext()
   }
 
   mVkSwapchain.device = mVkDevice;
-  const float backingScale = GetBackingPixelScale();
-  const uint32_t desiredWidth = std::max<uint32_t>(1u, static_cast<uint32_t>(std::ceil(static_cast<float>(WindowWidth()) * backingScale)));
-  const uint32_t desiredHeight = std::max<uint32_t>(1u, static_cast<uint32_t>(std::ceil(static_cast<float>(WindowHeight()) * backingScale)));
   bool submissionPending = false;
-  res = CreateOrResizeVulkanSwapchain(desiredWidth, desiredHeight, mVkSwapchain.handle, mVkSwapchainImages, mVkFormat, mVkSwapchainUsageFlags, submissionPending);
+  res = CreateOrResizeVulkanSwapchain(caps.currentExtent.width, caps.currentExtent.height, mVkSwapchain.handle, mVkSwapchainImages, mVkFormat, mVkSwapchainUsageFlags, submissionPending);
   if (res != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("CreateVulkanContext",
@@ -4039,7 +3909,6 @@ bool IGraphicsWin::RecreateVulkanContext()
 VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
   uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format, VkImageUsageFlags& usage, bool& submissionPending)
 {
-  LogDpiDebug("SwapchainRequest", mPlugWnd, GetRenderScale());
   IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
                       "request",
                       vulkanlog::Severity::kInfo,
@@ -4186,49 +4055,20 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
     swapInfo.minImageCount = caps.maxImageCount;
   swapInfo.imageFormat = surfaceFormat.format;
   swapInfo.imageColorSpace = surfaceFormat.colorSpace;
-  const float layoutScale = GetPlatformWindowScale();
-  const float renderScale = GetRenderScale();
-  const float virtualizationRatio = (layoutScale > kScaleEpsilon) ? (renderScale / layoutScale) : 1.f;
-  const bool preferPhysicalExtent = virtualizationRatio > (1.f + kScaleEpsilon);
-
-  auto clampExtent = [&](uint32_t reqW, uint32_t reqH) {
-    uint32_t clampedW = std::max(caps.minImageExtent.width, std::min(reqW, caps.maxImageExtent.width));
-    uint32_t clampedH = std::max(caps.minImageExtent.height, std::min(reqH, caps.maxImageExtent.height));
-    return std::make_pair(clampedW, clampedH);
-  };
-
-  std::pair<uint32_t, uint32_t> surfaceExtent = clampExtent(width, height);
+  uint32_t swapWidth = width;
+  uint32_t swapHeight = height;
   if (caps.currentExtent.width != UINT32_MAX)
-    surfaceExtent = {caps.currentExtent.width, caps.currentExtent.height};
-
-  const std::pair<uint32_t, uint32_t> physicalExtent = clampExtent(width, height);
-  std::pair<uint32_t, uint32_t> selectedExtent = preferPhysicalExtent ? physicalExtent : surfaceExtent;
-  bool attemptedPhysicalExtent = preferPhysicalExtent &&
-                                 (selectedExtent.first != surfaceExtent.first || selectedExtent.second != surfaceExtent.second);
-
-  DBGMSG("IGraphicsWin[SwapchainExtent] virtualization=%.3f preferPhysical=%d requested=%ux%u capsCurrent=%ux%u selected=%ux%u\n",
-         virtualizationRatio,
-         attemptedPhysicalExtent ? 1 : 0,
-         static_cast<uint32_t>(width),
-         static_cast<uint32_t>(height),
-         caps.currentExtent.width,
-         caps.currentExtent.height,
-         selectedExtent.first,
-         selectedExtent.second);
-
-  IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
-                      "extentSelection",
-                      vulkanlog::Severity::kInfo,
-                      vulkanlog::MakeField("requestedWidth", static_cast<uint32_t>(width)),
-                       vulkanlog::MakeField("requestedHeight", static_cast<uint32_t>(height)),
-                       vulkanlog::MakeField("selectedWidth", selectedExtent.first),
-                       vulkanlog::MakeField("selectedHeight", selectedExtent.second),
-                       vulkanlog::MakeField("capsCurrentWidth", caps.currentExtent.width),
-                       vulkanlog::MakeField("capsCurrentHeight", caps.currentExtent.height),
-                       vulkanlog::MakeField("preferPhysical", preferPhysicalExtent));
-
-  swapInfo.imageExtent.width = selectedExtent.first;
-  swapInfo.imageExtent.height = selectedExtent.second;
+  {
+    swapWidth = caps.currentExtent.width;
+    swapHeight = caps.currentExtent.height;
+  }
+  else
+  {
+    swapWidth = std::max(caps.minImageExtent.width, std::min(width, caps.maxImageExtent.width));
+    swapHeight = std::max(caps.minImageExtent.height, std::min(height, caps.maxImageExtent.height));
+  }
+  swapInfo.imageExtent.width = swapWidth;
+  swapInfo.imageExtent.height = swapHeight;
   swapInfo.imageArrayLayers = 1;
   VkImageUsageFlags usageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
   if (caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
@@ -4251,17 +4091,6 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
                        vulkanlog::MakeHandleField("oldSwapchain", vulkanlog::HandleToUint64(reinterpret_cast<uintptr_t>(mVkSwapchain.handle))));
 
   res = vkCreateSwapchainKHR(mVkDevice, &swapInfo, nullptr, &mVkSwapchain.handle);
-  if (res != VK_SUCCESS && attemptedPhysicalExtent)
-  {
-    IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
-                        "retryVirtualExtent",
-                        vulkanlog::Severity::kInfo,
-                        vulkanlog::MakeField("vkResult", static_cast<int>(res)));
-    swapInfo.imageExtent.width = surfaceExtent.first;
-    swapInfo.imageExtent.height = surfaceExtent.second;
-    selectedExtent = surfaceExtent;
-    res = vkCreateSwapchainKHR(mVkDevice, &swapInfo, nullptr, &mVkSwapchain.handle);
-  }
   if (res != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
@@ -4376,16 +4205,9 @@ EMsgBoxResult IGraphicsWin::ShowMessageBox(const char* str, const char* title, E
 void* IGraphicsWin::OpenWindow(void* pParent)
 {
   mParentWnd = (HWND)pParent;
-  DpiDebugInfo parentInfo = QueryDpiDebugInfo(mParentWnd);
-  const float parentHostScale = NormalizeScale(parentInfo.hostScale);
-  const float parentVirtualization = NormalizeScale(parentInfo.virtualizationScale, 1.f);
-  const float parentPhysicalScale = NormalizeScale(parentHostScale * parentVirtualization, parentHostScale);
-  const bool bypassVirtualization = parentVirtualization > (1.f + kScaleEpsilon);
-  mHostScale = parentHostScale;
-  mRenderScale = parentPhysicalScale;
-  LogDpiDebug("OpenWindow-parent", mParentWnd, parentPhysicalScale);
-  const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * parentHostScale));
-  const int scaledHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * parentHostScale));
+  const float screenScale = GetScaleForHWND(mParentWnd);
+  const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * screenScale));
+  const int scaledHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * screenScale));
   int x = 0;
   int y = 0;
   int w = scaledWidth;
@@ -4409,11 +4231,8 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     RegisterClassW(&wndClass);
   }
 
-  WDL_dpi_aware_scope dpiScope(bypassVirtualization ? -4 : 0);
   mPlugWnd = CreateWindowW(wndClassName, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
-  #if defined IGRAPHICS_VULKAN
-  if (mPlugWnd)
-    ApplyWindowDpiScales(mPlugWnd, true);
+#if defined IGRAPHICS_VULKAN
   SetPlatformContext(mPlugWnd);
   if (!CreateVulkanContext())
   {
@@ -4450,9 +4269,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   #endif
 #endif
 
-  if (mPlugWnd)
-    ApplyWindowDpiScales(mPlugWnd, true);
-  LogDpiDebug("OpenWindow-child", mPlugWnd, GetRenderScale());
+  SetScreenScale(screenScale); // resizes draw context
 
   GetDelegate()->LayoutUI(this);
 
@@ -4871,11 +4688,7 @@ IPopupMenu* IGraphicsWin::CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT 
     }
     DestroyMenu(hMenu);
 
-    const float layoutScale = GetPlatformWindowScale();
-    RECT r = {0,
-              0,
-              static_cast<LONG>(std::round(WindowWidth() * layoutScale)),
-              static_cast<LONG>(std::round(WindowHeight() * layoutScale))};
+    RECT r = {0, 0, static_cast<LONG>(WindowWidth() * GetScreenScale()), static_cast<LONG>(WindowHeight() * GetScreenScale())};
     InvalidateRect(mPlugWnd, &r, FALSE);
 
     return result;

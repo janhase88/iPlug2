@@ -1129,10 +1129,6 @@ public:
   * @return The scale factor of the screen/display on which this graphics context is currently located */
   int GetRoundedScreenScale() const { return static_cast<int>(std::ceil(GetScreenScale())); }
 
-  /** Gets the backing pixel scaling factor, rounded up
-  * @return The scale factor of the backing store that surfaces should target */
-  int GetRoundedBackingPixelScale() const { return static_cast<int>(std::ceil(GetBackingPixelScale())); }
-
   /** Gets the combined draw and screen/display scaling factor
   * @return The draw scale * screen scale */
   float GetTotalScale() const { return mDrawScale * mScreenScale; }

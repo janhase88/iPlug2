@@ -6,16 +6,6 @@
 #include <utility>
 #include <vector>
 
-#ifndef IPLUG_ENABLE_DBGMSG
-  #define IPLUG_ENABLE_DBGMSG 1
-#endif
-
-#ifndef IGRAPHICS_VULKAN_LOG_VERBOSITY
-  #define IGRAPHICS_VULKAN_LOG_VERBOSITY 2
-#endif
-
-#include "IPlugLogger.h"
-
 #include "IGraphicsSkia.h"
 
 #pragma warning(push)
@@ -355,10 +345,6 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
   {
     if (cachedSurface->width() == width && cachedSurface->height() == height)
     {
-      DBGMSG("IGraphicsSkia::EnsureSwapchainSurface reuse index=%u width=%d height=%d\n",
-             static_cast<unsigned>(imageIndex),
-             width,
-             height);
       auto backendRT = GrBackendRenderTargets::MakeVk(width, height, localInfo);
       if (backendRT.isValid())
       {
@@ -367,15 +353,6 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
         backendRT.setMutableState(colorState);
         return cachedSurface;
       }
-    }
-    else
-    {
-      DBGMSG("IGraphicsSkia::EnsureSwapchainSurface dropCached index=%u cached=%dx%d requested=%dx%d\n",
-             static_cast<unsigned>(imageIndex),
-             cachedSurface->width(),
-             cachedSurface->height(),
-             width,
-             height);
     }
     cachedSurface.reset();
   }
@@ -405,11 +382,6 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
                           vulkanlog::MakeHandleField("imageView", vulkanlog::HandleToUint64(loggedImageView)));
     return nullptr;
   }
-
-  DBGMSG("IGraphicsSkia::EnsureSwapchainSurface create index=%u width=%d height=%d\n",
-         static_cast<unsigned>(imageIndex),
-         width,
-         height);
 
   IGRAPHICS_VK_LOG("EnsureSwapchainSurface", "created", vulkanlog::Severity::kDebug,
                        vulkanlog::MakeField("imageIndex", imageIndex),
@@ -1334,17 +1306,8 @@ bool IGraphicsSkia::AssertValidSwapchainImage(VkImage image, const char* context
 void IGraphicsSkia::DrawResize()
 {
   ScopedGraphicsContext scopedGLContext{this};
-  const float backingScale = GetBackingPixelScale();
-  auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * backingScale));
-  auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * backingScale));
-  DBGMSG("IGraphicsSkia::DrawResize window=%dx%d screenScale=%.3f totalScale=%.3f renderScale=%.3f renderTarget=%dx%d\n",
-         WindowWidth(),
-         WindowHeight(),
-         GetScreenScale(),
-         GetTotalScale(),
-         backingScale,
-         w,
-         h);
+  auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * GetScreenScale()));
+  auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * GetScreenScale()));
 #if defined IGRAPHICS_VULKAN
   IGRAPHICS_VK_LOG("DrawResize",
                       "begin",
@@ -1618,8 +1581,8 @@ void IGraphicsSkia::BeginFrame()
 #if defined IGRAPHICS_GL
   if (mGrContext.get())
   {
-    const int width = static_cast<int>(std::ceil(WindowWidth() * GetBackingPixelScale()));
-    const int height = static_cast<int>(std::ceil(WindowHeight() * GetBackingPixelScale()));
+    int width = WindowWidth() * GetScreenScale();
+    int height = WindowHeight() * GetScreenScale();
 
     // Bind to the current main framebuffer
     int fbo = 0, samples = 0, stencilBits = 0;
@@ -1643,8 +1606,8 @@ void IGraphicsSkia::BeginFrame()
 #elif defined IGRAPHICS_METAL
   if (mGrContext.get())
   {
-    const int width = static_cast<int>(std::ceil(WindowWidth() * GetBackingPixelScale()));
-    const int height = static_cast<int>(std::ceil(WindowHeight() * GetBackingPixelScale()));
+    int width = WindowWidth() * GetScreenScale();
+    int height = WindowHeight() * GetScreenScale();
 
     id<CAMetalDrawable> drawable = [(CAMetalLayer*)mMTLLayer nextDrawable];
 
@@ -1672,8 +1635,8 @@ void IGraphicsSkia::BeginFrame()
       return;
     }
 
-    const int width = static_cast<int>(std::ceil(WindowWidth() * GetBackingPixelScale()));
-    const int height = static_cast<int>(std::ceil(WindowHeight() * GetBackingPixelScale()));
+    int width = WindowWidth() * GetScreenScale();
+    int height = WindowHeight() * GetScreenScale();
     if (mVKSubmissionPending)
     {
       IGRAPHICS_VK_LOG("BeginFrame",
@@ -2058,8 +2021,8 @@ void IGraphicsSkia::EndFrame()
   SkCGDrawBitmap(pCGContext, bmp, 0, 0);
   CGContextRestoreGState(pCGContext);
   #elif defined OS_WIN
-  const auto w = static_cast<int>(std::ceil(WindowWidth() * GetBackingPixelScale()));
-  const auto h = static_cast<int>(std::ceil(WindowHeight() * GetBackingPixelScale()));
+  auto w = WindowWidth() * GetScreenScale();
+  auto h = WindowHeight() * GetScreenScale();
   BITMAPINFO* bmpInfo = reinterpret_cast<BITMAPINFO*>(mSurfaceMemory.Get());
   HWND hWnd = (HWND)GetWindow();
   PAINTSTRUCT ps;
@@ -2106,19 +2069,7 @@ void IGraphicsSkia::EndFrame()
     mVKCurrentImage = kInvalidImageIndex;
     return;
   }
-#endif
-
-#if defined IGRAPHICS_VULKAN
-  if (mScreenSurface)
-  {
-    DBGMSG("IGraphicsSkia::EndFrame surface=%dx%d skip=%d imageIndex=%d\n",
-           mScreenSurface->width(),
-           mScreenSurface->height(),
-           mVKSkipFrame ? 1 : 0,
-           static_cast<int>(mVKCurrentImage));
-  }
-#endif
-
+  #endif
   mSurface->draw(mScreenSurface->getCanvas(), 0.0, 0.0, nullptr);
 
   #if defined IGRAPHICS_VULKAN
@@ -2797,7 +2748,7 @@ void IGraphicsSkia::PathTransformSetMatrix(const IMatrix& m)
   }
 
   mMatrix = SkMatrix::MakeAll(m.mXX, m.mXY, m.mTX, m.mYX, m.mYY, m.mTY, 0, 0, 1);
-  const auto scale = GetBackingPixelScale();
+  auto scale = GetTotalScale();
   SkMatrix globalMatrix = SkMatrix::Scale(scale, scale);
   mClipMatrix = SkMatrix();
   mFinalMatrix = mMatrix;
@@ -2862,14 +2813,6 @@ APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, do
 #endif
 
   surface->getCanvas()->save();
-
-  DBGMSG("IGraphicsSkia::CreateAPIBitmap width=%d height=%d scale=%.3f drawScale=%.3f cacheable=%d msaa=%d\n",
-         width,
-         height,
-         scale,
-         drawScale,
-         cacheable ? 1 : 0,
-         MSAASampleCount);
 
   return new Bitmap(std::move(surface), width, height, scale, drawScale);
 }

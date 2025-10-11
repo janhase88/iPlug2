@@ -2363,7 +2363,7 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
     if (mParamEditWnd)
     {
       IRECT notDirtyR = mEditRECT;
-      notDirtyR.Scale(totalScale);
+      notDirtyR.Scale(backingScale);
       notDirtyR.PixelAlign();
       RECT r2 = {(LONG)notDirtyR.L, (LONG)notDirtyR.T, (LONG)notDirtyR.R, (LONG)notDirtyR.B};
       ValidateRect(mPlugWnd, &r2); // make sure we dont redraw the edit box area

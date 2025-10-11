@@ -13,6 +13,12 @@
 #include <algorithm>
 #include <cmath>
 
+#ifndef IPLUG_ENABLE_DBGMSG
+  #define IPLUG_ENABLE_DBGMSG 1
+#endif
+
+#include "IPlugLogger.h"
+
 /**
  * @file IPlug_include_in_plug_src.h
  * @brief IPlug source include
@@ -40,31 +46,37 @@
 
   UINT(WINAPI *__GetDpiForWindow)(HWND);
 
-  float GetScaleForHWND(HWND hWnd)
+  struct WindowDpiInfo
   {
+    UINT windowDpi = USER_DEFAULT_SCREEN_DPI;
+    float dpiScale = 1.f;
+    float virtualizationScale = 1.f;
+    float finalScale = 1.f;
+  };
+
+  static WindowDpiInfo QueryWindowDpi(HWND hWnd)
+  {
+    WindowDpiInfo info{};
+
     if (!__GetDpiForWindow)
     {
       HINSTANCE h = LoadLibraryW(L"user32.dll");
       if (h)
         *(void**)&__GetDpiForWindow = GetProcAddress(h, "GetDpiForWindow");
-
-      if (!__GetDpiForWindow)
-        return 1.f;
     }
 
-    const int windowDpi = __GetDpiForWindow(hWnd);
-    float dpiScale = 1.f;
+    if (__GetDpiForWindow)
+      info.windowDpi = __GetDpiForWindow(hWnd);
 
-    if (windowDpi != USER_DEFAULT_SCREEN_DPI)
+    if (info.windowDpi != USER_DEFAULT_SCREEN_DPI)
     {
 #if defined IGRAPHICS_QUANTISE_SCREENSCALE
-      dpiScale = std::round(static_cast<float>(windowDpi) / USER_DEFAULT_SCREEN_DPI);
+      info.dpiScale = std::round(static_cast<float>(info.windowDpi) / USER_DEFAULT_SCREEN_DPI);
 #else
-      dpiScale = static_cast<float>(windowDpi) / USER_DEFAULT_SCREEN_DPI;
+      info.dpiScale = static_cast<float>(info.windowDpi) / USER_DEFAULT_SCREEN_DPI;
 #endif
     }
 
-    float virtualizationScale = 1.f;
     HMONITOR hMonitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
 
     if (hMonitor)
@@ -91,15 +103,38 @@
               const float candidate = std::max(widthRatio, heightRatio);
 
               if (candidate > 0.f && std::isfinite(candidate))
-                virtualizationScale = candidate;
+                info.virtualizationScale = candidate;
             }
           }
         }
       }
     }
 
-    const float finalScale = dpiScale * virtualizationScale;
-    return (finalScale > 0.f && std::isfinite(finalScale)) ? finalScale : 1.f;
+    info.finalScale = info.dpiScale * info.virtualizationScale;
+    if (!(info.finalScale > 0.f && std::isfinite(info.finalScale)))
+      info.finalScale = 1.f;
+
+    DBGMSG("WindowDpiInfo: hwnd=%p dpi=%u dpiScale=%.3f virtualization=%.3f final=%.3f\n",
+           hWnd,
+           info.windowDpi,
+           info.dpiScale,
+           info.virtualizationScale,
+           info.finalScale);
+
+    return info;
+  }
+
+  float GetScaleForHWND(HWND hWnd)
+  {
+    return QueryWindowDpi(hWnd).finalScale;
+  }
+
+  namespace iplug
+  {
+    inline float GetScaleForHWND(HWND hWnd)
+    {
+      return ::GetScaleForHWND(hWnd);
+    }
   }
 
 #endif

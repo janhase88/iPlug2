@@ -87,7 +87,7 @@ public:
   void* GetWinModuleHandle() override { return mHInstance; }
 
   void ForceEndUserEdit() override;
-  float GetPlatformWindowScale() const override { return GetScreenScale(); }
+  float GetPlatformWindowScale() const override { return mHostScale; }
 
   void PlatformResize(bool parentHasResized) override;
 
@@ -253,10 +253,12 @@ private:
   WNDPROC mDefEditProc = nullptr;
   HFONT mEditFont = nullptr;
   DWORD mPID = 0;
+  float mHostScale = 1.f;
 
   void StartVBlankThread(HWND hWnd);
   void StopVBlankThread();
   void VBlankNotify();
+  bool ApplyWindowDpiScales(HWND hwnd, bool force);
 
 #if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
   static constexpr int kParamQueueWarnThreshold = 12;

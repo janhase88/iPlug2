@@ -6,6 +6,16 @@
 #include <utility>
 #include <vector>
 
+#ifndef IPLUG_ENABLE_DBGMSG
+  #define IPLUG_ENABLE_DBGMSG 1
+#endif
+
+#ifndef IGRAPHICS_VULKAN_LOG_VERBOSITY
+  #define IGRAPHICS_VULKAN_LOG_VERBOSITY 2
+#endif
+
+#include "IPlugLogger.h"
+
 #include "IGraphicsSkia.h"
 
 #pragma warning(push)
@@ -345,6 +355,10 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
   {
     if (cachedSurface->width() == width && cachedSurface->height() == height)
     {
+      DBGMSG("IGraphicsSkia::EnsureSwapchainSurface reuse index=%u width=%d height=%d\n",
+             static_cast<unsigned>(imageIndex),
+             width,
+             height);
       auto backendRT = GrBackendRenderTargets::MakeVk(width, height, localInfo);
       if (backendRT.isValid())
       {
@@ -353,6 +367,15 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
         backendRT.setMutableState(colorState);
         return cachedSurface;
       }
+    }
+    else
+    {
+      DBGMSG("IGraphicsSkia::EnsureSwapchainSurface dropCached index=%u cached=%dx%d requested=%dx%d\n",
+             static_cast<unsigned>(imageIndex),
+             cachedSurface->width(),
+             cachedSurface->height(),
+             width,
+             height);
     }
     cachedSurface.reset();
   }
@@ -382,6 +405,11 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
                           vulkanlog::MakeHandleField("imageView", vulkanlog::HandleToUint64(loggedImageView)));
     return nullptr;
   }
+
+  DBGMSG("IGraphicsSkia::EnsureSwapchainSurface create index=%u width=%d height=%d\n",
+         static_cast<unsigned>(imageIndex),
+         width,
+         height);
 
   IGRAPHICS_VK_LOG("EnsureSwapchainSurface", "created", vulkanlog::Severity::kDebug,
                        vulkanlog::MakeField("imageIndex", imageIndex),
@@ -1308,6 +1336,13 @@ void IGraphicsSkia::DrawResize()
   ScopedGraphicsContext scopedGLContext{this};
   auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * GetScreenScale()));
   auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * GetScreenScale()));
+  DBGMSG("IGraphicsSkia::DrawResize window=%dx%d screenScale=%.3f totalScale=%.3f renderTarget=%dx%d\n",
+         WindowWidth(),
+         WindowHeight(),
+         GetScreenScale(),
+         GetTotalScale(),
+         w,
+         h);
 #if defined IGRAPHICS_VULKAN
   IGRAPHICS_VK_LOG("DrawResize",
                       "begin",
@@ -2069,7 +2104,19 @@ void IGraphicsSkia::EndFrame()
     mVKCurrentImage = kInvalidImageIndex;
     return;
   }
-  #endif
+#endif
+
+#if defined IGRAPHICS_VULKAN
+  if (mScreenSurface)
+  {
+    DBGMSG("IGraphicsSkia::EndFrame surface=%dx%d skip=%d imageIndex=%d\n",
+           mScreenSurface->width(),
+           mScreenSurface->height(),
+           mVKSkipFrame ? 1 : 0,
+           static_cast<int>(mVKCurrentImage));
+  }
+#endif
+
   mSurface->draw(mScreenSurface->getCanvas(), 0.0, 0.0, nullptr);
 
   #if defined IGRAPHICS_VULKAN
@@ -2813,6 +2860,14 @@ APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, do
 #endif
 
   surface->getCanvas()->save();
+
+  DBGMSG("IGraphicsSkia::CreateAPIBitmap width=%d height=%d scale=%.3f drawScale=%.3f cacheable=%d msaa=%d\n",
+         width,
+         height,
+         scale,
+         drawScale,
+         cacheable ? 1 : 0,
+         MSAASampleCount);
 
   return new Bitmap(std::move(surface), width, height, scale, drawScale);
 }

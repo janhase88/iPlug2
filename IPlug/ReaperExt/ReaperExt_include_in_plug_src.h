@@ -15,6 +15,12 @@ void (*AttachWindowTopmostButton)(HWND hwnd);
 #include <algorithm>
 #include <cmath>
 
+#ifndef IPLUG_ENABLE_DBGMSG
+  #define IPLUG_ENABLE_DBGMSG 1
+#endif
+
+#include "IPlugLogger.h"
+
 REAPER_PLUGIN_HINSTANCE gHINSTANCE;
 HWND gParent;
 HWND gHWND = NULL;
@@ -121,25 +127,30 @@ float iplug::GetScaleForHWND(HWND hWnd)
 
 UINT(WINAPI* __GetDpiForWindow)(HWND);
 
-float GetScaleForHWND(HWND hWnd)
+struct WindowDpiInfo
+{
+  UINT windowDpi = USER_DEFAULT_SCREEN_DPI;
+  float dpiScale = 1.f;
+  float virtualizationScale = 1.f;
+  float finalScale = 1.f;
+};
+
+static WindowDpiInfo QueryWindowDpi(HWND hWnd)
 {
   if (!__GetDpiForWindow)
   {
     HINSTANCE h = LoadLibraryW(L"user32.dll");
     if (h)
       *(void**)&__GetDpiForWindow = GetProcAddress(h, "GetDpiForWindow");
-
-    if (!__GetDpiForWindow)
-      return 1.f;
   }
 
-  const int windowDpi = __GetDpiForWindow(hWnd);
-  float dpiScale = 1.f;
+  WindowDpiInfo info{};
+  if (__GetDpiForWindow)
+    info.windowDpi = __GetDpiForWindow(hWnd);
 
-  if (windowDpi != USER_DEFAULT_SCREEN_DPI)
-    dpiScale = static_cast<float>(windowDpi) / USER_DEFAULT_SCREEN_DPI;
+  if (info.windowDpi != USER_DEFAULT_SCREEN_DPI)
+    info.dpiScale = static_cast<float>(info.windowDpi) / USER_DEFAULT_SCREEN_DPI;
 
-  float virtualizationScale = 1.f;
   HMONITOR hMonitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
 
   if (hMonitor)
@@ -166,15 +177,38 @@ float GetScaleForHWND(HWND hWnd)
             const float candidate = std::max(widthRatio, heightRatio);
 
             if (candidate > 0.f && std::isfinite(candidate))
-              virtualizationScale = candidate;
+              info.virtualizationScale = candidate;
           }
         }
       }
     }
   }
 
-  const float finalScale = dpiScale * virtualizationScale;
-  return (finalScale > 0.f && std::isfinite(finalScale)) ? finalScale : 1.f;
+  info.finalScale = info.dpiScale * info.virtualizationScale;
+  if (!(info.finalScale > 0.f && std::isfinite(info.finalScale)))
+    info.finalScale = 1.f;
+
+  DBGMSG("ReaperExt WindowDpiInfo: hwnd=%p dpi=%u dpiScale=%.3f virtualization=%.3f final=%.3f\n",
+         hWnd,
+         info.windowDpi,
+         info.dpiScale,
+         info.virtualizationScale,
+         info.finalScale);
+
+  return info;
+}
+
+float GetScaleForHWND(HWND hWnd)
+{
+  return QueryWindowDpi(hWnd).finalScale;
+}
+
+namespace iplug
+{
+  inline float GetScaleForHWND(HWND hWnd)
+  {
+    return ::GetScaleForHWND(hWnd);
+  }
 }
 
 #endif

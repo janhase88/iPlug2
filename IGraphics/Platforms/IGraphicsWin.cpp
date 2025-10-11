@@ -10,6 +10,14 @@
 
 // #define IGRAPHICS_DISABLE_VSYNC
 
+#ifndef IPLUG_ENABLE_DBGMSG
+  #define IPLUG_ENABLE_DBGMSG 1
+#endif
+
+#ifndef IGRAPHICS_VULKAN_LOG_VERBOSITY
+  #define IGRAPHICS_VULKAN_LOG_VERBOSITY 2
+#endif
+
 #include <Shlobj.h>
 #include <commctrl.h>
 
@@ -70,6 +78,117 @@ static double sFPS = 0.0;
 
 namespace iplug::igraphics
 {
+
+namespace
+{
+struct DpiDebugInfo
+{
+  UINT windowDpi = USER_DEFAULT_SCREEN_DPI;
+  float hostScale = 1.f;
+  float virtualizationScale = 1.f;
+};
+
+constexpr float kScaleEpsilon = 1e-3f;
+
+static float NormalizeScale(float value, float fallback = 1.f)
+{
+  if (!(value > 0.f) || !std::isfinite(value))
+    return fallback;
+  return value;
+}
+
+using GetDpiForWindowFn = UINT(WINAPI*)(HWND);
+
+DpiDebugInfo QueryDpiDebugInfo(HWND hwnd)
+{
+  static GetDpiForWindowFn sGetDpiForWindow = nullptr;
+  static bool sAttemptedLoad = false;
+
+  if (!sGetDpiForWindow && !sAttemptedLoad)
+  {
+    sAttemptedLoad = true;
+    if (HINSTANCE user32 = LoadLibraryW(L"user32.dll"))
+      sGetDpiForWindow = reinterpret_cast<GetDpiForWindowFn>(GetProcAddress(user32, "GetDpiForWindow"));
+  }
+
+  DpiDebugInfo info{};
+  if (sGetDpiForWindow)
+  {
+    UINT dpi = sGetDpiForWindow(hwnd);
+    if (dpi > 0)
+    {
+      info.windowDpi = dpi;
+      info.hostScale = static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI;
+    }
+  }
+
+  if (!hwnd)
+    return info;
+
+  HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+  if (monitor)
+  {
+    MONITORINFOEXW monitorInfo{};
+    monitorInfo.cbSize = sizeof(monitorInfo);
+    if (GetMonitorInfoW(monitor, &monitorInfo))
+    {
+      const LONG logicalWidth = monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left;
+      const LONG logicalHeight = monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top;
+      if (logicalWidth > 0 && logicalHeight > 0)
+      {
+        DEVMODEW mode{};
+        mode.dmSize = sizeof(mode);
+        if (EnumDisplaySettingsW(monitorInfo.szDevice, ENUM_CURRENT_SETTINGS, &mode))
+        {
+          if (mode.dmPelsWidth > 0 && mode.dmPelsHeight > 0)
+          {
+            const float widthRatio = static_cast<float>(mode.dmPelsWidth) / static_cast<float>(logicalWidth);
+            const float heightRatio = static_cast<float>(mode.dmPelsHeight) / static_cast<float>(logicalHeight);
+            const float candidate = std::max(widthRatio, heightRatio);
+            if (candidate > 0.f && std::isfinite(candidate))
+              info.virtualizationScale = candidate;
+          }
+        }
+      }
+    }
+  }
+
+  return info;
+}
+
+void LogDpiDebug(const char* stage, HWND hwnd, float screenScale)
+{
+  DpiDebugInfo info = QueryDpiDebugInfo(hwnd);
+  const float physicalScale = info.hostScale * info.virtualizationScale;
+  DBGMSG("IGraphicsWin[%s]: hwnd=%p dpi=%u hostScale=%.3f virtualization=%.3f physical=%.3f screenScale=%.3f\n",
+         stage,
+         hwnd,
+         info.windowDpi,
+         info.hostScale,
+         info.virtualizationScale,
+         physicalScale,
+         screenScale);
+}
+} // namespace
+
+bool IGraphicsWin::ApplyWindowDpiScales(HWND hwnd, bool force)
+{
+  DpiDebugInfo info = QueryDpiDebugInfo(hwnd);
+  const float hostScale = NormalizeScale(info.hostScale);
+  const float virtualization = NormalizeScale(info.virtualizationScale, 1.f);
+  const float physicalScale = NormalizeScale(hostScale * virtualization, hostScale);
+
+  if (!force && std::fabs(hostScale - mHostScale) < kScaleEpsilon &&
+      std::fabs(physicalScale - GetScreenScale()) < kScaleEpsilon)
+  {
+    return false;
+  }
+
+  mHostScale = hostScale;
+  LogDpiDebug("RefreshPlatformScale", hwnd, physicalScale);
+  SetScreenScale(physicalScale);
+  return true;
+}
 
 struct VBlankSubscription
 {
@@ -2185,9 +2304,7 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
   // TODO: move this... listen to the right messages in windows for screen resolution changes, etc.
   if (!GetCapture()) // workaround Windows issues with window sizing during mouse move
   {
-    float scale = GetScaleForHWND(mPlugWnd);
-    if (scale != GetScreenScale())
-      SetScreenScale(scale);
+    ApplyWindowDpiScales(mPlugWnd, false);
   }
 
   // TODO: this is far too aggressive for slow drawing animations and data changing.  We need to
@@ -3482,6 +3599,7 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
 {
   if (WindowIsOpen())
   {
+    LogDpiDebug("PlatformResize", mPlugWnd, GetScreenScale());
     HWND pParent = 0, pGrandparent = 0;
     int dlgW = 0, dlgH = 0, parentW = 0, parentH = 0, grandparentW = 0, grandparentH = 0;
     GetWindowSize(mPlugWnd, &dlgW, &dlgH);
@@ -3909,6 +4027,7 @@ bool IGraphicsWin::RecreateVulkanContext()
 VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
   uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format, VkImageUsageFlags& usage, bool& submissionPending)
 {
+  LogDpiDebug("SwapchainRequest", mPlugWnd, GetScreenScale());
   IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
                       "request",
                       vulkanlog::Severity::kInfo,
@@ -4067,6 +4186,15 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
     swapWidth = std::max(caps.minImageExtent.width, std::min(width, caps.maxImageExtent.width));
     swapHeight = std::max(caps.minImageExtent.height, std::min(height, caps.maxImageExtent.height));
   }
+  IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                      "extentSelection",
+                      vulkanlog::Severity::kInfo,
+                      vulkanlog::MakeField("requestedWidth", static_cast<uint32_t>(width)),
+                       vulkanlog::MakeField("requestedHeight", static_cast<uint32_t>(height)),
+                       vulkanlog::MakeField("selectedWidth", swapWidth),
+                       vulkanlog::MakeField("selectedHeight", swapHeight),
+                       vulkanlog::MakeField("capsCurrentWidth", caps.currentExtent.width),
+                       vulkanlog::MakeField("capsCurrentHeight", caps.currentExtent.height));
   swapInfo.imageExtent.width = swapWidth;
   swapInfo.imageExtent.height = swapHeight;
   swapInfo.imageArrayLayers = 1;
@@ -4205,9 +4333,13 @@ EMsgBoxResult IGraphicsWin::ShowMessageBox(const char* str, const char* title, E
 void* IGraphicsWin::OpenWindow(void* pParent)
 {
   mParentWnd = (HWND)pParent;
-  const float screenScale = GetScaleForHWND(mParentWnd);
-  const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * screenScale));
-  const int scaledHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * screenScale));
+  DpiDebugInfo parentInfo = QueryDpiDebugInfo(mParentWnd);
+  const float parentHostScale = NormalizeScale(parentInfo.hostScale);
+  const float parentPhysicalScale = NormalizeScale(parentHostScale * NormalizeScale(parentInfo.virtualizationScale, 1.f), parentHostScale);
+  mHostScale = parentHostScale;
+  LogDpiDebug("OpenWindow-parent", mParentWnd, parentPhysicalScale);
+  const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * parentHostScale));
+  const int scaledHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * parentHostScale));
   int x = 0;
   int y = 0;
   int w = scaledWidth;
@@ -4269,7 +4401,8 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   #endif
 #endif
 
-  SetScreenScale(screenScale); // resizes draw context
+  ApplyWindowDpiScales(mPlugWnd, true);
+  LogDpiDebug("OpenWindow-child", mPlugWnd, GetScreenScale());
 
   GetDelegate()->LayoutUI(this);
 

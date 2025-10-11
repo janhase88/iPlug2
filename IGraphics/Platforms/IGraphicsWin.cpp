@@ -33,6 +33,10 @@
   #include "VulkanLogging.h"
 #endif
 
+#define WDL_WIN32_HIDPI_IMPL
+#include "WDL/win32_hidpi.h"
+#undef WDL_WIN32_HIDPI_IMPL
+
 #include <VersionHelpers.h>
 #include <algorithm>
 #include <array>
@@ -3916,8 +3920,11 @@ bool IGraphicsWin::CreateVulkanContext()
   }
 
   mVkSwapchain.device = mVkDevice;
+  const float backingScale = GetBackingPixelScale();
+  const uint32_t desiredWidth = std::max<uint32_t>(1u, static_cast<uint32_t>(std::ceil(static_cast<float>(WindowWidth()) * backingScale)));
+  const uint32_t desiredHeight = std::max<uint32_t>(1u, static_cast<uint32_t>(std::ceil(static_cast<float>(WindowHeight()) * backingScale)));
   bool submissionPending = false;
-  res = CreateOrResizeVulkanSwapchain(caps.currentExtent.width, caps.currentExtent.height, mVkSwapchain.handle, mVkSwapchainImages, mVkFormat, mVkSwapchainUsageFlags, submissionPending);
+  res = CreateOrResizeVulkanSwapchain(desiredWidth, desiredHeight, mVkSwapchain.handle, mVkSwapchainImages, mVkFormat, mVkSwapchainUsageFlags, submissionPending);
   if (res != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("CreateVulkanContext",
@@ -4179,29 +4186,49 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
     swapInfo.minImageCount = caps.maxImageCount;
   swapInfo.imageFormat = surfaceFormat.format;
   swapInfo.imageColorSpace = surfaceFormat.colorSpace;
-  uint32_t swapWidth = width;
-  uint32_t swapHeight = height;
+  const float layoutScale = GetPlatformWindowScale();
+  const float renderScale = GetRenderScale();
+  const float virtualizationRatio = (layoutScale > kScaleEpsilon) ? (renderScale / layoutScale) : 1.f;
+  const bool preferPhysicalExtent = virtualizationRatio > (1.f + kScaleEpsilon);
+
+  auto clampExtent = [&](uint32_t reqW, uint32_t reqH) {
+    uint32_t clampedW = std::max(caps.minImageExtent.width, std::min(reqW, caps.maxImageExtent.width));
+    uint32_t clampedH = std::max(caps.minImageExtent.height, std::min(reqH, caps.maxImageExtent.height));
+    return std::make_pair(clampedW, clampedH);
+  };
+
+  std::pair<uint32_t, uint32_t> surfaceExtent = clampExtent(width, height);
   if (caps.currentExtent.width != UINT32_MAX)
-  {
-    swapWidth = caps.currentExtent.width;
-    swapHeight = caps.currentExtent.height;
-  }
-  else
-  {
-    swapWidth = std::max(caps.minImageExtent.width, std::min(width, caps.maxImageExtent.width));
-    swapHeight = std::max(caps.minImageExtent.height, std::min(height, caps.maxImageExtent.height));
-  }
+    surfaceExtent = {caps.currentExtent.width, caps.currentExtent.height};
+
+  const std::pair<uint32_t, uint32_t> physicalExtent = clampExtent(width, height);
+  std::pair<uint32_t, uint32_t> selectedExtent = preferPhysicalExtent ? physicalExtent : surfaceExtent;
+  bool attemptedPhysicalExtent = preferPhysicalExtent &&
+                                 (selectedExtent.first != surfaceExtent.first || selectedExtent.second != surfaceExtent.second);
+
+  DBGMSG("IGraphicsWin[SwapchainExtent] virtualization=%.3f preferPhysical=%d requested=%ux%u capsCurrent=%ux%u selected=%ux%u\n",
+         virtualizationRatio,
+         attemptedPhysicalExtent ? 1 : 0,
+         static_cast<uint32_t>(width),
+         static_cast<uint32_t>(height),
+         caps.currentExtent.width,
+         caps.currentExtent.height,
+         selectedExtent.first,
+         selectedExtent.second);
+
   IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
                       "extentSelection",
                       vulkanlog::Severity::kInfo,
                       vulkanlog::MakeField("requestedWidth", static_cast<uint32_t>(width)),
                        vulkanlog::MakeField("requestedHeight", static_cast<uint32_t>(height)),
-                       vulkanlog::MakeField("selectedWidth", swapWidth),
-                       vulkanlog::MakeField("selectedHeight", swapHeight),
+                       vulkanlog::MakeField("selectedWidth", selectedExtent.first),
+                       vulkanlog::MakeField("selectedHeight", selectedExtent.second),
                        vulkanlog::MakeField("capsCurrentWidth", caps.currentExtent.width),
-                       vulkanlog::MakeField("capsCurrentHeight", caps.currentExtent.height));
-  swapInfo.imageExtent.width = swapWidth;
-  swapInfo.imageExtent.height = swapHeight;
+                       vulkanlog::MakeField("capsCurrentHeight", caps.currentExtent.height),
+                       vulkanlog::MakeField("preferPhysical", preferPhysicalExtent));
+
+  swapInfo.imageExtent.width = selectedExtent.first;
+  swapInfo.imageExtent.height = selectedExtent.second;
   swapInfo.imageArrayLayers = 1;
   VkImageUsageFlags usageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
   if (caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
@@ -4224,6 +4251,17 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
                        vulkanlog::MakeHandleField("oldSwapchain", vulkanlog::HandleToUint64(reinterpret_cast<uintptr_t>(mVkSwapchain.handle))));
 
   res = vkCreateSwapchainKHR(mVkDevice, &swapInfo, nullptr, &mVkSwapchain.handle);
+  if (res != VK_SUCCESS && attemptedPhysicalExtent)
+  {
+    IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                        "retryVirtualExtent",
+                        vulkanlog::Severity::kWarn,
+                        vulkanlog::MakeField("vkResult", static_cast<int>(res)));
+    swapInfo.imageExtent.width = surfaceExtent.first;
+    swapInfo.imageExtent.height = surfaceExtent.second;
+    selectedExtent = surfaceExtent;
+    res = vkCreateSwapchainKHR(mVkDevice, &swapInfo, nullptr, &mVkSwapchain.handle);
+  }
   if (res != VK_SUCCESS)
   {
     IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
@@ -4340,8 +4378,11 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   mParentWnd = (HWND)pParent;
   DpiDebugInfo parentInfo = QueryDpiDebugInfo(mParentWnd);
   const float parentHostScale = NormalizeScale(parentInfo.hostScale);
-  const float parentPhysicalScale = NormalizeScale(parentHostScale * NormalizeScale(parentInfo.virtualizationScale, 1.f), parentHostScale);
+  const float parentVirtualization = NormalizeScale(parentInfo.virtualizationScale, 1.f);
+  const float parentPhysicalScale = NormalizeScale(parentHostScale * parentVirtualization, parentHostScale);
+  const bool bypassVirtualization = parentVirtualization > (1.f + kScaleEpsilon);
   mHostScale = parentHostScale;
+  mRenderScale = parentPhysicalScale;
   LogDpiDebug("OpenWindow-parent", mParentWnd, parentPhysicalScale);
   const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * parentHostScale));
   const int scaledHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * parentHostScale));
@@ -4368,8 +4409,11 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     RegisterClassW(&wndClass);
   }
 
+  WDL_dpi_aware_scope dpiScope(bypassVirtualization ? -4 : 0);
   mPlugWnd = CreateWindowW(wndClassName, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
-#if defined IGRAPHICS_VULKAN
+  #if defined IGRAPHICS_VULKAN
+  if (mPlugWnd)
+    ApplyWindowDpiScales(mPlugWnd, true);
   SetPlatformContext(mPlugWnd);
   if (!CreateVulkanContext())
   {
@@ -4406,7 +4450,8 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   #endif
 #endif
 
-  ApplyWindowDpiScales(mPlugWnd, true);
+  if (mPlugWnd)
+    ApplyWindowDpiScales(mPlugWnd, true);
   LogDpiDebug("OpenWindow-child", mPlugWnd, GetRenderScale());
 
   GetDelegate()->LayoutUI(this);

@@ -1,15 +1,13 @@
 [x] Continued From Previous Snapshot: NO — restarted from the clean DPI baseline and layered instrumentation on top.
 -----------------
 [x] File Overview:
-- Num files Changed: 5
+- Num files Changed: 3
 - Num files Created: 0
 - Num lines Modified: see diff
 
 [x] List of Files changed/created:
 - AgentChat.md
-- IGraphics/IGraphics.cpp
-- IGraphics/IGraphics.h
-- IGraphics/Drawing/IGraphicsNanoVG.cpp
+- IGraphics/Platforms/IGraphicsWin.cpp
 - Plan/plan.md
 
 -----------------
@@ -19,4 +17,4 @@
 - Phase 3 — PREVIOUS STATUS: OPEN / CURRENT STATUS: OPEN
 
 [x] Message to User:
-Layers and cached bitmaps now inherit the backing pixel scale while resource loading targets the rounded physical DPI, so Skia should allocate native-resolution surfaces without bloating the logical layout. Rebuild the Windows VST3 Skia/Vulkan target at 100 % and 150 %, then share the updated `DrawResize`/`CreateAPIBitmap` logs so we can confirm the controls stay within bounds and finally look crisp.
+I’m forcing the UI thread into per-monitor-aware V2 before the child window comes up, refreshing the DPI scales prior to Vulkan init, and requesting the swapchain at the physical pixel size with a logged fallback if the driver refuses. Please rebuild at 150 %, capture the new `SwapchainExtent` + Vulkan `extentSelection`/`retryVirtualExtent` lines, and let me know whether the swapchain now allocates 1800×750 without collapsing back to 1200×500.

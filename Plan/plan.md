@@ -12,6 +12,6 @@
 - [x] Propagate the backing pixel scale through layer creation and bitmap caching so offscreen surfaces no longer report the virtual 1.0 scale.
 
 ## Phase 3 – Validation 🚧
-- [ ] Run a Windows VST3 build at 100 % and 150 % scale, capture the new backend/Skia/Vulkan logs, and confirm the swapchain extent matches the physical pixels now that host vs. render DPI are separated.
+- [ ] Run a Windows VST3 build at 100 % and 150 % scale, capture the refreshed backend/Skia/Vulkan logs, and confirm the swapchain extent now clamps to the physical pixels after the per-monitor DPI scope + physical extent request.
 - [ ] Verify that the editor HWND hierarchy remains at the host-reported logical size while the Skia/Vulkan render targets jump to the physical pixel dimensions (e.g. 1800×750 at 150 %) and each control stays inside its logical bounds.
-- [ ] If the swapchain still reports the virtual extent or the window resizes unexpectedly, trace through the new log fields to decide whether to adjust the render/layout split or dive into Skia image provider / Vulkan renderpass configuration next.
+- [ ] If the swapchain still reports the virtual extent or the window resizes unexpectedly, use the new `SwapchainExtent` DBG message and Vulkan retry log to decide whether to adjust the render/layout split or dive into Skia image provider / Vulkan renderpass configuration next.

@@ -2588,7 +2588,19 @@ void IGraphicsSkia::DrawBitmap(const IBitmap& bitmap, const IRECT& dest, int src
   mCanvas->scale(scale1, scale1);
   mCanvas->translate(-srcX * scale2, -srcY * scale2);
 
-  auto samplingOptions = SkSamplingOptions(SkFilterMode::kLinear, SkMipmapMode::kLinear);
+  const double canvasScale = GetTotalScale();
+  const double totalBitmapScale = scale2;
+  double effectiveScale = 1.0;
+
+  if (totalBitmapScale > 0.0)
+    effectiveScale = canvasScale / totalBitmapScale;
+
+  SkSamplingOptions samplingOptions;
+
+  if (std::abs(effectiveScale - 1.0) < 0.001)
+    samplingOptions = SkSamplingOptions(SkFilterMode::kNearest, SkMipmapMode::kNone);
+  else
+    samplingOptions = SkSamplingOptions(SkFilterMode::kLinear, SkMipmapMode::kLinear);
 
   if (image->mIsSurface)
     image->mSurface->draw(mCanvas, 0.0, 0.0, samplingOptions, &p);

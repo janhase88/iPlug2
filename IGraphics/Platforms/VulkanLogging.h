@@ -24,7 +24,7 @@ enum class Verbosity
 };
 
 #ifndef IGRAPHICS_VULKAN_LOG_VERBOSITY
-  #define IGRAPHICS_VULKAN_LOG_VERBOSITY 1
+  #define IGRAPHICS_VULKAN_LOG_VERBOSITY 2
 #endif
 
 constexpr Verbosity kConfiguredVerbosity =

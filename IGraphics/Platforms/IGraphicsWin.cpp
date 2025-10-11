@@ -4255,7 +4255,7 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
   {
     IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
                         "retryVirtualExtent",
-                        vulkanlog::Severity::kWarn,
+                        vulkanlog::Severity::kInfo,
                         vulkanlog::MakeField("vkResult", static_cast<int>(res)));
     swapInfo.imageExtent.width = surfaceExtent.first;
     swapInfo.imageExtent.height = surfaceExtent.second;

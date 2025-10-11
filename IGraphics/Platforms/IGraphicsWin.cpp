@@ -68,6 +68,8 @@ static double sFPS = 0.0;
 #define WM_VBLANK (WM_USER + 1)
 #define WM_VBLANK_TICK WM_VBLANK
 
+extern float GetScaleForHWND(HWND hWnd);
+
 namespace iplug::igraphics
 {
 
@@ -106,7 +108,7 @@ void LogDpiSnapshot(const char* stage, HWND hwnd, const IGraphicsWin& win, float
   const float physicalScale = GetPhysicalScaleForWindow(hwnd);
   const float screenScale = win.GetScreenScale();
   const float drawScale = win.GetDrawScale();
-  const float backingScale = win.GetBackingPixelScale();
+  const float backingScale = screenScale * drawScale;
   const float virtualization = (hostScale > 0.f) ? (physicalScale / hostScale) : 0.f;
   const int logicalW = win.WindowWidth();
   const int logicalH = win.WindowHeight();
@@ -525,8 +527,6 @@ namespace iplug::igraphics
 StaticStorage<IGraphicsWin::InstalledFont> IGraphicsWin::sPlatformFontCache;
 StaticStorage<HFontHolder> IGraphicsWin::sHFontCache;
 } // namespace iplug::igraphics
-
-extern float GetScaleForHWND(HWND hWnd);
 
 namespace iplug::igraphics
 {

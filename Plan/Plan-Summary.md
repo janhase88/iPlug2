@@ -1,23 +1,22 @@
 [x] Continued From Previous Snapshot: YES — Continuing the Windows VST3 Skia/Vulkan DPI investigation with host/physical scale separation.
 -----------------
 [x] File Overview:
-- Num files Changed: 4
+- Num files Changed: 3
 - Num files Created: 0
-- Num lines Modified: 150-250 (Windows DPI helpers + status docs)
+- Num lines Modified: <100 (build flag hook + status docs)
 
 [x] List of Files changed/created:
 - Changed:
-  - IGraphics/Platforms/IGraphicsWin.cpp
+  - common-win.props
   - AgentChat.md
-  - IGraphics/Platforms/IGraphicsWin.h
   - Plan/Plan-Summary.md
 
 -----------------
 [x] Current plan:
 - DPI Investigation — PREVIOUS STATUS: IMPLEMENTATION / CURRENT STATUS: IN PROGRESS
-  - Step 1: Verify Windows virtualization ratio logging — PREVIOUS STATUS: READY FOR RE-TEST / CURRENT STATUS: UPDATED (host vs. physical scales now decoupled; logs include `effectiveScale` and should show `virtualization≈1.5`).
-  - Step 2: Force Skia DPR to 1.5× and capture crispness result — PREVIOUS STATUS: OPEN / CURRENT STATUS: READY (override instructions provided; awaiting `forced=1` run and visual check).
-  - Step 3: Inspect Vulkan renderpass / cached surfaces if Step 2 remains blurry — PREVIOUS STATUS: BLOCKED / CURRENT STATUS: PENDING (will begin immediately if Step 2 still reports blur).
+  - Step 1: Verify Windows virtualization ratio logging — PREVIOUS STATUS: UPDATED / CURRENT STATUS: COMPLETE (logs now emit host/effective/raw DPI; latest run shows Windows not virtualizing this HWND).
+  - Step 2: Force Skia DPR to 1.5× and capture crispness result — PREVIOUS STATUS: READY / CURRENT STATUS: COMPLETE (multiple hard-coded/forced runs remained blurry; keeping override tools for future checks).
+  - Step 3: Inspect Vulkan renderpass / cached surfaces — PREVIOUS STATUS: PENDING / CURRENT STATUS: IN PROGRESS (next commits will instrument attachments and cached surfaces to locate the resolution drop).
 
 [x] Message to User:
-Please grab two runs on this build: first without overrides to confirm `virtualization≈1.5`/`effectiveScale≈1.5`, then with `IGRAPHICS_SKIA_FORCE_DEVICE_SCALE=1.5` (set via `set` in cmd or `$env:` in PowerShell) so `DrawResize` shows `forced=1` and a 1800×750 target. If the forced run stays blurry I’ll move straight into the Vulkan renderpass/cache inspection.
+`common-win.props` now exposes `IGRAPHICS_SKIA_FORCE_DEVICE_SCALE_MILLIS`, so you can flip the forced DPR directly in Project Properties without a shell. I’m moving on to Vulkan renderpass/cache instrumentation to find the blur since the 1.5× runs still look soft—next update will include that evidence.

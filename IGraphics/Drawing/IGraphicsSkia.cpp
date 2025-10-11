@@ -3030,40 +3030,33 @@ APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, do
   SkImageInfo info = SkImageInfo::MakeN32Premul(width, height);
 
 #ifndef IGRAPHICS_CPU
-  if (cacheable)
+  const bool wantsMSAA = (MSAASampleCount > 0) && (mGrContext->maxSurfaceSampleCountForColorType(info.colorType()) >= MSAASampleCount);
+  const skgpu::Budgeted budget = cacheable ? skgpu::Budgeted::kYes : skgpu::Budgeted::kNo;
+
+  if (wantsMSAA)
+  {
+    SkSurfaceProps surfaceProps(0, kUnknown_SkPixelGeometry);
+    surface = SkSurfaces::RenderTarget(mGrContext.get(), budget, info, MSAASampleCount, kTopLeft_GrSurfaceOrigin, &surfaceProps);
+
+    if (!surface && budget == skgpu::Budgeted::kNo)
+    {
+      surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info, MSAASampleCount, kTopLeft_GrSurfaceOrigin, &surfaceProps);
+    }
+  }
+
+  if (!surface)
+  {
+    surface = SkSurfaces::RenderTarget(mGrContext.get(), budget, info);
+  }
+
+  if (!surface && budget == skgpu::Budgeted::kNo)
+  {
+    surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info);
+  }
+
+  if (!surface)
   {
     surface = SkSurfaces::Raster(info);
-  }
-  else
-  {
-    bool supported = (MSAASampleCount != 0) && (mGrContext->maxSurfaceSampleCountForColorType(info.colorType()) >= MSAASampleCount);
-
-    if (supported)
-    {
-      // SkDebugf("IGraphicsSkia: MSAA x4 reported as supported. Attempting new RenderTarget.\n");
-      SkSurfaceProps surfaceProps(0, kUnknown_SkPixelGeometry);
-      surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kNo, info, MSAASampleCount, kTopLeft_GrSurfaceOrigin, &surfaceProps);
-
-      if (!surface) // Budgeted MSAA
-      {
-        surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info, MSAASampleCount, kTopLeft_GrSurfaceOrigin, &surfaceProps);
-      }
-
-      if (!surface) // <-- DEFAULT ORIGINAL DRAWING, THIS DOES NOT FAIL
-      {
-        surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info);
-      }
-
-      if (!surface) // If all GPU attempts (MSAA and non-MSAA) failed
-      {
-        surface = SkSurfaces::Raster(info);
-      }
-    }
-    else
-    {
-      // SkDebugf("IGraphicsSkia: MSAA x4 reported as NOT supported. Attempting original RenderTarget.\n");
-      surface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info);
-    }
   }
 #else
   surface = SkSurfaces::Raster(info);

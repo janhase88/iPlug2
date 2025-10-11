@@ -593,7 +593,7 @@ float IGraphicsSkia::GetRenderScale() const
   const float forcedScale = ResolveForcedRenderScale();
   if (forcedScale > 0.f)
     return forcedScale;
-  return GetScreenScale();
+  return GetBackingPixelScale();
 }
 #else
 float IGraphicsSkia::GetRenderScale() const

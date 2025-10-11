@@ -3407,9 +3407,16 @@ void IGraphicsWin::ApplyWindowDpiScales(float hostScale, float physicalScale, fl
     }
   }
 
+  if (virtualizationActive)
+  {
+    IGRAPHICS_DPI_TRACE("IGraphicsWin[DPI] applying hostScale %.3f for window layout while backing %.3f renders\n",
+                        hostScale,
+                        physicalScale);
+  }
+
   if (hostChanged || physicalChanged)
   {
-    SetScreenScale(mPhysicalWindowScale);
+    SetScreenScale(mHostWindowScale);
   }
 }
 

@@ -87,7 +87,8 @@ public:
   void* GetWinModuleHandle() override { return mHInstance; }
 
   void ForceEndUserEdit() override;
-  float GetPlatformWindowScale() const override { return mPhysicalWindowScale; }
+  float GetPlatformWindowScale() const override { return mHostWindowScale; }
+  float GetBackingPixelScale() const override { return mPhysicalWindowScale; }
 
   void ApplyWindowDpiScales(float hostScale, float physicalScale, float virtualization = 1.f);
 

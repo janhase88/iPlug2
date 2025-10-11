@@ -68,6 +68,7 @@
 #include "include/gpu/GrBackendSemaphore.h"
 #include "include/gpu/GrBackendSurface.h"
 #include "include/gpu/ganesh/SkSurfaceGanesh.h"
+#include "include/gpu/ganesh/SkSurfaces.h"
 
 namespace {
 #if defined OS_WIN
@@ -3040,29 +3041,57 @@ APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, do
   SkImageInfo info = SkImageInfo::Make(width, height, kN32_SkColorType, kPremul_SkAlphaType, colorSpace);
 
 #ifndef IGRAPHICS_CPU
-  const bool wantsMSAA = (MSAASampleCount > 0) &&
+  skgpu::Budgeted budget = cacheable ? skgpu::Budgeted::kYes : skgpu::Budgeted::kNo;
+  const bool canUseGPU = mGrContext != nullptr;
+  const bool wantsMSAA = canUseGPU && (MSAASampleCount > 0) &&
                          (mGrContext->maxSurfaceSampleCountForColorType(info.colorType()) >= MSAASampleCount);
-  const skgpu::Budgeted budget = cacheable ? skgpu::Budgeted::kYes : skgpu::Budgeted::kNo;
 
-  const auto tryCreateRenderTarget = [&](skgpu::Budgeted budgetFlag) -> sk_sp<SkSurface> {
-    const int requestedSampleCount = wantsMSAA ? MSAASampleCount : 1;
-    sk_sp<SkSurface> gpuSurface = SkSurfaces::RenderTarget(
-      mGrContext.get(), budgetFlag, info, requestedSampleCount, kTopLeft_GrSurfaceOrigin, &surfaceProps);
+  const auto tryCreateRenderTarget = [&](skgpu::Budgeted budgetFlag, int sampleCount) -> sk_sp<SkSurface> {
+    if (!canUseGPU)
+      return nullptr;
 
-    if (!gpuSurface && wantsMSAA)
-    {
-      gpuSurface = SkSurfaces::RenderTarget(
-        mGrContext.get(), budgetFlag, info, 1, kTopLeft_GrSurfaceOrigin, &surfaceProps);
-    }
-
-    return gpuSurface;
+    return SkSurfaces::RenderTarget(
+      mGrContext.get(), budgetFlag, info, sampleCount, kTopLeft_GrSurfaceOrigin, &surfaceProps);
   };
 
-  surface = tryCreateRenderTarget(budget);
+  if (wantsMSAA)
+  {
+    surface = tryCreateRenderTarget(budget, MSAASampleCount);
+
+    if (!surface)
+    {
+      surface = tryCreateRenderTarget(budget, 1);
+    }
+  }
+
+  if (!surface)
+  {
+    surface = tryCreateRenderTarget(budget, 1);
+  }
 
   if (!surface && budget == skgpu::Budgeted::kNo)
   {
-    surface = tryCreateRenderTarget(skgpu::Budgeted::kYes);
+    budget = skgpu::Budgeted::kYes;
+
+    if (wantsMSAA)
+    {
+      surface = tryCreateRenderTarget(budget, MSAASampleCount);
+
+      if (!surface)
+      {
+        surface = tryCreateRenderTarget(budget, 1);
+      }
+    }
+
+    if (!surface)
+    {
+      surface = tryCreateRenderTarget(budget, 1);
+    }
+  }
+
+  if (!surface && canUseGPU)
+  {
+    surface = SkSurfaces::RenderTarget(mGrContext.get(), budget, info);
   }
 
   if (!surface)

@@ -3513,6 +3513,7 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
     {
       SetWindowPos(pGrandparent, 0, 0, 0, grandparentW + dw, grandparentH + dh, SETPOS_FLAGS);
     }
+
   }
 }
 
@@ -4061,6 +4062,38 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
   {
     swapWidth = caps.currentExtent.width;
     swapHeight = caps.currentExtent.height;
+#if defined OS_WIN
+    if (mPlugWnd && (swapWidth != width || swapHeight != height))
+    {
+      RECT client{};
+      if (GetClientRect(mPlugWnd, &client))
+      {
+        const uint32_t clientWidth = static_cast<uint32_t>(client.right - client.left);
+        const uint32_t clientHeight = static_cast<uint32_t>(client.bottom - client.top);
+        if (clientWidth > 0 && clientHeight > 0)
+        {
+          const uint32_t clampedWidth =
+            std::max(caps.minImageExtent.width, std::min(clientWidth, caps.maxImageExtent.width));
+          const uint32_t clampedHeight =
+            std::max(caps.minImageExtent.height, std::min(clientHeight, caps.maxImageExtent.height));
+          if (clampedWidth != swapWidth || clampedHeight != swapHeight)
+          {
+            IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                                "overrideExtentFromClientRect",
+                                vulkanlog::Severity::kInfo,
+                                vulkanlog::MakeField("requestedWidth", width),
+                                 vulkanlog::MakeField("requestedHeight", height),
+                                 vulkanlog::MakeField("hostWidth", swapWidth),
+                                 vulkanlog::MakeField("hostHeight", swapHeight),
+                                 vulkanlog::MakeField("clientWidth", clientWidth),
+                                 vulkanlog::MakeField("clientHeight", clientHeight));
+            swapWidth = clampedWidth;
+            swapHeight = clampedHeight;
+          }
+        }
+      }
+    }
+#endif
   }
   else
   {

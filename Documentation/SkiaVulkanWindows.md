@@ -34,10 +34,20 @@ The resulting `out/Release` directory will contain the libraries needed by iPlug
 - `IGraphicsSkia::EnsureSwapchainSurface` caches one Skia surface per swap-chain image. Reuse avoids redundant `SkSurface` allocation during frame playback; look for the `EnsureSwapchainSurface` event when diagnosing cache eviction.
 - `BeginFrame`/`EndFrame` reuse a single command pool and primary command buffer. Barriers and submissions are annotated with image indices to make it clear when the frame scheduler resets the pool.
 
+## DPI scaling flow (Windows)
+
+- `IGraphicsWin::OpenWindow()` queries the host HWND via `GetScaleForHWND`, constructs the child window, and initializes the Vulkan device/queue/swap-chain trio before applying DPI metadata to the view.
+- The subsequent call to `IGraphics::SetScreenScale()` (see `IGraphics/IGraphics.cpp`) updates `mScreenScale`, invokes `PlatformResize()` to resize the HWND, and immediately performs a `DrawResize()` pass.
+- `IGraphicsSkia::DrawResize()` (defined in `IGraphics/Drawing/IGraphicsSkia.cpp`) rebuilds the Skia surface and re-creates the Vulkan swap-chain through `IGraphicsWin::CreateOrResizeVulkanSwapchain()`. The swap-chain helper cross-checks the host-provided `caps.currentExtent` against the Win32 client rectangle so that DPI-scaled HWNDs always yield a device-pixel-sized swap-chain.
+- If the swap-chain dimensions still diverge from the window size in a host, double-check that `GetScaleForHWND()` observes the intended monitor/parent HWND. Hosts that sand-box the editor window may still need tailored scale hints.
+- **Bitwig-specific note:** Bitwig’s parent editor HWND reports a screen scale of `1.0`, so the initial swap-chain that `CreateVulkanContext()` builds via `caps.currentExtent` matches the unscaled window size. Once `SetScreenScale()` upsizes the HWND to the correct DPI, `CreateOrResizeVulkanSwapchain()` detects the larger Win32 client rect and overrides the stale extent reported by the host, keeping the swap-chain aligned with the DPI-adjusted surface and preventing the blurred output.
+
 ## Limitations and troubleshooting
 - Currently only the Windows platform is supported.
 - The backend is considered experimental and uses a single in-flight frame guarded by a fence instead of a device-wide stall.
-- Ensure that your GPU drivers support Vulkan 1.0 and are up to date.
+  - In practice this means we only acquire one swap-chain image at a time, submit the draw commands for that frame, and wait on
+    a fence before acquiring the next image. It avoids calling `vkDeviceWaitIdle()` every frame but still serialises frame
+    submission, so latency is low at the cost of not pipelining multiple frames.
 - To prefer an integrated GPU set the environment variable `IGRAPHICS_VK_GPU=integrated`; by default discrete devices are preferred.
 - Swap-chain or presentation failures are often driver related. Verify that no other application holds exclusive fullscreen access.
 - Device loss will trigger an internal context rebuild which may momentarily pause rendering.

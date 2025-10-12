@@ -138,20 +138,6 @@ using namespace igraphics;
 
 extern std::map<std::string, MTLTexturePtr> gTextureMap;
 
-float IGraphicsSkia::GetBackendPixelScale() const
-{
-#if defined IGRAPHICS_VULKAN
-  return 1.5f;
-#else
-  return GetScreenScale();
-#endif
-}
-
-float IGraphicsSkia::GetBackingPixelScale() const
-{
-  return GetBackendPixelScale() * GetDrawScale();
-}
-
 #if defined IGRAPHICS_VULKAN
 namespace
 {
@@ -1320,8 +1306,8 @@ bool IGraphicsSkia::AssertValidSwapchainImage(VkImage image, const char* context
 void IGraphicsSkia::DrawResize()
 {
   ScopedGraphicsContext scopedGLContext{this};
-  auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * GetBackendPixelScale()));
-  auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * GetBackendPixelScale()));
+  auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * GetScreenScale()));
+  auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * GetScreenScale()));
 #if defined IGRAPHICS_VULKAN
   IGRAPHICS_VK_LOG("DrawResize",
                       "begin",
@@ -1595,8 +1581,8 @@ void IGraphicsSkia::BeginFrame()
 #if defined IGRAPHICS_GL
   if (mGrContext.get())
   {
-    int width = WindowWidth() * GetBackendPixelScale();
-    int height = WindowHeight() * GetBackendPixelScale();
+    int width = WindowWidth() * GetScreenScale();
+    int height = WindowHeight() * GetScreenScale();
 
     // Bind to the current main framebuffer
     int fbo = 0, samples = 0, stencilBits = 0;
@@ -1620,8 +1606,8 @@ void IGraphicsSkia::BeginFrame()
 #elif defined IGRAPHICS_METAL
   if (mGrContext.get())
   {
-    int width = WindowWidth() * GetBackendPixelScale();
-    int height = WindowHeight() * GetBackendPixelScale();
+    int width = WindowWidth() * GetScreenScale();
+    int height = WindowHeight() * GetScreenScale();
 
     id<CAMetalDrawable> drawable = [(CAMetalLayer*)mMTLLayer nextDrawable];
 
@@ -1649,8 +1635,8 @@ void IGraphicsSkia::BeginFrame()
       return;
     }
 
-    int width = WindowWidth() * GetBackendPixelScale();
-    int height = WindowHeight() * GetBackendPixelScale();
+    int width = WindowWidth() * GetScreenScale();
+    int height = WindowHeight() * GetScreenScale();
     if (mVKSubmissionPending)
     {
       IGRAPHICS_VK_LOG("BeginFrame",
@@ -2031,12 +2017,12 @@ void IGraphicsSkia::EndFrame()
   bmp.installPixels(pixmap);
   CGContext* pCGContext = (CGContextRef)GetPlatformContext();
   CGContextSaveGState(pCGContext);
-  CGContextScaleCTM(pCGContext, 1.0 / GetBackendPixelScale(), 1.0 / GetBackendPixelScale());
+  CGContextScaleCTM(pCGContext, 1.0 / GetScreenScale(), 1.0 / GetScreenScale());
   SkCGDrawBitmap(pCGContext, bmp, 0, 0);
   CGContextRestoreGState(pCGContext);
   #elif defined OS_WIN
-  auto w = WindowWidth() * GetBackendPixelScale();
-  auto h = WindowHeight() * GetBackendPixelScale();
+  auto w = WindowWidth() * GetScreenScale();
+  auto h = WindowHeight() * GetScreenScale();
   BITMAPINFO* bmpInfo = reinterpret_cast<BITMAPINFO*>(mSurfaceMemory.Get());
   HWND hWnd = (HWND)GetWindow();
   PAINTSTRUCT ps;
@@ -2783,8 +2769,6 @@ void IGraphicsSkia::SetClipRegion(const IRECT& r)
 
 APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, double drawScale, bool cacheable, int MSAASampleCount)
 {
-  const float backendScale = GetBackendPixelScale();
-  (void) scale;
   sk_sp<SkSurface> surface;
   SkImageInfo info = SkImageInfo::MakeN32Premul(width, height);
 
@@ -2830,7 +2814,7 @@ APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, do
 
   surface->getCanvas()->save();
 
-  return new Bitmap(std::move(surface), width, height, backendScale, drawScale);
+  return new Bitmap(std::move(surface), width, height, scale, drawScale);
 }
 
 void IGraphicsSkia::UpdateLayer() { mCanvas = mLayers.empty() ? mSurface->getCanvas() : mLayers.top()->GetAPIBitmap()->GetBitmap()->mSurface->getCanvas(); }

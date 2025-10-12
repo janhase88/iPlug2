@@ -1411,6 +1411,41 @@ void IGraphicsSkia::DrawResize()
       {
         width = caps.currentExtent.width;
         height = caps.currentExtent.height;
+#if defined OS_WIN
+        if (auto* pWin = static_cast<IGraphicsWin*>(this))
+        {
+          if (auto* hwnd = static_cast<HWND>(pWin->GetWindow()))
+          {
+            RECT client{};
+            if (GetClientRect(hwnd, &client))
+            {
+              const uint32_t clientWidth = static_cast<uint32_t>(client.right - client.left);
+              const uint32_t clientHeight = static_cast<uint32_t>(client.bottom - client.top);
+              if (clientWidth > 0 && clientHeight > 0)
+              {
+                const uint32_t clampedWidth =
+                  std::max(caps.minImageExtent.width, std::min(clientWidth, caps.maxImageExtent.width));
+                const uint32_t clampedHeight =
+                  std::max(caps.minImageExtent.height, std::min(clientHeight, caps.maxImageExtent.height));
+                if (clampedWidth != width || clampedHeight != height)
+                {
+                  IGRAPHICS_VK_LOG("DrawResize",
+                                      "overrideExtentFromClientRect",
+                                      vulkanlog::Severity::kInfo,
+                                      vulkanlog::MakeField("currentWidth", caps.currentExtent.width),
+                                       vulkanlog::MakeField("currentHeight", caps.currentExtent.height),
+                                       vulkanlog::MakeField("clientWidth", clientWidth),
+                                       vulkanlog::MakeField("clientHeight", clientHeight),
+                                       vulkanlog::MakeField("clampedWidth", clampedWidth),
+                                       vulkanlog::MakeField("clampedHeight", clampedHeight));
+                  width = clampedWidth;
+                  height = clampedHeight;
+                }
+              }
+            }
+          }
+        }
+#endif
       }
       else
       {

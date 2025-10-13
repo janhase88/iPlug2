@@ -34,4 +34,6 @@ This document tracks user requests and the actions taken in response on the `wor
 - **Action:** Registered a dedicated `IPlugVulkanRenderWndClass` with a no-activate window procedure, created the render child with that class (opting into `WS_EX_NOREDIRECTIONBITMAP` when available), and unregistered it when no longer needed so the swapchain lives in a neutral host window that Windows will not auto-scale.
 - **Request:** Latest build fails with `LoadCursorW` expecting a wide-string resource pointer for the Vulkan window class cursor.
 - **Action:** Switched the cursor load to the generic `LoadCursor` helper so the standard `IDC_ARROW` resource resolves without a wide/ANSI mismatch and documented the fix here.
+- **Request:** Vulkan output remains blurry even though DPI metrics report 1.5×; prevent Bitwig from ever seeing a 1.0 swapchain during initialization.
+- **Action:** Pre-sized the plug-in host window to the monitor's device DPI before creating the Vulkan context so the very first swapchain allocation occurs at the full device resolution, while retaining the dedicated render window and DPI-awareness tooling.
 

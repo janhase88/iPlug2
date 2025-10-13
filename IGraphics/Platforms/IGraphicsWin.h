@@ -242,6 +242,7 @@ private:
   VkFormat mVkFormat = VK_FORMAT_B8G8R8A8_UNORM;
   VkImageUsageFlags mVkSwapchainUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
   HWND mVulkanRenderWnd = nullptr;
+  bool mOwnsVulkanRenderWnd = false;
 #endif
 
 #ifdef IGRAPHICS_GL

@@ -4370,6 +4370,22 @@ bool IGraphicsWin::EnsureVulkanRenderWindow()
 
   WDL_dpi_aware_scope dpiScope(-4);
 
+  const float plugWindowScale = GetScaleForHWND(mPlugWnd);
+  const float plugDeviceScale = GetDeviceScaleForHWND(mPlugWnd);
+  const bool hasWindowScale = plugWindowScale > 0.f;
+  const bool hasDeviceScale = plugDeviceScale > 0.f;
+  const bool hostDpiVirtualized = hasDeviceScale && (!hasWindowScale || ScalesDiffer(plugWindowScale, plugDeviceScale));
+
+#if defined IGRAPHICS_VULKAN
+  IGRAPHICS_VK_LOG("RenderWindow",
+                    "ensure.hostScaleSnapshot",
+                    vulkanlog::Severity::kDebug,
+                    vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
+                    MakeFloatField("plugWindowScale", plugWindowScale),
+                    MakeFloatField("plugDeviceScale", plugDeviceScale),
+                    vulkanlog::MakeField("hostDpiVirtualized", hostDpiVirtualized));
+#endif
+
   DWORD exStyle = WS_EX_NOPARENTNOTIFY;
 #ifdef WS_EX_NOREDIRECTIONBITMAP
   exStyle |= WS_EX_NOREDIRECTIONBITMAP;
@@ -4437,6 +4453,7 @@ bool IGraphicsWin::EnsureVulkanRenderWindow()
     }
   }
 #endif
+  mOwnsVulkanRenderWnd = true;
   SyncVulkanRenderWindowFromClientRect();
 
   if (setHostingBehavior && previousHostingBehavior != kDpiHostingBehaviorInvalid)
@@ -4451,12 +4468,16 @@ void IGraphicsWin::DestroyVulkanRenderWindow()
 {
   if (mVulkanRenderWnd)
   {
-    DestroyWindow(mVulkanRenderWnd);
-    mVulkanRenderWnd = nullptr;
-    if (sVulkanRenderWndClassReg > 0 && --sVulkanRenderWndClassReg == 0)
+    if (mOwnsVulkanRenderWnd)
     {
-      UnregisterClassW(sVulkanRenderWndClassName, mHInstance);
+      DestroyWindow(mVulkanRenderWnd);
+      if (sVulkanRenderWndClassReg > 0 && --sVulkanRenderWndClassReg == 0)
+      {
+        UnregisterClassW(sVulkanRenderWndClassName, mHInstance);
+      }
     }
+    mVulkanRenderWnd = nullptr;
+    mOwnsVulkanRenderWnd = false;
   }
 }
 
@@ -4473,7 +4494,6 @@ void IGraphicsWin::SyncVulkanRenderWindowFromClientRect()
 #endif
     return;
   }
-
   RECT client{};
   if (!GetClientRect(mPlugWnd, &client))
   {
@@ -5166,6 +5186,47 @@ void* IGraphicsWin::OpenWindow(void* pParent)
 
   mPlugWnd = CreateWindowW(wndClassName, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
 #if defined IGRAPHICS_VULKAN
+  if (mPlugWnd)
+  {
+    const float preflightHostScale = std::max(ComputeHostWindowScale(), 0.01f);
+    if (ScalesDiffer(preflightHostScale, mHostWindowScale))
+      mHostWindowScale = preflightHostScale;
+
+    const int targetDlgW = static_cast<int>(std::lround(static_cast<float>(WindowWidth()) * preflightHostScale));
+    const int targetDlgH = static_cast<int>(std::lround(static_cast<float>(WindowHeight()) * preflightHostScale));
+
+    RECT currentRect{};
+    GetWindowRect(mPlugWnd, &currentRect);
+    const int currentW = currentRect.right - currentRect.left;
+    const int currentH = currentRect.bottom - currentRect.top;
+
+    if (currentW != targetDlgW || currentH != targetDlgH)
+    {
+      const BOOL preflightResized = SetWindowPosWithResult(mPlugWnd, 0, 0, 0, targetDlgW, targetDlgH, SETPOS_FLAGS);
+#if defined IGRAPHICS_VULKAN
+      if (!preflightResized)
+      {
+        IGRAPHICS_VK_LOG("RenderWindow",
+                          "preflightResize.failed",
+                          vulkanlog::Severity::kError,
+                          vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
+                          vulkanlog::MakeField("targetWidth", targetDlgW),
+                          vulkanlog::MakeField("targetHeight", targetDlgH),
+                          vulkanlog::MakeField("error", static_cast<uint32_t>(GetLastError())));
+      }
+      else
+      {
+        IGRAPHICS_VK_LOG("RenderWindow",
+                          "preflightResize.applied",
+                          vulkanlog::Severity::kInfo,
+                          vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
+                          vulkanlog::MakeField("targetWidth", targetDlgW),
+                          vulkanlog::MakeField("targetHeight", targetDlgH));
+      }
+#endif
+    }
+  }
+
   SetPlatformContext(mPlugWnd);
   if (!EnsureVulkanRenderWindow())
   {

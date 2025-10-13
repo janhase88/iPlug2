@@ -2129,11 +2129,10 @@ void IGraphicsSkia::EndFrame()
     const double surfaceWidthPx = mSurface ? static_cast<double>(mSurface->width()) : std::numeric_limits<double>::quiet_NaN();
     const double surfaceHeightPx = mSurface ? static_cast<double>(mSurface->height()) : std::numeric_limits<double>::quiet_NaN();
 
-    const double devicePixelScale = GetDevicePixelScale();
-    const double drawPixelWidth = logicalWidth * totalScale;
-    const double drawPixelHeight = logicalHeight * totalScale;
-    const double screenPixelWidth = logicalWidth * screenScale * devicePixelScale;
-    const double screenPixelHeight = logicalHeight * screenScale * devicePixelScale;
+    const double drawPixelWidth = logicalWidth * drawScale;
+    const double drawPixelHeight = logicalHeight * drawScale;
+    const double screenPixelWidth = logicalWidth * screenScale;
+    const double screenPixelHeight = logicalHeight * screenScale;
     const double totalPixelWidth = logicalWidth * totalScale;
     const double totalPixelHeight = logicalHeight * totalScale;
 

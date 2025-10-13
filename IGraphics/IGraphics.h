@@ -52,6 +52,7 @@
 #include "nanosvg.h"
 
 #include <atomic>
+#include <cmath>
 #include <stack>
 #include <memory>
 #include <vector>
@@ -1133,11 +1134,22 @@ public:
   * @return The draw scale * screen scale */
   float GetTotalScale() const { return mDrawScale * mScreenScale; }
 
-  /** @return The platform-adjusted screen scale that maps logical coordinates to device pixels */
-  float GetDevicePixelScale() const { return GetScreenScale() * GetPlatformWindowScale(); }
+  /** @return The platform-adjusted scale that maps logical coordinates to device pixels */
+  float GetDevicePixelScale() const
+  {
+    const float screen = GetScreenScale();
+    const float host = GetPlatformWindowScale();
+    const float resolvedScreen = (screen > 0.f) ? screen : 1.f;
+    const float resolvedHost = (host > 0.f) ? host : 1.f;
 
-  /** @return The total backing pixel scale including platform adjustments */
-  virtual float GetBackingPixelScale() const { return GetDrawScale() * GetDevicePixelScale(); }
+    if (std::fabs(resolvedScreen - resolvedHost) <= 0.001f)
+      return resolvedScreen;
+
+    return resolvedHost;
+  }
+
+  /** @return The total backing pixel scale */
+  virtual float GetBackingPixelScale() const { return GetTotalScale(); }
 
   /** Configure idle pacing behaviour for the platform scheduler */
   void SetIdlePacingMode(EIdlePacingMode mode);

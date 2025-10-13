@@ -638,6 +638,8 @@ GetDpiForMonitorFn ResolveGetDpiForMonitor()
 
 float GetMonitorScaleForHWND(HWND hWnd)
 {
+  WDL_dpi_aware_scope scope(-4);
+
   if (!hWnd)
   {
 #if defined IGRAPHICS_VULKAN
@@ -706,6 +708,8 @@ float GetMonitorScaleForHWND(HWND hWnd)
 
 float GetDeviceScaleForHWND(HWND hWnd)
 {
+  WDL_dpi_aware_scope scope(-4);
+
   if (!hWnd)
   {
 #if defined IGRAPHICS_VULKAN

@@ -21,6 +21,9 @@
 #include "IPlugPaths.h"
 #include "IPopupMenuControl.h"
 #include "SchedulerLogging.h"
+#define WDL_WIN32_HIDPI_IMPL
+#include "WDL/win32_hidpi.h"
+#undef WDL_WIN32_HIDPI_IMPL
 #if defined IGRAPHICS_VULKAN
   #include "VulkanLogging.h"
 #endif
@@ -81,6 +84,26 @@ struct VBlankSubscription
 namespace
 {
 constexpr uint32_t kVBlankQueueDepthWarningMultiplier = 2;
+
+#if defined IGRAPHICS_VULKAN
+using SetThreadDpiHostingBehaviorFn = int(WINAPI*)(int);
+
+SetThreadDpiHostingBehaviorFn GetSetThreadDpiHostingBehavior()
+{
+  static SetThreadDpiHostingBehaviorFn fn = []() -> SetThreadDpiHostingBehaviorFn {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (!user32)
+      user32 = LoadLibraryW(L"user32.dll");
+    if (!user32)
+      return nullptr;
+    return reinterpret_cast<SetThreadDpiHostingBehaviorFn>(GetProcAddress(user32, "SetThreadDpiHostingBehavior"));
+  }();
+  return fn;
+}
+
+constexpr int kDpiHostingBehaviorInvalid = -1;
+constexpr int kDpiHostingBehaviorMixedMixed = 3;
+#endif
 
 void RecordVBlankQueueDepthSample(uint32_t depth);
 void IncrementVBlankQueueWarnCount();
@@ -2454,6 +2477,18 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
     return 0;
 
+  case WM_SIZE:
+#if defined IGRAPHICS_VULKAN
+    pGraphics->SyncVulkanRenderWindowFromClientRect();
+#endif
+    break;
+
+  case WM_DPICHANGED:
+#if defined IGRAPHICS_VULKAN
+    pGraphics->SyncVulkanRenderWindowFromClientRect();
+#endif
+    break;
+
   case WM_ERASEBKGND:
     return 0;
 
@@ -3513,6 +3548,10 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
     {
       SetWindowPos(pGrandparent, 0, 0, 0, grandparentW + dw, grandparentH + dh, SETPOS_FLAGS);
     }
+
+#if defined IGRAPHICS_VULKAN
+    SyncVulkanRenderWindowFromClientRect();
+#endif
   }
 }
 
@@ -3735,6 +3774,86 @@ void IGraphicsWin::DestroyGLContext()
 #endif
 
 #ifdef IGRAPHICS_VULKAN
+bool IGraphicsWin::EnsureVulkanRenderWindow()
+{
+  if (mVulkanRenderWnd || !mPlugWnd)
+    return mPlugWnd != nullptr;
+
+  SetThreadDpiHostingBehaviorFn setHostingBehavior = GetSetThreadDpiHostingBehavior();
+  int previousHostingBehavior = kDpiHostingBehaviorInvalid;
+  if (setHostingBehavior)
+  {
+    previousHostingBehavior = setHostingBehavior(kDpiHostingBehaviorMixedMixed);
+  }
+
+  WDL_dpi_aware_scope dpiScope(-4);
+
+  mVulkanRenderWnd = CreateWindowExW(WS_EX_NOPARENTNOTIFY,
+                                     L"STATIC",
+                                     L"",
+                                     WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_DISABLED,
+                                     0,
+                                     0,
+                                     0,
+                                     0,
+                                     mPlugWnd,
+                                     nullptr,
+                                     mHInstance,
+                                     nullptr);
+
+  if (!mVulkanRenderWnd)
+  {
+    if (setHostingBehavior && previousHostingBehavior != kDpiHostingBehaviorInvalid)
+    {
+      setHostingBehavior(previousHostingBehavior);
+    }
+    return false;
+  }
+
+  SyncVulkanRenderWindowFromClientRect();
+
+  if (setHostingBehavior && previousHostingBehavior != kDpiHostingBehaviorInvalid)
+  {
+    setHostingBehavior(previousHostingBehavior);
+  }
+
+  return true;
+}
+
+void IGraphicsWin::DestroyVulkanRenderWindow()
+{
+  if (mVulkanRenderWnd)
+  {
+    DestroyWindow(mVulkanRenderWnd);
+    mVulkanRenderWnd = nullptr;
+  }
+}
+
+void IGraphicsWin::SyncVulkanRenderWindowFromClientRect()
+{
+  if (!mVulkanRenderWnd || !mPlugWnd)
+    return;
+
+  RECT client{};
+  if (!GetClientRect(mPlugWnd, &client))
+    return;
+
+  const int logicalWidth = client.right - client.left;
+  const int logicalHeight = client.bottom - client.top;
+
+  if (logicalWidth <= 0 || logicalHeight <= 0)
+    return;
+
+  float scale = GetScaleForHWND(mVulkanRenderWnd);
+  if (scale <= 0.f)
+    scale = 1.f;
+
+  const int deviceWidth = std::max(1, static_cast<int>(std::round(static_cast<float>(logicalWidth) * scale)));
+  const int deviceHeight = std::max(1, static_cast<int>(std::round(static_cast<float>(logicalHeight) * scale)));
+
+  SetWindowPos(mVulkanRenderWnd, nullptr, 0, 0, deviceWidth, deviceHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
 bool IGraphicsWin::CreateVulkanContext()
 {
   if (mVkInstance)
@@ -3751,7 +3870,7 @@ bool IGraphicsWin::CreateVulkanContext()
 
   WinVulkanDeviceRequest request{};
   request.instanceHandle = mHInstance;
-  request.windowHandle = mPlugWnd;
+  request.windowHandle = mVulkanRenderWnd ? mVulkanRenderWnd : mPlugWnd;
   request.preferredAdapter = preferredAdapter;
 #if !defined(NDEBUG)
   request.enableValidationLayer = true;
@@ -4234,8 +4353,18 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   mPlugWnd = CreateWindowW(wndClassName, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
 #if defined IGRAPHICS_VULKAN
   SetPlatformContext(mPlugWnd);
+  if (!EnsureVulkanRenderWindow())
+  {
+    SetPlatformContext(nullptr);
+    DestroyWindow(mPlugWnd);
+    mPlugWnd = nullptr;
+    return nullptr;
+  }
+
   if (!CreateVulkanContext())
   {
+    SetPlatformContext(nullptr);
+    DestroyVulkanRenderWindow();
     DestroyWindow(mPlugWnd);
     mPlugWnd = nullptr;
     return nullptr;
@@ -4441,6 +4570,8 @@ void IGraphicsWin::CloseWindow()
     DeactivateGLContext();
 
     DestroyVulkanContext();
+
+    DestroyVulkanRenderWindow();
 
 #endif
 

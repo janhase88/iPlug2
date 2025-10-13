@@ -1133,6 +1133,12 @@ public:
   * @return The draw scale * screen scale */
   float GetTotalScale() const { return mDrawScale * mScreenScale; }
 
+  /** @return The platform-adjusted screen scale that maps logical coordinates to device pixels */
+  float GetDevicePixelScale() const { return GetScreenScale() * GetPlatformWindowScale(); }
+
+  /** @return The total backing pixel scale including platform adjustments */
+  virtual float GetBackingPixelScale() const { return GetDrawScale() * GetDevicePixelScale(); }
+
   /** Configure idle pacing behaviour for the platform scheduler */
   void SetIdlePacingMode(EIdlePacingMode mode);
 
@@ -1844,9 +1850,6 @@ protected:
    * @param ty \todo */
   void CalculateTextRotation(const IText& text, const IRECT& bounds, IRECT& rect, double& tx, double& ty) const;
   
-  /** @return float \todo */
-  virtual float GetBackingPixelScale() const { return GetScreenScale() * GetDrawScale(); };
-
   IMatrix GetTransformMatrix() const { return mTransform; }
   void FinishCaptureForTouch(ITouchID touchID, const IMouseInfo* pInfo = nullptr);
 #pragma mark -

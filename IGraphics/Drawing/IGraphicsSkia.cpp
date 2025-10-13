@@ -1329,8 +1329,9 @@ bool IGraphicsSkia::AssertValidSwapchainImage(VkImage image, const char* context
 void IGraphicsSkia::DrawResize()
 {
   ScopedGraphicsContext scopedGLContext{this};
-  auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * GetScreenScale()));
-  auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * GetScreenScale()));
+  const float surfaceScale = GetDevicePixelScale();
+  auto w = static_cast<int>(std::ceil(static_cast<float>(WindowWidth()) * surfaceScale));
+  auto h = static_cast<int>(std::ceil(static_cast<float>(WindowHeight()) * surfaceScale));
 #if defined IGRAPHICS_VULKAN
   IGRAPHICS_VK_LOG("DrawResize",
                       "begin",
@@ -1343,6 +1344,7 @@ void IGraphicsSkia::DrawResize()
                       vulkanlog::MakeField("logicalHeight", WindowHeight()),
                       vulkanlog::MakeFloatField("drawScale", GetDrawScale()),
                       vulkanlog::MakeFloatField("screenScale", GetScreenScale()),
+                      vulkanlog::MakeFloatField("devicePixelScale", surfaceScale),
                       vulkanlog::MakeField("targetSurfaceWidth", w),
                       vulkanlog::MakeField("targetSurfaceHeight", h));
   std::lock_guard<std::mutex> lock(mVKSwapchainMutex);
@@ -1615,7 +1617,7 @@ void IGraphicsSkia::BeginFrame()
   mVKFrameVersion = mVKSwapchainVersion;
 #if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
   mVKFrameBitmapScaleSummary.Reset();
-  mVKFrameBitmapScaleSummary.totalScale = GetTotalScale();
+  mVKFrameBitmapScaleSummary.totalScale = GetBackingPixelScale();
 #endif
   IGRAPHICS_VK_LOG("BeginFrame",
                       "entry",
@@ -1637,8 +1639,9 @@ void IGraphicsSkia::BeginFrame()
 #if defined IGRAPHICS_GL
   if (mGrContext.get())
   {
-    int width = WindowWidth() * GetScreenScale();
-    int height = WindowHeight() * GetScreenScale();
+    const float surfaceScale = GetDevicePixelScale();
+    int width = static_cast<int>(std::round(WindowWidth() * surfaceScale));
+    int height = static_cast<int>(std::round(WindowHeight() * surfaceScale));
 
     // Bind to the current main framebuffer
     int fbo = 0, samples = 0, stencilBits = 0;
@@ -1662,8 +1665,9 @@ void IGraphicsSkia::BeginFrame()
 #elif defined IGRAPHICS_METAL
   if (mGrContext.get())
   {
-    int width = WindowWidth() * GetScreenScale();
-    int height = WindowHeight() * GetScreenScale();
+    const float surfaceScale = GetDevicePixelScale();
+    int width = static_cast<int>(std::round(WindowWidth() * surfaceScale));
+    int height = static_cast<int>(std::round(WindowHeight() * surfaceScale));
 
     id<CAMetalDrawable> drawable = [(CAMetalLayer*)mMTLLayer nextDrawable];
 
@@ -1691,8 +1695,9 @@ void IGraphicsSkia::BeginFrame()
       return;
     }
 
-    int width = WindowWidth() * GetScreenScale();
-    int height = WindowHeight() * GetScreenScale();
+    const float surfaceScale = GetDevicePixelScale();
+    int width = static_cast<int>(std::round(WindowWidth() * surfaceScale));
+    int height = static_cast<int>(std::round(WindowHeight() * surfaceScale));
     if (mVKSubmissionPending)
     {
       IGRAPHICS_VK_LOG("BeginFrame",
@@ -2079,8 +2084,9 @@ void IGraphicsSkia::EndFrame()
   SkCGDrawBitmap(pCGContext, bmp, 0, 0);
   CGContextRestoreGState(pCGContext);
   #elif defined OS_WIN
-  auto w = WindowWidth() * GetScreenScale();
-  auto h = WindowHeight() * GetScreenScale();
+  const float surfaceScale = GetDevicePixelScale();
+  auto w = WindowWidth() * surfaceScale;
+  auto h = WindowHeight() * surfaceScale;
   BITMAPINFO* bmpInfo = reinterpret_cast<BITMAPINFO*>(mSurfaceMemory.Get());
   HWND hWnd = (HWND)GetWindow();
   PAINTSTRUCT ps;
@@ -2123,10 +2129,11 @@ void IGraphicsSkia::EndFrame()
     const double surfaceWidthPx = mSurface ? static_cast<double>(mSurface->width()) : std::numeric_limits<double>::quiet_NaN();
     const double surfaceHeightPx = mSurface ? static_cast<double>(mSurface->height()) : std::numeric_limits<double>::quiet_NaN();
 
-    const double drawPixelWidth = logicalWidth * drawScale;
-    const double drawPixelHeight = logicalHeight * drawScale;
-    const double screenPixelWidth = logicalWidth * screenScale;
-    const double screenPixelHeight = logicalHeight * screenScale;
+    const double devicePixelScale = GetDevicePixelScale();
+    const double drawPixelWidth = logicalWidth * totalScale;
+    const double drawPixelHeight = logicalHeight * totalScale;
+    const double screenPixelWidth = logicalWidth * screenScale * devicePixelScale;
+    const double screenPixelHeight = logicalHeight * screenScale * devicePixelScale;
     const double totalPixelWidth = logicalWidth * totalScale;
     const double totalPixelHeight = logicalHeight * totalScale;
 
@@ -2462,7 +2469,7 @@ void IGraphicsSkia::DrawBitmap(const IBitmap& bitmap, const IRECT& dest, int src
 
 #if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
   {
-    const double totalScale = GetTotalScale();
+    const double totalScale = GetBackingPixelScale();
     const double bitmapPixelWidth = static_cast<double>(apiBitmap->GetWidth());
     const double bitmapPixelHeight = static_cast<double>(apiBitmap->GetHeight());
     double widthRatio = std::numeric_limits<double>::quiet_NaN();
@@ -2898,7 +2905,7 @@ void IGraphicsSkia::PathTransformSetMatrix(const IMatrix& m)
   }
 
   mMatrix = SkMatrix::MakeAll(m.mXX, m.mXY, m.mTX, m.mYX, m.mYY, m.mTY, 0, 0, 1);
-  auto scale = GetTotalScale();
+  auto scale = GetBackingPixelScale();
   SkMatrix globalMatrix = SkMatrix::Scale(scale, scale);
   mClipMatrix = SkMatrix();
   mFinalMatrix = mMatrix;

@@ -25,3 +25,5 @@ This document tracks user requests and the actions taken in response on the `wor
 
 - **Request:** UI still renders blurry despite correct proportions; latest logs show the Vulkan child oscillating between 1× and 1.5× sizing and the host window scale sticking at 1.0.
 - **Action:** Updated Vulkan render-window sync to derive target device pixels from the editor's logical size and screen scale, added logging for the resolved device dimensions, and reverted host scale detection to respect the host's logical DPI so the parent stays virtualization-friendly while the child remains sharp.
+- **Request:** Rendering remains blurry and the swapchain validation layer reports the framebuffer is larger than the swapchain image; correct the sizing so the Vulkan surface matches the render scale without being cropped.
+- **Action:** Reworked the Vulkan render-window sync to base its device sizing on the render/host scale ratio, applied a DPI-aware scope when resizing the child HWND, triggered a resync whenever the platform scales change, and extended the telemetry to include the resolved scale ratio.

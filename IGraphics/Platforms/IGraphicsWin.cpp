@@ -2692,6 +2692,8 @@ void IGraphicsWin::RefreshPlatformScales(bool forceScreenScale)
 
 float IGraphicsWin::ComputeHostWindowScale() const
 {
+  WDL_dpi_aware_scope scope(-4);
+
   float result = 1.f;
   bool resolved = false;
 

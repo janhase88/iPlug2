@@ -13,4 +13,7 @@ This document tracks user requests and the actions taken in response on the `wor
 - **Action:** Added a DPI-aware SetWindowPos helper that preserves WDL behavior while returning success, updated callers to use it, and tightened logging fields to compile cleanly.
 - **Request:** Remaining build errors report `SetWindowPosWithResult` returning `void` and an ambiguous `vulkanlog::MakeField` overload.
 - **Action:** Loaded the real Win32 `SetWindowPos` via `GetProcAddress` to obtain reliable BOOL results, adjusted the helper to restore the WDL macro safely, and disambiguated the Vulkan logging fields with explicit types.
+- **Request:** Despite the fixes, the UI is still blurry and oversized; review the new logs and provide a clearer protocol summary that explains the findings and next steps.
+- **Observation:** The latest telemetry shows `computeHostWindowScale` resolving to `1.0` while `computeRenderScale` settles at `1.5`, leaving the parent plugin window at its DPI-virtualized size so the 1.5× Vulkan child overflows (cropping and blur). The repeated `monitorScaleForHWND` traces confirm the monitor is 144 DPI (1.5×), but the host window queries never escape the DPI-unaware context, so they keep returning 96 DPI (1.0).
+- **Action:** Added a per-monitor-v2 DPI scope to `ComputeHostWindowScale()` so host scale calculations can see the real device DPI, allowing the parent window to resize alongside the Vulkan child and eliminating the oversize/downscale mismatch.
 

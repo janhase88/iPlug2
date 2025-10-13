@@ -4412,8 +4412,13 @@ void IGraphicsWin::SyncVulkanRenderWindowFromClientRect()
     return;
   }
 
-  const float renderScale = std::max(GetScreenScale(), 0.0f);
-  const float hostScale = std::max(mHostWindowScale, 0.0f);
+  const float cachedRenderScale = std::max(GetScreenScale(), 0.0f);
+  const float computedRenderScale = std::max(ComputeRenderScale(), 0.0f);
+  const float renderScale = (computedRenderScale > 0.f) ? computedRenderScale : cachedRenderScale;
+
+  const float cachedHostScale = std::max(mHostWindowScale, 0.0f);
+  const float computedHostScale = std::max(ComputeHostWindowScale(), 0.0f);
+  const float hostScale = (computedHostScale > 0.f) ? computedHostScale : cachedHostScale;
 
   const int expectedDeviceWidth = static_cast<int>(std::lround(static_cast<float>(WindowWidth()) * renderScale));
   const int expectedDeviceHeight = static_cast<int>(std::lround(static_cast<float>(WindowHeight()) * renderScale));
@@ -4460,6 +4465,10 @@ void IGraphicsWin::SyncVulkanRenderWindowFromClientRect()
                       vulkanlog::MakeField("logicalHeight", logicalHeight),
                       MakeFloatField("hostScale", hostScale),
                       MakeFloatField("renderScale", renderScale),
+                      MakeFloatField("cachedHostScale", cachedHostScale),
+                      MakeFloatField("cachedRenderScale", cachedRenderScale),
+                      MakeFloatField("computedHostScale", computedHostScale),
+                      MakeFloatField("computedRenderScale", computedRenderScale),
                       vulkanlog::MakeField("expectedDeviceWidth", expectedDeviceWidth),
                       vulkanlog::MakeField("expectedDeviceHeight", expectedDeviceHeight),
                       vulkanlog::MakeField("usedExpected", usedExpected),
@@ -4477,6 +4486,10 @@ void IGraphicsWin::SyncVulkanRenderWindowFromClientRect()
                       vulkanlog::MakeField("logicalHeight", logicalHeight),
                       MakeFloatField("hostScale", hostScale),
                       MakeFloatField("renderScale", renderScale),
+                      MakeFloatField("cachedHostScale", cachedHostScale),
+                      MakeFloatField("cachedRenderScale", cachedRenderScale),
+                      MakeFloatField("computedHostScale", computedHostScale),
+                      MakeFloatField("computedRenderScale", computedRenderScale),
                       vulkanlog::MakeField("expectedDeviceWidth", expectedDeviceWidth),
                       vulkanlog::MakeField("expectedDeviceHeight", expectedDeviceHeight),
                       vulkanlog::MakeField("usedExpected", usedExpected),

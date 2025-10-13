@@ -192,21 +192,6 @@ public:
 
   void DrawMultiLineText(const IText& text, const char* str, const IRECT& bounds, const IBlend* pBlend) override;
 
-protected:
-  void CleanUpSkiaStatics();
-  float DoMeasureText(const IText& text, const char* str, IRECT& bounds) const override;
-  void DoDrawText(const IText& text, const char* str, const IRECT& bounds, const IBlend* pBlend) override;
-
-  bool LoadAPIFont(const char* fontID, const PlatformFontPtr& font) override;
-
-  APIBitmap* LoadAPIBitmap(const char* fileNameOrResID, int scale, EResourceLocation location, const char* ext) override;
-  APIBitmap* LoadAPIBitmap(const char* name, const void* pData, int dataSize, int scale) override;
-
-#ifdef IGRAPHICS_VULKAN
-  void SkipVKFrame();
-#endif
-
-private:
 #if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
   struct FrameBitmapScaleSummary
   {
@@ -250,7 +235,24 @@ private:
     bool sawInvalid = false;
     bool sawMismatch = false;
   };
+#endif
 
+protected:
+  void CleanUpSkiaStatics();
+  float DoMeasureText(const IText& text, const char* str, IRECT& bounds) const override;
+  void DoDrawText(const IText& text, const char* str, const IRECT& bounds, const IBlend* pBlend) override;
+
+  bool LoadAPIFont(const char* fontID, const PlatformFontPtr& font) override;
+
+  APIBitmap* LoadAPIBitmap(const char* fileNameOrResID, int scale, EResourceLocation location, const char* ext) override;
+  APIBitmap* LoadAPIBitmap(const char* name, const void* pData, int dataSize, int scale) override;
+
+#ifdef IGRAPHICS_VULKAN
+  void SkipVKFrame();
+#endif
+
+private:
+#if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
   FrameBitmapScaleSummary mVKFrameBitmapScaleSummary;
 #endif
 

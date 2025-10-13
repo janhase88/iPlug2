@@ -113,6 +113,67 @@ vulkanlog::Field MakeFloatField(const char* key, float value)
 }
 #endif
 
+BOOL SetWindowPosWithResult(HWND hwnd, HWND hwndAfter, int x, int y, int w, int h, UINT flags)
+{
+#ifdef SetWindowPos
+  #undef SetWindowPos
+  #define IGRAPHICS_RESTORE_SETWINDOWPOS 1
+#endif
+
+  if (!hwnd)
+  {
+#ifdef IGRAPHICS_RESTORE_SETWINDOWPOS
+    #define SetWindowPos WDL_mmSetWindowPos
+    #undef IGRAPHICS_RESTORE_SETWINDOWPOS
+#endif
+    return FALSE;
+  }
+
+  static char init = 0;
+  WDL_ASSERT((flags & SWP_NOSIZE) || w >= 0);
+  WDL_ASSERT((flags & SWP_NOSIZE) || h >= 0);
+
+  if (!init)
+  {
+    init = 1;
+    HINSTANCE user32 = GetModuleHandle("user32.dll");
+    if (user32)
+    {
+      auto getThreadContext = reinterpret_cast<void* (WINAPI*)()>(GetProcAddress(user32, "GetThreadDpiAwarenessContext"));
+      auto areContextsEqual = reinterpret_cast<BOOL(WINAPI*)(void*, void*)>(GetProcAddress(user32, "AreDpiAwarenessContextsEqual"));
+      if (getThreadContext && areContextsEqual)
+      {
+        if (areContextsEqual(getThreadContext(), reinterpret_cast<void*>(static_cast<INT_PTR>(-4))))
+          init = 2;
+      }
+    }
+  }
+
+  BOOL repositionOk = TRUE;
+  if (init == 2 &&
+      !(flags & (SWP_NOMOVE | SWP_NOSIZE | SWP__NOMOVETHENSIZE | SWP_ASYNCWINDOWPOS)) &&
+      !(GetWindowLong(hwnd, GWL_STYLE) & WS_CHILD))
+  {
+    repositionOk = ::SetWindowPos(hwnd,
+                                   nullptr,
+                                   x,
+                                   y,
+                                   0,
+                                   0,
+                                   SWP_NOREDRAW | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_DEFERERASE);
+    flags |= SWP_NOMOVE;
+  }
+
+  BOOL finalOk = ::SetWindowPos(hwnd, hwndAfter, x, y, w, h, flags & ~SWP__NOMOVETHENSIZE);
+
+#ifdef IGRAPHICS_RESTORE_SETWINDOWPOS
+  #define SetWindowPos WDL_mmSetWindowPos
+  #undef IGRAPHICS_RESTORE_SETWINDOWPOS
+#endif
+
+  return repositionOk && finalOk;
+}
+
 void RecordVBlankQueueDepthSample(uint32_t depth);
 void IncrementVBlankQueueWarnCount();
 void RecordVBlankDispatchSuccess();
@@ -3892,7 +3953,7 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
 
     const int targetDlgW = dlgW + dw;
     const int targetDlgH = dlgH + dh;
-    const BOOL plugResized = SetWindowPos(mPlugWnd, 0, 0, 0, targetDlgW, targetDlgH, SETPOS_FLAGS);
+    const BOOL plugResized = SetWindowPosWithResult(mPlugWnd, 0, 0, 0, targetDlgW, targetDlgH, SETPOS_FLAGS);
 #if defined IGRAPHICS_VULKAN
     if (!plugResized)
     {
@@ -3919,7 +3980,7 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
     {
       const int targetParentW = parentW + dw;
       const int targetParentH = parentH + dh;
-      const BOOL parentResized = SetWindowPos(pParent, 0, 0, 0, targetParentW, targetParentH, SETPOS_FLAGS);
+      const BOOL parentResized = SetWindowPosWithResult(pParent, 0, 0, 0, targetParentW, targetParentH, SETPOS_FLAGS);
 #if defined IGRAPHICS_VULKAN
       if (!parentResized)
       {
@@ -3947,7 +4008,7 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
     {
       const int targetGrandparentW = grandparentW + dw;
       const int targetGrandparentH = grandparentH + dh;
-      const BOOL grandparentResized = SetWindowPos(pGrandparent, 0, 0, 0, targetGrandparentW, targetGrandparentH, SETPOS_FLAGS);
+      const BOOL grandparentResized = SetWindowPosWithResult(pGrandparent, 0, 0, 0, targetGrandparentW, targetGrandparentH, SETPOS_FLAGS);
 #if defined IGRAPHICS_VULKAN
       if (!grandparentResized)
       {
@@ -4328,7 +4389,7 @@ void IGraphicsWin::SyncVulkanRenderWindowFromClientRect()
   const int deviceWidth = std::max(1, static_cast<int>(std::round(static_cast<float>(logicalWidth) * scale)));
   const int deviceHeight = std::max(1, static_cast<int>(std::round(static_cast<float>(logicalHeight) * scale)));
 
-  const BOOL positioned = SetWindowPos(mVulkanRenderWnd, nullptr, 0, 0, deviceWidth, deviceHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+  const BOOL positioned = SetWindowPosWithResult(mVulkanRenderWnd, nullptr, 0, 0, deviceWidth, deviceHeight, SWP_NOZORDER | SWP_NOACTIVATE);
 
 #if defined IGRAPHICS_VULKAN
   if (!positioned)
@@ -4597,7 +4658,7 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
                     vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)),
                     vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
                     vulkanlog::MakeHandleField("rectSource", vulkanlog::HandleToUint64(rectSource)),
-                    vulkanlog::MakeField("rectValid", renderRectValid),
+                    vulkanlog::MakeField("rectValid", static_cast<uint32_t>(renderRectValid)),
                     vulkanlog::MakeField("rectWidth", renderRectValid ? (renderRect.right - renderRect.left) : 0),
                     vulkanlog::MakeField("rectHeight", renderRectValid ? (renderRect.bottom - renderRect.top) : 0));
 #endif

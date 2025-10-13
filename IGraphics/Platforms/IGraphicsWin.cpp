@@ -2448,6 +2448,8 @@ float IGraphicsWin::ComputeHostWindowScale() const
 
 float IGraphicsWin::ComputeRenderScale() const
 {
+  WDL_dpi_aware_scope scope(-4);
+
 #if defined IGRAPHICS_VULKAN
   if (mVulkanRenderWnd)
   {

@@ -96,14 +96,14 @@ void IGraphics::SetScreenScale(float scale)
   IGRAPHICS_VK_LOG("DrawScale",
                     "SetScreenScale.applied",
                     vulkanlog::Severity::kInfo,
-                    MakeFloatField("requestedScreenScale", scale),
-                    MakeFloatField("previousScreenScale", previousScreenScale),
-                    MakeFloatField("drawScale", currentDrawScale),
+                    vulkanlog::MakeFloatField("requestedScreenScale", scale),
+                    vulkanlog::MakeFloatField("previousScreenScale", previousScreenScale),
+                    vulkanlog::MakeFloatField("drawScale", currentDrawScale),
                     vulkanlog::MakeField("logicalWidth", logicalWidth),
                     vulkanlog::MakeField("logicalHeight", logicalHeight),
                     vulkanlog::MakeField("windowWidth", windowWidth),
                     vulkanlog::MakeField("windowHeight", windowHeight),
-                    MakeFloatField("platformWindowScale", GetPlatformWindowScale()));
+                    vulkanlog::MakeFloatField("platformWindowScale", GetPlatformWindowScale()));
 #endif
 
   bool parentResized = GetDelegate()->EditorResizeFromUI(windowWidth, windowHeight, true);
@@ -198,13 +198,13 @@ void IGraphics::Resize(int w, int h, float scale, bool needsPlatformResize)
                     vulkanlog::Severity::kInfo,
                     vulkanlog::MakeField("requestedWidth", requestedWidth),
                     vulkanlog::MakeField("requestedHeight", requestedHeight),
-                    MakeFloatField("requestedScale", requestedScale),
+                    vulkanlog::MakeFloatField("requestedScale", requestedScale),
                     vulkanlog::MakeField("constrainedWidth", w),
                     vulkanlog::MakeField("constrainedHeight", h),
-                    MakeFloatField("clippedScale", scale),
+                    vulkanlog::MakeFloatField("clippedScale", scale),
                     vulkanlog::MakeField("previousWidth", previousWidth),
                     vulkanlog::MakeField("previousHeight", previousHeight),
-                    MakeFloatField("previousDrawScale", previousDrawScale),
+                    vulkanlog::MakeFloatField("previousDrawScale", previousDrawScale),
                     vulkanlog::MakeField("needsPlatformResize", needsPlatformResize));
 #endif
 
@@ -216,7 +216,7 @@ void IGraphics::Resize(int w, int h, float scale, bool needsPlatformResize)
                       vulkanlog::Severity::kDebug,
                       vulkanlog::MakeField("width", w),
                       vulkanlog::MakeField("height", h),
-                      MakeFloatField("drawScale", scale));
+                      vulkanlog::MakeFloatField("drawScale", scale));
 #endif
     return;
   }
@@ -240,9 +240,9 @@ void IGraphics::Resize(int w, int h, float scale, bool needsPlatformResize)
                     vulkanlog::Severity::kInfo,
                     vulkanlog::MakeField("windowWidth", windowWidth),
                     vulkanlog::MakeField("windowHeight", windowHeight),
-                    MakeFloatField("drawScale", mDrawScale),
-                    MakeFloatField("screenScale", GetScreenScale()),
-                    MakeFloatField("platformWindowScale", GetPlatformWindowScale()));
+                    vulkanlog::MakeFloatField("drawScale", mDrawScale),
+                    vulkanlog::MakeFloatField("screenScale", GetScreenScale()),
+                    vulkanlog::MakeFloatField("platformWindowScale", GetPlatformWindowScale()));
 #endif
 
   bool parentResized = GetDelegate()->EditorResizeFromUI(windowWidth, windowHeight, needsPlatformResize);

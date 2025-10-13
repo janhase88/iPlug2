@@ -734,7 +734,7 @@ float GetMonitorScaleForHWND(HWND hWnd)
                       vulkanlog::MakeHandleField("monitor", vulkanlog::HandleToUint64(monitor)),
                       vulkanlog::MakeField("dpiX", static_cast<uint32_t>(dpiX)),
                       vulkanlog::MakeField("dpiY", static_cast<uint32_t>(dpiY)),
-                      MakeFloatField("scale", scale));
+                      vulkanlog::MakeFloatField("scale", scale));
 #endif
     return scale;
   }
@@ -773,7 +773,7 @@ float GetDeviceScaleForHWND(HWND hWnd)
                       "deviceScaleForHWND.monitor",
                       vulkanlog::Severity::kDebug,
                       vulkanlog::MakeHandleField("hWnd", vulkanlog::HandleToUint64(hWnd)),
-                      MakeFloatField("scale", monitorScale));
+                      vulkanlog::MakeFloatField("scale", monitorScale));
 #endif
     return monitorScale;
   }
@@ -786,7 +786,7 @@ float GetDeviceScaleForHWND(HWND hWnd)
                       "deviceScaleForHWND.window",
                       vulkanlog::Severity::kDebug,
                       vulkanlog::MakeHandleField("hWnd", vulkanlog::HandleToUint64(hWnd)),
-                      MakeFloatField("scale", windowScale));
+                      vulkanlog::MakeFloatField("scale", windowScale));
 #endif
     return windowScale;
   }
@@ -2719,10 +2719,10 @@ void IGraphicsWin::RefreshPlatformScales(bool forceScreenScale)
   IGRAPHICS_VK_LOG("DpiScale",
                     "refreshPlatformScales",
                     vulkanlog::Severity::kInfo,
-                    MakeFloatField("hostScale", hostScale),
-                    MakeFloatField("renderScale", renderScale),
-                    MakeFloatField("previousHostScale", previousHostScale),
-                    MakeFloatField("previousRenderScale", previousRenderScale),
+                    vulkanlog::MakeFloatField("hostScale", hostScale),
+                    vulkanlog::MakeFloatField("renderScale", renderScale),
+                    vulkanlog::MakeFloatField("previousHostScale", previousHostScale),
+                    vulkanlog::MakeFloatField("previousRenderScale", previousRenderScale),
                     vulkanlog::MakeField("hostChanged", hostChanged),
                     vulkanlog::MakeField("forceScreenScale", forceScreenScale));
 #endif
@@ -2789,12 +2789,12 @@ float IGraphicsWin::ComputeHostWindowScale() const
                     "computeHostWindowScale",
                     vulkanlog::Severity::kDebug,
                     vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
-                    MakeFloatField("plugWindowScale", plugWindowScale),
-                    MakeFloatField("plugDeviceScale", plugDeviceScale),
+                    vulkanlog::MakeFloatField("plugWindowScale", plugWindowScale),
+                    vulkanlog::MakeFloatField("plugDeviceScale", plugDeviceScale),
                     vulkanlog::MakeHandleField("parentWnd", vulkanlog::HandleToUint64(mParentWnd)),
-                    MakeFloatField("parentWindowScale", parentWindowScale),
-                    MakeFloatField("parentDeviceScale", parentDeviceScale),
-                    MakeFloatField("result", result),
+                    vulkanlog::MakeFloatField("parentWindowScale", parentWindowScale),
+                    vulkanlog::MakeFloatField("parentDeviceScale", parentDeviceScale),
+                    vulkanlog::MakeFloatField("result", result),
                     vulkanlog::MakeField("resolved", resolved));
 #endif
 
@@ -2857,12 +2857,12 @@ float IGraphicsWin::ComputeRenderScale() const
                     "computeRenderScale",
                     vulkanlog::Severity::kDebug,
                     vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)),
-                    MakeFloatField("renderWndScale", renderWindowScale),
+                    vulkanlog::MakeFloatField("renderWndScale", renderWindowScale),
                     vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
-                    MakeFloatField("plugWndScale", plugWindowScale),
+                    vulkanlog::MakeFloatField("plugWndScale", plugWindowScale),
                     vulkanlog::MakeHandleField("parentWnd", vulkanlog::HandleToUint64(mParentWnd)),
-                    MakeFloatField("parentWndScale", parentWindowScale),
-                    MakeFloatField("result", result),
+                    vulkanlog::MakeFloatField("parentWndScale", parentWindowScale),
+                    vulkanlog::MakeFloatField("result", result),
                     vulkanlog::MakeField("resolved", resolved),
                     vulkanlog::MakeField("source", resolvedSource));
 #endif
@@ -3995,7 +3995,7 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
                       "platformResize.metrics",
                       vulkanlog::Severity::kDebug,
                       vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
-                      MakeFloatField("hostScale", hostScale),
+                      vulkanlog::MakeFloatField("hostScale", hostScale),
                       vulkanlog::MakeField("currentWidth", dlgW),
                       vulkanlog::MakeField("currentHeight", dlgH),
                       vulkanlog::MakeField("targetWidth", dlgW + dw),
@@ -4389,8 +4389,8 @@ bool IGraphicsWin::EnsureVulkanRenderWindow()
                     "ensure.hostScaleSnapshot",
                     vulkanlog::Severity::kDebug,
                     vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
-                    MakeFloatField("plugWindowScale", plugWindowScale),
-                    MakeFloatField("plugDeviceScale", plugDeviceScale),
+                    vulkanlog::MakeFloatField("plugWindowScale", plugWindowScale),
+                    vulkanlog::MakeFloatField("plugDeviceScale", plugDeviceScale),
                     vulkanlog::MakeField("hostDpiVirtualized", hostDpiVirtualized));
 #endif
 
@@ -4644,12 +4644,12 @@ void IGraphicsWin::SyncVulkanRenderWindowFromClientRect()
                       vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)),
                       vulkanlog::MakeField("logicalWidth", logicalWidth),
                       vulkanlog::MakeField("logicalHeight", logicalHeight),
-                      MakeFloatField("hostScale", hostScale),
-                      MakeFloatField("renderScale", renderScale),
-                      MakeFloatField("cachedHostScale", cachedHostScale),
-                      MakeFloatField("cachedRenderScale", cachedRenderScale),
-                      MakeFloatField("computedHostScale", computedHostScale),
-                      MakeFloatField("computedRenderScale", computedRenderScale),
+                      vulkanlog::MakeFloatField("hostScale", hostScale),
+                      vulkanlog::MakeFloatField("renderScale", renderScale),
+                      vulkanlog::MakeFloatField("cachedHostScale", cachedHostScale),
+                      vulkanlog::MakeFloatField("cachedRenderScale", cachedRenderScale),
+                      vulkanlog::MakeFloatField("computedHostScale", computedHostScale),
+                      vulkanlog::MakeFloatField("computedRenderScale", computedRenderScale),
                       vulkanlog::MakeField("expectedDeviceWidth", expectedDeviceWidth),
                       vulkanlog::MakeField("expectedDeviceHeight", expectedDeviceHeight),
                       vulkanlog::MakeField("haveSwapchainMetrics", haveSwapchainMetrics),
@@ -4666,12 +4666,12 @@ void IGraphicsWin::SyncVulkanRenderWindowFromClientRect()
                       vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)),
                       vulkanlog::MakeField("logicalWidth", logicalWidth),
                       vulkanlog::MakeField("logicalHeight", logicalHeight),
-                      MakeFloatField("hostScale", hostScale),
-                      MakeFloatField("renderScale", renderScale),
-                      MakeFloatField("cachedHostScale", cachedHostScale),
-                      MakeFloatField("cachedRenderScale", cachedRenderScale),
-                      MakeFloatField("computedHostScale", computedHostScale),
-                      MakeFloatField("computedRenderScale", computedRenderScale),
+                      vulkanlog::MakeFloatField("hostScale", hostScale),
+                      vulkanlog::MakeFloatField("renderScale", renderScale),
+                      vulkanlog::MakeFloatField("cachedHostScale", cachedHostScale),
+                      vulkanlog::MakeFloatField("cachedRenderScale", cachedRenderScale),
+                      vulkanlog::MakeFloatField("computedHostScale", computedHostScale),
+                      vulkanlog::MakeFloatField("computedRenderScale", computedRenderScale),
                       vulkanlog::MakeField("expectedDeviceWidth", expectedDeviceWidth),
                       vulkanlog::MakeField("expectedDeviceHeight", expectedDeviceHeight),
                       vulkanlog::MakeField("haveSwapchainMetrics", haveSwapchainMetrics),
@@ -4914,9 +4914,9 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
     IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
                      "scaleSnapshot",
                      vulkanlog::Severity::kDebug,
-                     MakeFloatField("cachedHostScale", cachedHostScale),
-                     MakeFloatField("computedHostScale", computedHostScale),
-                     MakeFloatField("computedRenderScale", computedRenderScale),
+                     vulkanlog::MakeFloatField("cachedHostScale", cachedHostScale),
+                     vulkanlog::MakeFloatField("computedHostScale", computedHostScale),
+                     vulkanlog::MakeFloatField("computedRenderScale", computedRenderScale),
                      vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)),
                      vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
                      vulkanlog::MakeHandleField("rectSource", vulkanlog::HandleToUint64(rectSource)),
@@ -5263,7 +5263,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
                       "open.threadDpiAwareness",
                       vulkanlog::Severity::kDebug,
                       vulkanlog::MakeHandleField("plugWnd", static_cast<uint64_t>(0)),
-                      MakeFloatField("hostScale", hostScale),
+                      vulkanlog::MakeFloatField("hostScale", hostScale),
                       vulkanlog::MakeHandleField("previousThreadContext", previousOpenThreadContext),
                       vulkanlog::MakeField("error", static_cast<uint32_t>(openThreadError)),
                       vulkanlog::MakeField("restoreThreadContext", restoreOpenThreadContext));
@@ -5283,7 +5283,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
                       "open.threadDpiAwarenessRestored",
                       vulkanlog::Severity::kDebug,
                       vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
-                      MakeFloatField("hostScale", hostScale),
+                      vulkanlog::MakeFloatField("hostScale", hostScale),
                       vulkanlog::MakeHandleField("restoredThreadContext", restored),
                       vulkanlog::MakeField("error", static_cast<uint32_t>(restoreError)));
 #endif

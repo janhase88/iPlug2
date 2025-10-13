@@ -1322,8 +1322,8 @@ void IGraphicsSkia::DrawResize()
                       vulkanlog::MakeField("imageCount", static_cast<uint64_t>(mVKSwapchainImages.size())),
                       vulkanlog::MakeField("logicalWidth", WindowWidth()),
                       vulkanlog::MakeField("logicalHeight", WindowHeight()),
-                      MakeFloatField("drawScale", GetDrawScale()),
-                      MakeFloatField("screenScale", GetScreenScale()),
+                      vulkanlog::MakeFloatField("drawScale", GetDrawScale()),
+                      vulkanlog::MakeFloatField("screenScale", GetScreenScale()),
                       vulkanlog::MakeField("targetSurfaceWidth", w),
                       vulkanlog::MakeField("targetSurfaceHeight", h));
   std::lock_guard<std::mutex> lock(mVKSwapchainMutex);
@@ -1573,8 +1573,8 @@ void IGraphicsSkia::DrawResize()
                       vulkanlog::Severity::kDebug,
                       vulkanlog::MakeField("surfaceWidth", mSurface->width()),
                       vulkanlog::MakeField("surfaceHeight", mSurface->height()),
-                      MakeFloatField("drawScale", GetDrawScale()),
-                      MakeFloatField("screenScale", GetScreenScale()),
+                      vulkanlog::MakeFloatField("drawScale", GetDrawScale()),
+                      vulkanlog::MakeFloatField("screenScale", GetScreenScale()),
                       vulkanlog::MakeField("swapchainImages", static_cast<uint64_t>(mVKSwapchainImages.size())));
 #endif
     mCanvas = mSurface->getCanvas();
@@ -1606,8 +1606,8 @@ void IGraphicsSkia::BeginFrame()
                       vulkanlog::MakeField("layoutCount", static_cast<uint64_t>(mVKImageLayouts.size())),
                       vulkanlog::MakeField("logicalWidth", WindowWidth()),
                       vulkanlog::MakeField("logicalHeight", WindowHeight()),
-                      MakeFloatField("drawScale", GetDrawScale()),
-                      MakeFloatField("screenScale", GetScreenScale()),
+                      vulkanlog::MakeFloatField("drawScale", GetDrawScale()),
+                      vulkanlog::MakeFloatField("screenScale", GetScreenScale()),
                       vulkanlog::MakeField("surfaceWidth", static_cast<int>(mSurface ? mSurface->width() : 0)),
                       vulkanlog::MakeField("surfaceHeight", static_cast<int>(mSurface ? mSurface->height() : 0)));
 #endif
@@ -2083,8 +2083,8 @@ void IGraphicsSkia::EndFrame()
                       vulkanlog::MakeField("layoutCount", static_cast<uint64_t>(mVKImageLayouts.size())),
                       vulkanlog::MakeField("logicalWidth", WindowWidth()),
                       vulkanlog::MakeField("logicalHeight", WindowHeight()),
-                      MakeFloatField("drawScale", GetDrawScale()),
-                      MakeFloatField("screenScale", GetScreenScale()),
+                      vulkanlog::MakeFloatField("drawScale", GetDrawScale()),
+                      vulkanlog::MakeFloatField("screenScale", GetScreenScale()),
                       vulkanlog::MakeField("surfaceWidth", static_cast<int>(mSurface ? mSurface->width() : 0)),
                       vulkanlog::MakeField("surfaceHeight", static_cast<int>(mSurface ? mSurface->height() : 0)),
                       vulkanlog::MakeField("submissionPending", mVKSubmissionPending));

@@ -78,8 +78,8 @@ void IGEditorDelegate::OnParentWindowResize(int width, int height)
                       vulkanlog::Severity::kDebug,
                       vulkanlog::MakeField("width", width),
                       vulkanlog::MakeField("height", height),
-                      MakeFloatField("screenScale", screenScale),
-                      MakeFloatField("drawScale", currentDrawScale),
+                      vulkanlog::MakeFloatField("screenScale", screenScale),
+                      vulkanlog::MakeFloatField("drawScale", currentDrawScale),
                       vulkanlog::MakeField("resizerMode", static_cast<int>(pGraphics->GetResizerMode())));
 #endif
 
@@ -89,8 +89,8 @@ void IGEditorDelegate::OnParentWindowResize(int width, int height)
       IGRAPHICS_VK_LOG("DrawScale",
                         "OnParentWindowResize.invalidScales",
                         vulkanlog::Severity::kError,
-                        MakeFloatField("screenScale", screenScale),
-                        MakeFloatField("drawScale", currentDrawScale));
+                        vulkanlog::MakeFloatField("screenScale", screenScale),
+                        vulkanlog::MakeFloatField("drawScale", currentDrawScale));
 #endif
       return;
     }
@@ -136,11 +136,11 @@ void IGEditorDelegate::OnParentWindowResize(int width, int height)
                         vulkanlog::Severity::kInfo,
                         vulkanlog::MakeField("baseWidth", baseWidth),
                         vulkanlog::MakeField("baseHeight", baseHeight),
-                        MakeFloatField("unscaledWidth", unscaledWidth),
-                        MakeFloatField("unscaledHeight", unscaledHeight),
-                        MakeFloatField("scaleX", scaleX),
-                        MakeFloatField("scaleY", scaleY),
-                        MakeFloatField("targetScale", targetScale));
+                        vulkanlog::MakeFloatField("unscaledWidth", unscaledWidth),
+                        vulkanlog::MakeFloatField("unscaledHeight", unscaledHeight),
+                        vulkanlog::MakeFloatField("scaleX", scaleX),
+                        vulkanlog::MakeFloatField("scaleY", scaleY),
+                        vulkanlog::MakeFloatField("targetScale", targetScale));
 #endif
 
       pGraphics->Resize(baseWidth, baseHeight, targetScale, false);
@@ -155,8 +155,8 @@ void IGEditorDelegate::OnParentWindowResize(int width, int height)
         IGRAPHICS_VK_LOG("DrawScale",
                           "OnParentWindowResize.nonFiniteInvScale",
                           vulkanlog::Severity::kError,
-                          MakeFloatField("screenScale", screenScale),
-                          MakeFloatField("drawScale", currentDrawScale));
+                          vulkanlog::MakeFloatField("screenScale", screenScale),
+                          vulkanlog::MakeFloatField("drawScale", currentDrawScale));
 #endif
         return;
       }
@@ -172,7 +172,7 @@ void IGEditorDelegate::OnParentWindowResize(int width, int height)
                           vulkanlog::Severity::kError,
                           vulkanlog::MakeField("logicalWidth", logicalWidth),
                           vulkanlog::MakeField("logicalHeight", logicalHeight),
-                          MakeFloatField("invTotalScale", invTotalScale));
+                          vulkanlog::MakeFloatField("invTotalScale", invTotalScale));
 #endif
         return;
       }
@@ -183,7 +183,7 @@ void IGEditorDelegate::OnParentWindowResize(int width, int height)
                         vulkanlog::Severity::kInfo,
                         vulkanlog::MakeField("logicalWidth", logicalWidth),
                         vulkanlog::MakeField("logicalHeight", logicalHeight),
-                        MakeFloatField("invTotalScale", invTotalScale));
+                        vulkanlog::MakeFloatField("invTotalScale", invTotalScale));
 #endif
 
       pGraphics->Resize(logicalWidth, logicalHeight, currentDrawScale, false);

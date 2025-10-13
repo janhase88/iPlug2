@@ -2208,9 +2208,7 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
   // TODO: move this... listen to the right messages in windows for screen resolution changes, etc.
   if (!GetCapture()) // workaround Windows issues with window sizing during mouse move
   {
-    float scale = GetScaleForHWND(mPlugWnd);
-    if (scale != GetScreenScale())
-      SetScreenScale(scale);
+    RefreshPlatformScales(false);
   }
 
   // TODO: this is far too aggressive for slow drawing animations and data changing.  We need to
@@ -2410,6 +2408,77 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
   return;
 }
 
+void IGraphicsWin::RefreshPlatformScales(bool forceScreenScale)
+{
+  const float hostScale = std::max(ComputeHostWindowScale(), 0.01f);
+  const float renderScale = std::max(ComputeRenderScale(), 0.01f);
+
+  const bool hostChanged = ScalesDiffer(hostScale, mHostWindowScale);
+  if (hostChanged)
+    mHostWindowScale = hostScale;
+
+  if (forceScreenScale || ScalesDiffer(renderScale, GetScreenScale()))
+  {
+    SetScreenScale(renderScale);
+  }
+  else if (hostChanged && WindowIsOpen())
+  {
+    PlatformResize(false);
+  }
+}
+
+float IGraphicsWin::ComputeHostWindowScale() const
+{
+  if (mPlugWnd)
+  {
+    const float scale = GetScaleForHWND(mPlugWnd);
+    if (scale > 0.f)
+      return scale;
+  }
+
+  if (mParentWnd)
+  {
+    const float scale = GetScaleForHWND(mParentWnd);
+    if (scale > 0.f)
+      return scale;
+  }
+
+  return 1.f;
+}
+
+float IGraphicsWin::ComputeRenderScale() const
+{
+#if defined IGRAPHICS_VULKAN
+  if (mVulkanRenderWnd)
+  {
+    const float scale = GetScaleForHWND(mVulkanRenderWnd);
+    if (scale > 0.f)
+      return scale;
+  }
+#endif
+
+  if (mPlugWnd)
+  {
+    const float scale = GetScaleForHWND(mPlugWnd);
+    if (scale > 0.f)
+      return scale;
+  }
+
+  if (mParentWnd)
+  {
+    const float scale = GetScaleForHWND(mParentWnd);
+    if (scale > 0.f)
+      return scale;
+  }
+
+  return 1.f;
+}
+
+bool IGraphicsWin::ScalesDiffer(float a, float b)
+{
+  return std::fabs(a - b) > 0.001f;
+}
+
 // static
 LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -2487,6 +2556,7 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 #if defined IGRAPHICS_VULKAN
     pGraphics->SyncVulkanRenderWindowFromClientRect();
 #endif
+    pGraphics->RefreshPlatformScales(false);
     break;
 
   case WM_ERASEBKGND:
@@ -3520,7 +3590,9 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
     HWND pParent = 0, pGrandparent = 0;
     int dlgW = 0, dlgH = 0, parentW = 0, parentH = 0, grandparentW = 0, grandparentH = 0;
     GetWindowSize(mPlugWnd, &dlgW, &dlgH);
-    int dw = (WindowWidth() * GetScreenScale()) - dlgW, dh = (WindowHeight() * GetScreenScale()) - dlgH;
+    const float hostScale = GetPlatformWindowScale();
+    int dw = static_cast<int>(std::round(WindowWidth() * hostScale)) - dlgW;
+    int dh = static_cast<int>(std::round(WindowHeight() * hostScale)) - dlgH;
 
     if (IsChildWindow(mPlugWnd))
     {
@@ -4324,9 +4396,16 @@ EMsgBoxResult IGraphicsWin::ShowMessageBox(const char* str, const char* title, E
 void* IGraphicsWin::OpenWindow(void* pParent)
 {
   mParentWnd = (HWND)pParent;
-  const float screenScale = GetScaleForHWND(mParentWnd);
-  const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * screenScale));
-  const int scaledHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * screenScale));
+  float hostScale = 1.f;
+  if (mParentWnd)
+  {
+    hostScale = GetScaleForHWND(mParentWnd);
+    if (hostScale <= 0.f)
+      hostScale = 1.f;
+  }
+  mHostWindowScale = hostScale;
+  const int scaledWidth = static_cast<int>(std::lround(static_cast<float>(WindowWidth()) * hostScale));
+  const int scaledHeight = static_cast<int>(std::lround(static_cast<float>(WindowHeight()) * hostScale));
   int x = 0;
   int y = 0;
   int w = scaledWidth;
@@ -4398,7 +4477,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   #endif
 #endif
 
-  SetScreenScale(screenScale); // resizes draw context
+  RefreshPlatformScales(true);
 
   GetDelegate()->LayoutUI(this);
 
@@ -4819,7 +4898,11 @@ IPopupMenu* IGraphicsWin::CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT 
     }
     DestroyMenu(hMenu);
 
-    RECT r = {0, 0, static_cast<LONG>(WindowWidth() * GetScreenScale()), static_cast<LONG>(WindowHeight() * GetScreenScale())};
+    const float hostScale = GetPlatformWindowScale();
+    RECT r = {0,
+              0,
+              static_cast<LONG>(std::lround(WindowWidth() * hostScale)),
+              static_cast<LONG>(std::lround(WindowHeight() * hostScale))};
     InvalidateRect(mPlugWnd, &r, FALSE);
 
     return result;

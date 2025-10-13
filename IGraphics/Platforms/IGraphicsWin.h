@@ -87,7 +87,7 @@ public:
   void* GetWinModuleHandle() override { return mHInstance; }
 
   void ForceEndUserEdit() override;
-  float GetPlatformWindowScale() const override { return GetScreenScale(); }
+  float GetPlatformWindowScale() const override { return mHostWindowScale; }
 
   void PlatformResize(bool parentHasResized) override;
 
@@ -193,6 +193,11 @@ private:
    * @param fromVBlankMessage distinguishes real WM_VBLANK deliveries from the WM_TIMER fallback. */
   void OnDisplayTimer(DWORD vBlankCount = 0, bool fromVBlankMessage = false);
 
+  void RefreshPlatformScales(bool forceScreenScale);
+  float ComputeHostWindowScale() const;
+  float ComputeRenderScale() const;
+  static bool ScalesDiffer(float a, float b);
+
   enum EParamEditMsg
   {
     kNone,
@@ -257,6 +262,7 @@ private:
   WNDPROC mDefEditProc = nullptr;
   HFONT mEditFont = nullptr;
   DWORD mPID = 0;
+  float mHostWindowScale = 1.f;
 
   void StartVBlankThread(HWND hWnd);
   void StopVBlankThread();

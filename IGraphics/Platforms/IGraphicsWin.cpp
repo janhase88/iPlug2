@@ -2504,16 +2504,26 @@ float IGraphicsWin::ComputeHostWindowScale() const
 {
   if (mPlugWnd)
   {
-    const float scale = GetScaleForHWND(mPlugWnd);
-    if (scale > 0.f)
-      return scale;
+    const float windowScale = GetScaleForHWND(mPlugWnd);
+    const float deviceScale = GetDeviceScaleForHWND(mPlugWnd);
+
+    if (deviceScale > 0.f && (windowScale <= 0.f || ScalesDiffer(windowScale, deviceScale)))
+      return deviceScale;
+
+    if (windowScale > 0.f)
+      return windowScale;
   }
 
   if (mParentWnd)
   {
-    const float scale = GetScaleForHWND(mParentWnd);
-    if (scale > 0.f)
-      return scale;
+    const float windowScale = GetScaleForHWND(mParentWnd);
+    const float deviceScale = GetDeviceScaleForHWND(mParentWnd);
+
+    if (deviceScale > 0.f && (windowScale <= 0.f || ScalesDiffer(windowScale, deviceScale)))
+      return deviceScale;
+
+    if (windowScale > 0.f)
+      return windowScale;
   }
 
   return 1.f;

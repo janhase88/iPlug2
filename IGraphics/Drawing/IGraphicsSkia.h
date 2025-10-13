@@ -3,6 +3,7 @@
 #include "IGraphics.h"
 #include "IPlugPlatform.h"
 #include <cstdint>
+#include <cmath>
 #include <limits>
 #include <mutex>
 #include <unordered_set>
@@ -206,6 +207,53 @@ protected:
 #endif
 
 private:
+#if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
+  struct FrameBitmapScaleSummary
+  {
+    void Reset()
+    {
+      samples = 0;
+      minWidthRatio = std::numeric_limits<double>::infinity();
+      maxWidthRatio = 0.0;
+      minHeightRatio = std::numeric_limits<double>::infinity();
+      maxHeightRatio = 0.0;
+      sawInvalid = false;
+      sawMismatch = false;
+      totalScale = 0.0;
+    }
+
+    void Accumulate(double widthRatio, double heightRatio)
+    {
+      if (!std::isfinite(widthRatio) || !std::isfinite(heightRatio))
+      {
+        sawInvalid = true;
+        return;
+      }
+
+      ++samples;
+      minWidthRatio = std::min(minWidthRatio, widthRatio);
+      maxWidthRatio = std::max(maxWidthRatio, widthRatio);
+      minHeightRatio = std::min(minHeightRatio, heightRatio);
+      maxHeightRatio = std::max(maxHeightRatio, heightRatio);
+
+      constexpr double kTolerance = 1e-3;
+      if (std::fabs(widthRatio - 1.0) > kTolerance || std::fabs(heightRatio - 1.0) > kTolerance)
+        sawMismatch = true;
+    }
+
+    int samples = 0;
+    double minWidthRatio = std::numeric_limits<double>::infinity();
+    double maxWidthRatio = 0.0;
+    double minHeightRatio = std::numeric_limits<double>::infinity();
+    double maxHeightRatio = 0.0;
+    double totalScale = 0.0;
+    bool sawInvalid = false;
+    bool sawMismatch = false;
+  };
+
+  FrameBitmapScaleSummary mVKFrameBitmapScaleSummary;
+#endif
+
   void PrepareAndMeasureText(const IText& text, const char* str, IRECT& r, double& x, double& y, SkFont& font) const;
 
   void PathTransformSetMatrix(const IMatrix& m) override;

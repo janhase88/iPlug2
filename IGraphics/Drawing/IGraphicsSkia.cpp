@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <map>
 #include <type_traits>
 #include <utility>
@@ -10,6 +11,16 @@
 
 #if defined(IGRAPHICS_VULKAN)
 #include "../Platforms/VulkanLogging.h"
+#endif
+
+#if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
+namespace
+{
+float VkLogFloatOrNaN(double value)
+{
+  return std::isfinite(value) ? static_cast<float>(value) : std::numeric_limits<float>::quiet_NaN();
+}
+}
 #endif
 
 #pragma warning(push)
@@ -1002,6 +1013,10 @@ IGraphicsSkia::IGraphicsSkia(IGEditorDelegate& dlg, int w, int h, int fps, float
 {
   mMainPath.setIsVolatile(true);
 
+#if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
+  mVKFrameBitmapScaleSummary.Reset();
+#endif
+
 #if defined IGRAPHICS_CPU
   DBGMSG("IGraphics Skia CPU @ %i FPS\n", fps);
 #elif defined IGRAPHICS_METAL
@@ -1594,6 +1609,10 @@ void IGraphicsSkia::BeginFrame()
 #if defined IGRAPHICS_VULKAN
   std::unique_lock<std::mutex> lock(mVKSwapchainMutex);
   mVKFrameVersion = mVKSwapchainVersion;
+#if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
+  mVKFrameBitmapScaleSummary.Reset();
+  mVKFrameBitmapScaleSummary.totalScale = GetTotalScale();
+#endif
   IGRAPHICS_VK_LOG("BeginFrame",
                       "entry",
                       vulkanlog::Severity::kDebug,
@@ -2088,6 +2107,64 @@ void IGraphicsSkia::EndFrame()
                       vulkanlog::MakeField("surfaceWidth", static_cast<int>(mSurface ? mSurface->width() : 0)),
                       vulkanlog::MakeField("surfaceHeight", static_cast<int>(mSurface ? mSurface->height() : 0)),
                       vulkanlog::MakeField("submissionPending", mVKSubmissionPending));
+#if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
+  {
+    const FrameBitmapScaleSummary& summary = mVKFrameBitmapScaleSummary;
+    const double logicalWidth = static_cast<double>(WindowWidth());
+    const double logicalHeight = static_cast<double>(WindowHeight());
+    const double drawScale = GetDrawScale();
+    const double screenScale = GetScreenScale();
+    const double totalScale = summary.totalScale;
+
+    const double surfaceWidthPx = mSurface ? static_cast<double>(mSurface->width()) : std::numeric_limits<double>::quiet_NaN();
+    const double surfaceHeightPx = mSurface ? static_cast<double>(mSurface->height()) : std::numeric_limits<double>::quiet_NaN();
+
+    const double drawPixelWidth = logicalWidth * drawScale;
+    const double drawPixelHeight = logicalHeight * drawScale;
+    const double screenPixelWidth = logicalWidth * screenScale;
+    const double screenPixelHeight = logicalHeight * screenScale;
+    const double totalPixelWidth = logicalWidth * totalScale;
+    const double totalPixelHeight = logicalHeight * totalScale;
+
+    const auto safeRatio = [](double numerator, double denominator) {
+      if (!std::isfinite(numerator) || !std::isfinite(denominator) || denominator == 0.0)
+        return std::numeric_limits<double>::quiet_NaN();
+      return numerator / denominator;
+    };
+
+    const double surfaceVsDrawWidthRatio = safeRatio(surfaceWidthPx, drawPixelWidth);
+    const double surfaceVsDrawHeightRatio = safeRatio(surfaceHeightPx, drawPixelHeight);
+    const double surfaceVsScreenWidthRatio = safeRatio(surfaceWidthPx, screenPixelWidth);
+    const double surfaceVsScreenHeightRatio = safeRatio(surfaceHeightPx, screenPixelHeight);
+    const double surfaceVsTotalWidthRatio = safeRatio(surfaceWidthPx, totalPixelWidth);
+    const double surfaceVsTotalHeightRatio = safeRatio(surfaceHeightPx, totalPixelHeight);
+
+    const double minWidthRatio = summary.samples > 0 ? summary.minWidthRatio : std::numeric_limits<double>::quiet_NaN();
+    const double maxWidthRatio = summary.samples > 0 ? summary.maxWidthRatio : std::numeric_limits<double>::quiet_NaN();
+    const double minHeightRatio = summary.samples > 0 ? summary.minHeightRatio : std::numeric_limits<double>::quiet_NaN();
+    const double maxHeightRatio = summary.samples > 0 ? summary.maxHeightRatio : std::numeric_limits<double>::quiet_NaN();
+
+    IGRAPHICS_VK_LOG("EndFrame",
+                        "bitmapScaleSummary",
+                        vulkanlog::Severity::kDebug,
+                        vulkanlog::MakeField("samples", summary.samples),
+                        vulkanlog::MakeField("sawInvalid", summary.sawInvalid),
+                        vulkanlog::MakeField("sawMismatch", summary.sawMismatch),
+                        vulkanlog::MakeFloatField("totalScale", VkLogFloatOrNaN(totalScale)),
+                        vulkanlog::MakeFloatField("drawScale", VkLogFloatOrNaN(drawScale)),
+                        vulkanlog::MakeFloatField("screenScale", VkLogFloatOrNaN(screenScale)),
+                        vulkanlog::MakeFloatField("surfaceVsDrawWidthRatio", VkLogFloatOrNaN(surfaceVsDrawWidthRatio)),
+                        vulkanlog::MakeFloatField("surfaceVsDrawHeightRatio", VkLogFloatOrNaN(surfaceVsDrawHeightRatio)),
+                        vulkanlog::MakeFloatField("surfaceVsScreenWidthRatio", VkLogFloatOrNaN(surfaceVsScreenWidthRatio)),
+                        vulkanlog::MakeFloatField("surfaceVsScreenHeightRatio", VkLogFloatOrNaN(surfaceVsScreenHeightRatio)),
+                        vulkanlog::MakeFloatField("surfaceVsTotalWidthRatio", VkLogFloatOrNaN(surfaceVsTotalWidthRatio)),
+                        vulkanlog::MakeFloatField("surfaceVsTotalHeightRatio", VkLogFloatOrNaN(surfaceVsTotalHeightRatio)),
+                        vulkanlog::MakeFloatField("bitmapMinWidthRatio", VkLogFloatOrNaN(minWidthRatio)),
+                        vulkanlog::MakeFloatField("bitmapMaxWidthRatio", VkLogFloatOrNaN(maxWidthRatio)),
+                        vulkanlog::MakeFloatField("bitmapMinHeightRatio", VkLogFloatOrNaN(minHeightRatio)),
+                        vulkanlog::MakeFloatField("bitmapMaxHeightRatio", VkLogFloatOrNaN(maxHeightRatio)));
+  }
+#endif
   if (mVKSkipFrame || mVKSwapchainImages.empty() || mVKCurrentImage == kInvalidImageIndex || mVKCurrentImage >= mVKSwapchainImages.size())
   {
     IGRAPHICS_VK_LOG("EndFrame",
@@ -2369,7 +2446,29 @@ void IGraphicsSkia::DrawBitmap(const IBitmap& bitmap, const IRECT& dest, int src
   if (pBlend)
     p.setAlpha(Clip(static_cast<int>(pBlend->mWeight * 255), 0, 255));
 
-  SkiaDrawable* image = bitmap.GetAPIBitmap()->GetBitmap();
+  APIBitmap* apiBitmap = bitmap.GetAPIBitmap();
+  if (!apiBitmap)
+    return;
+
+#if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
+  {
+    const double totalScale = GetTotalScale();
+    const double bitmapPixelWidth = static_cast<double>(apiBitmap->GetWidth());
+    const double bitmapPixelHeight = static_cast<double>(apiBitmap->GetHeight());
+    double widthRatio = std::numeric_limits<double>::quiet_NaN();
+    double heightRatio = std::numeric_limits<double>::quiet_NaN();
+
+    if (bitmapPixelWidth > 0.0)
+      widthRatio = (static_cast<double>(dest.W()) * totalScale) / bitmapPixelWidth;
+
+    if (bitmapPixelHeight > 0.0)
+      heightRatio = (static_cast<double>(dest.H()) * totalScale) / bitmapPixelHeight;
+
+    mVKFrameBitmapScaleSummary.Accumulate(widthRatio, heightRatio);
+  }
+#endif
+
+  SkiaDrawable* image = apiBitmap->GetBitmap();
 
   double scale1 = 1.0 / (bitmap.GetScale() * bitmap.GetDrawScale());
   double scale2 = bitmap.GetScale() * bitmap.GetDrawScale();

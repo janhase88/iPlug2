@@ -40,4 +40,7 @@ This document tracks user requests and the actions taken in response on the `wor
 - **Action:** Temporarily switched the thread into a Per-Monitor v2 DPI awareness context while creating both the plug-in window and the Vulkan render child, restoring the host's original context afterward and logging the transitions so Windows stops virtualizing the surface Bitwig captures.
 - **Observation:** The additional DPI-context logging introduced ambiguous overload calls for `MakeField`/`MakeHandleField` in ANSI builds where null handles resolve to either integer or pointer overloads.
 - **Action:** Normalized the diagnostics to route all pointer values through `MakeHandleField` (including null handles) so the build completes cleanly while retaining the detailed thread-context traces.
+- **Request:** With all DPI metrics at 1.5× the Vulkan UI is still blurry; document the current understanding and next investigative steps.
+- **Observation:** The most recent Bitwig trace shows the Vulkan swapchain creating images at the full 1800×750 device size while the Skia renderer continues to draw at `DrawScale: 1.00`. This indicates the frame content is rasterized at 1200×500 and then upscaled to the 1.5× swapchain, which explains the lingering blur despite correct window metrics.
+- **Action:** Capture the outstanding issue in the protocol and plan to trace the Skia pipeline (e.g., `IGraphicsSkia::SetScreenScale` and `mDrawScale` propagation) to ensure the draw scale follows the 1.5× device DPI before rendering the next diagnostic build.
 

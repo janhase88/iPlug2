@@ -4611,13 +4611,15 @@ void IGraphicsWin::SyncVulkanRenderWindowFromClientRect()
   const float cachedRenderScale = std::max(GetScreenScale(), 0.0f);
   const float computedRenderScale = std::max(ComputeRenderScale(), 0.0f);
   const float renderScale = (computedRenderScale > 0.f) ? computedRenderScale : cachedRenderScale;
+  const float virtualization = std::max(GetPlatformDPIVirtualizationFactor(), 1.f);
+  const float deviceScale = renderScale * virtualization;
 
   const float cachedHostScale = std::max(mHostWindowScale, 0.0f);
   const float computedHostScale = std::max(ComputeHostWindowScale(), 0.0f);
   const float hostScale = (computedHostScale > 0.f) ? computedHostScale : cachedHostScale;
 
-  const int expectedDeviceWidth = static_cast<int>(std::lround(static_cast<float>(WindowWidth()) * renderScale));
-  const int expectedDeviceHeight = static_cast<int>(std::lround(static_cast<float>(WindowHeight()) * renderScale));
+  const int expectedDeviceWidth = static_cast<int>(std::lround(static_cast<float>(WindowWidth()) * deviceScale));
+  const int expectedDeviceHeight = static_cast<int>(std::lround(static_cast<float>(WindowHeight()) * deviceScale));
 
 #if defined IGRAPHICS_VULKAN
   const bool haveSwapchainMetrics = (mVkSwapchain.handle != VK_NULL_HANDLE && !mVkSwapchainImages.empty());
@@ -4632,8 +4634,10 @@ void IGraphicsWin::SyncVulkanRenderWindowFromClientRect()
   if (!usedExpected)
   {
     float relativeScale = 0.f;
-    if (renderScale > 0.f && hostScale > 0.f)
-      relativeScale = renderScale / hostScale;
+    if (hostScale > 0.f)
+      relativeScale = hostScale * virtualization;
+    else if (renderScale > 0.f)
+      relativeScale = renderScale * virtualization;
 
     if (!(relativeScale > 0.f) || !std::isfinite(relativeScale))
     {
@@ -4642,7 +4646,7 @@ void IGraphicsWin::SyncVulkanRenderWindowFromClientRect()
         fallbackScale = GetDeviceScaleForHWND(mPlugWnd);
       if (fallbackScale <= 0.f)
         fallbackScale = 1.f;
-      relativeScale = fallbackScale;
+      relativeScale = fallbackScale * virtualization;
     }
 
     deviceWidth = std::max(1, static_cast<int>(std::lround(static_cast<float>(logicalWidth) * relativeScale)));

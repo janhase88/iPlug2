@@ -88,6 +88,7 @@ constexpr uint32_t kVBlankQueueDepthWarningMultiplier = 2;
 
 #if defined IGRAPHICS_VULKAN
 using SetThreadDpiHostingBehaviorFn = int(WINAPI*)(int);
+using SetWindowDpiAwarenessContextFn = BOOL(WINAPI*)(HWND, void*);
 
 SetThreadDpiHostingBehaviorFn GetSetThreadDpiHostingBehavior()
 {
@@ -102,8 +103,22 @@ SetThreadDpiHostingBehaviorFn GetSetThreadDpiHostingBehavior()
   return fn;
 }
 
+SetWindowDpiAwarenessContextFn GetSetWindowDpiAwarenessContext()
+{
+  static SetWindowDpiAwarenessContextFn fn = []() -> SetWindowDpiAwarenessContextFn {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (!user32)
+      user32 = LoadLibraryW(L"user32.dll");
+    if (!user32)
+      return nullptr;
+    return reinterpret_cast<SetWindowDpiAwarenessContextFn>(GetProcAddress(user32, "SetWindowDpiAwarenessContext"));
+  }();
+  return fn;
+}
+
 constexpr int kDpiHostingBehaviorInvalid = -1;
 constexpr int kDpiHostingBehaviorMixedMixed = 3;
+constexpr INT_PTR kPerMonitorAwareV2Context = -4;
 
 vulkanlog::Field MakeFloatField(const char* key, float value)
 {
@@ -4348,6 +4363,26 @@ bool IGraphicsWin::EnsureVulkanRenderWindow()
                     vulkanlog::Severity::kInfo,
                     vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)),
                     vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)));
+
+  SetWindowDpiAwarenessContextFn setWindowDpiAwarenessContext = GetSetWindowDpiAwarenessContext();
+  if (setWindowDpiAwarenessContext)
+  {
+    if (!setWindowDpiAwarenessContext(mVulkanRenderWnd, reinterpret_cast<void*>(kPerMonitorAwareV2Context)))
+    {
+      IGRAPHICS_VK_LOG("RenderWindow",
+                        "ensure.setDpiAwarenessFailed",
+                        vulkanlog::Severity::kError,
+                        vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)),
+                        vulkanlog::MakeField("error", static_cast<uint32_t>(GetLastError())));
+    }
+    else
+    {
+      IGRAPHICS_VK_LOG("RenderWindow",
+                        "ensure.setDpiAwareness",
+                        vulkanlog::Severity::kInfo,
+                        vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)));
+    }
+  }
 #endif
   SyncVulkanRenderWindowFromClientRect();
 

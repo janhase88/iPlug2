@@ -4412,14 +4412,25 @@ void IGraphicsWin::SyncVulkanRenderWindowFromClientRect()
     return;
   }
 
-  float scale = GetDeviceScaleForHWND(mVulkanRenderWnd);
-  if (scale <= 0.f && mPlugWnd)
-    scale = GetDeviceScaleForHWND(mPlugWnd);
-  if (scale <= 0.f)
-    scale = 1.f;
+  const float renderScale = std::max(GetScreenScale(), 0.0f);
+  const float hostScale = std::max(mHostWindowScale, 0.0f);
 
-  const int deviceWidth = std::max(1, static_cast<int>(std::round(static_cast<float>(logicalWidth) * scale)));
-  const int deviceHeight = std::max(1, static_cast<int>(std::round(static_cast<float>(logicalHeight) * scale)));
+  float relativeScale = 0.f;
+  if (renderScale > 0.f && hostScale > 0.f)
+    relativeScale = renderScale / hostScale;
+
+  if (!(relativeScale > 0.f) || !std::isfinite(relativeScale))
+  {
+    float fallbackScale = GetDeviceScaleForHWND(mVulkanRenderWnd);
+    if (fallbackScale <= 0.f && mPlugWnd)
+      fallbackScale = GetDeviceScaleForHWND(mPlugWnd);
+    if (fallbackScale <= 0.f)
+      fallbackScale = 1.f;
+    relativeScale = fallbackScale;
+  }
+
+  const int deviceWidth = std::max(1, static_cast<int>(std::lround(static_cast<float>(logicalWidth) * relativeScale)));
+  const int deviceHeight = std::max(1, static_cast<int>(std::lround(static_cast<float>(logicalHeight) * relativeScale)));
 
   const BOOL positioned = SetWindowPosWithResult(mVulkanRenderWnd, nullptr, 0, 0, deviceWidth, deviceHeight, SWP_NOZORDER | SWP_NOACTIVATE);
 
@@ -4432,7 +4443,9 @@ void IGraphicsWin::SyncVulkanRenderWindowFromClientRect()
                       vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)),
                       vulkanlog::MakeField("logicalWidth", logicalWidth),
                       vulkanlog::MakeField("logicalHeight", logicalHeight),
-                      MakeFloatField("scale", scale),
+                      MakeFloatField("hostScale", hostScale),
+                      MakeFloatField("renderScale", renderScale),
+                      MakeFloatField("relativeScale", relativeScale),
                       vulkanlog::MakeField("deviceWidth", deviceWidth),
                       vulkanlog::MakeField("deviceHeight", deviceHeight),
                       vulkanlog::MakeField("error", static_cast<uint32_t>(GetLastError())));
@@ -4445,7 +4458,9 @@ void IGraphicsWin::SyncVulkanRenderWindowFromClientRect()
                       vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)),
                       vulkanlog::MakeField("logicalWidth", logicalWidth),
                       vulkanlog::MakeField("logicalHeight", logicalHeight),
-                      MakeFloatField("scale", scale),
+                      MakeFloatField("hostScale", hostScale),
+                      MakeFloatField("renderScale", renderScale),
+                      MakeFloatField("relativeScale", relativeScale),
                       vulkanlog::MakeField("deviceWidth", deviceWidth),
                       vulkanlog::MakeField("deviceHeight", deviceHeight));
   }

@@ -36,4 +36,6 @@ This document tracks user requests and the actions taken in response on the `wor
 - **Action:** Switched the cursor load to the generic `LoadCursor` helper so the standard `IDC_ARROW` resource resolves without a wide/ANSI mismatch and documented the fix here.
 - **Request:** Vulkan output remains blurry even though DPI metrics report 1.5×; prevent Bitwig from ever seeing a 1.0 swapchain during initialization.
 - **Action:** Pre-sized the plug-in host window to the monitor's device DPI before creating the Vulkan context so the very first swapchain allocation occurs at the full device resolution, while retaining the dedicated render window and DPI-awareness tooling.
+- **Observation:** Even with the pre-sized host window, Bitwig's traces still show the plug window stuck at a 1.0 window scale while the device scale is 1.5, confirming Windows continues to DPI-virtualize the Vulkan child before the swapchain appears.
+- **Action:** Temporarily switched the thread into a Per-Monitor v2 DPI awareness context while creating both the plug-in window and the Vulkan render child, restoring the host's original context afterward and logging the transitions so Windows stops virtualizing the surface Bitwig captures.
 

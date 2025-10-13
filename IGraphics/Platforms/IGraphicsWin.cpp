@@ -110,6 +110,7 @@ constexpr uint32_t kVBlankQueueDepthWarningMultiplier = 2;
 
 #if defined IGRAPHICS_VULKAN
 using SetThreadDpiHostingBehaviorFn = int(WINAPI*)(int);
+using SetThreadDpiAwarenessContextFn = void*(WINAPI*)(void*);
 using SetWindowDpiAwarenessContextFn = BOOL(WINAPI*)(HWND, void*);
 
 SetThreadDpiHostingBehaviorFn GetSetThreadDpiHostingBehavior()
@@ -121,6 +122,19 @@ SetThreadDpiHostingBehaviorFn GetSetThreadDpiHostingBehavior()
     if (!user32)
       return nullptr;
     return reinterpret_cast<SetThreadDpiHostingBehaviorFn>(GetProcAddress(user32, "SetThreadDpiHostingBehavior"));
+  }();
+  return fn;
+}
+
+SetThreadDpiAwarenessContextFn GetSetThreadDpiAwarenessContext()
+{
+  static SetThreadDpiAwarenessContextFn fn = []() -> SetThreadDpiAwarenessContextFn {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (!user32)
+      user32 = LoadLibraryW(L"user32.dll");
+    if (!user32)
+      return nullptr;
+    return reinterpret_cast<SetThreadDpiAwarenessContextFn>(GetProcAddress(user32, "SetThreadDpiAwarenessContext"));
   }();
   return fn;
 }
@@ -4386,6 +4400,28 @@ bool IGraphicsWin::EnsureVulkanRenderWindow()
                     vulkanlog::MakeField("hostDpiVirtualized", hostDpiVirtualized));
 #endif
 
+  SetThreadDpiAwarenessContextFn setThreadContext = GetSetThreadDpiAwarenessContext();
+  void* previousThreadContext = nullptr;
+  bool restoreThreadContext = false;
+  DWORD threadContextError = ERROR_SUCCESS;
+  if (setThreadContext)
+  {
+    SetLastError(ERROR_SUCCESS);
+    previousThreadContext = setThreadContext(reinterpret_cast<void*>(kPerMonitorAwareV2Context));
+    threadContextError = GetLastError();
+    restoreThreadContext = (threadContextError == ERROR_SUCCESS);
+#if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG("RenderWindow",
+                      "ensure.threadDpiAwareness",
+                      vulkanlog::Severity::kDebug,
+                      vulkanlog::MakeHandleField("renderWnd", 0),
+                      vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
+                      vulkanlog::MakeField("previousThreadContext", static_cast<int64_t>(reinterpret_cast<intptr_t>(previousThreadContext))),
+                      vulkanlog::MakeField("error", static_cast<uint32_t>(threadContextError)),
+                      vulkanlog::MakeField("restoreThreadContext", restoreThreadContext));
+#endif
+  }
+
   DWORD exStyle = WS_EX_NOPARENTNOTIFY;
 #ifdef WS_EX_NOREDIRECTIONBITMAP
   exStyle |= WS_EX_NOREDIRECTIONBITMAP;
@@ -4415,6 +4451,22 @@ bool IGraphicsWin::EnsureVulkanRenderWindow()
     if (setHostingBehavior && previousHostingBehavior != kDpiHostingBehaviorInvalid)
     {
       setHostingBehavior(previousHostingBehavior);
+    }
+    if (restoreThreadContext && setThreadContext)
+    {
+      SetLastError(ERROR_SUCCESS);
+      void* restored = setThreadContext(previousThreadContext);
+      const DWORD restoreError = GetLastError();
+#if defined IGRAPHICS_VULKAN
+      IGRAPHICS_VK_LOG("RenderWindow",
+                        "ensure.threadDpiAwarenessRestore",
+                        vulkanlog::Severity::kDebug,
+                        vulkanlog::MakeHandleField("renderWnd", 0),
+                        vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
+                        vulkanlog::MakeField("restoredThreadContext", static_cast<int64_t>(reinterpret_cast<intptr_t>(restored))),
+                        vulkanlog::MakeField("error", static_cast<uint32_t>(restoreError)));
+#endif
+      (void) restored;
     }
 #if defined IGRAPHICS_VULKAN
     IGRAPHICS_VK_LOG("RenderWindow",
@@ -4455,6 +4507,23 @@ bool IGraphicsWin::EnsureVulkanRenderWindow()
 #endif
   mOwnsVulkanRenderWnd = true;
   SyncVulkanRenderWindowFromClientRect();
+
+  if (restoreThreadContext && setThreadContext)
+  {
+    SetLastError(ERROR_SUCCESS);
+    void* restored = setThreadContext(previousThreadContext);
+    const DWORD restoreError = GetLastError();
+#if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG("RenderWindow",
+                      "ensure.threadDpiAwarenessRestored",
+                      vulkanlog::Severity::kDebug,
+                      vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)),
+                      vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
+                      vulkanlog::MakeField("restoredThreadContext", static_cast<int64_t>(reinterpret_cast<intptr_t>(restored))),
+                      vulkanlog::MakeField("error", static_cast<uint32_t>(restoreError)));
+#endif
+    (void) restored;
+  }
 
   if (setHostingBehavior && previousHostingBehavior != kDpiHostingBehaviorInvalid)
   {
@@ -5184,7 +5253,49 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     RegisterClassW(&wndClass);
   }
 
+#if defined IGRAPHICS_VULKAN
+  SetThreadDpiAwarenessContextFn openThreadContext = GetSetThreadDpiAwarenessContext();
+  void* previousOpenThreadContext = nullptr;
+  bool restoreOpenThreadContext = false;
+  DWORD openThreadError = ERROR_SUCCESS;
+  if (openThreadContext)
+  {
+    SetLastError(ERROR_SUCCESS);
+    previousOpenThreadContext = openThreadContext(reinterpret_cast<void*>(kPerMonitorAwareV2Context));
+    openThreadError = GetLastError();
+    restoreOpenThreadContext = (openThreadError == ERROR_SUCCESS);
+#if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG("RenderWindow",
+                      "open.threadDpiAwareness",
+                      vulkanlog::Severity::kDebug,
+                      vulkanlog::MakeHandleField("plugWnd", 0),
+                      MakeFloatField("hostScale", hostScale),
+                      vulkanlog::MakeField("previousThreadContext", static_cast<int64_t>(reinterpret_cast<intptr_t>(previousOpenThreadContext))),
+                      vulkanlog::MakeField("error", static_cast<uint32_t>(openThreadError)),
+                      vulkanlog::MakeField("restoreThreadContext", restoreOpenThreadContext));
+#endif
+  }
+#endif
+
   mPlugWnd = CreateWindowW(wndClassName, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
+#if defined IGRAPHICS_VULKAN
+  if (restoreOpenThreadContext && openThreadContext)
+  {
+    SetLastError(ERROR_SUCCESS);
+    void* restored = openThreadContext(previousOpenThreadContext);
+    const DWORD restoreError = GetLastError();
+#if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG("RenderWindow",
+                      "open.threadDpiAwarenessRestored",
+                      vulkanlog::Severity::kDebug,
+                      vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
+                      MakeFloatField("hostScale", hostScale),
+                      vulkanlog::MakeField("restoredThreadContext", static_cast<int64_t>(reinterpret_cast<intptr_t>(restored))),
+                      vulkanlog::MakeField("error", static_cast<uint32_t>(restoreError)));
+#endif
+    (void) restored;
+  }
+#endif
 #if defined IGRAPHICS_VULKAN
   if (mPlugWnd)
   {

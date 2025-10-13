@@ -63,6 +63,28 @@ static int nWndClassReg = 0;
 static const wchar_t* wndClassName = L"IPlugWndClass";
 static double sFPS = 0.0;
 
+#if defined IGRAPHICS_VULKAN
+static int sVulkanRenderWndClassReg = 0;
+static const wchar_t* sVulkanRenderWndClassName = L"IPlugVulkanRenderWndClass";
+
+static LRESULT CALLBACK VulkanRenderWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+  switch (msg)
+  {
+  case WM_MOUSEACTIVATE:
+    return MA_NOACTIVATE;
+  case WM_NCHITTEST:
+    return HTTRANSPARENT;
+  case WM_ERASEBKGND:
+    return 1;
+  default:
+    break;
+  }
+
+  return DefWindowProcW(hWnd, msg, wParam, lParam);
+}
+#endif
+
 #define PARAM_EDIT_ID 99
 #define IPLUG_TIMER_ID 2
 #define IPLUG_VBLANK_HEALTH_TIMER_ID 3
@@ -4325,10 +4347,36 @@ bool IGraphicsWin::EnsureVulkanRenderWindow()
     previousHostingBehavior = setHostingBehavior(kDpiHostingBehaviorMixedMixed);
   }
 
+  if (sVulkanRenderWndClassReg++ == 0)
+  {
+    WNDCLASSW renderClass{};
+    renderClass.style = CS_HREDRAW | CS_VREDRAW;
+    renderClass.lpfnWndProc = VulkanRenderWndProc;
+    renderClass.hInstance = mHInstance;
+    renderClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    renderClass.lpszClassName = sVulkanRenderWndClassName;
+    if (!RegisterClassW(&renderClass))
+    {
+      sVulkanRenderWndClassReg--;
+#if defined IGRAPHICS_VULKAN
+      IGRAPHICS_VK_LOG("RenderWindow",
+                        "ensure.classRegisterFailed",
+                        vulkanlog::Severity::kError,
+                        vulkanlog::MakeField("error", static_cast<uint32_t>(GetLastError())));
+#endif
+      return false;
+    }
+  }
+
   WDL_dpi_aware_scope dpiScope(-4);
 
-  mVulkanRenderWnd = CreateWindowExW(WS_EX_NOPARENTNOTIFY,
-                                     L"STATIC",
+  DWORD exStyle = WS_EX_NOPARENTNOTIFY;
+#ifdef WS_EX_NOREDIRECTIONBITMAP
+  exStyle |= WS_EX_NOREDIRECTIONBITMAP;
+#endif
+
+  mVulkanRenderWnd = CreateWindowExW(exStyle,
+                                     sVulkanRenderWndClassName,
                                      L"",
                                      WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_DISABLED,
                                      0,
@@ -4343,6 +4391,11 @@ bool IGraphicsWin::EnsureVulkanRenderWindow()
   if (!mVulkanRenderWnd)
   {
     const DWORD lastError = GetLastError();
+    if (sVulkanRenderWndClassReg > 0 && --sVulkanRenderWndClassReg == 0)
+    {
+      UnregisterClassW(sVulkanRenderWndClassName, mHInstance);
+    }
+
     if (setHostingBehavior && previousHostingBehavior != kDpiHostingBehaviorInvalid)
     {
       setHostingBehavior(previousHostingBehavior);
@@ -4400,6 +4453,10 @@ void IGraphicsWin::DestroyVulkanRenderWindow()
   {
     DestroyWindow(mVulkanRenderWnd);
     mVulkanRenderWnd = nullptr;
+    if (sVulkanRenderWndClassReg > 0 && --sVulkanRenderWndClassReg == 0)
+    {
+      UnregisterClassW(sVulkanRenderWndClassName, mHInstance);
+    }
   }
 }
 

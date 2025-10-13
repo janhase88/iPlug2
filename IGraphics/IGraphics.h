@@ -51,6 +51,7 @@
 
 #include "nanosvg.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <stack>
@@ -1139,17 +1140,23 @@ public:
   {
     const float screen = GetScreenScale();
     const float host = GetPlatformWindowScale();
+    const float virtualization = std::max(GetPlatformDPIVirtualizationFactor(), 1.f);
     const float resolvedScreen = (screen > 0.f) ? screen : 1.f;
-    const float resolvedHost = (host > 0.f) ? host : 1.f;
+    const float resolvedHost = (host > 0.f) ? host : resolvedScreen;
+
+    float result = resolvedHost;
 
     if (std::fabs(resolvedScreen - resolvedHost) <= 0.001f)
-      return resolvedScreen;
+      result = resolvedScreen;
 
-    return resolvedHost;
+    return result * virtualization;
   }
 
   /** @return The total backing pixel scale */
-  virtual float GetBackingPixelScale() const { return GetTotalScale(); }
+  virtual float GetBackingPixelScale() const { return GetTotalScale() * GetPlatformDPIVirtualizationFactor(); }
+
+  /** @return Additional scale applied by the OS due to DPI virtualization */
+  virtual float GetPlatformDPIVirtualizationFactor() const { return 1.f; }
 
   /** Configure idle pacing behaviour for the platform scheduler */
   void SetIdlePacingMode(EIdlePacingMode mode);

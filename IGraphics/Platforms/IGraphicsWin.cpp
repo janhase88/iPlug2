@@ -2802,6 +2802,25 @@ float IGraphicsWin::ComputeHostWindowScale() const
   return result;
 }
 
+float IGraphicsWin::GetPlatformDPIVirtualizationFactor() const
+{
+  WDL_dpi_aware_scope scope(-4);
+
+  if (!mPlugWnd)
+    return 1.f;
+
+  const float windowScale = GetScaleForHWND(mPlugWnd);
+  const float deviceScale = GetDeviceScaleForHWND(mPlugWnd);
+
+  if (windowScale > 0.f && deviceScale > 0.f && ScalesDiffer(windowScale, deviceScale))
+  {
+    const float ratio = deviceScale / windowScale;
+    return (ratio > 0.f) ? ratio : 1.f;
+  }
+
+  return 1.f;
+}
+
 float IGraphicsWin::ComputeRenderScale() const
 {
   WDL_dpi_aware_scope scope(-4);

@@ -88,6 +88,7 @@ public:
 
   void ForceEndUserEdit() override;
   float GetPlatformWindowScale() const override { return mHostWindowScale; }
+  float GetPlatformDPIVirtualizationFactor() const override;
 
   void PlatformResize(bool parentHasResized) override;
 

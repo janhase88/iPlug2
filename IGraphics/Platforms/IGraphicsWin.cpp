@@ -5287,6 +5287,31 @@ void* IGraphicsWin::OpenWindow(void* pParent)
 #endif
 
   mPlugWnd = CreateWindowW(wndClassName, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
+
+  SetWindowDpiAwarenessContextFn setPlugWindowDpiAwarenessContext = GetSetWindowDpiAwarenessContext();
+  if (setPlugWindowDpiAwarenessContext && mPlugWnd)
+  {
+    if (!setPlugWindowDpiAwarenessContext(mPlugWnd, reinterpret_cast<void*>(kPerMonitorAwareV2Context)))
+    {
+#if defined IGRAPHICS_VULKAN
+      IGRAPHICS_VK_LOG("RenderWindow",
+                        "open.setPlugDpiAwarenessFailed",
+                        vulkanlog::Severity::kError,
+                        vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
+                        vulkanlog::MakeField("error", static_cast<uint32_t>(GetLastError())));
+#endif
+    }
+    else
+    {
+#if defined IGRAPHICS_VULKAN
+      IGRAPHICS_VK_LOG("RenderWindow",
+                        "open.setPlugDpiAwareness",
+                        vulkanlog::Severity::kInfo,
+                        vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)));
+#endif
+    }
+  }
+
 #if defined IGRAPHICS_VULKAN
   if (openHostingBehavior && previousHostingBehavior != kDpiHostingBehaviorInvalid)
   {

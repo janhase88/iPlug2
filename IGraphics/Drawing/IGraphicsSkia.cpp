@@ -13,6 +13,10 @@
 #include "../Platforms/VulkanLogging.h"
 #endif
 
+#if defined(OS_WIN)
+#include "../Platforms/IGraphicsWin.h"
+#endif
+
 #if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
 namespace
 {
@@ -2088,7 +2092,7 @@ void IGraphicsSkia::EndFrame()
     #error NOT IMPLEMENTED
   #endif
 #else // GPU
-  #ifdef IGRAPHICS_VULKAN
+#ifdef IGRAPHICS_VULKAN
 
   std::unique_lock<std::mutex> lock(mVKSwapchainMutex);
   IGRAPHICS_VK_LOG("EndFrame",
@@ -2163,6 +2167,12 @@ void IGraphicsSkia::EndFrame()
                         vulkanlog::MakeFloatField("bitmapMaxWidthRatio", VkLogFloatOrNaN(maxWidthRatio)),
                         vulkanlog::MakeFloatField("bitmapMinHeightRatio", VkLogFloatOrNaN(minHeightRatio)),
                         vulkanlog::MakeFloatField("bitmapMaxHeightRatio", VkLogFloatOrNaN(maxHeightRatio)));
+
+    static_cast<IGraphicsWin*>(this)->LogVulkanPresentationMetrics(surfaceWidthPx,
+                                                                   surfaceHeightPx,
+                                                                   drawScale,
+                                                                   screenScale,
+                                                                   summary);
   }
 #endif
   if (mVKSkipFrame || mVKSwapchainImages.empty() || mVKCurrentImage == kInvalidImageIndex || mVKCurrentImage >= mVKSwapchainImages.size())

@@ -38,6 +38,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstdlib>
+#include <limits>
 #include <cstring>
 #include <deque>
 #include <fstream>
@@ -5609,6 +5610,93 @@ void IGraphicsWin::CloseWindow()
     }
   }
 }
+
+#if defined IGRAPHICS_VULKAN
+namespace
+{
+float VkWinLogFloat(double value)
+{
+  return std::isfinite(value) ? static_cast<float>(value) : std::numeric_limits<float>::quiet_NaN();
+}
+
+double VkWinSafeRatio(double numerator, double denominator)
+{
+  if (!std::isfinite(numerator) || !std::isfinite(denominator) || denominator == 0.0)
+    return std::numeric_limits<double>::quiet_NaN();
+  return numerator / denominator;
+}
+} // namespace
+
+void IGraphicsWin::LogVulkanPresentationMetrics(double surfaceWidthPx,
+                                                double surfaceHeightPx,
+                                                double drawScale,
+                                                double screenScale,
+                                                const IGraphicsSkia::FrameBitmapScaleSummary& summary) const
+{
+  RECT plugRect{};
+  RECT renderRect{};
+  const bool havePlugRect = mPlugWnd && GetClientRect(mPlugWnd, &plugRect);
+  const bool haveRenderRect = mVulkanRenderWnd && GetClientRect(mVulkanRenderWnd, &renderRect);
+
+  const int plugClientWidth = havePlugRect ? (plugRect.right - plugRect.left) : 0;
+  const int plugClientHeight = havePlugRect ? (plugRect.bottom - plugRect.top) : 0;
+  const int renderClientWidth = haveRenderRect ? (renderRect.right - renderRect.left) : 0;
+  const int renderClientHeight = haveRenderRect ? (renderRect.bottom - renderRect.top) : 0;
+
+  const float plugDeviceScale = GetDeviceScaleForHWND(mPlugWnd);
+  const float renderDeviceScale = GetDeviceScaleForHWND(mVulkanRenderWnd);
+  const float hostScale = mHostWindowScale;
+
+  const double plugDeviceWidth = (plugClientWidth > 0 && plugDeviceScale > 0.f)
+                                   ? static_cast<double>(plugClientWidth) * static_cast<double>(plugDeviceScale)
+                                   : std::numeric_limits<double>::quiet_NaN();
+  const double plugDeviceHeight = (plugClientHeight > 0 && plugDeviceScale > 0.f)
+                                    ? static_cast<double>(plugClientHeight) * static_cast<double>(plugDeviceScale)
+                                    : std::numeric_limits<double>::quiet_NaN();
+  const double renderDeviceWidth = (renderClientWidth > 0 && renderDeviceScale > 0.f)
+                                     ? static_cast<double>(renderClientWidth) * static_cast<double>(renderDeviceScale)
+                                     : std::numeric_limits<double>::quiet_NaN();
+  const double renderDeviceHeight = (renderClientHeight > 0 && renderDeviceScale > 0.f)
+                                      ? static_cast<double>(renderClientHeight) * static_cast<double>(renderDeviceScale)
+                                      : std::numeric_limits<double>::quiet_NaN();
+
+  const double renderVsSurfaceWidthRatio = VkWinSafeRatio(renderDeviceWidth, surfaceWidthPx);
+  const double renderVsSurfaceHeightRatio = VkWinSafeRatio(renderDeviceHeight, surfaceHeightPx);
+  const double plugVsSurfaceWidthRatio = VkWinSafeRatio(plugDeviceWidth, surfaceWidthPx);
+  const double plugVsSurfaceHeightRatio = VkWinSafeRatio(plugDeviceHeight, surfaceHeightPx);
+
+  IGRAPHICS_VK_LOG("RenderWindow",
+                    "presentationMetrics",
+                    vulkanlog::Severity::kInfo,
+                    vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
+                    vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)),
+                    vulkanlog::MakeField("plugClientWidth", plugClientWidth),
+                    vulkanlog::MakeField("plugClientHeight", plugClientHeight),
+                    vulkanlog::MakeField("renderClientWidth", renderClientWidth),
+                    vulkanlog::MakeField("renderClientHeight", renderClientHeight),
+                    vulkanlog::MakeFloatField("plugDeviceScale", plugDeviceScale),
+                    vulkanlog::MakeFloatField("renderDeviceScale", renderDeviceScale),
+                    vulkanlog::MakeFloatField("hostScale", hostScale),
+                    vulkanlog::MakeFloatField("drawScale", VkWinLogFloat(drawScale)),
+                    vulkanlog::MakeFloatField("screenScale", VkWinLogFloat(screenScale)),
+                    vulkanlog::MakeFloatField("surfaceWidthPx", VkWinLogFloat(surfaceWidthPx)),
+                    vulkanlog::MakeFloatField("surfaceHeightPx", VkWinLogFloat(surfaceHeightPx)),
+                    vulkanlog::MakeFloatField("plugDeviceWidth", VkWinLogFloat(plugDeviceWidth)),
+                    vulkanlog::MakeFloatField("plugDeviceHeight", VkWinLogFloat(plugDeviceHeight)),
+                    vulkanlog::MakeFloatField("renderDeviceWidth", VkWinLogFloat(renderDeviceWidth)),
+                    vulkanlog::MakeFloatField("renderDeviceHeight", VkWinLogFloat(renderDeviceHeight)),
+                    vulkanlog::MakeFloatField("renderVsSurfaceWidthRatio", VkWinLogFloat(renderVsSurfaceWidthRatio)),
+                    vulkanlog::MakeFloatField("renderVsSurfaceHeightRatio", VkWinLogFloat(renderVsSurfaceHeightRatio)),
+                    vulkanlog::MakeFloatField("plugVsSurfaceWidthRatio", VkWinLogFloat(plugVsSurfaceWidthRatio)),
+                    vulkanlog::MakeFloatField("plugVsSurfaceHeightRatio", VkWinLogFloat(plugVsSurfaceHeightRatio)),
+                    vulkanlog::MakeField("bitmapSamples", summary.samples),
+                    vulkanlog::MakeFloatField("bitmapTotalScale", VkWinLogFloat(summary.totalScale)),
+                    vulkanlog::MakeFloatField("bitmapMinWidthRatio", VkWinLogFloat(summary.samples > 0 ? summary.minWidthRatio : std::numeric_limits<double>::quiet_NaN())),
+                    vulkanlog::MakeFloatField("bitmapMaxWidthRatio", VkWinLogFloat(summary.samples > 0 ? summary.maxWidthRatio : std::numeric_limits<double>::quiet_NaN())),
+                    vulkanlog::MakeFloatField("bitmapMinHeightRatio", VkWinLogFloat(summary.samples > 0 ? summary.minHeightRatio : std::numeric_limits<double>::quiet_NaN())),
+                    vulkanlog::MakeFloatField("bitmapMaxHeightRatio", VkWinLogFloat(summary.samples > 0 ? summary.maxHeightRatio : std::numeric_limits<double>::quiet_NaN())));
+}
+#endif
 
 
 void IGraphicsWin::OnOLEDropFiles(const std::vector<std::wstring>& filesW, LONG xScreen, LONG yScreen)

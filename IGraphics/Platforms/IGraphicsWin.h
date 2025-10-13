@@ -226,6 +226,11 @@ private:
   bool EnsureVulkanRenderWindow();
   void DestroyVulkanRenderWindow();
   void SyncVulkanRenderWindowFromClientRect();
+  void LogVulkanPresentationMetrics(double surfaceWidthPx,
+                                    double surfaceHeightPx,
+                                    double drawScale,
+                                    double screenScale,
+                                    const IGraphicsSkia::FrameBitmapScaleSummary& summary) const;
   WinVulkanDeviceCoordinator mVulkanDeviceCoordinator;
   uint64_t mVulkanDeviceGeneration = 0;
   VkInstance mVkInstance = VK_NULL_HANDLE;

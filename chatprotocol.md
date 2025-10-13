@@ -32,4 +32,6 @@ This document tracks user requests and the actions taken in response on the `wor
 - **Action:** After creating the Vulkan render window, explicitly set its DPI awareness context to Per-Monitor v2 (when the API is available) so Windows no longer virtualizes the child surface, and log the outcome for troubleshooting.
 - **Observation:** Bitwig still blurs the Vulkan frames, implying the stock `STATIC` child window remains subject to Windows DPI virtualization even after forcing per-monitor awareness.
 - **Action:** Registered a dedicated `IPlugVulkanRenderWndClass` with a no-activate window procedure, created the render child with that class (opting into `WS_EX_NOREDIRECTIONBITMAP` when available), and unregistered it when no longer needed so the swapchain lives in a neutral host window that Windows will not auto-scale.
+- **Request:** Latest build fails with `LoadCursorW` expecting a wide-string resource pointer for the Vulkan window class cursor.
+- **Action:** Switched the cursor load to the generic `LoadCursor` helper so the standard `IDC_ARROW` resource resolves without a wide/ANSI mismatch and documented the fix here.
 

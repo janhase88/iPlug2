@@ -4353,7 +4353,7 @@ bool IGraphicsWin::EnsureVulkanRenderWindow()
     renderClass.style = CS_HREDRAW | CS_VREDRAW;
     renderClass.lpfnWndProc = VulkanRenderWndProc;
     renderClass.hInstance = mHInstance;
-    renderClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    renderClass.hCursor = LoadCursor(nullptr, IDC_ARROW);
     renderClass.lpszClassName = sVulkanRenderWndClassName;
     if (!RegisterClassW(&renderClass))
     {

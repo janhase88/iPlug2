@@ -4423,9 +4423,15 @@ void IGraphicsWin::SyncVulkanRenderWindowFromClientRect()
   const int expectedDeviceWidth = static_cast<int>(std::lround(static_cast<float>(WindowWidth()) * renderScale));
   const int expectedDeviceHeight = static_cast<int>(std::lround(static_cast<float>(WindowHeight()) * renderScale));
 
-  int deviceWidth = expectedDeviceWidth;
-  int deviceHeight = expectedDeviceHeight;
-  bool usedExpected = (deviceWidth > 0 && deviceHeight > 0);
+#if defined IGRAPHICS_VULKAN
+  const bool haveSwapchainMetrics = (mVkSwapchain.handle != VK_NULL_HANDLE && !mVkSwapchainImages.empty());
+#else
+  const bool haveSwapchainMetrics = false;
+#endif
+
+  int deviceWidth = haveSwapchainMetrics ? expectedDeviceWidth : 0;
+  int deviceHeight = haveSwapchainMetrics ? expectedDeviceHeight : 0;
+  bool usedExpected = haveSwapchainMetrics && (deviceWidth > 0 && deviceHeight > 0);
 
   if (!usedExpected)
   {
@@ -4471,6 +4477,7 @@ void IGraphicsWin::SyncVulkanRenderWindowFromClientRect()
                       MakeFloatField("computedRenderScale", computedRenderScale),
                       vulkanlog::MakeField("expectedDeviceWidth", expectedDeviceWidth),
                       vulkanlog::MakeField("expectedDeviceHeight", expectedDeviceHeight),
+                      vulkanlog::MakeField("haveSwapchainMetrics", haveSwapchainMetrics),
                       vulkanlog::MakeField("usedExpected", usedExpected),
                       vulkanlog::MakeField("deviceWidth", deviceWidth),
                       vulkanlog::MakeField("deviceHeight", deviceHeight),
@@ -4492,6 +4499,7 @@ void IGraphicsWin::SyncVulkanRenderWindowFromClientRect()
                       MakeFloatField("computedRenderScale", computedRenderScale),
                       vulkanlog::MakeField("expectedDeviceWidth", expectedDeviceWidth),
                       vulkanlog::MakeField("expectedDeviceHeight", expectedDeviceHeight),
+                      vulkanlog::MakeField("haveSwapchainMetrics", haveSwapchainMetrics),
                       vulkanlog::MakeField("usedExpected", usedExpected),
                       vulkanlog::MakeField("deviceWidth", deviceWidth),
                       vulkanlog::MakeField("deviceHeight", deviceHeight));

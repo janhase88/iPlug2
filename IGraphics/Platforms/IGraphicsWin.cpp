@@ -4414,9 +4414,9 @@ bool IGraphicsWin::EnsureVulkanRenderWindow()
     IGRAPHICS_VK_LOG("RenderWindow",
                       "ensure.threadDpiAwareness",
                       vulkanlog::Severity::kDebug,
-                      vulkanlog::MakeHandleField("renderWnd", 0),
+                      vulkanlog::MakeHandleField("renderWnd", static_cast<uint64_t>(0)),
                       vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
-                      vulkanlog::MakeField("previousThreadContext", static_cast<int64_t>(reinterpret_cast<intptr_t>(previousThreadContext))),
+                      vulkanlog::MakeHandleField("previousThreadContext", previousThreadContext),
                       vulkanlog::MakeField("error", static_cast<uint32_t>(threadContextError)),
                       vulkanlog::MakeField("restoreThreadContext", restoreThreadContext));
 #endif
@@ -4461,9 +4461,9 @@ bool IGraphicsWin::EnsureVulkanRenderWindow()
       IGRAPHICS_VK_LOG("RenderWindow",
                         "ensure.threadDpiAwarenessRestore",
                         vulkanlog::Severity::kDebug,
-                        vulkanlog::MakeHandleField("renderWnd", 0),
+                        vulkanlog::MakeHandleField("renderWnd", static_cast<uint64_t>(0)),
                         vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
-                        vulkanlog::MakeField("restoredThreadContext", static_cast<int64_t>(reinterpret_cast<intptr_t>(restored))),
+                        vulkanlog::MakeHandleField("restoredThreadContext", restored),
                         vulkanlog::MakeField("error", static_cast<uint32_t>(restoreError)));
 #endif
       (void) restored;
@@ -4519,7 +4519,7 @@ bool IGraphicsWin::EnsureVulkanRenderWindow()
                       vulkanlog::Severity::kDebug,
                       vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)),
                       vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
-                      vulkanlog::MakeField("restoredThreadContext", static_cast<int64_t>(reinterpret_cast<intptr_t>(restored))),
+                      vulkanlog::MakeHandleField("restoredThreadContext", restored),
                       vulkanlog::MakeField("error", static_cast<uint32_t>(restoreError)));
 #endif
     (void) restored;
@@ -5268,9 +5268,9 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     IGRAPHICS_VK_LOG("RenderWindow",
                       "open.threadDpiAwareness",
                       vulkanlog::Severity::kDebug,
-                      vulkanlog::MakeHandleField("plugWnd", 0),
+                      vulkanlog::MakeHandleField("plugWnd", static_cast<uint64_t>(0)),
                       MakeFloatField("hostScale", hostScale),
-                      vulkanlog::MakeField("previousThreadContext", static_cast<int64_t>(reinterpret_cast<intptr_t>(previousOpenThreadContext))),
+                      vulkanlog::MakeHandleField("previousThreadContext", previousOpenThreadContext),
                       vulkanlog::MakeField("error", static_cast<uint32_t>(openThreadError)),
                       vulkanlog::MakeField("restoreThreadContext", restoreOpenThreadContext));
 #endif
@@ -5290,7 +5290,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
                       vulkanlog::Severity::kDebug,
                       vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
                       MakeFloatField("hostScale", hostScale),
-                      vulkanlog::MakeField("restoredThreadContext", static_cast<int64_t>(reinterpret_cast<intptr_t>(restored))),
+                      vulkanlog::MakeHandleField("restoredThreadContext", restored),
                       vulkanlog::MakeField("error", static_cast<uint32_t>(restoreError)));
 #endif
     (void) restored;

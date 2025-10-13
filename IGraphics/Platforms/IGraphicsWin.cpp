@@ -4604,9 +4604,22 @@ void IGraphicsWin::SyncVulkanRenderWindowFromClientRect()
   const bool haveSwapchainMetrics = false;
 #endif
 
-  int deviceWidth = haveSwapchainMetrics ? expectedDeviceWidth : 0;
-  int deviceHeight = haveSwapchainMetrics ? expectedDeviceHeight : 0;
-  bool usedExpected = haveSwapchainMetrics && (deviceWidth > 0 && deviceHeight > 0);
+  int deviceWidth = 0;
+  int deviceHeight = 0;
+  bool usedExpected = false;
+
+  if (expectedDeviceWidth > 0 && expectedDeviceHeight > 0)
+  {
+    deviceWidth = expectedDeviceWidth;
+    deviceHeight = expectedDeviceHeight;
+    usedExpected = true;
+  }
+  else if (haveSwapchainMetrics)
+  {
+    deviceWidth = expectedDeviceWidth;
+    deviceHeight = expectedDeviceHeight;
+    usedExpected = (deviceWidth > 0 && deviceHeight > 0);
+  }
 
   if (!usedExpected)
   {
@@ -4624,14 +4637,12 @@ void IGraphicsWin::SyncVulkanRenderWindowFromClientRect()
       relativeScale = fallbackScale;
     }
 
-    deviceWidth = std::max(1, static_cast<int>(std::lround(static_cast<float>(logicalWidth) * relativeScale)));
-    deviceHeight = std::max(1, static_cast<int>(std::lround(static_cast<float>(logicalHeight) * relativeScale)));
+    deviceWidth = static_cast<int>(std::lround(static_cast<float>(logicalWidth) * relativeScale));
+    deviceHeight = static_cast<int>(std::lround(static_cast<float>(logicalHeight) * relativeScale));
   }
-  else
-  {
-    deviceWidth = std::max(1, deviceWidth);
-    deviceHeight = std::max(1, deviceHeight);
-  }
+
+  deviceWidth = std::max(1, deviceWidth);
+  deviceHeight = std::max(1, deviceHeight);
 
   const BOOL positioned = SetWindowPosWithResult(mVulkanRenderWnd, nullptr, 0, 0, deviceWidth, deviceHeight, SWP_NOZORDER | SWP_NOACTIVATE);
 

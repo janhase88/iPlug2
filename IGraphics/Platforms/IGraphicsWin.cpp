@@ -21,6 +21,9 @@
 #include "IPlugPaths.h"
 #include "IPopupMenuControl.h"
 #include "SchedulerLogging.h"
+#define WDL_WIN32_HIDPI_IMPL
+#include "win32_hidpi.h"
+#undef WDL_WIN32_HIDPI_IMPL
 #if defined IGRAPHICS_VULKAN
   #include "VulkanLogging.h"
 #endif
@@ -32,6 +35,7 @@
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
+#include <cstdio>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -81,6 +85,120 @@ struct VBlankSubscription
 namespace
 {
 constexpr uint32_t kVBlankQueueDepthWarningMultiplier = 2;
+
+#if defined IGRAPHICS_VULKAN
+using SetThreadDpiHostingBehaviorFn = int(WINAPI*)(int);
+
+SetThreadDpiHostingBehaviorFn GetSetThreadDpiHostingBehavior()
+{
+  static SetThreadDpiHostingBehaviorFn fn = []() -> SetThreadDpiHostingBehaviorFn {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (!user32)
+      user32 = LoadLibraryW(L"user32.dll");
+    if (!user32)
+      return nullptr;
+    return reinterpret_cast<SetThreadDpiHostingBehaviorFn>(GetProcAddress(user32, "SetThreadDpiHostingBehavior"));
+  }();
+  return fn;
+}
+
+constexpr int kDpiHostingBehaviorInvalid = -1;
+constexpr int kDpiHostingBehaviorMixedMixed = 3;
+
+vulkanlog::Field MakeFloatField(const char* key, float value)
+{
+  char buffer[32]{};
+  std::snprintf(buffer, sizeof(buffer), "%.4f", static_cast<double>(value));
+  return vulkanlog::Field(key, std::string(buffer), false);
+}
+#endif
+
+using SetWindowPosFn = BOOL(WINAPI*)(HWND, HWND, int, int, int, int, UINT);
+
+SetWindowPosFn LoadRealSetWindowPos()
+{
+  static SetWindowPosFn fn = []() -> SetWindowPosFn {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (!user32)
+      user32 = LoadLibraryW(L"user32.dll");
+    if (!user32)
+      return nullptr;
+    return reinterpret_cast<SetWindowPosFn>(GetProcAddress(user32, "SetWindowPos"));
+  }();
+  return fn;
+}
+
+BOOL SetWindowPosWithResult(HWND hwnd, HWND hwndAfter, int x, int y, int w, int h, UINT flags)
+{
+#ifdef SetWindowPos
+  #pragma push_macro("SetWindowPos")
+  #undef SetWindowPos
+  #define IGRAPHICS_RESTORE_SETWINDOWPOS 1
+#endif
+
+  if (!hwnd)
+  {
+#ifdef IGRAPHICS_RESTORE_SETWINDOWPOS
+    #pragma pop_macro("SetWindowPos")
+    #undef IGRAPHICS_RESTORE_SETWINDOWPOS
+#endif
+    return FALSE;
+  }
+
+  static char init = 0;
+  WDL_ASSERT((flags & SWP_NOSIZE) || w >= 0);
+  WDL_ASSERT((flags & SWP_NOSIZE) || h >= 0);
+
+  SetWindowPosFn realSetWindowPos = LoadRealSetWindowPos();
+  if (!realSetWindowPos)
+  {
+#ifdef IGRAPHICS_RESTORE_SETWINDOWPOS
+    #pragma pop_macro("SetWindowPos")
+    #undef IGRAPHICS_RESTORE_SETWINDOWPOS
+#endif
+    return FALSE;
+  }
+
+  if (!init)
+  {
+    init = 1;
+    HINSTANCE user32 = GetModuleHandle("user32.dll");
+    if (user32)
+    {
+      auto getThreadContext = reinterpret_cast<void* (WINAPI*)()>(GetProcAddress(user32, "GetThreadDpiAwarenessContext"));
+      auto areContextsEqual = reinterpret_cast<BOOL(WINAPI*)(void*, void*)>(GetProcAddress(user32, "AreDpiAwarenessContextsEqual"));
+      if (getThreadContext && areContextsEqual)
+      {
+        if (areContextsEqual(getThreadContext(), reinterpret_cast<void*>(static_cast<INT_PTR>(-4))))
+          init = 2;
+      }
+    }
+  }
+
+  BOOL repositionOk = TRUE;
+  if (init == 2 &&
+      !(flags & (SWP_NOMOVE | SWP_NOSIZE | SWP__NOMOVETHENSIZE | SWP_ASYNCWINDOWPOS)) &&
+      !(GetWindowLong(hwnd, GWL_STYLE) & WS_CHILD))
+  {
+    repositionOk = realSetWindowPos(hwnd,
+                                    nullptr,
+                                    x,
+                                    y,
+                                    0,
+                                    0,
+                                    SWP_NOREDRAW | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_DEFERERASE);
+    flags |= SWP_NOMOVE;
+  }
+
+  BOOL finalOk = realSetWindowPos(hwnd, hwndAfter, x, y, w, h, flags & ~SWP__NOMOVETHENSIZE);
+
+#ifdef IGRAPHICS_RESTORE_SETWINDOWPOS
+  #pragma pop_macro("SetWindowPos")
+  #undef IGRAPHICS_RESTORE_SETWINDOWPOS
+#endif
+
+  return repositionOk && finalOk;
+}
 
 void RecordVBlankQueueDepthSample(uint32_t depth);
 void IncrementVBlankQueueWarnCount();
@@ -479,6 +597,165 @@ constexpr UINT kVBlankHealthCheckIntervalMs = 15U;
 constexpr ULONGLONG kVBlankPauseSoftResetThresholdMs = 250ULL;
 constexpr uint32_t kVBlankHealthAlertAttemptThreshold = 6U;
 constexpr ULONGLONG kVBlankHealthAlertDurationMs = 180ULL;
+
+#ifdef _WIN32
+#ifndef MDT_EFFECTIVE_DPI
+enum MONITOR_DPI_TYPE
+{
+  MDT_EFFECTIVE_DPI = 0,
+  MDT_ANGULAR_DPI = 1,
+  MDT_RAW_DPI = 2,
+  MDT_DEFAULT = MDT_EFFECTIVE_DPI
+};
+#endif
+
+using GetDpiForMonitorFn = HRESULT(WINAPI*)(HMONITOR, MONITOR_DPI_TYPE, UINT*, UINT*);
+
+float NormalizeDpiToScale(UINT dpi)
+{
+  if (dpi == 0)
+    return 0.f;
+
+#if defined IGRAPHICS_QUANTISE_SCREENSCALE
+  return std::round(static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI);
+#else
+  return static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI;
+#endif
+}
+
+GetDpiForMonitorFn ResolveGetDpiForMonitor()
+{
+  static GetDpiForMonitorFn fn = []() -> GetDpiForMonitorFn {
+    HMODULE shcore = GetModuleHandleW(L"shcore.dll");
+    if (!shcore)
+      shcore = LoadLibraryW(L"shcore.dll");
+    if (!shcore)
+      return nullptr;
+    return reinterpret_cast<GetDpiForMonitorFn>(GetProcAddress(shcore, "GetDpiForMonitor"));
+  }();
+  return fn;
+}
+
+float GetMonitorScaleForHWND(HWND hWnd)
+{
+  WDL_dpi_aware_scope scope(-4);
+
+  if (!hWnd)
+  {
+#if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG("DpiScale",
+                      "monitorScaleForHWND.nullWindow",
+                      vulkanlog::Severity::kDebug);
+#endif
+    return 0.f;
+  }
+
+  HMONITOR monitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
+  if (!monitor)
+  {
+#if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG("DpiScale",
+                      "monitorScaleForHWND.noMonitor",
+                      vulkanlog::Severity::kDebug,
+                      vulkanlog::MakeHandleField("hWnd", vulkanlog::HandleToUint64(hWnd)));
+#endif
+    return 0.f;
+  }
+
+  GetDpiForMonitorFn getDpiForMonitor = ResolveGetDpiForMonitor();
+  if (!getDpiForMonitor)
+  {
+#if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG("DpiScale",
+                      "monitorScaleForHWND.apiUnavailable",
+                      vulkanlog::Severity::kDebug,
+                      vulkanlog::MakeHandleField("hWnd", vulkanlog::HandleToUint64(hWnd)),
+                      vulkanlog::MakeHandleField("monitor", vulkanlog::HandleToUint64(monitor)));
+#endif
+    return 0.f;
+  }
+
+  UINT dpiX = 0;
+  UINT dpiY = 0;
+  HRESULT hr = getDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &dpiX, &dpiY);
+  if (SUCCEEDED(hr))
+  {
+    const float scale = NormalizeDpiToScale(dpiX);
+#if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG("DpiScale",
+                      "monitorScaleForHWND.result",
+                      vulkanlog::Severity::kDebug,
+                      vulkanlog::MakeHandleField("hWnd", vulkanlog::HandleToUint64(hWnd)),
+                      vulkanlog::MakeHandleField("monitor", vulkanlog::HandleToUint64(monitor)),
+                      vulkanlog::MakeField("dpiX", static_cast<uint32_t>(dpiX)),
+                      vulkanlog::MakeField("dpiY", static_cast<uint32_t>(dpiY)),
+                      MakeFloatField("scale", scale));
+#endif
+    return scale;
+  }
+
+#if defined IGRAPHICS_VULKAN
+  IGRAPHICS_VK_LOG("DpiScale",
+                    "monitorScaleForHWND.queryFailed",
+                    vulkanlog::Severity::kDebug,
+                    vulkanlog::MakeHandleField("hWnd", vulkanlog::HandleToUint64(hWnd)),
+                    vulkanlog::MakeHandleField("monitor", vulkanlog::HandleToUint64(monitor)),
+                    vulkanlog::MakeField("hresult", static_cast<int>(hr)));
+#endif
+
+  return 0.f;
+}
+
+float GetDeviceScaleForHWND(HWND hWnd)
+{
+  WDL_dpi_aware_scope scope(-4);
+
+  if (!hWnd)
+  {
+#if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG("DpiScale",
+                      "deviceScaleForHWND.nullWindow",
+                      vulkanlog::Severity::kDebug);
+#endif
+    return 0.f;
+  }
+
+  const float monitorScale = GetMonitorScaleForHWND(hWnd);
+  if (monitorScale > 0.f)
+  {
+#if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG("DpiScale",
+                      "deviceScaleForHWND.monitor",
+                      vulkanlog::Severity::kDebug,
+                      vulkanlog::MakeHandleField("hWnd", vulkanlog::HandleToUint64(hWnd)),
+                      MakeFloatField("scale", monitorScale));
+#endif
+    return monitorScale;
+  }
+
+  const float windowScale = ::GetScaleForHWND(hWnd);
+  if (windowScale > 0.f)
+  {
+#if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG("DpiScale",
+                      "deviceScaleForHWND.window",
+                      vulkanlog::Severity::kDebug,
+                      vulkanlog::MakeHandleField("hWnd", vulkanlog::HandleToUint64(hWnd)),
+                      MakeFloatField("scale", windowScale));
+#endif
+    return windowScale;
+  }
+
+#if defined IGRAPHICS_VULKAN
+  IGRAPHICS_VK_LOG("DpiScale",
+                    "deviceScaleForHWND.fallback",
+                    vulkanlog::Severity::kDebug,
+                    vulkanlog::MakeHandleField("hWnd", vulkanlog::HandleToUint64(hWnd)));
+#endif
+
+  return 0.f;
+}
+#endif
 
 std::string TrimCopy(const std::string& value)
 {
@@ -2185,9 +2462,7 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
   // TODO: move this... listen to the right messages in windows for screen resolution changes, etc.
   if (!GetCapture()) // workaround Windows issues with window sizing during mouse move
   {
-    float scale = GetScaleForHWND(mPlugWnd);
-    if (scale != GetScreenScale())
-      SetScreenScale(scale);
+    RefreshPlatformScales(false);
   }
 
   // TODO: this is far too aggressive for slow drawing animations and data changing.  We need to
@@ -2387,6 +2662,174 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
   return;
 }
 
+void IGraphicsWin::RefreshPlatformScales(bool forceScreenScale)
+{
+  const float previousHostScale = mHostWindowScale;
+  const float previousRenderScale = GetScreenScale();
+  const float hostScale = std::max(ComputeHostWindowScale(), 0.01f);
+  const float renderScale = std::max(ComputeRenderScale(), 0.01f);
+
+  const bool hostChanged = ScalesDiffer(hostScale, mHostWindowScale);
+#if defined IGRAPHICS_VULKAN
+  IGRAPHICS_VK_LOG("DpiScale",
+                    "refreshPlatformScales",
+                    vulkanlog::Severity::kInfo,
+                    MakeFloatField("hostScale", hostScale),
+                    MakeFloatField("renderScale", renderScale),
+                    MakeFloatField("previousHostScale", previousHostScale),
+                    MakeFloatField("previousRenderScale", previousRenderScale),
+                    vulkanlog::MakeField("hostChanged", hostChanged),
+                    vulkanlog::MakeField("forceScreenScale", forceScreenScale));
+#endif
+  if (hostChanged)
+    mHostWindowScale = hostScale;
+
+  if (forceScreenScale || ScalesDiffer(renderScale, GetScreenScale()))
+  {
+    SetScreenScale(renderScale);
+  }
+  else if (hostChanged && WindowIsOpen())
+  {
+    PlatformResize(false);
+  }
+}
+
+float IGraphicsWin::ComputeHostWindowScale() const
+{
+  WDL_dpi_aware_scope scope(-4);
+
+  float result = 1.f;
+  bool resolved = false;
+
+  float plugWindowScale = 0.f;
+  float plugDeviceScale = 0.f;
+  if (mPlugWnd)
+  {
+    plugWindowScale = GetScaleForHWND(mPlugWnd);
+    plugDeviceScale = GetDeviceScaleForHWND(mPlugWnd);
+
+    if (plugWindowScale > 0.f)
+    {
+      result = plugWindowScale;
+      resolved = true;
+    }
+    else if (plugDeviceScale > 0.f)
+    {
+      result = plugDeviceScale;
+      resolved = true;
+    }
+  }
+
+  float parentWindowScale = 0.f;
+  float parentDeviceScale = 0.f;
+  if (!resolved && mParentWnd)
+  {
+    parentWindowScale = GetScaleForHWND(mParentWnd);
+    parentDeviceScale = GetDeviceScaleForHWND(mParentWnd);
+
+    if (parentWindowScale > 0.f)
+    {
+      result = parentWindowScale;
+      resolved = true;
+    }
+    else if (parentDeviceScale > 0.f)
+    {
+      result = parentDeviceScale;
+      resolved = true;
+    }
+  }
+
+#if defined IGRAPHICS_VULKAN
+  IGRAPHICS_VK_LOG("DpiScale",
+                    "computeHostWindowScale",
+                    vulkanlog::Severity::kDebug,
+                    vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
+                    MakeFloatField("plugWindowScale", plugWindowScale),
+                    MakeFloatField("plugDeviceScale", plugDeviceScale),
+                    vulkanlog::MakeHandleField("parentWnd", vulkanlog::HandleToUint64(mParentWnd)),
+                    MakeFloatField("parentWindowScale", parentWindowScale),
+                    MakeFloatField("parentDeviceScale", parentDeviceScale),
+                    MakeFloatField("result", result),
+                    vulkanlog::MakeField("resolved", resolved));
+#endif
+
+  return result;
+}
+
+float IGraphicsWin::ComputeRenderScale() const
+{
+  WDL_dpi_aware_scope scope(-4);
+
+  float result = 1.f;
+  bool resolved = false;
+  const char* resolvedSource = "default";
+
+  float renderWindowScale = 0.f;
+#if defined IGRAPHICS_VULKAN
+  if (mVulkanRenderWnd)
+  {
+    renderWindowScale = GetDeviceScaleForHWND(mVulkanRenderWnd);
+    if (renderWindowScale > 0.f)
+    {
+      result = renderWindowScale;
+      resolved = true;
+      resolvedSource = "vulkanRenderWnd";
+    }
+  }
+#endif
+
+  float plugWindowScale = 0.f;
+  if (mPlugWnd)
+  {
+    plugWindowScale = GetDeviceScaleForHWND(mPlugWnd);
+    if (!resolved && plugWindowScale > 0.f)
+    {
+      result = plugWindowScale;
+      resolved = true;
+      resolvedSource = "plugWnd";
+    }
+  }
+
+  float parentWindowScale = 0.f;
+  if (mParentWnd)
+  {
+    parentWindowScale = GetDeviceScaleForHWND(mParentWnd);
+    if (!resolved && parentWindowScale > 0.f)
+    {
+      result = parentWindowScale;
+      resolved = true;
+      resolvedSource = "parentWnd";
+    }
+  }
+
+  if (!resolved)
+  {
+    result = 1.f;
+  }
+
+#if defined IGRAPHICS_VULKAN
+  IGRAPHICS_VK_LOG("DpiScale",
+                    "computeRenderScale",
+                    vulkanlog::Severity::kDebug,
+                    vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)),
+                    MakeFloatField("renderWndScale", renderWindowScale),
+                    vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
+                    MakeFloatField("plugWndScale", plugWindowScale),
+                    vulkanlog::MakeHandleField("parentWnd", vulkanlog::HandleToUint64(mParentWnd)),
+                    MakeFloatField("parentWndScale", parentWindowScale),
+                    MakeFloatField("result", result),
+                    vulkanlog::MakeField("resolved", resolved),
+                    vulkanlog::MakeField("source", resolvedSource));
+#endif
+
+  return result;
+}
+
+bool IGraphicsWin::ScalesDiffer(float a, float b)
+{
+  return std::fabs(a - b) > 0.001f;
+}
+
 // static
 LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -2453,6 +2896,19 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
       pGraphics->PerformVBlankHealthCheck();
 
     return 0;
+
+  case WM_SIZE:
+#if defined IGRAPHICS_VULKAN
+    pGraphics->SyncVulkanRenderWindowFromClientRect();
+#endif
+    break;
+
+  case WM_DPICHANGED:
+#if defined IGRAPHICS_VULKAN
+    pGraphics->SyncVulkanRenderWindowFromClientRect();
+#endif
+    pGraphics->RefreshPlatformScales(false);
+    break;
 
   case WM_ERASEBKGND:
     return 0;
@@ -3485,7 +3941,24 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
     HWND pParent = 0, pGrandparent = 0;
     int dlgW = 0, dlgH = 0, parentW = 0, parentH = 0, grandparentW = 0, grandparentH = 0;
     GetWindowSize(mPlugWnd, &dlgW, &dlgH);
-    int dw = (WindowWidth() * GetScreenScale()) - dlgW, dh = (WindowHeight() * GetScreenScale()) - dlgH;
+    const float hostScale = GetPlatformWindowScale();
+    int dw = static_cast<int>(std::round(WindowWidth() * hostScale)) - dlgW;
+    int dh = static_cast<int>(std::round(WindowHeight() * hostScale)) - dlgH;
+
+#if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG("RenderWindow",
+                      "platformResize.metrics",
+                      vulkanlog::Severity::kDebug,
+                      vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
+                      MakeFloatField("hostScale", hostScale),
+                      vulkanlog::MakeField("currentWidth", dlgW),
+                      vulkanlog::MakeField("currentHeight", dlgH),
+                      vulkanlog::MakeField("targetWidth", dlgW + dw),
+                      vulkanlog::MakeField("targetHeight", dlgH + dh),
+                      vulkanlog::MakeField("deltaWidth", dw),
+                      vulkanlog::MakeField("deltaHeight", dh),
+                      vulkanlog::MakeField("parentHasResized", parentHasResized));
+#endif
 
     if (IsChildWindow(mPlugWnd))
     {
@@ -3500,19 +3973,100 @@ void IGraphicsWin::PlatformResize(bool parentHasResized)
     }
 
     if (!dw && !dh)
+    {
+#if defined IGRAPHICS_VULKAN
+      IGRAPHICS_VK_LOG("RenderWindow",
+                        "platformResize.noop",
+                        vulkanlog::Severity::kDebug,
+                        vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)));
+#endif
       return;
+    }
 
-    SetWindowPos(mPlugWnd, 0, 0, 0, dlgW + dw, dlgH + dh, SETPOS_FLAGS);
+    const int targetDlgW = dlgW + dw;
+    const int targetDlgH = dlgH + dh;
+    const BOOL plugResized = SetWindowPosWithResult(mPlugWnd, 0, 0, 0, targetDlgW, targetDlgH, SETPOS_FLAGS);
+#if defined IGRAPHICS_VULKAN
+    if (!plugResized)
+    {
+      IGRAPHICS_VK_LOG("RenderWindow",
+                        "platformResize.plugFailed",
+                        vulkanlog::Severity::kError,
+                        vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
+                        vulkanlog::MakeField("targetWidth", targetDlgW),
+                        vulkanlog::MakeField("targetHeight", targetDlgH),
+                        vulkanlog::MakeField("error", static_cast<uint32_t>(GetLastError())));
+    }
+    else
+    {
+      IGRAPHICS_VK_LOG("RenderWindow",
+                        "platformResize.plugResized",
+                        vulkanlog::Severity::kInfo,
+                        vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
+                        vulkanlog::MakeField("targetWidth", targetDlgW),
+                        vulkanlog::MakeField("targetHeight", targetDlgH));
+    }
+#endif
 
     if (pParent && !parentHasResized)
     {
-      SetWindowPos(pParent, 0, 0, 0, parentW + dw, parentH + dh, SETPOS_FLAGS);
+      const int targetParentW = parentW + dw;
+      const int targetParentH = parentH + dh;
+      const BOOL parentResized = SetWindowPosWithResult(pParent, 0, 0, 0, targetParentW, targetParentH, SETPOS_FLAGS);
+#if defined IGRAPHICS_VULKAN
+      if (!parentResized)
+      {
+        IGRAPHICS_VK_LOG("RenderWindow",
+                          "platformResize.parentFailed",
+                          vulkanlog::Severity::kError,
+                          vulkanlog::MakeHandleField("parentWnd", vulkanlog::HandleToUint64(pParent)),
+                          vulkanlog::MakeField("targetWidth", targetParentW),
+                          vulkanlog::MakeField("targetHeight", targetParentH),
+                          vulkanlog::MakeField("error", static_cast<uint32_t>(GetLastError())));
+      }
+      else
+      {
+        IGRAPHICS_VK_LOG("RenderWindow",
+                          "platformResize.parentResized",
+                          vulkanlog::Severity::kInfo,
+                          vulkanlog::MakeHandleField("parentWnd", vulkanlog::HandleToUint64(pParent)),
+                          vulkanlog::MakeField("targetWidth", targetParentW),
+                          vulkanlog::MakeField("targetHeight", targetParentH));
+      }
+#endif
     }
 
     if (pGrandparent && !parentHasResized)
     {
-      SetWindowPos(pGrandparent, 0, 0, 0, grandparentW + dw, grandparentH + dh, SETPOS_FLAGS);
+      const int targetGrandparentW = grandparentW + dw;
+      const int targetGrandparentH = grandparentH + dh;
+      const BOOL grandparentResized = SetWindowPosWithResult(pGrandparent, 0, 0, 0, targetGrandparentW, targetGrandparentH, SETPOS_FLAGS);
+#if defined IGRAPHICS_VULKAN
+      if (!grandparentResized)
+      {
+        IGRAPHICS_VK_LOG("RenderWindow",
+                          "platformResize.grandparentFailed",
+                          vulkanlog::Severity::kError,
+                          vulkanlog::MakeHandleField("grandparentWnd", vulkanlog::HandleToUint64(pGrandparent)),
+                          vulkanlog::MakeField("targetWidth", targetGrandparentW),
+                          vulkanlog::MakeField("targetHeight", targetGrandparentH),
+                          vulkanlog::MakeField("error", static_cast<uint32_t>(GetLastError())));
+      }
+      else
+      {
+        IGRAPHICS_VK_LOG("RenderWindow",
+                          "platformResize.grandparentResized",
+                          vulkanlog::Severity::kInfo,
+                          vulkanlog::MakeHandleField("grandparentWnd", vulkanlog::HandleToUint64(pGrandparent)),
+                          vulkanlog::MakeField("targetWidth", targetGrandparentW),
+                          vulkanlog::MakeField("targetHeight", targetGrandparentH));
+      }
+#endif
     }
+
+#if defined IGRAPHICS_VULKAN
+    SyncVulkanRenderWindowFromClientRect();
+#endif
   }
 }
 
@@ -3735,6 +4289,214 @@ void IGraphicsWin::DestroyGLContext()
 #endif
 
 #ifdef IGRAPHICS_VULKAN
+bool IGraphicsWin::EnsureVulkanRenderWindow()
+{
+  if (mVulkanRenderWnd || !mPlugWnd)
+  {
+#if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG("RenderWindow",
+                      "ensure.skip",
+                      vulkanlog::Severity::kDebug,
+                      vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)),
+                      vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)));
+#endif
+    return mPlugWnd != nullptr;
+  }
+
+  SetThreadDpiHostingBehaviorFn setHostingBehavior = GetSetThreadDpiHostingBehavior();
+  int previousHostingBehavior = kDpiHostingBehaviorInvalid;
+  if (setHostingBehavior)
+  {
+    previousHostingBehavior = setHostingBehavior(kDpiHostingBehaviorMixedMixed);
+  }
+
+  WDL_dpi_aware_scope dpiScope(-4);
+
+  mVulkanRenderWnd = CreateWindowExW(WS_EX_NOPARENTNOTIFY,
+                                     L"STATIC",
+                                     L"",
+                                     WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_DISABLED,
+                                     0,
+                                     0,
+                                     0,
+                                     0,
+                                     mPlugWnd,
+                                     nullptr,
+                                     mHInstance,
+                                     nullptr);
+
+  if (!mVulkanRenderWnd)
+  {
+    const DWORD lastError = GetLastError();
+    if (setHostingBehavior && previousHostingBehavior != kDpiHostingBehaviorInvalid)
+    {
+      setHostingBehavior(previousHostingBehavior);
+    }
+#if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG("RenderWindow",
+                      "ensure.createFailed",
+                      vulkanlog::Severity::kError,
+                      vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
+                      vulkanlog::MakeField("error", static_cast<uint32_t>(lastError)));
+#endif
+    return false;
+  }
+
+#if defined IGRAPHICS_VULKAN
+  IGRAPHICS_VK_LOG("RenderWindow",
+                    "ensure.created",
+                    vulkanlog::Severity::kInfo,
+                    vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)),
+                    vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)));
+#endif
+  SyncVulkanRenderWindowFromClientRect();
+
+  if (setHostingBehavior && previousHostingBehavior != kDpiHostingBehaviorInvalid)
+  {
+    setHostingBehavior(previousHostingBehavior);
+  }
+
+  return true;
+}
+
+void IGraphicsWin::DestroyVulkanRenderWindow()
+{
+  if (mVulkanRenderWnd)
+  {
+    DestroyWindow(mVulkanRenderWnd);
+    mVulkanRenderWnd = nullptr;
+  }
+}
+
+void IGraphicsWin::SyncVulkanRenderWindowFromClientRect()
+{
+  if (!mVulkanRenderWnd || !mPlugWnd)
+  {
+#if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG("RenderWindow",
+                      "sync.skipMissingWindow",
+                      vulkanlog::Severity::kDebug,
+                      vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)),
+                      vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)));
+#endif
+    return;
+  }
+
+  RECT client{};
+  if (!GetClientRect(mPlugWnd, &client))
+  {
+#if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG("RenderWindow",
+                      "sync.getClientRectFailed",
+                      vulkanlog::Severity::kError,
+                      vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)),
+                      vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
+                      vulkanlog::MakeField("error", static_cast<uint32_t>(GetLastError())));
+#endif
+    return;
+  }
+
+  const int logicalWidth = client.right - client.left;
+  const int logicalHeight = client.bottom - client.top;
+
+  if (logicalWidth <= 0 || logicalHeight <= 0)
+  {
+#if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG("RenderWindow",
+                      "sync.emptyClientRect",
+                      vulkanlog::Severity::kDebug,
+                      vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)),
+                      vulkanlog::MakeField("logicalWidth", logicalWidth),
+                      vulkanlog::MakeField("logicalHeight", logicalHeight));
+#endif
+    return;
+  }
+
+  const float renderScale = std::max(GetScreenScale(), 0.0f);
+  const float hostScale = std::max(mHostWindowScale, 0.0f);
+
+  const float windowLogicalWidth = static_cast<float>(WindowWidth());
+  const float windowLogicalHeight = static_cast<float>(WindowHeight());
+
+  float targetDeviceWidth = windowLogicalWidth * renderScale;
+  float targetDeviceHeight = windowLogicalHeight * renderScale;
+
+  if (!(targetDeviceWidth > 0.f) || !std::isfinite(targetDeviceWidth))
+    targetDeviceWidth = static_cast<float>(logicalWidth) * renderScale;
+  if (!(targetDeviceHeight > 0.f) || !std::isfinite(targetDeviceHeight))
+    targetDeviceHeight = static_cast<float>(logicalHeight) * renderScale;
+
+  if (!(targetDeviceWidth > 0.f) || !std::isfinite(targetDeviceWidth))
+  {
+    targetDeviceWidth = static_cast<float>(logicalWidth);
+  }
+
+  if (!(targetDeviceHeight > 0.f) || !std::isfinite(targetDeviceHeight))
+  {
+    targetDeviceHeight = static_cast<float>(logicalHeight);
+  }
+
+  if (logicalWidth > 0 && logicalHeight > 0)
+  {
+    const float deviceRectWidth = static_cast<float>(logicalWidth);
+    const float deviceRectHeight = static_cast<float>(logicalHeight);
+
+    if (!(targetDeviceWidth > 0.f) || !std::isfinite(targetDeviceWidth))
+      targetDeviceWidth = deviceRectWidth;
+    else if (std::fabs(targetDeviceWidth - deviceRectWidth) <= 0.5f)
+      targetDeviceWidth = deviceRectWidth;
+
+    if (!(targetDeviceHeight > 0.f) || !std::isfinite(targetDeviceHeight))
+      targetDeviceHeight = deviceRectHeight;
+    else if (std::fabs(targetDeviceHeight - deviceRectHeight) <= 0.5f)
+      targetDeviceHeight = deviceRectHeight;
+  }
+
+  const int deviceWidth = std::max(1, static_cast<int>(std::lround(targetDeviceWidth)));
+  const int deviceHeight = std::max(1, static_cast<int>(std::lround(targetDeviceHeight)));
+
+  const BOOL positioned = SetWindowPosWithResult(mVulkanRenderWnd, nullptr, 0, 0, deviceWidth, deviceHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+  const float relativeScale = (logicalWidth > 0 && logicalHeight > 0)
+                                ? static_cast<float>(deviceWidth) / static_cast<float>(logicalWidth)
+                                : 0.f;
+
+#if defined IGRAPHICS_VULKAN
+  if (!positioned)
+  {
+    IGRAPHICS_VK_LOG("RenderWindow",
+                      "sync.setWindowPosFailed",
+                      vulkanlog::Severity::kError,
+                      vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)),
+                      vulkanlog::MakeField("logicalWidth", logicalWidth),
+                      vulkanlog::MakeField("logicalHeight", logicalHeight),
+                      MakeFloatField("hostScale", hostScale),
+                      MakeFloatField("renderScale", renderScale),
+                      MakeFloatField("relativeScale", relativeScale),
+                      MakeFloatField("targetDeviceWidth", targetDeviceWidth),
+                      MakeFloatField("targetDeviceHeight", targetDeviceHeight),
+                      vulkanlog::MakeField("deviceWidth", deviceWidth),
+                      vulkanlog::MakeField("deviceHeight", deviceHeight),
+                      vulkanlog::MakeField("error", static_cast<uint32_t>(GetLastError())));
+  }
+  else
+  {
+    IGRAPHICS_VK_LOG("RenderWindow",
+                      "sync.setWindowPos",
+                      vulkanlog::Severity::kInfo,
+                      vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)),
+                      vulkanlog::MakeField("logicalWidth", logicalWidth),
+                      vulkanlog::MakeField("logicalHeight", logicalHeight),
+                      MakeFloatField("hostScale", hostScale),
+                      MakeFloatField("renderScale", renderScale),
+                      MakeFloatField("relativeScale", relativeScale),
+                      MakeFloatField("targetDeviceWidth", targetDeviceWidth),
+                      MakeFloatField("targetDeviceHeight", targetDeviceHeight),
+                      vulkanlog::MakeField("deviceWidth", deviceWidth),
+                      vulkanlog::MakeField("deviceHeight", deviceHeight));
+  }
+#endif
+}
+
 bool IGraphicsWin::CreateVulkanContext()
 {
   if (mVkInstance)
@@ -3751,12 +4513,23 @@ bool IGraphicsWin::CreateVulkanContext()
 
   WinVulkanDeviceRequest request{};
   request.instanceHandle = mHInstance;
-  request.windowHandle = mPlugWnd;
+  request.windowHandle = mVulkanRenderWnd ? mVulkanRenderWnd : mPlugWnd;
   request.preferredAdapter = preferredAdapter;
 #if !defined(NDEBUG)
   request.enableValidationLayer = true;
 #else
   request.enableValidationLayer = false;
+#endif
+
+#if defined IGRAPHICS_VULKAN
+  IGRAPHICS_VK_LOG("CreateVulkanContext",
+                    "deviceRequest",
+                    vulkanlog::Severity::kInfo,
+                    vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)),
+                    vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
+                    vulkanlog::MakeHandleField("windowHandle", vulkanlog::HandleToUint64(request.windowHandle)),
+                    vulkanlog::MakeField("preferredAdapter", static_cast<int>(request.preferredAdapter)),
+                    vulkanlog::MakeField("validation", request.enableValidationLayer));
 #endif
 
   WinVulkanDeviceSnapshot snapshot{};
@@ -3780,6 +4553,18 @@ bool IGraphicsWin::CreateVulkanContext()
   mVkQueueFamily = snapshot.queueFamily;
   mVulkanDeviceGeneration = generation;
 
+#if defined IGRAPHICS_VULKAN
+  IGRAPHICS_VK_LOG("CreateVulkanContext",
+                    "deviceCoordinator",
+                    vulkanlog::Severity::kInfo,
+                    vulkanlog::MakeHandleField("instance", vulkanlog::HandleToUint64(mVkInstance)),
+                    vulkanlog::MakeHandleField("physicalDevice", vulkanlog::HandleToUint64(mVkPhysicalDevice)),
+                    vulkanlog::MakeHandleField("device", vulkanlog::HandleToUint64(mVkDevice)),
+                    vulkanlog::MakeHandleField("surface", vulkanlog::HandleToUint64(mVkSurface)),
+                    vulkanlog::MakeHandleField("queue", vulkanlog::HandleToUint64(mPresentQueue)),
+                    vulkanlog::MakeField("queueFamily", static_cast<uint32_t>(mVkQueueFamily)));
+#endif
+
   VkSurfaceCapabilitiesKHR caps{};
   res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(mVkPhysicalDevice, mVkSurface, &caps);
   if (res != VK_SUCCESS)
@@ -3791,6 +4576,19 @@ bool IGraphicsWin::CreateVulkanContext()
     DestroyVulkanContext();
     return false;
   }
+
+#if defined IGRAPHICS_VULKAN
+  IGRAPHICS_VK_LOG("CreateVulkanContext",
+                    "surfaceCapabilities.initial",
+                    vulkanlog::Severity::kDebug,
+                    vulkanlog::MakeField("currentWidth", static_cast<uint32_t>(caps.currentExtent.width)),
+                    vulkanlog::MakeField("currentHeight", static_cast<uint32_t>(caps.currentExtent.height)),
+                    vulkanlog::MakeField("minWidth", static_cast<uint32_t>(caps.minImageExtent.width)),
+                    vulkanlog::MakeField("minHeight", static_cast<uint32_t>(caps.minImageExtent.height)),
+                    vulkanlog::MakeField("maxWidth", static_cast<uint32_t>(caps.maxImageExtent.width)),
+                    vulkanlog::MakeField("maxHeight", static_cast<uint32_t>(caps.maxImageExtent.height)),
+                    vulkanlog::MakeField("currentTransform", static_cast<uint32_t>(caps.currentTransform)));
+#endif
 
   mVkSwapchain.device = mVkDevice;
   bool submissionPending = false;
@@ -3910,11 +4708,37 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
   uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format, VkImageUsageFlags& usage, bool& submissionPending)
 {
   IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
-                      "request",
-                      vulkanlog::Severity::kInfo,
-                      vulkanlog::MakeField("width", static_cast<uint32_t>(width)),
-                       vulkanlog::MakeField("height", static_cast<uint32_t>(height)),
-                       vulkanlog::MakeHandleField("previousSwapchain", vulkanlog::HandleToUint64(reinterpret_cast<uintptr_t>(mVkSwapchain.handle))));
+                   "request",
+                   vulkanlog::Severity::kInfo,
+                   vulkanlog::MakeField("width", static_cast<uint32_t>(width)),
+                   vulkanlog::MakeField("height", static_cast<uint32_t>(height)),
+                   vulkanlog::MakeHandleField("previousSwapchain", vulkanlog::HandleToUint64(reinterpret_cast<uintptr_t>(mVkSwapchain.handle))));
+#if defined IGRAPHICS_VULKAN
+  const float cachedHostScale = mHostWindowScale;
+  const float computedHostScale = ComputeHostWindowScale();
+  const float computedRenderScale = ComputeRenderScale();
+
+  RECT renderRect{};
+  bool renderRectValid = false;
+  HWND rectSource = mVulkanRenderWnd ? mVulkanRenderWnd : mPlugWnd;
+  if (rectSource && GetClientRect(rectSource, &renderRect))
+  {
+    renderRectValid = true;
+  }
+
+    IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                     "scaleSnapshot",
+                     vulkanlog::Severity::kDebug,
+                     MakeFloatField("cachedHostScale", cachedHostScale),
+                     MakeFloatField("computedHostScale", computedHostScale),
+                     MakeFloatField("computedRenderScale", computedRenderScale),
+                     vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)),
+                     vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
+                     vulkanlog::MakeHandleField("rectSource", vulkanlog::HandleToUint64(rectSource)),
+                     vulkanlog::MakeField("rectValid", renderRectValid),
+                     vulkanlog::MakeField("rectWidth", renderRectValid ? static_cast<int>(renderRect.right - renderRect.left) : 0),
+                     vulkanlog::MakeField("rectHeight", renderRectValid ? static_cast<int>(renderRect.bottom - renderRect.top) : 0));
+#endif
   if (!mVkDevice || !mVkPhysicalDevice || !mVkSurface)
     return VK_ERROR_INITIALIZATION_FAILED;
 
@@ -4205,9 +5029,16 @@ EMsgBoxResult IGraphicsWin::ShowMessageBox(const char* str, const char* title, E
 void* IGraphicsWin::OpenWindow(void* pParent)
 {
   mParentWnd = (HWND)pParent;
-  const float screenScale = GetScaleForHWND(mParentWnd);
-  const int scaledWidth = static_cast<int>(std::round(static_cast<float>(WindowWidth()) * screenScale));
-  const int scaledHeight = static_cast<int>(std::round(static_cast<float>(WindowHeight()) * screenScale));
+  float hostScale = 1.f;
+  if (mParentWnd)
+  {
+    hostScale = GetScaleForHWND(mParentWnd);
+    if (hostScale <= 0.f)
+      hostScale = 1.f;
+  }
+  mHostWindowScale = hostScale;
+  const int scaledWidth = static_cast<int>(std::lround(static_cast<float>(WindowWidth()) * hostScale));
+  const int scaledHeight = static_cast<int>(std::lround(static_cast<float>(WindowHeight()) * hostScale));
   int x = 0;
   int y = 0;
   int w = scaledWidth;
@@ -4234,8 +5065,18 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   mPlugWnd = CreateWindowW(wndClassName, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
 #if defined IGRAPHICS_VULKAN
   SetPlatformContext(mPlugWnd);
+  if (!EnsureVulkanRenderWindow())
+  {
+    SetPlatformContext(nullptr);
+    DestroyWindow(mPlugWnd);
+    mPlugWnd = nullptr;
+    return nullptr;
+  }
+
   if (!CreateVulkanContext())
   {
+    SetPlatformContext(nullptr);
+    DestroyVulkanRenderWindow();
     DestroyWindow(mPlugWnd);
     mPlugWnd = nullptr;
     return nullptr;
@@ -4269,7 +5110,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   #endif
 #endif
 
-  SetScreenScale(screenScale); // resizes draw context
+  RefreshPlatformScales(true);
 
   GetDelegate()->LayoutUI(this);
 
@@ -4441,6 +5282,8 @@ void IGraphicsWin::CloseWindow()
     DeactivateGLContext();
 
     DestroyVulkanContext();
+
+    DestroyVulkanRenderWindow();
 
 #endif
 
@@ -4688,7 +5531,11 @@ IPopupMenu* IGraphicsWin::CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT 
     }
     DestroyMenu(hMenu);
 
-    RECT r = {0, 0, static_cast<LONG>(WindowWidth() * GetScreenScale()), static_cast<LONG>(WindowHeight() * GetScreenScale())};
+    const float hostScale = GetPlatformWindowScale();
+    RECT r = {0,
+              0,
+              static_cast<LONG>(std::lround(WindowWidth() * hostScale)),
+              static_cast<LONG>(std::lround(WindowHeight() * hostScale))};
     InvalidateRect(mPlugWnd, &r, FALSE);
 
     return result;

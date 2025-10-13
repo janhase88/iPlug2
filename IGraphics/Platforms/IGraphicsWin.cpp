@@ -22,7 +22,7 @@
 #include "IPopupMenuControl.h"
 #include "SchedulerLogging.h"
 #define WDL_WIN32_HIDPI_IMPL
-#include "WDL/win32_hidpi.h"
+#include "win32_hidpi.h"
 #undef WDL_WIN32_HIDPI_IMPL
 #if defined IGRAPHICS_VULKAN
   #include "VulkanLogging.h"

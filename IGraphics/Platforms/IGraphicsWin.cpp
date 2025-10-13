@@ -5270,10 +5270,36 @@ void* IGraphicsWin::OpenWindow(void* pParent)
                       vulkanlog::MakeField("restoreThreadContext", restoreOpenThreadContext));
 #endif
   }
+
+  SetThreadDpiHostingBehaviorFn openHostingBehavior = GetSetThreadDpiHostingBehavior();
+  int previousHostingBehavior = kDpiHostingBehaviorInvalid;
+  if (openHostingBehavior)
+  {
+    previousHostingBehavior = openHostingBehavior(kDpiHostingBehaviorMixedMixed);
+#if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG("RenderWindow",
+                      "open.threadDpiHosting",
+                      vulkanlog::Severity::kDebug,
+                      vulkanlog::MakeHandleField("plugWnd", static_cast<uint64_t>(0)),
+                      vulkanlog::MakeField("previousBehavior", previousHostingBehavior));
+#endif
+  }
 #endif
 
   mPlugWnd = CreateWindowW(wndClassName, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
 #if defined IGRAPHICS_VULKAN
+  if (openHostingBehavior && previousHostingBehavior != kDpiHostingBehaviorInvalid)
+  {
+    openHostingBehavior(previousHostingBehavior);
+#if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG("RenderWindow",
+                      "open.threadDpiHostingRestored",
+                      vulkanlog::Severity::kDebug,
+                      vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
+                      vulkanlog::MakeField("restoredBehavior", previousHostingBehavior));
+#endif
+  }
+
   if (restoreOpenThreadContext && openThreadContext)
   {
     SetLastError(ERROR_SUCCESS);

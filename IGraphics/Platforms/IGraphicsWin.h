@@ -89,6 +89,7 @@ public:
   void ForceEndUserEdit() override;
   float GetPlatformWindowScale() const override { return mHostWindowScale; }
   float GetPlatformDPIVirtualizationFactor() const override;
+  float GetPlatformRenderDevicePixelScale() const override { return (mRenderDevicePixelScale > 0.f) ? mRenderDevicePixelScale : 0.f; }
 
   void PlatformResize(bool parentHasResized) override;
 
@@ -270,6 +271,7 @@ private:
   HFONT mEditFont = nullptr;
   DWORD mPID = 0;
   float mHostWindowScale = 1.f;
+  float mRenderDevicePixelScale = 0.f;
 
   void StartVBlankThread(HWND hWnd);
   void StopVBlankThread();

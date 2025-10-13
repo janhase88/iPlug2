@@ -4562,6 +4562,7 @@ void IGraphicsWin::DestroyVulkanRenderWindow()
     mVulkanRenderWnd = nullptr;
     mOwnsVulkanRenderWnd = false;
   }
+  mRenderDevicePixelScale = 0.f;
 }
 
 void IGraphicsWin::SyncVulkanRenderWindowFromClientRect()
@@ -4652,6 +4653,22 @@ void IGraphicsWin::SyncVulkanRenderWindowFromClientRect()
     deviceWidth = std::max(1, deviceWidth);
     deviceHeight = std::max(1, deviceHeight);
   }
+
+  if (WindowWidth() > 0 && deviceWidth > 0)
+  {
+    mRenderDevicePixelScale = static_cast<float>(deviceWidth) / static_cast<float>(WindowWidth());
+  }
+  else if (WindowHeight() > 0 && deviceHeight > 0)
+  {
+    mRenderDevicePixelScale = static_cast<float>(deviceHeight) / static_cast<float>(WindowHeight());
+  }
+  else
+  {
+    mRenderDevicePixelScale = 0.f;
+  }
+
+  if (!(mRenderDevicePixelScale > 0.f) || !std::isfinite(mRenderDevicePixelScale))
+    mRenderDevicePixelScale = 0.f;
 
   const BOOL positioned = SetWindowPosWithResult(mVulkanRenderWnd, nullptr, 0, 0, deviceWidth, deviceHeight, SWP_NOZORDER | SWP_NOACTIVATE);
 

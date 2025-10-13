@@ -1138,6 +1138,10 @@ public:
   /** @return The platform-adjusted scale that maps logical coordinates to device pixels */
   float GetDevicePixelScale() const
   {
+    const float platformDeviceScale = GetPlatformRenderDevicePixelScale();
+    if (platformDeviceScale > 0.f)
+      return platformDeviceScale;
+
     const float screen = GetScreenScale();
     const float host = GetPlatformWindowScale();
     const float virtualization = std::max(GetPlatformDPIVirtualizationFactor(), 1.f);
@@ -1153,10 +1157,20 @@ public:
   }
 
   /** @return The total backing pixel scale */
-  virtual float GetBackingPixelScale() const { return GetTotalScale() * GetPlatformDPIVirtualizationFactor(); }
+  virtual float GetBackingPixelScale() const
+  {
+    const float platformDeviceScale = GetPlatformRenderDevicePixelScale();
+    if (platformDeviceScale > 0.f)
+      return platformDeviceScale;
+
+    return GetTotalScale() * GetPlatformDPIVirtualizationFactor();
+  }
 
   /** @return Additional scale applied by the OS due to DPI virtualization */
   virtual float GetPlatformDPIVirtualizationFactor() const { return 1.f; }
+
+  /** @return Platform-resolved device pixel scale for the plug-in window, or <= 0 if unavailable */
+  virtual float GetPlatformRenderDevicePixelScale() const { return 0.f; }
 
   /** Configure idle pacing behaviour for the platform scheduler */
   void SetIdlePacingMode(EIdlePacingMode mode);

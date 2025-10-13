@@ -113,9 +113,25 @@ vulkanlog::Field MakeFloatField(const char* key, float value)
 }
 #endif
 
+using SetWindowPosFn = BOOL(WINAPI*)(HWND, HWND, int, int, int, int, UINT);
+
+SetWindowPosFn LoadRealSetWindowPos()
+{
+  static SetWindowPosFn fn = []() -> SetWindowPosFn {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (!user32)
+      user32 = LoadLibraryW(L"user32.dll");
+    if (!user32)
+      return nullptr;
+    return reinterpret_cast<SetWindowPosFn>(GetProcAddress(user32, "SetWindowPos"));
+  }();
+  return fn;
+}
+
 BOOL SetWindowPosWithResult(HWND hwnd, HWND hwndAfter, int x, int y, int w, int h, UINT flags)
 {
 #ifdef SetWindowPos
+  #pragma push_macro("SetWindowPos")
   #undef SetWindowPos
   #define IGRAPHICS_RESTORE_SETWINDOWPOS 1
 #endif
@@ -123,7 +139,7 @@ BOOL SetWindowPosWithResult(HWND hwnd, HWND hwndAfter, int x, int y, int w, int 
   if (!hwnd)
   {
 #ifdef IGRAPHICS_RESTORE_SETWINDOWPOS
-    #define SetWindowPos WDL_mmSetWindowPos
+    #pragma pop_macro("SetWindowPos")
     #undef IGRAPHICS_RESTORE_SETWINDOWPOS
 #endif
     return FALSE;
@@ -132,6 +148,16 @@ BOOL SetWindowPosWithResult(HWND hwnd, HWND hwndAfter, int x, int y, int w, int 
   static char init = 0;
   WDL_ASSERT((flags & SWP_NOSIZE) || w >= 0);
   WDL_ASSERT((flags & SWP_NOSIZE) || h >= 0);
+
+  SetWindowPosFn realSetWindowPos = LoadRealSetWindowPos();
+  if (!realSetWindowPos)
+  {
+#ifdef IGRAPHICS_RESTORE_SETWINDOWPOS
+    #pragma pop_macro("SetWindowPos")
+    #undef IGRAPHICS_RESTORE_SETWINDOWPOS
+#endif
+    return FALSE;
+  }
 
   if (!init)
   {
@@ -154,20 +180,20 @@ BOOL SetWindowPosWithResult(HWND hwnd, HWND hwndAfter, int x, int y, int w, int 
       !(flags & (SWP_NOMOVE | SWP_NOSIZE | SWP__NOMOVETHENSIZE | SWP_ASYNCWINDOWPOS)) &&
       !(GetWindowLong(hwnd, GWL_STYLE) & WS_CHILD))
   {
-    repositionOk = ::SetWindowPos(hwnd,
-                                   nullptr,
-                                   x,
-                                   y,
-                                   0,
-                                   0,
-                                   SWP_NOREDRAW | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_DEFERERASE);
+    repositionOk = realSetWindowPos(hwnd,
+                                    nullptr,
+                                    x,
+                                    y,
+                                    0,
+                                    0,
+                                    SWP_NOREDRAW | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_DEFERERASE);
     flags |= SWP_NOMOVE;
   }
 
-  BOOL finalOk = ::SetWindowPos(hwnd, hwndAfter, x, y, w, h, flags & ~SWP__NOMOVETHENSIZE);
+  BOOL finalOk = realSetWindowPos(hwnd, hwndAfter, x, y, w, h, flags & ~SWP__NOMOVETHENSIZE);
 
 #ifdef IGRAPHICS_RESTORE_SETWINDOWPOS
-  #define SetWindowPos WDL_mmSetWindowPos
+  #pragma pop_macro("SetWindowPos")
   #undef IGRAPHICS_RESTORE_SETWINDOWPOS
 #endif
 
@@ -4631,11 +4657,11 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
   uint32_t width, uint32_t height, VkSwapchainKHR& swapchain, std::vector<VkImage>& images, VkFormat& format, VkImageUsageFlags& usage, bool& submissionPending)
 {
   IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
-                      "request",
-                      vulkanlog::Severity::kInfo,
-                      vulkanlog::MakeField("width", static_cast<uint32_t>(width)),
-                       vulkanlog::MakeField("height", static_cast<uint32_t>(height)),
-                       vulkanlog::MakeHandleField("previousSwapchain", vulkanlog::HandleToUint64(reinterpret_cast<uintptr_t>(mVkSwapchain.handle))));
+                   "request",
+                   vulkanlog::Severity::kInfo,
+                   vulkanlog::MakeField("width", static_cast<uint32_t>(width)),
+                   vulkanlog::MakeField("height", static_cast<uint32_t>(height)),
+                   vulkanlog::MakeHandleField("previousSwapchain", vulkanlog::HandleToUint64(reinterpret_cast<uintptr_t>(mVkSwapchain.handle))));
 #if defined IGRAPHICS_VULKAN
   const float cachedHostScale = mHostWindowScale;
   const float computedHostScale = ComputeHostWindowScale();
@@ -4649,18 +4675,18 @@ VkResult IGraphicsWin::CreateOrResizeVulkanSwapchain(
     renderRectValid = true;
   }
 
-  IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
-                    "scaleSnapshot",
-                    vulkanlog::Severity::kDebug,
-                    MakeFloatField("cachedHostScale", cachedHostScale),
-                    MakeFloatField("computedHostScale", computedHostScale),
-                    MakeFloatField("computedRenderScale", computedRenderScale),
-                    vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)),
-                    vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
-                    vulkanlog::MakeHandleField("rectSource", vulkanlog::HandleToUint64(rectSource)),
-                    vulkanlog::MakeField("rectValid", static_cast<uint32_t>(renderRectValid)),
-                    vulkanlog::MakeField("rectWidth", renderRectValid ? (renderRect.right - renderRect.left) : 0),
-                    vulkanlog::MakeField("rectHeight", renderRectValid ? (renderRect.bottom - renderRect.top) : 0));
+    IGRAPHICS_VK_LOG("CreateOrResizeVulkanSwapchain",
+                     "scaleSnapshot",
+                     vulkanlog::Severity::kDebug,
+                     MakeFloatField("cachedHostScale", cachedHostScale),
+                     MakeFloatField("computedHostScale", computedHostScale),
+                     MakeFloatField("computedRenderScale", computedRenderScale),
+                     vulkanlog::MakeHandleField("renderWnd", vulkanlog::HandleToUint64(mVulkanRenderWnd)),
+                     vulkanlog::MakeHandleField("plugWnd", vulkanlog::HandleToUint64(mPlugWnd)),
+                     vulkanlog::MakeHandleField("rectSource", vulkanlog::HandleToUint64(rectSource)),
+                     vulkanlog::MakeField("rectValid", renderRectValid),
+                     vulkanlog::MakeField("rectWidth", renderRectValid ? static_cast<int>(renderRect.right - renderRect.left) : 0),
+                     vulkanlog::MakeField("rectHeight", renderRectValid ? static_cast<int>(renderRect.bottom - renderRect.top) : 0));
 #endif
   if (!mVkDevice || !mVkPhysicalDevice || !mVkSurface)
     return VK_ERROR_INITIALIZATION_FAILED;

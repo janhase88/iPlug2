@@ -11,4 +11,6 @@ This document tracks user requests and the actions taken in response on the `wor
 - **Action:** Instrumented DPI scale helpers, window sizing routines, and Vulkan context/swapchain code with structured logs capturing window handles, scales, and size transitions.
 - **Request:** Resolve build errors caused by the new Vulkan logging instrumentation (SetWindowPos return type and ambiguous MakeField overload).
 - **Action:** Added a DPI-aware SetWindowPos helper that preserves WDL behavior while returning success, updated callers to use it, and tightened logging fields to compile cleanly.
+- **Request:** Remaining build errors report `SetWindowPosWithResult` returning `void` and an ambiguous `vulkanlog::MakeField` overload.
+- **Action:** Loaded the real Win32 `SetWindowPos` via `GetProcAddress` to obtain reliable BOOL results, adjusted the helper to restore the WDL macro safely, and disambiguated the Vulkan logging fields with explicit types.
 

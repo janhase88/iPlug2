@@ -503,6 +503,79 @@ constexpr ULONGLONG kVBlankPauseSoftResetThresholdMs = 250ULL;
 constexpr uint32_t kVBlankHealthAlertAttemptThreshold = 6U;
 constexpr ULONGLONG kVBlankHealthAlertDurationMs = 180ULL;
 
+#ifdef _WIN32
+#ifndef MDT_EFFECTIVE_DPI
+enum MONITOR_DPI_TYPE
+{
+  MDT_EFFECTIVE_DPI = 0,
+  MDT_ANGULAR_DPI = 1,
+  MDT_RAW_DPI = 2,
+  MDT_DEFAULT = MDT_EFFECTIVE_DPI
+};
+#endif
+
+using GetDpiForMonitorFn = HRESULT(WINAPI*)(HMONITOR, MONITOR_DPI_TYPE, UINT*, UINT*);
+
+float NormalizeDpiToScale(UINT dpi)
+{
+  if (dpi == 0)
+    return 0.f;
+
+#if defined IGRAPHICS_QUANTISE_SCREENSCALE
+  return std::round(static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI);
+#else
+  return static_cast<float>(dpi) / USER_DEFAULT_SCREEN_DPI;
+#endif
+}
+
+GetDpiForMonitorFn ResolveGetDpiForMonitor()
+{
+  static GetDpiForMonitorFn fn = []() -> GetDpiForMonitorFn {
+    HMODULE shcore = GetModuleHandleW(L"shcore.dll");
+    if (!shcore)
+      shcore = LoadLibraryW(L"shcore.dll");
+    if (!shcore)
+      return nullptr;
+    return reinterpret_cast<GetDpiForMonitorFn>(GetProcAddress(shcore, "GetDpiForMonitor"));
+  }();
+  return fn;
+}
+
+float GetMonitorScaleForHWND(HWND hWnd)
+{
+  if (!hWnd)
+    return 0.f;
+
+  HMONITOR monitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
+  if (!monitor)
+    return 0.f;
+
+  GetDpiForMonitorFn getDpiForMonitor = ResolveGetDpiForMonitor();
+  if (!getDpiForMonitor)
+    return 0.f;
+
+  UINT dpiX = 0;
+  UINT dpiY = 0;
+  if (SUCCEEDED(getDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &dpiX, &dpiY)))
+    return NormalizeDpiToScale(dpiX);
+
+  return 0.f;
+}
+
+float GetDeviceScaleForHWND(HWND hWnd)
+{
+  const float monitorScale = GetMonitorScaleForHWND(hWnd);
+  if (monitorScale > 0.f)
+    return monitorScale;
+
+  const float windowScale = ::GetScaleForHWND(hWnd);
+  if (windowScale > 0.f)
+    return windowScale;
+
+  return 0.f;
+}
+#endif
+
 std::string TrimCopy(const std::string& value)
 {
   size_t begin = 0;
@@ -2453,7 +2526,7 @@ float IGraphicsWin::ComputeRenderScale() const
 #if defined IGRAPHICS_VULKAN
   if (mVulkanRenderWnd)
   {
-    const float scale = GetScaleForHWND(mVulkanRenderWnd);
+    const float scale = GetDeviceScaleForHWND(mVulkanRenderWnd);
     if (scale > 0.f)
       return scale;
   }
@@ -2461,14 +2534,14 @@ float IGraphicsWin::ComputeRenderScale() const
 
   if (mPlugWnd)
   {
-    const float scale = GetScaleForHWND(mPlugWnd);
+    const float scale = GetDeviceScaleForHWND(mPlugWnd);
     if (scale > 0.f)
       return scale;
   }
 
   if (mParentWnd)
   {
-    const float scale = GetScaleForHWND(mParentWnd);
+    const float scale = GetDeviceScaleForHWND(mParentWnd);
     if (scale > 0.f)
       return scale;
   }
@@ -3918,7 +3991,9 @@ void IGraphicsWin::SyncVulkanRenderWindowFromClientRect()
   if (logicalWidth <= 0 || logicalHeight <= 0)
     return;
 
-  float scale = GetScaleForHWND(mVulkanRenderWnd);
+  float scale = GetDeviceScaleForHWND(mVulkanRenderWnd);
+  if (scale <= 0.f && mPlugWnd)
+    scale = GetDeviceScaleForHWND(mPlugWnd);
   if (scale <= 0.f)
     scale = 1.f;
 

@@ -73,3 +73,5 @@ This document tracks user requests and the actions taken in response on the `wor
 - **Action:** When syncing the Vulkan child window, fold the DPI-virtualization factor into both the expected swapchain size and the fallback relative scale so the cached render device pixel scale remains at the measured physical size (e.g. 2.25× for 2700×1125) even after swapchain metrics appear, keeping Skia surfaces aligned with the plug-in window and the control transforms in bounds.
 - **Request:** "the controls are still drawn out of bounds"
 - **Action:** Updated layer creation and caching to use the backing pixel scale when reporting bitmap scale so Skia surfaces advertise the correct device ratio, keeping IControls rendering within their logical bounds even at 2700×1125.
+- **Request:** "the buttons match together again... can you downscale this rendered image now"
+- **Action:** Split the physical backing scale from the canvas transform so Skia continues rasterizing at the plug-in window's device resolution while the draw matrix maps controls back to their logical size, restoring the UI to fit inside the host window.

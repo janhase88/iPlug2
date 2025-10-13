@@ -1166,6 +1166,18 @@ public:
     return GetTotalScale() * GetPlatformDPIVirtualizationFactor();
   }
 
+  /** @return The scale factor used when mapping logical coordinates onto the drawing canvas */
+  float GetDrawTransformScale() const
+  {
+    const float virtualization = std::max(GetPlatformDPIVirtualizationFactor(), 1.f);
+    const float deviceScale = GetDevicePixelScale();
+
+    if (deviceScale > 0.f && virtualization > 0.f)
+      return deviceScale / virtualization;
+
+    return GetTotalScale();
+  }
+
   /** @return Additional scale applied by the OS due to DPI virtualization */
   virtual float GetPlatformDPIVirtualizationFactor() const { return 1.f; }
 

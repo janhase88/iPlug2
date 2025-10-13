@@ -11,6 +11,7 @@
 #include "IGraphics.h"
 
 #include <cinttypes>
+#include <cmath>
 
 #if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
 #include "Platforms/VulkanLogging.h"
@@ -2230,8 +2231,10 @@ void IGraphics::StartLayer(IControl* pControl, const IRECT& r, bool cacheable, i
   IRECT alignedBounds = r.GetPixelAligned(pixelBackingScale);
   const int w = static_cast<int>(std::ceil(pixelBackingScale * std::ceil(alignedBounds.W())));
   const int h = static_cast<int>(std::ceil(pixelBackingScale * std::ceil(alignedBounds.H())));
+  const float drawScale = GetDrawScale();
+  const float bitmapScale = (drawScale > 0.f) ? (pixelBackingScale / drawScale) : pixelBackingScale;
 
-  PushLayer(new ILayer(CreateAPIBitmap(w, h, GetScreenScale(), GetDrawScale(), cacheable, MSAASampleCount), alignedBounds, pControl, pControl ? pControl->GetRECT() : IRECT()));
+  PushLayer(new ILayer(CreateAPIBitmap(w, h, bitmapScale, drawScale, cacheable, MSAASampleCount), alignedBounds, pControl, pControl ? pControl->GetRECT() : IRECT()));
 }
 
 void IGraphics::ResumeLayer(ILayerPtr& layer)
@@ -2282,14 +2285,22 @@ ILayer* IGraphics::PopLayer()
 bool IGraphics::CheckLayer(const ILayerPtr& layer)
 {
   const APIBitmap* pBitmap = layer ? layer->GetAPIBitmap() : nullptr;
-    
+
   if (pBitmap && layer->mControl && layer->mControlRECT != layer->mControl->GetRECT())
   {
     layer->mControlRECT = layer->mControl->GetRECT();
     layer->Invalidate();
   }
 
-  return pBitmap && !layer->mInvalid && pBitmap->GetDrawScale() == GetDrawScale() && pBitmap->GetScale() == GetScreenScale();
+  const float drawScale = GetDrawScale();
+  const float backingScale = GetBackingPixelScale();
+  const float expectedBitmapScale = (drawScale > 0.f) ? backingScale / drawScale : backingScale;
+
+  auto scaleMatches = [](float a, float b) {
+    return std::fabs(a - b) <= 0.001f;
+  };
+
+  return pBitmap && !layer->mInvalid && scaleMatches(pBitmap->GetDrawScale(), drawScale) && scaleMatches(pBitmap->GetScale(), expectedBitmapScale);
 }
 
 void IGraphics::DrawLayer(const ILayerPtr& layer, const IBlend* pBlend)

@@ -43,4 +43,5 @@ This document tracks user requests and the actions taken in response on the `wor
 - **Request:** With all DPI metrics at 1.5× the Vulkan UI is still blurry; document the current understanding and next investigative steps.
 - **Observation:** The most recent Bitwig trace shows the Vulkan swapchain creating images at the full 1800×750 device size while the Skia renderer continues to draw at `DrawScale: 1.00`. This indicates the frame content is rasterized at 1200×500 and then upscaled to the 1.5× swapchain, which explains the lingering blur despite correct window metrics.
 - **Action:** Capture the outstanding issue in the protocol and plan to trace the Skia pipeline (e.g., `IGraphicsSkia::SetScreenScale` and `mDrawScale` propagation) to ensure the draw scale follows the 1.5× device DPI before rendering the next diagnostic build.
-
+- **Request:** Provide definitive logging across the draw-scale pipeline to locate where Skia remains at 1.0 while the Vulkan swapchain runs at 1.5×.
+- **Action:** Instrumented `IGEditorDelegate::OnParentWindowResize`, `IGraphics::SetScreenScale`, `IGraphics::Resize`, and the Skia `DrawResize`/frame lifecycle with detailed Vulkan logs capturing requested sizes, constrained dimensions, draw/screen scales, and surface widths/heights so the upcoming trace will pinpoint the exact hand-off that collapses the draw scale.

@@ -12,6 +12,10 @@
 #include "IGraphics.h"
 #include "IControl.h"
 
+#if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
+#include "Platforms/VulkanLogging.h"
+#endif
+
 #include <algorithm>
 #include <cmath>
 
@@ -68,9 +72,28 @@ void IGEditorDelegate::OnParentWindowResize(int width, int height)
   {
     const float screenScale = pGraphics->GetPlatformWindowScale();
     const float currentDrawScale = pGraphics->GetDrawScale();
+#if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
+    IGRAPHICS_VK_LOG("DrawScale",
+                      "OnParentWindowResize.entry",
+                      vulkanlog::Severity::kDebug,
+                      vulkanlog::MakeField("width", width),
+                      vulkanlog::MakeField("height", height),
+                      MakeFloatField("screenScale", screenScale),
+                      MakeFloatField("drawScale", currentDrawScale),
+                      vulkanlog::MakeField("resizerMode", static_cast<int>(pGraphics->GetResizerMode())));
+#endif
 
     if (screenScale <= 0.f || currentDrawScale <= 0.f)
+    {
+#if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
+      IGRAPHICS_VK_LOG("DrawScale",
+                        "OnParentWindowResize.invalidScales",
+                        vulkanlog::Severity::kError,
+                        MakeFloatField("screenScale", screenScale),
+                        MakeFloatField("drawScale", currentDrawScale));
+#endif
       return;
+    }
 
     if (pGraphics->GetResizerMode() == EUIResizerMode::Scale)
     {
@@ -78,16 +101,47 @@ void IGEditorDelegate::OnParentWindowResize(int width, int height)
       const int baseHeight = pGraphics->Height();
 
       if (baseWidth <= 0 || baseHeight <= 0)
+      {
+#if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
+        IGRAPHICS_VK_LOG("DrawScale",
+                          "OnParentWindowResize.invalidBaseDimensions",
+                          vulkanlog::Severity::kError,
+                          vulkanlog::MakeField("baseWidth", baseWidth),
+                          vulkanlog::MakeField("baseHeight", baseHeight));
+#endif
         return;
+      }
 
       if (width <= 0 || height <= 0)
+      {
+#if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
+        IGRAPHICS_VK_LOG("DrawScale",
+                          "OnParentWindowResize.invalidWindowSize",
+                          vulkanlog::Severity::kError,
+                          vulkanlog::MakeField("width", width),
+                          vulkanlog::MakeField("height", height));
+#endif
         return;
+      }
 
       const float unscaledWidth = static_cast<float>(width) / screenScale;
       const float unscaledHeight = static_cast<float>(height) / screenScale;
       const float scaleX = unscaledWidth / static_cast<float>(baseWidth);
       const float scaleY = unscaledHeight / static_cast<float>(baseHeight);
       const float targetScale = std::max(0.f, std::min(scaleX, scaleY));
+
+#if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
+      IGRAPHICS_VK_LOG("DrawScale",
+                        "OnParentWindowResize.scaleMode",
+                        vulkanlog::Severity::kInfo,
+                        vulkanlog::MakeField("baseWidth", baseWidth),
+                        vulkanlog::MakeField("baseHeight", baseHeight),
+                        MakeFloatField("unscaledWidth", unscaledWidth),
+                        MakeFloatField("unscaledHeight", unscaledHeight),
+                        MakeFloatField("scaleX", scaleX),
+                        MakeFloatField("scaleY", scaleY),
+                        MakeFloatField("targetScale", targetScale));
+#endif
 
       pGraphics->Resize(baseWidth, baseHeight, targetScale, false);
     }
@@ -96,13 +150,41 @@ void IGEditorDelegate::OnParentWindowResize(int width, int height)
       const float invTotalScale = 1.f / (screenScale * currentDrawScale);
 
       if (!std::isfinite(invTotalScale))
+      {
+#if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
+        IGRAPHICS_VK_LOG("DrawScale",
+                          "OnParentWindowResize.nonFiniteInvScale",
+                          vulkanlog::Severity::kError,
+                          MakeFloatField("screenScale", screenScale),
+                          MakeFloatField("drawScale", currentDrawScale));
+#endif
         return;
+      }
 
       const int logicalWidth = static_cast<int>(std::round(static_cast<float>(width) * invTotalScale));
       const int logicalHeight = static_cast<int>(std::round(static_cast<float>(height) * invTotalScale));
 
       if (logicalWidth <= 0 || logicalHeight <= 0)
+      {
+#if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
+        IGRAPHICS_VK_LOG("DrawScale",
+                          "OnParentWindowResize.invalidLogicalSize",
+                          vulkanlog::Severity::kError,
+                          vulkanlog::MakeField("logicalWidth", logicalWidth),
+                          vulkanlog::MakeField("logicalHeight", logicalHeight),
+                          MakeFloatField("invTotalScale", invTotalScale));
+#endif
         return;
+      }
+
+#if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
+      IGRAPHICS_VK_LOG("DrawScale",
+                        "OnParentWindowResize.pixelMode",
+                        vulkanlog::Severity::kInfo,
+                        vulkanlog::MakeField("logicalWidth", logicalWidth),
+                        vulkanlog::MakeField("logicalHeight", logicalHeight),
+                        MakeFloatField("invTotalScale", invTotalScale));
+#endif
 
       pGraphics->Resize(logicalWidth, logicalHeight, currentDrawScale, false);
     }

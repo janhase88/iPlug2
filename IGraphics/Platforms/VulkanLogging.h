@@ -241,6 +241,20 @@ inline Field MakeField(const char* key, uint64_t value)
   return Field(key, std::to_string(value), false);
 }
 
+inline Field MakeFloatField(const char* key, float value, int precision = 4)
+{
+  char buffer[48]{};
+  std::snprintf(buffer, sizeof(buffer), "%.*f", precision, static_cast<double>(value));
+  return Field(key, std::string(buffer), false);
+}
+
+inline Field MakeDoubleField(const char* key, double value, int precision = 4)
+{
+  char buffer[64]{};
+  std::snprintf(buffer, sizeof(buffer), "%.*f", precision, value);
+  return Field(key, std::string(buffer), false);
+}
+
 inline Field MakeHexField(const char* key, uint64_t value)
 {
   char buffer[32]{};

@@ -12,6 +12,10 @@
 
 #include <cinttypes>
 
+#if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
+#include "Platforms/VulkanLogging.h"
+#endif
+
 #define NANOSVG_IMPLEMENTATION
 #pragma warning(disable:4244) // float conversion
 #include "nanosvg.h"
@@ -76,11 +80,31 @@ IGraphics::~IGraphics()
 
 void IGraphics::SetScreenScale(float scale)
 {
+#if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
+  const float previousScreenScale = mScreenScale;
+  const float currentDrawScale = GetDrawScale();
+  const int logicalWidth = Width();
+  const int logicalHeight = Height();
+#endif
   mScreenScale = scale;
   int windowWidth = WindowWidth() * GetPlatformWindowScale();
   int windowHeight = WindowHeight() * GetPlatformWindowScale();
-  
+
   assert(windowWidth > 0 && windowHeight > 0 && "Window dimensions invalid");
+
+#if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
+  IGRAPHICS_VK_LOG("DrawScale",
+                    "SetScreenScale.applied",
+                    vulkanlog::Severity::kInfo,
+                    MakeFloatField("requestedScreenScale", scale),
+                    MakeFloatField("previousScreenScale", previousScreenScale),
+                    MakeFloatField("drawScale", currentDrawScale),
+                    vulkanlog::MakeField("logicalWidth", logicalWidth),
+                    vulkanlog::MakeField("logicalHeight", logicalHeight),
+                    vulkanlog::MakeField("windowWidth", windowWidth),
+                    vulkanlog::MakeField("windowHeight", windowHeight),
+                    MakeFloatField("platformWindowScale", GetPlatformWindowScale()));
+#endif
 
   bool parentResized = GetDelegate()->EditorResizeFromUI(windowWidth, windowHeight, true);
   PlatformResize(parentResized);
@@ -142,33 +166,92 @@ int IGraphics::ConsumeIdleForgivenessRequest()
 
 void IGraphics::Resize(int w, int h, float scale, bool needsPlatformResize)
 {
+#if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
+  const int requestedWidth = w;
+  const int requestedHeight = h;
+  const float requestedScale = scale;
+  const int previousWidth = Width();
+  const int previousHeight = Height();
+  const float previousDrawScale = GetDrawScale();
+#endif
+
   GetDelegate()->ConstrainEditorResize(w, h);
-  
+
+#if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
+  if (requestedWidth != w || requestedHeight != h)
+  {
+    IGRAPHICS_VK_LOG("DrawScale",
+                      "Resize.constrained",
+                      vulkanlog::Severity::kDebug,
+                      vulkanlog::MakeField("requestedWidth", requestedWidth),
+                      vulkanlog::MakeField("requestedHeight", requestedHeight),
+                      vulkanlog::MakeField("constrainedWidth", w),
+                      vulkanlog::MakeField("constrainedHeight", h));
+  }
+#endif
+
   scale = Clip(scale, mMinScale, mMaxScale);
-  
-  if (w == Width() && h == Height() && scale == GetDrawScale()) return;
-  
-  //DBGMSG("resize %i, resize %i, scale %f\n", w, h, scale);
+
+#if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
+  IGRAPHICS_VK_LOG("DrawScale",
+                    "Resize.entry",
+                    vulkanlog::Severity::kInfo,
+                    vulkanlog::MakeField("requestedWidth", requestedWidth),
+                    vulkanlog::MakeField("requestedHeight", requestedHeight),
+                    MakeFloatField("requestedScale", requestedScale),
+                    vulkanlog::MakeField("constrainedWidth", w),
+                    vulkanlog::MakeField("constrainedHeight", h),
+                    MakeFloatField("clippedScale", scale),
+                    vulkanlog::MakeField("previousWidth", previousWidth),
+                    vulkanlog::MakeField("previousHeight", previousHeight),
+                    MakeFloatField("previousDrawScale", previousDrawScale),
+                    vulkanlog::MakeField("needsPlatformResize", needsPlatformResize));
+#endif
+
+  if (w == Width() && h == Height() && scale == GetDrawScale())
+  {
+#if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
+    IGRAPHICS_VK_LOG("DrawScale",
+                      "Resize.noop",
+                      vulkanlog::Severity::kDebug,
+                      vulkanlog::MakeField("width", w),
+                      vulkanlog::MakeField("height", h),
+                      MakeFloatField("drawScale", scale));
+#endif
+    return;
+  }
+
   if (!mResizingInProcess)
     ReleaseMouseCapture();
 
   mDrawScale = scale;
   mWidth = w;
   mHeight = h;
-  
+
   if (mCornerResizer)
     mCornerResizer->OnRescale();
 
   int windowWidth = WindowWidth() * GetPlatformWindowScale();
   int windowHeight = WindowHeight() * GetPlatformWindowScale();
 
+#if defined(OS_WIN) && defined(IGRAPHICS_VULKAN)
+  IGRAPHICS_VK_LOG("DrawScale",
+                    "Resize.applied",
+                    vulkanlog::Severity::kInfo,
+                    vulkanlog::MakeField("windowWidth", windowWidth),
+                    vulkanlog::MakeField("windowHeight", windowHeight),
+                    MakeFloatField("drawScale", mDrawScale),
+                    MakeFloatField("screenScale", GetScreenScale()),
+                    MakeFloatField("platformWindowScale", GetPlatformWindowScale()));
+#endif
+
   bool parentResized = GetDelegate()->EditorResizeFromUI(windowWidth, windowHeight, needsPlatformResize);
   PlatformResize(parentResized);
   ForAllControls(&IControl::OnResize);
   SetAllControlsDirty();
   DrawResize();
-  
-  if(mLayoutOnResize)
+
+  if (mLayoutOnResize)
     GetDelegate()->LayoutUI(this);
 }
 

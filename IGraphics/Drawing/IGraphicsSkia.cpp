@@ -8,6 +8,10 @@
 
 #include "IGraphicsSkia.h"
 
+#if defined(IGRAPHICS_VULKAN)
+#include "../Platforms/VulkanLogging.h"
+#endif
+
 #pragma warning(push)
 #pragma warning(disable : 4244)
 #include "include/core/SkBitmap.h"
@@ -1313,9 +1317,15 @@ void IGraphicsSkia::DrawResize()
                       "begin",
                       vulkanlog::Severity::kDebug,
                       vulkanlog::MakeField("frameVersion", static_cast<uint64_t>(mVKFrameVersion)),
-                       vulkanlog::MakeField("swapchainVersion", static_cast<uint64_t>(mVKSwapchainVersion)),
-                       vulkanlog::MakeField("submissionPending", mVKSubmissionPending),
-                       vulkanlog::MakeField("imageCount", static_cast<uint64_t>(mVKSwapchainImages.size())));
+                      vulkanlog::MakeField("swapchainVersion", static_cast<uint64_t>(mVKSwapchainVersion)),
+                      vulkanlog::MakeField("submissionPending", mVKSubmissionPending),
+                      vulkanlog::MakeField("imageCount", static_cast<uint64_t>(mVKSwapchainImages.size())),
+                      vulkanlog::MakeField("logicalWidth", WindowWidth()),
+                      vulkanlog::MakeField("logicalHeight", WindowHeight()),
+                      MakeFloatField("drawScale", GetDrawScale()),
+                      MakeFloatField("screenScale", GetScreenScale()),
+                      vulkanlog::MakeField("targetSurfaceWidth", w),
+                      vulkanlog::MakeField("targetSurfaceHeight", h));
   std::lock_guard<std::mutex> lock(mVKSwapchainMutex);
   mVKSkipFrame = true;
   ResetVulkanSwapchainCaches();
@@ -1557,10 +1567,27 @@ void IGraphicsSkia::DrawResize()
 #endif
   if (mSurface)
   {
+#if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG("DrawResize",
+                      "surfaceReady",
+                      vulkanlog::Severity::kDebug,
+                      vulkanlog::MakeField("surfaceWidth", mSurface->width()),
+                      vulkanlog::MakeField("surfaceHeight", mSurface->height()),
+                      MakeFloatField("drawScale", GetDrawScale()),
+                      MakeFloatField("screenScale", GetScreenScale()),
+                      vulkanlog::MakeField("swapchainImages", static_cast<uint64_t>(mVKSwapchainImages.size())));
+#endif
     mCanvas = mSurface->getCanvas();
     mCanvas->save();
   }
+#if defined IGRAPHICS_VULKAN
+  else
+  {
+    IGRAPHICS_VK_LOG_SIMPLE("DrawResize", "surfaceUnavailable", vulkanlog::Severity::kError);
+  }
+#endif
 }
+
 
 void IGraphicsSkia::BeginFrame()
 {
@@ -1571,12 +1598,18 @@ void IGraphicsSkia::BeginFrame()
                       "entry",
                       vulkanlog::Severity::kDebug,
                       vulkanlog::MakeField("frameVersion", static_cast<uint64_t>(mVKFrameVersion)),
-                       vulkanlog::MakeField("swapchainVersion", static_cast<uint64_t>(mVKSwapchainVersion)),
-                       vulkanlog::MakeField("skipFrame", mVKSkipFrame),
-                       vulkanlog::MakeField("submissionPending", mVKSubmissionPending),
-                       vulkanlog::MakeField("currentImage", static_cast<uint32_t>(mVKCurrentImage)),
-                       vulkanlog::MakeField("imageCount", static_cast<uint64_t>(mVKSwapchainImages.size())),
-                       vulkanlog::MakeField("layoutCount", static_cast<uint64_t>(mVKImageLayouts.size())));
+                      vulkanlog::MakeField("swapchainVersion", static_cast<uint64_t>(mVKSwapchainVersion)),
+                      vulkanlog::MakeField("skipFrame", mVKSkipFrame),
+                      vulkanlog::MakeField("submissionPending", mVKSubmissionPending),
+                      vulkanlog::MakeField("currentImage", static_cast<uint32_t>(mVKCurrentImage)),
+                      vulkanlog::MakeField("imageCount", static_cast<uint64_t>(mVKSwapchainImages.size())),
+                      vulkanlog::MakeField("layoutCount", static_cast<uint64_t>(mVKImageLayouts.size())),
+                      vulkanlog::MakeField("logicalWidth", WindowWidth()),
+                      vulkanlog::MakeField("logicalHeight", WindowHeight()),
+                      MakeFloatField("drawScale", GetDrawScale()),
+                      MakeFloatField("screenScale", GetScreenScale()),
+                      vulkanlog::MakeField("surfaceWidth", static_cast<int>(mSurface ? mSurface->width() : 0)),
+                      vulkanlog::MakeField("surfaceHeight", static_cast<int>(mSurface ? mSurface->height() : 0)));
 #endif
 #if defined IGRAPHICS_GL
   if (mGrContext.get())
@@ -1994,7 +2027,9 @@ void IGraphicsSkia::BeginFrame()
     IGRAPHICS_VK_LOG("BeginFrame",
                         "surfaceReady",
                         vulkanlog::Severity::kDebug,
-                        vulkanlog::MakeField("imageIndex", imageIndex));
+                        vulkanlog::MakeField("imageIndex", imageIndex),
+                        vulkanlog::MakeField("surfaceWidth", mScreenSurface ? mScreenSurface->width() : 0),
+                        vulkanlog::MakeField("surfaceHeight", mScreenSurface ? mScreenSurface->height() : 0));
     mVKSkipFrame = false;
     IGRAPHICS_VK_LOG("BeginFrame",
                         "readyToDraw",
@@ -2041,12 +2076,18 @@ void IGraphicsSkia::EndFrame()
                       "entry",
                       vulkanlog::Severity::kDebug,
                       vulkanlog::MakeField("frameVersion", static_cast<uint64_t>(mVKFrameVersion)),
-                       vulkanlog::MakeField("swapchainVersion", static_cast<uint64_t>(mVKSwapchainVersion)),
-                       vulkanlog::MakeField("skipFrame", mVKSkipFrame),
-                       vulkanlog::MakeField("currentImage", static_cast<uint32_t>(mVKCurrentImage)),
-                       vulkanlog::MakeField("imageCount", static_cast<uint64_t>(mVKSwapchainImages.size())),
-                       vulkanlog::MakeField("layoutCount", static_cast<uint64_t>(mVKImageLayouts.size())),
-                       vulkanlog::MakeField("submissionPending", mVKSubmissionPending));
+                      vulkanlog::MakeField("swapchainVersion", static_cast<uint64_t>(mVKSwapchainVersion)),
+                      vulkanlog::MakeField("skipFrame", mVKSkipFrame),
+                      vulkanlog::MakeField("currentImage", static_cast<uint32_t>(mVKCurrentImage)),
+                      vulkanlog::MakeField("imageCount", static_cast<uint64_t>(mVKSwapchainImages.size())),
+                      vulkanlog::MakeField("layoutCount", static_cast<uint64_t>(mVKImageLayouts.size())),
+                      vulkanlog::MakeField("logicalWidth", WindowWidth()),
+                      vulkanlog::MakeField("logicalHeight", WindowHeight()),
+                      MakeFloatField("drawScale", GetDrawScale()),
+                      MakeFloatField("screenScale", GetScreenScale()),
+                      vulkanlog::MakeField("surfaceWidth", static_cast<int>(mSurface ? mSurface->width() : 0)),
+                      vulkanlog::MakeField("surfaceHeight", static_cast<int>(mSurface ? mSurface->height() : 0)),
+                      vulkanlog::MakeField("submissionPending", mVKSubmissionPending));
   if (mVKSkipFrame || mVKSwapchainImages.empty() || mVKCurrentImage == kInvalidImageIndex || mVKCurrentImage >= mVKSwapchainImages.size())
   {
     IGRAPHICS_VK_LOG("EndFrame",

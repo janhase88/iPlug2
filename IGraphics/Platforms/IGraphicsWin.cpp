@@ -156,12 +156,6 @@ constexpr int kDpiHostingBehaviorInvalid = -1;
 constexpr int kDpiHostingBehaviorMixedMixed = 3;
 constexpr INT_PTR kPerMonitorAwareV2Context = -4;
 
-vulkanlog::Field MakeFloatField(const char* key, float value)
-{
-  char buffer[32]{};
-  std::snprintf(buffer, sizeof(buffer), "%.4f", static_cast<double>(value));
-  return vulkanlog::Field(key, std::string(buffer), false);
-}
 #endif
 
 using SetWindowPosFn = BOOL(WINAPI*)(HWND, HWND, int, int, int, int, UINT);

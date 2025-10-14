@@ -5544,7 +5544,7 @@ static void GetWndClassName(HWND hWnd, WDL_String* pStr)
   pStr->Set(UTF16AsUTF8(cStrW).Get());
 }
 
-BOOL CALLBACK IGraphicsWin::FindMainWindow(HWND hWnd, LPARAM lParam)
+::BOOL CALLBACK IGraphicsWin::FindMainWindow(HWND hWnd, LPARAM lParam)
 {
   IGraphicsWin* pGraphics = (IGraphicsWin*)lParam;
   if (pGraphics)

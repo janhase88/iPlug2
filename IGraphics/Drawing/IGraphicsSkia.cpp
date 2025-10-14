@@ -2232,10 +2232,10 @@ void IGraphicsSkia::EndFrame()
         if (std::isfinite(scaleX) && std::isfinite(scaleY) &&
             (std::fabs(scaleX - 1.f) > kScaleTolerance || std::fabs(scaleY - 1.f) > kScaleTolerance))
         {
-          SkSamplingOptions sampling(SkFilterMode::kLinear, SkMipmapMode::kLinear);
+          const SkSamplingOptions sampling(SkFilterMode::kLinear, SkMipmapMode::kLinear);
           screenCanvas->save();
           screenCanvas->scale(scaleX, scaleY);
-          mSurface->draw(screenCanvas, 0.0, 0.0, &sampling, nullptr);
+          mSurface->draw(screenCanvas, 0.0, 0.0, sampling, nullptr);
           screenCanvas->restore();
           drewWithScale = true;
         }

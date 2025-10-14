@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <map>
 #include <type_traits>
 #include <utility>
@@ -141,6 +142,53 @@ extern std::map<std::string, MTLTexturePtr> gTextureMap;
 #if defined IGRAPHICS_VULKAN
 namespace
 {
+PFN_vkCreateDescriptorPool ResolveCreateDescriptorPool(VkDevice device)
+{
+  if (device == VK_NULL_HANDLE)
+    return nullptr;
+
+  auto proc = reinterpret_cast<PFN_vkCreateDescriptorPool>(vkGetDeviceProcAddr(device, "vkCreateDescriptorPool"));
+  return proc;
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL CreateDescriptorPoolWithFreeFlag(VkDevice device,
+                                                                const VkDescriptorPoolCreateInfo* pCreateInfo,
+                                                                const VkAllocationCallbacks* pAllocator,
+                                                                VkDescriptorPool* pDescriptorPool)
+{
+  PFN_vkCreateDescriptorPool realCreate = ResolveCreateDescriptorPool(device);
+  if (!realCreate)
+    return VK_ERROR_INITIALIZATION_FAILED;
+
+  if (!pCreateInfo)
+    return realCreate(device, pCreateInfo, pAllocator, pDescriptorPool);
+
+  VkDescriptorPoolCreateInfo adjustedInfo = *pCreateInfo;
+  adjustedInfo.flags |= VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+  return realCreate(device, &adjustedInfo, pAllocator, pDescriptorPool);
+}
+
+PFN_vkVoidFunction ResolveVulkanProc(const char* name, VkInstance instance, VkDevice device)
+{
+  if (!name)
+    return nullptr;
+
+  if (device != VK_NULL_HANDLE)
+  {
+    if (std::strcmp(name, "vkCreateDescriptorPool") == 0)
+    {
+      return reinterpret_cast<PFN_vkVoidFunction>(&CreateDescriptorPoolWithFreeFlag);
+    }
+
+    return vkGetDeviceProcAddr(device, name);
+  }
+
+  if (instance != VK_NULL_HANDLE)
+    return vkGetInstanceProcAddr(instance, name);
+
+  return nullptr;
+}
+
 template <typename...>
 struct MakeVoid
 {
@@ -1138,9 +1186,7 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
 
   skgpu::VulkanBackendContext backendContext = {};
   backendContext.fGetProc = [](const char* name, VkInstance instance, VkDevice device) {
-    if (device)
-      return vkGetDeviceProcAddr(device, name);
-    return vkGetInstanceProcAddr(instance, name);
+    return ResolveVulkanProc(name, instance, device);
   };
   backendContext.fInstance = mVKInstance;
   backendContext.fPhysicalDevice = mVKPhysicalDevice;

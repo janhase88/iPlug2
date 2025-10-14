@@ -2,10 +2,12 @@
 #include <cmath>
 #include <cstdio>
 #include <map>
-#include <cstring>
+#include <mutex>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
+#include <cstring>
 
 #include "IGraphicsSkia.h"
 
@@ -142,12 +144,33 @@ extern std::map<std::string, MTLTexturePtr> gTextureMap;
 #if defined IGRAPHICS_VULKAN
 namespace
 {
-PFN_vkCreateDescriptorPool ResolveCreateDescriptorPool(VkDevice device)
+std::mutex gDescriptorPoolMutex;
+std::unordered_map<VkDevice, PFN_vkCreateDescriptorPool> gDescriptorPoolCreate;
+
+PFN_vkCreateDescriptorPool ResolveRealCreateDescriptorPool(VkDevice device)
 {
   if (device == VK_NULL_HANDLE)
     return nullptr;
 
-  return reinterpret_cast<PFN_vkCreateDescriptorPool>(vkGetDeviceProcAddr(device, "vkCreateDescriptorPool"));
+  {
+    std::lock_guard<std::mutex> lock(gDescriptorPoolMutex);
+    auto it = gDescriptorPoolCreate.find(device);
+    if (it != gDescriptorPoolCreate.end())
+      return it->second;
+  }
+
+  PFN_vkCreateDescriptorPool realCreate =
+    reinterpret_cast<PFN_vkCreateDescriptorPool>(vkGetDeviceProcAddr(device, "vkCreateDescriptorPool"));
+
+  if (!realCreate)
+    return nullptr;
+
+  {
+    std::lock_guard<std::mutex> lock(gDescriptorPoolMutex);
+    gDescriptorPoolCreate[device] = realCreate;
+  }
+
+  return realCreate;
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL CreateDescriptorPoolWithFreeFlag(VkDevice device,
@@ -155,7 +178,7 @@ VKAPI_ATTR VkResult VKAPI_CALL CreateDescriptorPoolWithFreeFlag(VkDevice device,
                                                                 const VkAllocationCallbacks* pAllocator,
                                                                 VkDescriptorPool* pDescriptorPool)
 {
-  PFN_vkCreateDescriptorPool realCreate = ResolveCreateDescriptorPool(device);
+  PFN_vkCreateDescriptorPool realCreate = ResolveRealCreateDescriptorPool(device);
 
   if (!realCreate)
     return VK_ERROR_INITIALIZATION_FAILED;
@@ -167,41 +190,6 @@ VKAPI_ATTR VkResult VKAPI_CALL CreateDescriptorPoolWithFreeFlag(VkDevice device,
   adjustedInfo.flags |= VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
 
   return realCreate(device, &adjustedInfo, pAllocator, pDescriptorPool);
-}
-
-PFN_vkVoidFunction VKAPI_PTR ResolveVulkanProc(const char* name, VkInstance instance, VkDevice device)
-{
-  if (!name)
-    return nullptr;
-
-  if (std::strcmp(name, "vkCreateDescriptorPool") == 0)
-  {
-    return reinterpret_cast<PFN_vkVoidFunction>(&CreateDescriptorPoolWithFreeFlag);
-  }
-
-  if (device != VK_NULL_HANDLE)
-  {
-    if (PFN_vkVoidFunction proc = vkGetDeviceProcAddr(device, name))
-      return proc;
-
-    // Fall back to instance lookup if the driver reports the function as instance-level.
-    if (instance != VK_NULL_HANDLE)
-    {
-      if (PFN_vkVoidFunction proc = vkGetInstanceProcAddr(instance, name))
-        return proc;
-    }
-  }
-  else if (instance != VK_NULL_HANDLE)
-  {
-    if (PFN_vkVoidFunction proc = vkGetInstanceProcAddr(instance, name))
-      return proc;
-  }
-
-  // Allow querying global loader entry points when both instance and device are null.
-  if (PFN_vkVoidFunction proc = vkGetInstanceProcAddr(VK_NULL_HANDLE, name))
-    return proc;
-
-  return nullptr;
 }
 
 template <typename...>
@@ -1200,7 +1188,29 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   }
 
   skgpu::VulkanBackendContext backendContext = {};
-  backendContext.fGetProc = &ResolveVulkanProc;
+  backendContext.fGetProc = [](const char* name, VkInstance instance, VkDevice device) -> PFN_vkVoidFunction {
+    if (!name)
+      return nullptr;
+
+    if (device != VK_NULL_HANDLE)
+    {
+      if (std::strcmp(name, "vkCreateDescriptorPool") == 0)
+      {
+        if (ResolveRealCreateDescriptorPool(device))
+          return reinterpret_cast<PFN_vkVoidFunction>(&CreateDescriptorPoolWithFreeFlag);
+
+        return nullptr;
+      }
+
+      if (PFN_vkVoidFunction proc = vkGetDeviceProcAddr(device, name))
+        return proc;
+    }
+
+    if (instance != VK_NULL_HANDLE)
+      return vkGetInstanceProcAddr(instance, name);
+
+    return vkGetInstanceProcAddr(VK_NULL_HANDLE, name);
+  };
   backendContext.fInstance = mVKInstance;
   backendContext.fPhysicalDevice = mVKPhysicalDevice;
   backendContext.fDevice = mVKDevice;

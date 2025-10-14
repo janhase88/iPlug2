@@ -17,3 +17,6 @@
 
 ## Session 6
 - The validation spam on startup pointed to our resolver using the wrong calling convention when Skia asked for function pointers, which corrupted the stack and left Vulkan in a bad state. I corrected the signature to use `VKAPI_PTR` and now return the descriptor-pool wrapper even during global lookups so the shutdown path keeps the free flag without tripping validation.
+
+## Session 7
+- I reverted the experimental resolver rewrites, restored the original startup behavior, and now wrap `vkCreateDescriptorPool` by caching the true device proc when Skia asks for it. The wrapper simply ORs in `VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT` before deferring to the driver, eliminating the shutdown validation errors without perturbing the render loop.

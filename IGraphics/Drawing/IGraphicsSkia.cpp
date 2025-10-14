@@ -1278,8 +1278,6 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
       proc = vkGetDeviceProcAddr(device, name);
     if (!proc && instance)
       proc = vkGetInstanceProcAddr(instance, name);
-    if (!proc)
-      proc = vkGetInstanceProcAddr(VK_NULL_HANDLE, name);
 
     return VulkanDescriptorPoolShim::Instance().WrapProc(name, instance, device, proc);
   };

@@ -169,32 +169,39 @@ VKAPI_ATTR VkResult VKAPI_CALL CreateDescriptorPoolWithFreeFlag(VkDevice device,
   return realCreate(device, &adjustedInfo, pAllocator, pDescriptorPool);
 }
 
-PFN_vkVoidFunction ResolveVulkanProc(const char* name, VkInstance instance, VkDevice device)
+PFN_vkVoidFunction VKAPI_PTR ResolveVulkanProc(const char* name, VkInstance instance, VkDevice device)
 {
   if (!name)
     return nullptr;
 
+  if (std::strcmp(name, "vkCreateDescriptorPool") == 0)
+  {
+    return reinterpret_cast<PFN_vkVoidFunction>(&CreateDescriptorPoolWithFreeFlag);
+  }
+
   if (device != VK_NULL_HANDLE)
   {
-    if (std::strcmp(name, "vkCreateDescriptorPool") == 0)
-    {
-      return reinterpret_cast<PFN_vkVoidFunction>(&CreateDescriptorPoolWithFreeFlag);
-    }
-
     if (PFN_vkVoidFunction proc = vkGetDeviceProcAddr(device, name))
       return proc;
 
     // Fall back to instance lookup if the driver reports the function as instance-level.
     if (instance != VK_NULL_HANDLE)
-      return vkGetInstanceProcAddr(instance, name);
+    {
+      if (PFN_vkVoidFunction proc = vkGetInstanceProcAddr(instance, name))
+        return proc;
+    }
   }
   else if (instance != VK_NULL_HANDLE)
   {
-    return vkGetInstanceProcAddr(instance, name);
+    if (PFN_vkVoidFunction proc = vkGetInstanceProcAddr(instance, name))
+      return proc;
   }
 
   // Allow querying global loader entry points when both instance and device are null.
-  return vkGetInstanceProcAddr(VK_NULL_HANDLE, name);
+  if (PFN_vkVoidFunction proc = vkGetInstanceProcAddr(VK_NULL_HANDLE, name))
+    return proc;
+
+  return nullptr;
 }
 
 template <typename...>

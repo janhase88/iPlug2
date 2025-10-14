@@ -14,3 +14,6 @@
 
 ## Session 5
 - Your latest report showed the editor crashing immediately because Skia could no longer fetch a handful of global Vulkan entry points. I’ve adjusted the proc resolver so it now falls back to the global loader when both the instance and device handles are null, matching the behavior we had before while still wrapping `vkCreateDescriptorPool` for shutdown.
+
+## Session 6
+- The validation spam on startup pointed to our resolver using the wrong calling convention when Skia asked for function pointers, which corrupted the stack and left Vulkan in a bad state. I corrected the signature to use `VKAPI_PTR` and now return the descriptor-pool wrapper even during global lookups so the shutdown path keeps the free flag without tripping validation.

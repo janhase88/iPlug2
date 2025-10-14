@@ -1109,7 +1109,7 @@ void IGraphics::Draw(IRECTList& rects)
   if (!rects.Size())
     return;
   
-  float scale = GetDrawTransformScale();
+  float scale = GetBackingPixelScale();
     
   BeginFrame();
     

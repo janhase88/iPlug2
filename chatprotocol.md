@@ -8,3 +8,7 @@
 ## Session 9
 - Reworked the Vulkan descriptor-pool shim to mirror the original proc resolver behavior for non-target functions while still forcing `VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT`, so startup no longer sees unrelated validation noise.
 - Simplified the caching logic to avoid atomics and return the wrapper only after the driver's real `vkCreateDescriptorPool` has been captured, preventing null dispatches when Skia makes its first allocation.
+
+## Session 10
+- Reinstated the stock Skia initialization flow and added a minimal descriptor-pool hook that only amends `vkCreateDescriptorPool` to set `VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT`, leaving every other proc lookup untouched to keep the editor stable.
+- Lazily resolve and reset the driver's pool dispatcher around view lifetimes so that repeated UI openings free descriptor sets cleanly without clashing with stale Vulkan handles.

@@ -1,8 +1,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-#include <cstring>
 #include <map>
+#include <cstring>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -147,8 +147,7 @@ PFN_vkCreateDescriptorPool ResolveCreateDescriptorPool(VkDevice device)
   if (device == VK_NULL_HANDLE)
     return nullptr;
 
-  auto proc = reinterpret_cast<PFN_vkCreateDescriptorPool>(vkGetDeviceProcAddr(device, "vkCreateDescriptorPool"));
-  return proc;
+  return reinterpret_cast<PFN_vkCreateDescriptorPool>(vkGetDeviceProcAddr(device, "vkCreateDescriptorPool"));
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL CreateDescriptorPoolWithFreeFlag(VkDevice device,
@@ -157,6 +156,7 @@ VKAPI_ATTR VkResult VKAPI_CALL CreateDescriptorPoolWithFreeFlag(VkDevice device,
                                                                 VkDescriptorPool* pDescriptorPool)
 {
   PFN_vkCreateDescriptorPool realCreate = ResolveCreateDescriptorPool(device);
+
   if (!realCreate)
     return VK_ERROR_INITIALIZATION_FAILED;
 
@@ -165,6 +165,7 @@ VKAPI_ATTR VkResult VKAPI_CALL CreateDescriptorPoolWithFreeFlag(VkDevice device,
 
   VkDescriptorPoolCreateInfo adjustedInfo = *pCreateInfo;
   adjustedInfo.flags |= VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+
   return realCreate(device, &adjustedInfo, pAllocator, pDescriptorPool);
 }
 
@@ -1185,9 +1186,7 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   }
 
   skgpu::VulkanBackendContext backendContext = {};
-  backendContext.fGetProc = [](const char* name, VkInstance instance, VkDevice device) {
-    return ResolveVulkanProc(name, instance, device);
-  };
+  backendContext.fGetProc = &ResolveVulkanProc;
   backendContext.fInstance = mVKInstance;
   backendContext.fPhysicalDevice = mVKPhysicalDevice;
   backendContext.fDevice = mVKDevice;
@@ -2782,7 +2781,7 @@ void IGraphicsSkia::PathTransformSetMatrix(const IMatrix& m)
   double xTranslate = 0.0;
   double yTranslate = 0.0;
 
-  if (!EnsureCanvas())
+  if (!mCanvas)
     return;
 
   if (!mLayers.empty())
@@ -2806,9 +2805,6 @@ void IGraphicsSkia::PathTransformSetMatrix(const IMatrix& m)
 
 void IGraphicsSkia::SetClipRegion(const IRECT& r)
 {
-  if (!EnsureCanvas())
-    return;
-
   mCanvas->restoreToCount(0);
   mCanvas->save();
   mCanvas->setMatrix(mClipMatrix);
@@ -2866,41 +2862,7 @@ APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, do
   return new Bitmap(std::move(surface), width, height, scale, drawScale);
 }
 
-void IGraphicsSkia::UpdateLayer()
-{
-  SkCanvas* canvas = nullptr;
-
-  if (!mLayers.empty())
-  {
-    ILayer* pLayer = mLayers.top();
-    if (pLayer)
-    {
-      if (APIBitmap* pBitmap = pLayer->GetAPIBitmap())
-      {
-        if (SkiaDrawable* pDrawable = pBitmap->GetBitmap())
-        {
-          if (pDrawable->mSurface)
-            canvas = pDrawable->mSurface->getCanvas();
-        }
-      }
-    }
-  }
-  else if (mSurface)
-  {
-    canvas = mSurface->getCanvas();
-  }
-
-  mCanvas = canvas;
-}
-
-bool IGraphicsSkia::EnsureCanvas()
-{
-  if (mCanvas)
-    return true;
-
-  UpdateLayer();
-  return mCanvas != nullptr;
-}
+void IGraphicsSkia::UpdateLayer() { mCanvas = mLayers.empty() ? mSurface->getCanvas() : mLayers.top()->GetAPIBitmap()->GetBitmap()->mSurface->getCanvas(); }
 
 static size_t CalcRowBytes(int width)
 {

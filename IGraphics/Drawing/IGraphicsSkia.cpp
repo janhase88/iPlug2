@@ -2806,6 +2806,9 @@ void IGraphicsSkia::PathTransformSetMatrix(const IMatrix& m)
 
 void IGraphicsSkia::SetClipRegion(const IRECT& r)
 {
+  if (!mCanvas)
+    return;
+
   mCanvas->restoreToCount(0);
   mCanvas->save();
   mCanvas->setMatrix(mClipMatrix);

@@ -1169,16 +1169,26 @@ void IGraphicsSkia::OnViewDestroyed()
   mMTLDevice = nullptr;
 #elif defined IGRAPHICS_VULKAN
   std::unique_lock<std::mutex> lock(mVKSwapchainMutex);
+  const bool skipFlush = mVKTeardownPending;
+  mVKTeardownPending = false;
   if (mGrContext)
   {
-    bool preparedForFlush = PrepareCurrentSwapchainImageForFlush();
-    if (preparedForFlush)
+    bool preparedForFlush = false;
+    if (!skipFlush)
     {
-      mGrContext->flushAndSubmit();
+      preparedForFlush = PrepareCurrentSwapchainImageForFlush();
+      if (preparedForFlush)
+      {
+        mGrContext->flushAndSubmit();
+      }
+      else
+      {
+        IGRAPHICS_VK_LOG_SIMPLE("OnViewDestroyed", "skipFlushNoPreparedSwapchainImage", vulkanlog::Severity::kInfo);
+      }
     }
     else
     {
-      IGRAPHICS_VK_LOG_SIMPLE("OnViewDestroyed", "skipFlushNoPreparedSwapchainImage", vulkanlog::Severity::kInfo);
+      IGRAPHICS_VK_LOG_SIMPLE("OnViewDestroyed", "skipFlushTeardownPending", vulkanlog::Severity::kInfo);
     }
     ReleaseSkiaGpuResources(mGrContext.get());
     mGrContext->releaseResourcesAndAbandonContext();
@@ -1229,6 +1239,12 @@ void IGraphicsSkia::OnViewDestroyed()
 }
 
 #ifdef IGRAPHICS_VULKAN
+void IGraphicsSkia::BeginVulkanTeardown()
+{
+  std::lock_guard<std::mutex> lock(mVKSwapchainMutex);
+  mVKTeardownPending = true;
+}
+
 void IGraphicsSkia::SkipVKFrame()
 {
   IGRAPHICS_VK_LOG("SkipVKFrame",

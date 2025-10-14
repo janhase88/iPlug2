@@ -127,6 +127,9 @@ public:
   void EndFrame() override;
   void OnViewInitialized(void* pContext) override;
   void OnViewDestroyed() override;
+#if defined IGRAPHICS_VULKAN
+  void BeginVulkanTeardown();
+#endif
   void DrawResize() override;
 
   void DrawBitmap(const IBitmap& bitmap, const IRECT& dest, int srcX, int srcY, const IBlend* pBlend) override;
@@ -270,6 +273,7 @@ private:
   uint64_t mVKFrameVersion = 0;
   std::mutex mVKSwapchainMutex;
   std::unordered_set<VkImage> mVKDebugImages;
+  bool mVKTeardownPending = false;
   bool PrepareCurrentSwapchainImageForFlush();
   void ResetVulkanSwapchainCaches();
   VkCommandBuffer EnsureVulkanCommandBuffer();

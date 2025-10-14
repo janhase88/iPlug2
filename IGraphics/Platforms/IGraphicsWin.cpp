@@ -4434,6 +4434,9 @@ void IGraphicsWin::CloseWindow()
 #if defined IGRAPHICS_VULKAN
     mVkBackendActive = false;
 #endif
+#if defined IGRAPHICS_VULKAN && defined IGRAPHICS_SKIA
+    BeginVulkanTeardown();
+#endif
     OnViewDestroyed();
 
 #if defined IGRAPHICS_GL

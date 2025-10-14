@@ -6,3 +6,6 @@
 
 ## Session 2
 - Thanks for the follow-up. Your report about `IGraphicsSkia::SetClipRegion()` dereferencing a null `mCanvas` during teardown told me the drawing stack can be invoked after the surface is gone. I've guarded the clip reset so we bail out cleanly when the canvas has already been released, which aligns the shutdown sequence with Skia's lifecycle and stops the crash on close.
+
+## Session 3
+- Appreciate the quick crash dump on attach. I've added a defensive `EnsureCanvas()` helper that repopulates the canvas from the active layer or swapchain surface when the stack is still booting, and made the clip/transform helpers call into it so we don't dereference a null canvas during initialisation or teardown.

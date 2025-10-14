@@ -2782,7 +2782,7 @@ void IGraphicsSkia::PathTransformSetMatrix(const IMatrix& m)
   double xTranslate = 0.0;
   double yTranslate = 0.0;
 
-  if (!mCanvas)
+  if (!EnsureCanvas())
     return;
 
   if (!mLayers.empty())
@@ -2806,7 +2806,7 @@ void IGraphicsSkia::PathTransformSetMatrix(const IMatrix& m)
 
 void IGraphicsSkia::SetClipRegion(const IRECT& r)
 {
-  if (!mCanvas)
+  if (!EnsureCanvas())
     return;
 
   mCanvas->restoreToCount(0);
@@ -2866,7 +2866,41 @@ APIBitmap* IGraphicsSkia::CreateAPIBitmap(int width, int height, float scale, do
   return new Bitmap(std::move(surface), width, height, scale, drawScale);
 }
 
-void IGraphicsSkia::UpdateLayer() { mCanvas = mLayers.empty() ? mSurface->getCanvas() : mLayers.top()->GetAPIBitmap()->GetBitmap()->mSurface->getCanvas(); }
+void IGraphicsSkia::UpdateLayer()
+{
+  SkCanvas* canvas = nullptr;
+
+  if (!mLayers.empty())
+  {
+    ILayer* pLayer = mLayers.top();
+    if (pLayer)
+    {
+      if (APIBitmap* pBitmap = pLayer->GetAPIBitmap())
+      {
+        if (SkiaDrawable* pDrawable = pBitmap->GetBitmap())
+        {
+          if (pDrawable->mSurface)
+            canvas = pDrawable->mSurface->getCanvas();
+        }
+      }
+    }
+  }
+  else if (mSurface)
+  {
+    canvas = mSurface->getCanvas();
+  }
+
+  mCanvas = canvas;
+}
+
+bool IGraphicsSkia::EnsureCanvas()
+{
+  if (mCanvas)
+    return true;
+
+  UpdateLayer();
+  return mCanvas != nullptr;
+}
 
 static size_t CalcRowBytes(int width)
 {

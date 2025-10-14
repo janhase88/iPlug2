@@ -210,6 +210,7 @@ private:
 
   void PathTransformSetMatrix(const IMatrix& m) override;
   void SetClipRegion(const IRECT& r) override;
+  bool EnsureCanvas();
 
   void RenderPath(SkPaint& paint);
 

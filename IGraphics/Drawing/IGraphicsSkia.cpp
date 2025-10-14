@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -147,31 +146,41 @@ namespace
 {
 std::mutex gDescriptorPoolMutex;
 std::unordered_map<VkDevice, PFN_vkCreateDescriptorPool> gDescriptorPoolCreate;
-std::atomic<VkDevice> gDescriptorPoolDefaultDevice{VK_NULL_HANDLE};
+VkDevice gDescriptorPoolDefaultDevice = VK_NULL_HANDLE;
 
-PFN_vkCreateDescriptorPool ResolveRealCreateDescriptorPool(VkDevice device)
+void SetDescriptorPoolDefaultDevice(VkDevice device)
 {
-  VkDevice targetDevice = device != VK_NULL_HANDLE ? device : gDescriptorPoolDefaultDevice.load();
+  std::lock_guard<std::mutex> lock(gDescriptorPoolMutex);
+  gDescriptorPoolDefaultDevice = device;
+}
 
-  if (targetDevice == VK_NULL_HANDLE)
+VkDevice GetDescriptorPoolDefaultDevice()
+{
+  std::lock_guard<std::mutex> lock(gDescriptorPoolMutex);
+  return gDescriptorPoolDefaultDevice;
+}
+
+PFN_vkCreateDescriptorPool CacheDescriptorPoolProc(VkDevice device)
+{
+  if (device == VK_NULL_HANDLE)
     return nullptr;
 
   {
     std::lock_guard<std::mutex> lock(gDescriptorPoolMutex);
-    auto it = gDescriptorPoolCreate.find(targetDevice);
+    auto it = gDescriptorPoolCreate.find(device);
     if (it != gDescriptorPoolCreate.end())
       return it->second;
   }
 
   PFN_vkCreateDescriptorPool realCreate =
-    reinterpret_cast<PFN_vkCreateDescriptorPool>(vkGetDeviceProcAddr(targetDevice, "vkCreateDescriptorPool"));
+    reinterpret_cast<PFN_vkCreateDescriptorPool>(vkGetDeviceProcAddr(device, "vkCreateDescriptorPool"));
 
   if (!realCreate)
     return nullptr;
 
   {
     std::lock_guard<std::mutex> lock(gDescriptorPoolMutex);
-    gDescriptorPoolCreate[targetDevice] = realCreate;
+    gDescriptorPoolCreate[device] = realCreate;
   }
 
   return realCreate;
@@ -182,13 +191,10 @@ void ForgetDescriptorPoolProc(VkDevice device)
   if (device == VK_NULL_HANDLE)
     return;
 
-  {
-    std::lock_guard<std::mutex> lock(gDescriptorPoolMutex);
-    gDescriptorPoolCreate.erase(device);
-  }
-
-  VkDevice expected = device;
-  gDescriptorPoolDefaultDevice.compare_exchange_strong(expected, VK_NULL_HANDLE);
+  std::lock_guard<std::mutex> lock(gDescriptorPoolMutex);
+  gDescriptorPoolCreate.erase(device);
+  if (gDescriptorPoolDefaultDevice == device)
+    gDescriptorPoolDefaultDevice = VK_NULL_HANDLE;
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL CreateDescriptorPoolWithFreeFlag(VkDevice device,
@@ -196,9 +202,9 @@ VKAPI_ATTR VkResult VKAPI_CALL CreateDescriptorPoolWithFreeFlag(VkDevice device,
                                                                 const VkAllocationCallbacks* pAllocator,
                                                                 VkDescriptorPool* pDescriptorPool)
 {
-  VkDevice dispatchDevice = device != VK_NULL_HANDLE ? device : gDescriptorPoolDefaultDevice.load();
+  VkDevice dispatchDevice = device != VK_NULL_HANDLE ? device : GetDescriptorPoolDefaultDevice();
 
-  PFN_vkCreateDescriptorPool realCreate = ResolveRealCreateDescriptorPool(dispatchDevice);
+  PFN_vkCreateDescriptorPool realCreate = CacheDescriptorPoolProc(dispatchDevice);
 
   if (!realCreate)
     return VK_ERROR_INITIALIZATION_FAILED;
@@ -1208,15 +1214,15 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   }
 
   skgpu::VulkanBackendContext backendContext = {};
-  gDescriptorPoolDefaultDevice.store(mVKDevice);
+  SetDescriptorPoolDefaultDevice(mVKDevice);
   backendContext.fGetProc = [](const char* name, VkInstance instance, VkDevice device) -> PFN_vkVoidFunction {
     if (!name)
       return nullptr;
 
     if (std::strcmp(name, "vkCreateDescriptorPool") == 0)
     {
-      VkDevice targetDevice = device != VK_NULL_HANDLE ? device : gDescriptorPoolDefaultDevice.load();
-      if (ResolveRealCreateDescriptorPool(targetDevice))
+      VkDevice targetDevice = device != VK_NULL_HANDLE ? device : GetDescriptorPoolDefaultDevice();
+      if (CacheDescriptorPoolProc(targetDevice))
         return reinterpret_cast<PFN_vkVoidFunction>(&CreateDescriptorPoolWithFreeFlag);
       return nullptr;
     }
@@ -1227,7 +1233,7 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
     if (instance)
       return vkGetInstanceProcAddr(instance, name);
 
-    return vkGetInstanceProcAddr(VK_NULL_HANDLE, name);
+    return nullptr;
   };
   backendContext.fInstance = mVKInstance;
   backendContext.fPhysicalDevice = mVKPhysicalDevice;

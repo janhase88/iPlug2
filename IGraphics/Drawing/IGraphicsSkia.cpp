@@ -149,16 +149,34 @@ struct DescriptorPoolDispatch
   PFN_vkCreateDescriptorPool fCreate = nullptr;
 };
 
+struct DescriptorPoolState
+{
+  std::unordered_map<VkDevice, DescriptorPoolDispatch> fDispatches;
+  VkDevice fDefaultDevice = VK_NULL_HANDLE;
+};
+
 std::mutex& DescriptorPoolMutex()
 {
   static std::mutex sMutex;
   return sMutex;
 }
 
-std::unordered_map<VkDevice, DescriptorPoolDispatch>& DescriptorPoolDispatches()
+DescriptorPoolState& GetDescriptorPoolState()
 {
-  static std::unordered_map<VkDevice, DescriptorPoolDispatch> sDispatches;
-  return sDispatches;
+  static DescriptorPoolState sState;
+  return sState;
+}
+
+VkDevice AcquireDescriptorPoolDevice(VkDevice device)
+{
+  std::lock_guard<std::mutex> lock(DescriptorPoolMutex());
+  DescriptorPoolState& state = GetDescriptorPoolState();
+  if (device != VK_NULL_HANDLE)
+  {
+    state.fDefaultDevice = device;
+    return device;
+  }
+  return state.fDefaultDevice;
 }
 
 void CacheDescriptorPoolDispatch(VkDevice device, PFN_vkCreateDescriptorPool createProc)
@@ -167,23 +185,38 @@ void CacheDescriptorPoolDispatch(VkDevice device, PFN_vkCreateDescriptorPool cre
     return;
 
   std::lock_guard<std::mutex> lock(DescriptorPoolMutex());
-  DescriptorPoolDispatches()[device].fCreate = createProc;
+  DescriptorPoolState& state = GetDescriptorPoolState();
+  state.fDispatches[device].fCreate = createProc;
+  if (state.fDefaultDevice == VK_NULL_HANDLE)
+    state.fDefaultDevice = device;
 }
 
 void ClearDescriptorPoolDispatch(VkDevice device)
 {
   std::lock_guard<std::mutex> lock(DescriptorPoolMutex());
-  if (device)
-    DescriptorPoolDispatches().erase(device);
+  DescriptorPoolState& state = GetDescriptorPoolState();
+  if (device != VK_NULL_HANDLE)
+  {
+    state.fDispatches.erase(device);
+    if (state.fDefaultDevice == device)
+      state.fDefaultDevice = VK_NULL_HANDLE;
+  }
   else
-    DescriptorPoolDispatches().clear();
+  {
+    state.fDispatches.clear();
+    state.fDefaultDevice = VK_NULL_HANDLE;
+  }
 }
 
 PFN_vkCreateDescriptorPool LookupDescriptorPoolProc(VkDevice device)
 {
   std::lock_guard<std::mutex> lock(DescriptorPoolMutex());
-  auto it = DescriptorPoolDispatches().find(device);
-  if (it == DescriptorPoolDispatches().end())
+  DescriptorPoolState& state = GetDescriptorPoolState();
+  VkDevice key = device != VK_NULL_HANDLE ? device : state.fDefaultDevice;
+  if (key == VK_NULL_HANDLE)
+    return nullptr;
+  auto it = state.fDispatches.find(key);
+  if (it == state.fDispatches.end())
     return nullptr;
   return it->second.fCreate;
 }
@@ -198,7 +231,14 @@ VkResult VKAPI_PTR CreateDescriptorPoolShim(VkDevice device,
 
   PFN_vkCreateDescriptorPool createProc = LookupDescriptorPoolProc(device);
   if (!createProc)
-    return VK_ERROR_INITIALIZATION_FAILED;
+  {
+    auto fallbackProc = reinterpret_cast<PFN_vkCreateDescriptorPool>(
+      vkGetDeviceProcAddr(device, "vkCreateDescriptorPool"));
+    if (!fallbackProc)
+      return VK_ERROR_INITIALIZATION_FAILED;
+    CacheDescriptorPoolDispatch(device, fallbackProc);
+    createProc = fallbackProc;
+  }
 
   VkDescriptorPoolCreateInfo localInfo = *pCreateInfo;
   localInfo.flags |= VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
@@ -206,23 +246,30 @@ VkResult VKAPI_PTR CreateDescriptorPoolShim(VkDevice device,
   return createProc(device, &localInfo, pAllocator, pDescriptorPool);
 }
 
-PFN_vkVoidFunction ResolveDescriptorPoolShim(const char* name, VkDevice device)
+PFN_vkVoidFunction ResolveDescriptorPoolShim(const char* name, VkDevice device, VkInstance instance)
 {
-  if (!device || !name)
+  if (!name || std::strcmp(name, "vkCreateDescriptorPool") != 0)
     return nullptr;
 
-  if (std::strcmp(name, "vkCreateDescriptorPool") != 0)
+  VkDevice targetDevice = AcquireDescriptorPoolDevice(device);
+  if (targetDevice == VK_NULL_HANDLE)
     return nullptr;
 
-  if (!LookupDescriptorPoolProc(device))
+  if (!LookupDescriptorPoolProc(targetDevice))
   {
     auto createProc = reinterpret_cast<PFN_vkCreateDescriptorPool>(
-      vkGetDeviceProcAddr(device, "vkCreateDescriptorPool"));
+      vkGetDeviceProcAddr(targetDevice, "vkCreateDescriptorPool"));
+
+    if (!createProc && instance != VK_NULL_HANDLE)
+    {
+      createProc = reinterpret_cast<PFN_vkCreateDescriptorPool>(
+        vkGetInstanceProcAddr(instance, "vkCreateDescriptorPool"));
+    }
 
     if (!createProc)
       return nullptr;
 
-    CacheDescriptorPoolDispatch(device, createProc);
+    CacheDescriptorPoolDispatch(targetDevice, createProc);
   }
 
   return reinterpret_cast<PFN_vkVoidFunction>(&CreateDescriptorPoolShim);
@@ -1223,14 +1270,18 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
     mVKInFlightFence = ctx->inFlightFence;
   }
 
+  AcquireDescriptorPoolDevice(mVKDevice);
+
   skgpu::VulkanBackendContext backendContext = {};
   backendContext.fGetProc = [](const char* name, VkInstance instance, VkDevice device) {
     if (device)
     {
-      if (auto shim = ResolveDescriptorPoolShim(name, device))
+      if (auto shim = ResolveDescriptorPoolShim(name, device, instance))
         return shim;
       return vkGetDeviceProcAddr(device, name);
     }
+    if (auto shim = ResolveDescriptorPoolShim(name, VK_NULL_HANDLE, instance))
+      return shim;
     return vkGetInstanceProcAddr(instance, name);
   };
   backendContext.fInstance = mVKInstance;

@@ -181,13 +181,20 @@ PFN_vkVoidFunction ResolveVulkanProc(const char* name, VkInstance instance, VkDe
       return reinterpret_cast<PFN_vkVoidFunction>(&CreateDescriptorPoolWithFreeFlag);
     }
 
-    return vkGetDeviceProcAddr(device, name);
+    if (PFN_vkVoidFunction proc = vkGetDeviceProcAddr(device, name))
+      return proc;
+
+    // Fall back to instance lookup if the driver reports the function as instance-level.
+    if (instance != VK_NULL_HANDLE)
+      return vkGetInstanceProcAddr(instance, name);
+  }
+  else if (instance != VK_NULL_HANDLE)
+  {
+    return vkGetInstanceProcAddr(instance, name);
   }
 
-  if (instance != VK_NULL_HANDLE)
-    return vkGetInstanceProcAddr(instance, name);
-
-  return nullptr;
+  // Allow querying global loader entry points when both instance and device are null.
+  return vkGetInstanceProcAddr(VK_NULL_HANDLE, name);
 }
 
 template <typename...>

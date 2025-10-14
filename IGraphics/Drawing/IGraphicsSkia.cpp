@@ -2085,13 +2085,17 @@ void IGraphicsSkia::EndFrame()
   CGContextRestoreGState(pCGContext);
   #elif defined OS_WIN
   const float surfaceScale = GetDevicePixelScale();
-  auto w = WindowWidth() * surfaceScale;
-  auto h = WindowHeight() * surfaceScale;
+  const float hostScale = std::max(GetPlatformWindowScale(), 1.f);
+  const float screenScale = std::max(GetScreenScale(), 1.f);
+  const int srcW = std::max(1, static_cast<int>(std::lround(static_cast<float>(WindowWidth()) * surfaceScale)));
+  const int srcH = std::max(1, static_cast<int>(std::lround(static_cast<float>(WindowHeight()) * surfaceScale)));
+  const int dstW = std::max(1, static_cast<int>(std::lround(static_cast<float>(WindowWidth()) * screenScale * hostScale)));
+  const int dstH = std::max(1, static_cast<int>(std::lround(static_cast<float>(WindowHeight()) * screenScale * hostScale)));
   BITMAPINFO* bmpInfo = reinterpret_cast<BITMAPINFO*>(mSurfaceMemory.Get());
   HWND hWnd = (HWND)GetWindow();
   PAINTSTRUCT ps;
   HDC hdc = BeginPaint(hWnd, &ps);
-  StretchDIBits(hdc, 0, 0, w, h, 0, 0, w, h, bmpInfo->bmiColors, bmpInfo, DIB_RGB_COLORS, SRCCOPY);
+  StretchDIBits(hdc, 0, 0, dstW, dstH, 0, 0, srcW, srcH, bmpInfo->bmiColors, bmpInfo, DIB_RGB_COLORS, SRCCOPY);
   ReleaseDC(hWnd, hdc);
   EndPaint(hWnd, &ps);
   #else
@@ -2204,7 +2208,43 @@ void IGraphicsSkia::EndFrame()
     return;
   }
   #endif
-  mSurface->draw(mScreenSurface->getCanvas(), 0.0, 0.0, nullptr);
+  bool drewWithScale = false;
+  if (mSurface && mScreenSurface)
+  {
+    SkCanvas* screenCanvas = mScreenSurface->getCanvas();
+    if (screenCanvas)
+    {
+      const float srcWidth = static_cast<float>(mSurface->width());
+      const float srcHeight = static_cast<float>(mSurface->height());
+      if (srcWidth > 0.f && srcHeight > 0.f)
+      {
+        const float hostScale = std::max(GetPlatformWindowScale(), 1.f);
+        const float screenScale = std::max(GetScreenScale(), 1.f);
+        const float logicalWidth = static_cast<float>(WindowWidth());
+        const float logicalHeight = static_cast<float>(WindowHeight());
+        const float targetWidth = logicalWidth * screenScale * hostScale;
+        const float targetHeight = logicalHeight * screenScale * hostScale;
+
+        const float scaleX = (targetWidth > 0.f) ? (targetWidth / srcWidth) : 1.f;
+        const float scaleY = (targetHeight > 0.f) ? (targetHeight / srcHeight) : 1.f;
+        constexpr float kScaleTolerance = 1e-3f;
+
+        if (std::isfinite(scaleX) && std::isfinite(scaleY) &&
+            (std::fabs(scaleX - 1.f) > kScaleTolerance || std::fabs(scaleY - 1.f) > kScaleTolerance))
+        {
+          SkSamplingOptions sampling(SkFilterMode::kLinear, SkMipmapMode::kLinear);
+          screenCanvas->save();
+          screenCanvas->scale(scaleX, scaleY);
+          mSurface->draw(screenCanvas, 0.0, 0.0, &sampling, nullptr);
+          screenCanvas->restore();
+          drewWithScale = true;
+        }
+      }
+    }
+  }
+
+  if (!drewWithScale)
+    mSurface->draw(mScreenSurface->getCanvas(), 0.0, 0.0, nullptr);
 
   #if defined IGRAPHICS_VULKAN
   if (auto dContext = GrAsDirectContext(mScreenSurface->getCanvas()->recordingContext()))

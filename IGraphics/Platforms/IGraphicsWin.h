@@ -218,6 +218,7 @@ private:
   void DestroyVulkanContext();
   void ActivateVulkanContext();
   void DeactivateVulkanContext();
+  bool mVkBackendActive = false;
   WinVulkanDeviceCoordinator mVulkanDeviceCoordinator;
   uint64_t mVulkanDeviceGeneration = 0;
   VkInstance mVkInstance = VK_NULL_HANDLE;

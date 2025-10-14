@@ -2835,7 +2835,8 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
         // When the Vulkan backend is shutting down (e.g. during CloseWindow), the device and
         // swap-chain handles are reset prior to the HWND being destroyed. Skip drawing in that
         // window to avoid dereferencing torn-down state while lingering WM_PAINT messages drain.
-        const bool hasVulkanContext = (pGraphics->mVkDevice != VK_NULL_HANDLE &&
+        const bool hasVulkanContext = (pGraphics->mVkBackendActive &&
+                                       pGraphics->mVkDevice != VK_NULL_HANDLE &&
                                        pGraphics->mVkSwapchain.handle != VK_NULL_HANDLE);
 #else
         const bool hasVulkanContext = true;
@@ -3850,6 +3851,7 @@ bool IGraphicsWin::CreateVulkanContext()
 
 void IGraphicsWin::DestroyVulkanContext()
 {
+  mVkBackendActive = false;
   if (mVkDevice)
     vkDeviceWaitIdle(mVkDevice);
 
@@ -3883,6 +3885,9 @@ void IGraphicsWin::DestroyVulkanContext()
 
 bool IGraphicsWin::RecreateVulkanContext()
 {
+#if defined IGRAPHICS_VULKAN
+  mVkBackendActive = false;
+#endif
   OnViewDestroyed();
   SkipVKFrame();
   DestroyVulkanContext();
@@ -3903,6 +3908,9 @@ bool IGraphicsWin::RecreateVulkanContext()
   ctx.format = mVkFormat;
   ctx.usageFlags = mVkSwapchainUsageFlags;
   OnViewInitialized(&ctx);
+#if defined IGRAPHICS_VULKAN
+  mVkBackendActive = true;
+#endif
   return true;
 }
 
@@ -4255,6 +4263,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   ctx.format = mVkFormat;
   ctx.usageFlags = mVkSwapchainUsageFlags;
   OnViewInitialized(&ctx);
+  mVkBackendActive = true;
 #else
   HDC dc = GetDC(mPlugWnd);
   #ifdef IGRAPHICS_GL
@@ -4422,6 +4431,9 @@ void IGraphicsWin::CloseWindow()
     ActivateGLContext();
 #endif
 
+#if defined IGRAPHICS_VULKAN
+    mVkBackendActive = false;
+#endif
     OnViewDestroyed();
 
 #if defined IGRAPHICS_GL

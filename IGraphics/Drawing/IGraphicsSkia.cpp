@@ -1,13 +1,14 @@
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <map>
 #include <mutex>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <cstring>
 
 #include "IGraphicsSkia.h"
 
@@ -146,31 +147,48 @@ namespace
 {
 std::mutex gDescriptorPoolMutex;
 std::unordered_map<VkDevice, PFN_vkCreateDescriptorPool> gDescriptorPoolCreate;
+std::atomic<VkDevice> gDescriptorPoolDefaultDevice{VK_NULL_HANDLE};
 
 PFN_vkCreateDescriptorPool ResolveRealCreateDescriptorPool(VkDevice device)
 {
-  if (device == VK_NULL_HANDLE)
+  VkDevice targetDevice = device != VK_NULL_HANDLE ? device : gDescriptorPoolDefaultDevice.load();
+
+  if (targetDevice == VK_NULL_HANDLE)
     return nullptr;
 
   {
     std::lock_guard<std::mutex> lock(gDescriptorPoolMutex);
-    auto it = gDescriptorPoolCreate.find(device);
+    auto it = gDescriptorPoolCreate.find(targetDevice);
     if (it != gDescriptorPoolCreate.end())
       return it->second;
   }
 
   PFN_vkCreateDescriptorPool realCreate =
-    reinterpret_cast<PFN_vkCreateDescriptorPool>(vkGetDeviceProcAddr(device, "vkCreateDescriptorPool"));
+    reinterpret_cast<PFN_vkCreateDescriptorPool>(vkGetDeviceProcAddr(targetDevice, "vkCreateDescriptorPool"));
 
   if (!realCreate)
     return nullptr;
 
   {
     std::lock_guard<std::mutex> lock(gDescriptorPoolMutex);
-    gDescriptorPoolCreate[device] = realCreate;
+    gDescriptorPoolCreate[targetDevice] = realCreate;
   }
 
   return realCreate;
+}
+
+void ForgetDescriptorPoolProc(VkDevice device)
+{
+  if (device == VK_NULL_HANDLE)
+    return;
+
+  {
+    std::lock_guard<std::mutex> lock(gDescriptorPoolMutex);
+    gDescriptorPoolCreate.erase(device);
+  }
+
+  VkDevice expected = device;
+  gDescriptorPoolDefaultDevice.compare_exchange_strong(expected, VK_NULL_HANDLE);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL CreateDescriptorPoolWithFreeFlag(VkDevice device,
@@ -178,18 +196,20 @@ VKAPI_ATTR VkResult VKAPI_CALL CreateDescriptorPoolWithFreeFlag(VkDevice device,
                                                                 const VkAllocationCallbacks* pAllocator,
                                                                 VkDescriptorPool* pDescriptorPool)
 {
-  PFN_vkCreateDescriptorPool realCreate = ResolveRealCreateDescriptorPool(device);
+  VkDevice dispatchDevice = device != VK_NULL_HANDLE ? device : gDescriptorPoolDefaultDevice.load();
+
+  PFN_vkCreateDescriptorPool realCreate = ResolveRealCreateDescriptorPool(dispatchDevice);
 
   if (!realCreate)
     return VK_ERROR_INITIALIZATION_FAILED;
 
   if (!pCreateInfo)
-    return realCreate(device, pCreateInfo, pAllocator, pDescriptorPool);
+    return realCreate(dispatchDevice, pCreateInfo, pAllocator, pDescriptorPool);
 
   VkDescriptorPoolCreateInfo adjustedInfo = *pCreateInfo;
   adjustedInfo.flags |= VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
 
-  return realCreate(device, &adjustedInfo, pAllocator, pDescriptorPool);
+  return realCreate(dispatchDevice, &adjustedInfo, pAllocator, pDescriptorPool);
 }
 
 template <typename...>
@@ -1188,25 +1208,23 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   }
 
   skgpu::VulkanBackendContext backendContext = {};
+  gDescriptorPoolDefaultDevice.store(mVKDevice);
   backendContext.fGetProc = [](const char* name, VkInstance instance, VkDevice device) -> PFN_vkVoidFunction {
     if (!name)
       return nullptr;
 
-    if (device != VK_NULL_HANDLE)
+    if (std::strcmp(name, "vkCreateDescriptorPool") == 0)
     {
-      if (std::strcmp(name, "vkCreateDescriptorPool") == 0)
-      {
-        if (ResolveRealCreateDescriptorPool(device))
-          return reinterpret_cast<PFN_vkVoidFunction>(&CreateDescriptorPoolWithFreeFlag);
-
-        return nullptr;
-      }
-
-      if (PFN_vkVoidFunction proc = vkGetDeviceProcAddr(device, name))
-        return proc;
+      VkDevice targetDevice = device != VK_NULL_HANDLE ? device : gDescriptorPoolDefaultDevice.load();
+      if (ResolveRealCreateDescriptorPool(targetDevice))
+        return reinterpret_cast<PFN_vkVoidFunction>(&CreateDescriptorPoolWithFreeFlag);
+      return nullptr;
     }
 
-    if (instance != VK_NULL_HANDLE)
+    if (device)
+      return vkGetDeviceProcAddr(device, name);
+
+    if (instance)
       return vkGetInstanceProcAddr(instance, name);
 
     return vkGetInstanceProcAddr(VK_NULL_HANDLE, name);
@@ -1270,6 +1288,8 @@ void IGraphicsSkia::OnViewDestroyed()
     {
       vkDestroyCommandPool(mVKDevice, mVKCommandPool, nullptr);
     }
+
+    ForgetDescriptorPoolProc(mVKDevice);
   }
 
   mVKCommandBuffer = VK_NULL_HANDLE;

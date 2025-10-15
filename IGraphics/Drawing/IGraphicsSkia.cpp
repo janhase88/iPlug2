@@ -63,193 +63,6 @@
   #include "modules/skunicode/include/SkUnicode_icu.h"
 #endif
 
-#if defined IGRAPHICS_VULKAN
-namespace
-{
-PFN_vkCreateImage gVkCreateImageReal = nullptr;
-PFN_vkFlushMappedMemoryRanges gVkFlushMappedMemoryRangesReal = nullptr;
-PFN_vkFreeDescriptorSets gVkFreeDescriptorSetsReal = nullptr;
-PFN_vkResetDescriptorPool gVkResetDescriptorPoolReal = nullptr;
-PFN_vkCmdPipelineBarrier gVkCmdPipelineBarrierReal = nullptr;
-
-VkResult VKAPI_PTR InterceptVkCreateImage(VkDevice device,
-                                          const VkImageCreateInfo* pCreateInfo,
-                                          const VkAllocationCallbacks* pAllocator,
-                                          VkImage* pImage)
-{
-  if (!gVkCreateImageReal || !pCreateInfo)
-    return VK_ERROR_INITIALIZATION_FAILED;
-
-  VkImageCreateInfo localInfo = *pCreateInfo;
-  if (localInfo.imageType == VK_IMAGE_TYPE_2D && localInfo.extent.depth != 1)
-  {
-    localInfo.extent.depth = 1;
-  }
-
-  return gVkCreateImageReal(device, &localInfo, pAllocator, pImage);
-}
-
-VkResult VKAPI_PTR InterceptVkFlushMappedMemoryRanges(VkDevice device,
-                                                      uint32_t memoryRangeCount,
-                                                      const VkMappedMemoryRange* pMemoryRanges)
-{
-  if (!gVkFlushMappedMemoryRangesReal)
-    return VK_ERROR_INITIALIZATION_FAILED;
-
-  const VkMappedMemoryRange* rangesPtr = pMemoryRanges;
-  std::vector<VkMappedMemoryRange> adjustedRanges;
-  if (memoryRangeCount > 0 && pMemoryRanges)
-  {
-    adjustedRanges.reserve(memoryRangeCount);
-    bool modified = false;
-    for (uint32_t i = 0; i < memoryRangeCount; ++i)
-    {
-      VkMappedMemoryRange range = pMemoryRanges[i];
-      if (range.size != VK_WHOLE_SIZE)
-      {
-        range.size = VK_WHOLE_SIZE;
-        modified = true;
-      }
-      adjustedRanges.push_back(range);
-    }
-    if (modified)
-      rangesPtr = adjustedRanges.data();
-  }
-
-  return gVkFlushMappedMemoryRangesReal(device, memoryRangeCount, rangesPtr);
-}
-
-VkResult VKAPI_PTR InterceptVkFreeDescriptorSets(VkDevice device,
-                                                 VkDescriptorPool descriptorPool,
-                                                 uint32_t descriptorSetCount,
-                                                 const VkDescriptorSet* pDescriptorSets)
-{
-  if (!gVkResetDescriptorPoolReal)
-  {
-    gVkResetDescriptorPoolReal = reinterpret_cast<PFN_vkResetDescriptorPool>(vkGetDeviceProcAddr(device, "vkResetDescriptorPool"));
-  }
-
-  if (gVkResetDescriptorPoolReal)
-  {
-    return gVkResetDescriptorPoolReal(device, descriptorPool, 0);
-  }
-
-  if (gVkFreeDescriptorSetsReal)
-  {
-    return gVkFreeDescriptorSetsReal(device, descriptorPool, descriptorSetCount, pDescriptorSets);
-  }
-
-  return VK_SUCCESS;
-}
-
-void VKAPI_PTR InterceptVkCmdPipelineBarrier(VkCommandBuffer commandBuffer,
-                                             VkPipelineStageFlags srcStageMask,
-                                             VkPipelineStageFlags dstStageMask,
-                                             VkDependencyFlags dependencyFlags,
-                                             uint32_t memoryBarrierCount,
-                                             const VkMemoryBarrier* pMemoryBarriers,
-                                             uint32_t bufferMemoryBarrierCount,
-                                             const VkBufferMemoryBarrier* pBufferMemoryBarriers,
-                                             uint32_t imageMemoryBarrierCount,
-                                             const VkImageMemoryBarrier* pImageMemoryBarriers)
-{
-  if (!gVkCmdPipelineBarrierReal)
-    return;
-
-  VkPipelineStageFlags adjustedSrc = srcStageMask;
-  VkPipelineStageFlags adjustedDst = dstStageMask;
-
-  if (imageMemoryBarrierCount > 0 && pImageMemoryBarriers)
-  {
-    for (uint32_t i = 0; i < imageMemoryBarrierCount; ++i)
-    {
-      const VkImageMemoryBarrier& barrier = pImageMemoryBarriers[i];
-
-      if (barrier.srcAccessMask & (VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT))
-      {
-        adjustedSrc |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-      }
-      if (barrier.srcAccessMask & (VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT))
-      {
-        adjustedSrc |= VK_PIPELINE_STAGE_TRANSFER_BIT;
-      }
-      if (barrier.srcAccessMask & (VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT))
-      {
-        adjustedSrc |= VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-      }
-
-      if (barrier.dstAccessMask & (VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT))
-      {
-        adjustedDst |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-      }
-      if (barrier.dstAccessMask & (VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT))
-      {
-        adjustedDst |= VK_PIPELINE_STAGE_TRANSFER_BIT;
-      }
-      if (barrier.dstAccessMask & (VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT))
-      {
-        adjustedDst |= VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-      }
-    }
-  }
-
-  gVkCmdPipelineBarrierReal(commandBuffer,
-                            adjustedSrc,
-                            adjustedDst,
-                            dependencyFlags,
-                            memoryBarrierCount,
-                            pMemoryBarriers,
-                            bufferMemoryBarrierCount,
-                            pBufferMemoryBarriers,
-                            imageMemoryBarrierCount,
-                            pImageMemoryBarriers);
-}
-
-PFN_vkVoidFunction ResolveVulkanProcWithInterceptors(const char* name, VkInstance instance, VkDevice device)
-{
-  PFN_vkVoidFunction proc = nullptr;
-  if (device)
-  {
-    proc = vkGetDeviceProcAddr(device, name);
-  }
-  if (!proc && instance)
-  {
-    proc = vkGetInstanceProcAddr(instance, name);
-  }
-
-  if (!proc)
-    return nullptr;
-
-  if (std::strcmp(name, "vkCreateImage") == 0)
-  {
-    gVkCreateImageReal = reinterpret_cast<PFN_vkCreateImage>(proc);
-    return reinterpret_cast<PFN_vkVoidFunction>(&InterceptVkCreateImage);
-  }
-  if (std::strcmp(name, "vkFlushMappedMemoryRanges") == 0)
-  {
-    gVkFlushMappedMemoryRangesReal = reinterpret_cast<PFN_vkFlushMappedMemoryRanges>(proc);
-    return reinterpret_cast<PFN_vkVoidFunction>(&InterceptVkFlushMappedMemoryRanges);
-  }
-  if (std::strcmp(name, "vkFreeDescriptorSets") == 0)
-  {
-    gVkFreeDescriptorSetsReal = reinterpret_cast<PFN_vkFreeDescriptorSets>(proc);
-    return reinterpret_cast<PFN_vkVoidFunction>(&InterceptVkFreeDescriptorSets);
-  }
-  if (std::strcmp(name, "vkResetDescriptorPool") == 0)
-  {
-    gVkResetDescriptorPoolReal = reinterpret_cast<PFN_vkResetDescriptorPool>(proc);
-    return proc;
-  }
-  if (std::strcmp(name, "vkCmdPipelineBarrier") == 0)
-  {
-    gVkCmdPipelineBarrierReal = reinterpret_cast<PFN_vkCmdPipelineBarrier>(proc);
-    return reinterpret_cast<PFN_vkVoidFunction>(&InterceptVkCmdPipelineBarrier);
-  }
-
-  return proc;
-}
-} // namespace
-#endif
 #pragma warning(pop)
 #include "include/gpu/GrBackendSemaphore.h"
 #include "include/gpu/GrBackendSurface.h"
@@ -1446,7 +1259,9 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
 
   skgpu::VulkanBackendContext backendContext = {};
   backendContext.fGetProc = [](const char* name, VkInstance instance, VkDevice device) {
-    return ResolveVulkanProcWithInterceptors(name, instance, device);
+    if (device)
+      return vkGetDeviceProcAddr(device, name);
+    return vkGetInstanceProcAddr(instance, name);
   };
   backendContext.fInstance = mVKInstance;
   backendContext.fPhysicalDevice = mVKPhysicalDevice;
@@ -1698,6 +1513,7 @@ void IGraphicsSkia::DrawResize()
       {
         IGRAPHICS_VK_LOG_SIMPLE("DrawResize", "skipFlushNoPreparedSwapchainImage", vulkanlog::Severity::kInfo);
       }
+      ReleaseSkiaGpuResources(mGrContext.get());
     }
     if (mVKCommandBuffer != VK_NULL_HANDLE)
     {

@@ -1222,6 +1222,25 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   mVKMemoryPropertiesPtr = ctx->memoryProperties;
   mVKSync2FeaturesPtr = ctx->synchronization2Features;
   mVKSync2Enabled = ctx->synchronization2Enabled;
+  IGRAPHICS_VK_LOG("OnViewInitialized",
+                   "capabilities",
+                   vulkanlog::Severity::kInfo,
+                   vulkanlog::MakeField("synchronization2", mVKSync2Enabled),
+                   vulkanlog::MakeField("deviceExtensionCount", ctx->deviceExtensionCount));
+  if (ctx->deviceExtensions && ctx->deviceExtensionCount > 0)
+  {
+    for (uint32_t i = 0; i < ctx->deviceExtensionCount; ++i)
+    {
+      const char* name = ctx->deviceExtensions[i];
+      if (!name)
+        continue;
+      IGRAPHICS_VK_LOG("OnViewInitialized",
+                       "deviceExtension",
+                       vulkanlog::Severity::kDebug,
+                       vulkanlog::MakeField("index", i),
+                       vulkanlog::MakeField("name", name));
+    }
+  }
   {
     std::lock_guard<std::mutex> lock(mVKSwapchainMutex);
     mVKSwapchainImages.clear();

@@ -86,6 +86,10 @@ private:
     uint64_t snapshotGeneration = 0;
     uint32_t activeClients = 0;
     bool supportsSynchronization2 = false;
+    bool hasSynchronization2Extension = false;
+    VkPhysicalDeviceSynchronization2Features queriedSynchronization2Features{
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES
+    };
   };
 
   static SharedState& Shared();
@@ -180,6 +184,8 @@ inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequ
   outGeneration = 0;
   state.activeClients = 0;
   state.supportsSynchronization2 = false;
+  state.hasSynchronization2Extension = false;
+  state.queriedSynchronization2Features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES};
   mClientSurface = VK_NULL_HANDLE;
 
   VkResult res = CreateInstance(request);
@@ -414,6 +420,15 @@ inline VkResult WinVulkanDeviceCoordinator::SelectPhysicalDevice(const WinVulkan
   VkPhysicalDevice selectedDevice = VK_NULL_HANDLE;
   uint32_t selectedQueueFamily = 0;
   uint32_t bestScore = 0;
+  bool selectedSupportsSync2 = false;
+  bool selectedHasSync2Extension = false;
+  VkPhysicalDeviceSynchronization2Features selectedSync2Features{
+    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES
+  };
+
+  PFN_vkGetPhysicalDeviceFeatures2 getFeatures2 =
+    reinterpret_cast<PFN_vkGetPhysicalDeviceFeatures2>(vkGetInstanceProcAddr(state.snapshot.instance,
+                                                                            "vkGetPhysicalDeviceFeatures2"));
 
   for (const auto device : devices)
   {
@@ -426,13 +441,13 @@ inline VkResult WinVulkanDeviceCoordinator::SelectPhysicalDevice(const WinVulkan
       continue;
 
     bool hasSwapchain = false;
-    bool hasSynchronization2 = false;
+    bool hasSynchronization2Extension = false;
     for (const auto& prop : extensions)
     {
       if (std::strcmp(prop.extensionName, VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0)
         hasSwapchain = true;
       else if (std::strcmp(prop.extensionName, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME) == 0)
-        hasSynchronization2 = true;
+        hasSynchronization2Extension = true;
     }
 
     if (!hasSwapchain)
@@ -466,6 +481,22 @@ inline VkResult WinVulkanDeviceCoordinator::SelectPhysicalDevice(const WinVulkan
     if (!features.samplerAnisotropy)
       continue;
 
+    VkPhysicalDeviceSynchronization2Features sync2Features{
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES
+    };
+    if (getFeatures2)
+    {
+      VkPhysicalDeviceFeatures2 features2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+      features2.pNext = &sync2Features;
+      getFeatures2(device, &features2);
+    }
+
+    const uint32_t apiVersion = props.apiVersion;
+    const bool promotedSync2 = VK_VERSION_MAJOR(apiVersion) > 1 ||
+                               (VK_VERSION_MAJOR(apiVersion) == 1 && VK_VERSION_MINOR(apiVersion) >= 3);
+    const bool sync2FeatureSupported = sync2Features.synchronization2 == VK_TRUE;
+    const bool supportsSync2 = sync2FeatureSupported && (promotedSync2 || hasSynchronization2Extension);
+
     uint32_t score = props.limits.maxImageDimension2D;
     if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
       score += 1000;
@@ -488,7 +519,9 @@ inline VkResult WinVulkanDeviceCoordinator::SelectPhysicalDevice(const WinVulkan
       bestScore = score;
       selectedDevice = device;
       selectedQueueFamily = queueIndex;
-      state.supportsSynchronization2 = hasSynchronization2;
+      selectedSupportsSync2 = supportsSync2;
+      selectedHasSync2Extension = hasSynchronization2Extension;
+      selectedSync2Features = sync2Features;
     }
   }
 
@@ -499,6 +532,10 @@ inline VkResult WinVulkanDeviceCoordinator::SelectPhysicalDevice(const WinVulkan
 
   state.snapshot.physicalDevice = selectedDevice;
   state.snapshot.queueFamily = selectedQueueFamily;
+  state.supportsSynchronization2 = selectedSupportsSync2;
+  state.hasSynchronization2Extension = selectedHasSync2Extension;
+  state.queriedSynchronization2Features = selectedSync2Features;
+  state.snapshot.synchronization2Features = selectedSync2Features;
   return VK_SUCCESS;
 }
 
@@ -523,13 +560,15 @@ inline VkResult WinVulkanDeviceCoordinator::CreateLogicalDevice()
   uint32_t enabledExtensionCount = 0;
   enabledExtensions[enabledExtensionCount++] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
 
-  VkPhysicalDeviceSynchronization2Features synchronization2Features{
-    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES
-  };
+  VkPhysicalDeviceSynchronization2Features synchronization2Features = state.queriedSynchronization2Features;
+  synchronization2Features.pNext = nullptr;
   if (state.supportsSynchronization2)
   {
     synchronization2Features.synchronization2 = VK_TRUE;
-    enabledExtensions[enabledExtensionCount++] = VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME;
+    if (state.hasSynchronization2Extension && enabledExtensionCount < enabledExtensions.size())
+    {
+      enabledExtensions[enabledExtensionCount++] = VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME;
+    }
   }
 
   float queuePriority = 1.f;
@@ -603,6 +642,7 @@ inline void WinVulkanDeviceCoordinator::ResetSnapshot()
   snapshot.synchronization2Enabled = false;
   snapshot.validationLayerEnabled = false;
   snapshot.generation = 0;
+  mState->queriedSynchronization2Features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES};
 }
 
 END_IGRAPHICS_NAMESPACE

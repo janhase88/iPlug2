@@ -1248,7 +1248,10 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   backendContext.fDevice = mVKDevice;
   backendContext.fQueue = mVKQueue;
   backendContext.fGraphicsQueueIndex = mVKQueueFamily;
-  backendContext.fMaxAPIVersion = VK_API_VERSION_1_1;
+  if (mVKDevicePropertiesPtr)
+    backendContext.fMaxAPIVersion = mVKDevicePropertiesPtr->apiVersion;
+  else
+    backendContext.fMaxAPIVersion = VK_API_VERSION_1_1;
   if (IGRAPHICS_VK_HAS_VULKAN_EXTENSIONS)
   {
     AssignVulkanExtensions(backendContext, mVulkanExtensions);

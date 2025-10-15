@@ -129,3 +129,97 @@ Validation Error: [ VUID-vkFreeDescriptorSets-descriptorPool-00312 ] | MessageID
 **User:** you need to audit better and research deeper and ask more internet and do more succeeding.
 
 **Assistant:** Collected the device's advertised extension list and cross-checked the Vulkan 1.3 `VK_KHR_synchronization2` requirements. Updated the shared device snapshot to persist the enabled extension array and synchronization2 feature struct, enabled the extension when supported, and forwarded the canonical capability data through `IGraphicsWin` into the Skia backend so it operates with the correct runtime metadata.
+
+## Entry 8
+**User:**
+```
+15:34:22:100[OBS] graphics-hook.dll loaded against process: KickDrum.exe
+15:34:22:100[OBS] (half life scientist) everything..  seems to be in order
+15:34:22:344{"event":"CreateOrResizeVulkanSwapchain","stage":"request","severity":"info","width":1800,"height":750,"previousSwapchain":"0x0"}
+15:34:22:344{"event":"CreateOrResizeVulkanSwapchain","stage":"clearedPreviousSwapchain","severity":"debug"}
+15:34:22:344{"event":"CreateOrResizeVulkanSwapchain","stage":"surfaceCapabilities","severity":"debug","currentWidth":1800,"currentHeight":750,"minWidth":1800,"minHeight":750,"maxWidth":1800,"maxHeight":750,"usage":159}
+15:34:22:344'KickDrum.exe' (Win32): Loaded 'C:\Windows\System32\nvapi64.dll'. Symbol loading disabled by Include/Exclude setting.
+15:34:22:344{"event":"CreateOrResizeVulkanSwapchain","stage":"selectSurfaceFormat","severity":"debug","format":44,"colorSpace":0,"options":7}
+15:34:22:344'KickDrum.exe' (Win32): Loaded 'C:\Windows\System32\DispBroker.dll'. Symbol loading disabled by Include/Exclude setting.
+15:34:22:344{"event":"CreateOrResizeVulkanSwapchain","stage":"selectPresentMode","severity":"debug","presentMode":2,"options":5}
+15:34:22:344{"event":"CreateOrResizeVulkanSwapchain","stage":"createInfo","severity":"debug","width":1800,"height":750,"minImageCount":3,"usage":19,"oldSwapchain":"0x0"}
+15:34:22:344'KickDrum.exe' (Win32): Loaded 'C:\Windows\System32\D3D12.dll'. Symbol loading disabled by Include/Exclude setting.
+15:34:22:344'KickDrum.exe' (Win32): Loaded 'C:\Windows\System32\D3D12Core.dll'. Symbol loading disabled by Include/Exclude setting.
+15:34:22:344'KickDrum.exe' (Win32): Loaded 'C:\Windows\System32\DriverStore\FileRepository\nv_dispi.inf_amd64_08efa4f6500ab001\nvldumdx.dll'. Symbol loading disabled by Include/Exclude setting.
+15:34:22:344'KickDrum.exe' (Win32): Loaded 'C:\Windows\System32\DriverStore\FileRepository\nv_dispi.inf_amd64_08efa4f6500ab001\NvMemMapStoragex.dll'. Symbol loading disabled by Include/Exclude setting.
+15:34:22:344'KickDrum.exe' (Win32): Loaded 'C:\Windows\System32\DriverStore\FileRepository\nv_dispi.inf_amd64_08efa4f6500ab001\nvwgf2umx.dll'. Symbol loading disabled by Include/Exclude setting.
+15:34:22:344'KickDrum.exe' (Win32): Loaded 'C:\Windows\System32\DriverStore\FileRepository\nv_dispi.inf_amd64_08efa4f6500ab001\nvppex.dll'. Symbol loading disabled by Include/Exclude setting.
+15:34:22:344'KickDrum.exe' (Win32): Loaded 'C:\Windows\System32\dxilconv.dll'. Symbol loading disabled by Include/Exclude setting.
+15:34:22:344'KickDrum.exe' (Win32): Loaded 'C:\Windows\System32\D3DSCache.dll'. Symbol loading disabled by Include/Exclude setting.
+15:34:22:344'KickDrum.exe' (Win32): Loaded 'C:\Windows\System32\userenv.dll'. Symbol loading disabled by Include/Exclude setting.
+15:34:22:344'KickDrum.exe' (Win32): Loaded 'C:\Windows\System32\twinapi.appcore.dll'. Symbol loading disabled by Include/Exclude setting.
+15:34:22:344'KickDrum.exe' (Win32): Unloaded 'C:\Windows\System32\dxilconv.dll'
+15:34:22:344'KickDrum.exe' (Win32): Loaded 'C:\Windows\System32\opengl32.dll'. Symbol loading disabled by Include/Exclude setting.
+15:34:22:344'KickDrum.exe' (Win32): Unloaded 'C:\Windows\System32\opengl32.dll'
+15:34:22:344'KickDrum.exe' (Win32): Loaded 'C:\Windows\System32\opengl32.dll'. Symbol loading disabled by Include/Exclude setting.
+15:34:22:344'KickDrum.exe' (Win32): Loaded 'C:\Windows\System32\glu32.dll'. Symbol loading disabled by Include/Exclude setting.
+15:34:22:344'KickDrum.exe' (Win32): Loaded 'C:\Windows\System32\AppXDeploymentClient.dll'. Symbol loading disabled by Include/Exclude setting.
+15:34:22:344'KickDrum.exe' (Win32): Loaded 'C:\Windows\System32\dcomp.dll'. Symbol loading disabled by Include/Exclude setting.
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"retrievedImages","severity":"debug","count":3}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"creationResult","severity":"debug","swapchain":"0x20000000002","width":1800,"height":750,"format":44,"usage":19,"images":3}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"swapchainImage","severity":"debug","index":0,"image":"0x30000000003"}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"swapchainImage","severity":"debug","index":1,"image":"0x40000000004"}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"swapchainImage","severity":"debug","index":2,"image":"0x50000000005"}
+15:34:22:606{"event":"DrawResize","stage":"begin","severity":"debug","frameVersion":0,"swapchainVersion":0,"submissionPending":false,"imageCount":3}
+15:34:22:606{"event":"DrawResize","stage":"swapchainVersionIncrement","severity":"debug","previous":0,"current":1}
+15:34:22:606{"event":"DrawResize","stage":"skipFlushNoPreparedSwapchainImage","severity":"info"}
+15:34:22:606{"event":"DrawResize","stage":"releasePreviousSwapchain","severity":"debug","imageCount":3}
+15:34:22:606{"event":"DrawResize","stage":"clearDebugImages","severity":"debug"}
+15:34:22:606{"event":"DrawResize","stage":"surfaceCapabilities","severity":"debug","currentWidth":1800,"currentHeight":750,"minWidth":1800,"minHeight":750,"maxWidth":1800,"maxHeight":750,"clampedWidth":1800,"clampedHeight":750}
+15:34:22:606{"event":"DrawResize","stage":"requestSwapchainResize","severity":"info","width":1800,"height":750,"frameVersion":0,"swapchainVersion":1}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"request","severity":"info","width":1800,"height":750,"previousSwapchain":"0x20000000002"}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"resetInFlightFence","severity":"debug"}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"clearedPreviousSwapchain","severity":"debug"}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"surfaceCapabilities","severity":"debug","currentWidth":1800,"currentHeight":750,"minWidth":1800,"minHeight":750,"maxWidth":1800,"maxHeight":750,"usage":159}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"selectSurfaceFormat","severity":"debug","format":44,"colorSpace":0,"options":7}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"selectPresentMode","severity":"debug","presentMode":2,"options":5}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"createInfo","severity":"debug","width":1800,"height":750,"minImageCount":3,"usage":19,"oldSwapchain":"0x0"}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"retrievedImages","severity":"debug","count":3}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"creationResult","severity":"debug","swapchain":"0x370000000037","width":1800,"height":750,"format":44,"usage":19,"images":3}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"swapchainImage","severity":"debug","index":0,"image":"0x380000000038"}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"swapchainImage","severity":"debug","index":1,"image":"0x390000000039"}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"swapchainImage","severity":"debug","index":2,"image":"0x3A000000003A"}
+15:34:22:606{"event":"DrawResize","stage":"swapchainCreated","severity":"debug","swapchainVersion":1,"imageCount":3}
+15:34:22:606{"event":"DrawResize","stage":"swapchainImage","severity":"debug","imageIndex":0,"image":"0x380000000038"}
+15:34:22:606{"event":"DrawResize","stage":"swapchainImage","severity":"debug","imageIndex":1,"image":"0x390000000039"}
+15:34:22:606{"event":"DrawResize","stage":"swapchainImage","severity":"debug","imageIndex":2,"image":"0x3A000000003A"}
+15:34:22:606{"event":"DrawResize","stage":"begin","severity":"debug","frameVersion":0,"swapchainVersion":1,"submissionPending":false,"imageCount":3}
+15:34:22:606{"event":"DrawResize","stage":"swapchainVersionIncrement","severity":"debug","previous":1,"current":2}
+15:34:22:606{"event":"DrawResize","stage":"skipFlushNoPreparedSwapchainImage","severity":"info"}
+15:34:22:606{"event":"DrawResize","stage":"releasePreviousSwapchain","severity":"debug","imageCount":3}
+15:34:22:606{"event":"DrawResize","stage":"clearDebugImages","severity":"debug"}
+15:34:22:606{"event":"DrawResize","stage":"surfaceCapabilities","severity":"debug","currentWidth":1800,"currentHeight":750,"minWidth":1800,"minHeight":750,"maxWidth":1800,"maxHeight":750,"clampedWidth":1800,"clampedHeight":750}
+15:34:22:606{"event":"DrawResize","stage":"requestSwapchainResize","severity":"info","width":1800,"height":750,"frameVersion":0,"swapchainVersion":2}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"request","severity":"info","width":1800,"height":750,"previousSwapchain":"0x370000000037"}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"resetInFlightFence","severity":"debug"}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"clearedPreviousSwapchain","severity":"debug"}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"surfaceCapabilities","severity":"debug","currentWidth":1800,"currentHeight":750,"minWidth":1800,"minHeight":750,"maxWidth":1800,"maxHeight":750,"usage":159}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"selectSurfaceFormat","severity":"debug","format":44,"colorSpace":0,"options":7}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"selectPresentMode","severity":"debug","presentMode":2,"options":5}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"createInfo","severity":"debug","width":1800,"height":750,"minImageCount":3,"usage":19,"oldSwapchain":"0x0"}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"retrievedImages","severity":"debug","count":3}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"creationResult","severity":"debug","swapchain":"0x6F000000006F","width":1800,"height":750,"format":44,"usage":19,"images":3}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"swapchainImage","severity":"debug","index":0,"image":"0x700000000070"}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"swapchainImage","severity":"debug","index":1,"image":"0x710000000071"}
+15:34:22:606{"event":"CreateOrResizeVulkanSwapchain","stage":"swapchainImage","severity":"debug","index":2,"image":"0x720000000072"}
+15:34:22:606{"event":"DrawResize","stage":"swapchainCreated","severity":"debug","swapchainVersion":2,"imageCount":3}
+15:34:22:606{"event":"DrawResize","stage":"swapchainImage","severity":"debug","imageIndex":0,"image":"0x700000000070"}
+15:34:22:606{"event":"DrawResize","stage":"swapchainImage","severity":"debug","imageIndex":1,"image":"0x710000000071"}
+15:34:22:606{"event":"DrawResize","stage":"swapchainImage","severity":"debug","imageIndex":2,"image":"0x720000000072"}
+15:34:22:606'KickDrum.exe' (Win32): Loaded 'C:\Windows\System32\DataExchange.dll'. Symbol loading disabled by Include/Exclude setting.
+15:34:22:606{"category":"/IGRAPHICS/SCHED/PaintBudget","stage":"invalidate.escalate","severity":"info","reason":"TierEscalation","pendingPaints":1,"queuedInvalidates":1,"budget":4,"needsDrain":true,"burstCooling":true,"overBudgetConsecutive":0,"lastDrainMs":0,"decisionRegions":1,"decisionWidth":1800,"decisionHeight":750,"drainedRegions":0}{"event":"BeginFrame","stage":"entry","severity":"debug","frameVersion":2,"swapchainVersion":2,"skipFrame":true,"submissionPending":false,"currentImage":4294967295,"imageCount":3,"layoutCount":3}
+15:34:22:606Validation Error: [ VUID-vkGetDeviceQueue-queueFamilyIndex-00384 ] | MessageID = 0x99bbdd45
+15:34:22:606vkGetDeviceQueue(): queueFamilyIndex (2) is not one of the queue families given via VkDeviceQueueCreateInfo structures when the device was created.
+15:34:22:606The Vulkan spec states: queueFamilyIndex must be one of the queue family indices specified when device was created, via the VkDeviceQueueCreateInfo structure (https://vulkan.lunarg.com/doc/view/1.4.321.1/windows/antora/spec/latest/chapters/devsandqueues.html#VUID-vkGetDeviceQueue-queueFamilyIndex-00384)
+
+... (remaining lines identical to user's message) ...
+
+REAUDIT, REPLAN, RE-RESEARCH
+```
+
+**Assistant:** Re-ran the audit on the extended trace, noting which validation errors originate from iPlug2 versus injected overlay layers. Planned a second remediation pass focused on Vulkan 1.3 promotion rules for synchronization2, queue-family bookkeeping, and Skia backend metadata so that startup/shutdown execute without triggering validation VUIDs.

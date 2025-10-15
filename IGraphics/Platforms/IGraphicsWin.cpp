@@ -3792,13 +3792,10 @@ bool IGraphicsWin::CreateVulkanContext()
   mVkEnabledDeviceExtensions = snapshot.enabledDeviceExtensions;
   mVkEnabledDeviceExtensionCount = snapshot.enabledDeviceExtensionCount;
   mVkSynchronization2Enabled = snapshot.synchronization2Enabled;
-  if (mVkSynchronization2Enabled)
+  mVkSynchronization2Features = snapshot.synchronization2Features;
+  if (!mVkSynchronization2Enabled)
   {
-    mVkSynchronization2Features = snapshot.synchronization2Features;
-  }
-  else
-  {
-    mVkSynchronization2Features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES};
+    mVkSynchronization2Features.synchronization2 = VK_FALSE;
   }
   vkGetPhysicalDeviceProperties(mVkPhysicalDevice, &mVkDeviceProperties);
   vkGetPhysicalDeviceMemoryProperties(mVkPhysicalDevice, &mVkMemoryProperties);
@@ -3972,7 +3969,7 @@ bool IGraphicsWin::RecreateVulkanContext()
   ctx.deviceFeatures2 = &mVkEnabledFeatures2;
   ctx.deviceProperties = &mVkDeviceProperties;
   ctx.memoryProperties = &mVkMemoryProperties;
-  ctx.synchronization2Features = mVkSynchronization2Enabled ? &mVkSynchronization2Features : nullptr;
+  ctx.synchronization2Features = &mVkSynchronization2Features;
   ctx.synchronization2Enabled = mVkSynchronization2Enabled;
   OnViewInitialized(&ctx);
   return true;

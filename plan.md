@@ -1,26 +1,24 @@
-# Remediation Plan for Vulkan Validation Errors
+# Renewed Remediation Plan for Windows Vulkan Validation Failures
 
-1. **Codebase Reconnaissance** ✅
-   - Map the Windows Vulkan bootstrap flow (`WinVulkanDeviceCoordinator`, `IGraphicsWin`, `IGraphicsSkia`).
-   - Identify where extension lists, feature structs, and queue families are selected and cached.
+1. **Re-Audit the Failure Stream** ✅
+   - Re-read the latest startup/shutdown traces to catalog every validation ID that still fires.
+   - Classify which reports stem from our code versus third-party overlays (e.g., GTIII-OSD, OBS).
 
-2. **Specification & Vendor Research** ✅
-   - Review the Vulkan 1.3 `VK_KHR_synchronization2` requirements and validation rules for `VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL`.
-   - Cross-check Skia's Vulkan backend expectations regarding extension enablement and backend-context metadata.
+2. **Deep-Dive Research** ✅
+   - Cross-reference Vulkan 1.3 core promotion rules for `VK_KHR_synchronization2` and queue-family creation requirements using the Khronos spec and Skia's Ganesh Vulkan guide.
+   - Review NVIDIA developer forum threads on swapchain layout transitions to ensure our barrier policy aligns with driver expectations.
 
-3. **Root Cause Confirmation** ✅
-   - Inspect the shared device snapshot to verify which extensions/features are persisted across clients.
-   - Compare the driver's advertised extension list with what we actually enable when creating the logical device.
+3. **Device Capability Tracking Fixes** ✅
+   - Extend the coordinator snapshot so we distinguish "feature supported" from "extension string present" and handle Vulkan 1.3 cores that lack the legacy extension name.
+   - Query `vkGetPhysicalDeviceFeatures2` to confirm the synchronization2 feature bit before enabling it.
 
-4. **Refactor Capability Tracking** ✅
-   - Record the enabled device extensions and synchronization2 feature struct in the shared snapshot.
-   - Expose the synchronized capability state through `IGraphicsWin` and the `VulkanContext` passed to Skia.
+4. **Skia Backend Context Corrections** ✅
+   - Propagate the physical-device API version to Skia so it advertises the correct `fMaxAPIVersion` and can select the matching path.
+   - Ensure the synchronization2 feature struct we enabled is forwarded to the renderer when available.
 
-5. **Runtime Integration Updates** ✅
-   - Rebuild `skgpu::VulkanExtensions` with the exact runtime extension list.
-   - Teach `IGraphicsSkia` to cache the synchronization2 flag for future command-buffer policy adjustments.
+5. **Documentation & Traceability** ✅
+   - Update the audit log with the refined analysis and mitigation steps.
+   - Mirror the latest exchange and conclusions in `chatprotocol.md` for continuity.
 
-6. **Documentation & Follow-up** ✅
-   - Update the audit log with the new findings and mitigations.
-   - Summarize the remediation in the final report and PR body.
-
+6. **Verification Strategy** ☐
+   - Outline manual validation steps for the user (layers enabled, expected absence of specific VUIDs) once the changes are integrated.

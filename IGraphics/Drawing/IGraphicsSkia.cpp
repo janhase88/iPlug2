@@ -1121,6 +1121,11 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   mVKQueueFamily = ctx->queueFamily;
   mVKSwapchainFormat = ctx->format;
   mVKSwapchainUsageFlags = ctx->usageFlags;
+  mVulkanExtensions = ctx->extensions;
+  mVKDeviceFeaturesPtr = ctx->deviceFeatures;
+  mVKDeviceFeatures2Ptr = ctx->deviceFeatures2;
+  mVKDevicePropertiesPtr = ctx->deviceProperties;
+  mVKMemoryPropertiesPtr = ctx->memoryProperties;
   {
     std::lock_guard<std::mutex> lock(mVKSwapchainMutex);
     mVKSwapchainImages.clear();
@@ -1148,6 +1153,9 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   backendContext.fQueue = mVKQueue;
   backendContext.fGraphicsQueueIndex = mVKQueueFamily;
   backendContext.fMaxAPIVersion = VK_API_VERSION_1_1;
+  backendContext.fVkExtensions = mVulkanExtensions;
+  backendContext.fDeviceFeatures = mVKDeviceFeaturesPtr;
+  backendContext.fDeviceFeatures2 = mVKDeviceFeatures2Ptr;
   mGrContext = GrDirectContexts::MakeVulkan(backendContext);
 #endif
 
@@ -1210,6 +1218,11 @@ void IGraphicsSkia::OnViewDestroyed()
   mVKRenderFinishedSemaphore = VK_NULL_HANDLE;
   mVKInFlightFence = VK_NULL_HANDLE;
   mVKSwapchain = VK_NULL_HANDLE;
+  mVulkanExtensions = nullptr;
+  mVKDeviceFeaturesPtr = nullptr;
+  mVKDeviceFeatures2Ptr = nullptr;
+  mVKDevicePropertiesPtr = nullptr;
+  mVKMemoryPropertiesPtr = nullptr;
 
   mVKInstance = VK_NULL_HANDLE;
   mVKPhysicalDevice = VK_NULL_HANDLE;

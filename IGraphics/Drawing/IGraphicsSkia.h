@@ -270,6 +270,11 @@ private:
   uint64_t mVKFrameVersion = 0;
   std::mutex mVKSwapchainMutex;
   std::unordered_set<VkImage> mVKDebugImages;
+  const skgpu::VulkanExtensions* mVulkanExtensions = nullptr;
+  const VkPhysicalDeviceFeatures* mVKDeviceFeaturesPtr = nullptr;
+  const VkPhysicalDeviceFeatures2* mVKDeviceFeatures2Ptr = nullptr;
+  const VkPhysicalDeviceProperties* mVKDevicePropertiesPtr = nullptr;
+  const VkPhysicalDeviceMemoryProperties* mVKMemoryPropertiesPtr = nullptr;
   bool PrepareCurrentSwapchainImageForFlush();
   void ResetVulkanSwapchainCaches();
   VkCommandBuffer EnsureVulkanCommandBuffer();

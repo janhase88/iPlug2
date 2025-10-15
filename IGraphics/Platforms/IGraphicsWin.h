@@ -36,6 +36,8 @@
   #include <vulkan/vulkan.h>
   #include <vulkan/vulkan_win32.h>
   #include "WinVulkanDeviceCoordinator.h"
+
+namespace skgpu { class VulkanExtensions; }
 #endif
 
 
@@ -58,6 +60,11 @@ struct VulkanContext
   std::vector<VkImage>* swapchainImages = nullptr;
   VkFormat format = VK_FORMAT_B8G8R8A8_UNORM;
   VkImageUsageFlags usageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  const skgpu::VulkanExtensions* extensions = nullptr;
+  const VkPhysicalDeviceFeatures* deviceFeatures = nullptr;
+  const VkPhysicalDeviceFeatures2* deviceFeatures2 = nullptr;
+  const VkPhysicalDeviceProperties* deviceProperties = nullptr;
+  const VkPhysicalDeviceMemoryProperties* memoryProperties = nullptr;
 };
 #endif
 
@@ -233,6 +240,10 @@ private:
   std::vector<VkImage> mVkSwapchainImages;
   VkFormat mVkFormat = VK_FORMAT_B8G8R8A8_UNORM;
   VkImageUsageFlags mVkSwapchainUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  VkPhysicalDeviceProperties mVkDeviceProperties{};
+  VkPhysicalDeviceMemoryProperties mVkMemoryProperties{};
+  VkPhysicalDeviceFeatures mVkEnabledFeatures{};
+  std::unique_ptr<skgpu::VulkanExtensions> mVkExtensions;
 #endif
 
 #ifdef IGRAPHICS_GL

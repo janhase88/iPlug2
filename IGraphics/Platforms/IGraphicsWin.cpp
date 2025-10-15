@@ -23,6 +23,7 @@
 #include "SchedulerLogging.h"
 #if defined IGRAPHICS_VULKAN
   #include "VulkanLogging.h"
+  #include "include/gpu/vk/VulkanExtensions.h"
 #endif
 
 #include <VersionHelpers.h>
@@ -3778,6 +3779,24 @@ bool IGraphicsWin::CreateVulkanContext()
   mVkSurface = snapshot.surface;
   mPresentQueue = snapshot.presentQueue;
   mVkQueueFamily = snapshot.queueFamily;
+  mVkEnabledFeatures = snapshot.enabledFeatures;
+  vkGetPhysicalDeviceProperties(mVkPhysicalDevice, &mVkDeviceProperties);
+  vkGetPhysicalDeviceMemoryProperties(mVkPhysicalDevice, &mVkMemoryProperties);
+
+  auto getProc = [](const char* name, VkInstance instance, VkDevice device) -> PFN_vkVoidFunction {
+    if (device)
+      return vkGetDeviceProcAddr(device, name);
+    return vkGetInstanceProcAddr(instance, name);
+  };
+
+  mVkExtensions = std::make_unique<skgpu::VulkanExtensions>();
+  mVkExtensions->init(getProc,
+                      mVkInstance,
+                      mVkPhysicalDevice,
+                      static_cast<uint32_t>(winvk::kRequiredInstanceExtensions.size()),
+                      winvk::kRequiredInstanceExtensions.data(),
+                      static_cast<uint32_t>(winvk::kRequiredDeviceExtensions.size()),
+                      winvk::kRequiredDeviceExtensions.data());
   mVulkanDeviceGeneration = generation;
 
   VkSurfaceCapabilitiesKHR caps{};
@@ -3878,6 +3897,10 @@ void IGraphicsWin::DestroyVulkanContext()
   mPresentQueue = VK_NULL_HANDLE;
   mVkQueueFamily = 0;
   mVkSwapchain.device = VK_NULL_HANDLE;
+  mVkDeviceProperties = {};
+  mVkMemoryProperties = {};
+  mVkEnabledFeatures = {};
+  mVkExtensions.reset();
   mVulkanDeviceGeneration = 0;
 }
 
@@ -3902,6 +3925,11 @@ bool IGraphicsWin::RecreateVulkanContext()
   ctx.swapchainImages = &mVkSwapchainImages;
   ctx.format = mVkFormat;
   ctx.usageFlags = mVkSwapchainUsageFlags;
+  ctx.extensions = mVkExtensions.get();
+  ctx.deviceFeatures = &mVkEnabledFeatures;
+  ctx.deviceFeatures2 = nullptr;
+  ctx.deviceProperties = &mVkDeviceProperties;
+  ctx.memoryProperties = &mVkMemoryProperties;
   OnViewInitialized(&ctx);
   return true;
 }
@@ -4254,6 +4282,11 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   ctx.swapchainImages = &mVkSwapchainImages;
   ctx.format = mVkFormat;
   ctx.usageFlags = mVkSwapchainUsageFlags;
+  ctx.extensions = mVkExtensions.get();
+  ctx.deviceFeatures = &mVkEnabledFeatures;
+  ctx.deviceFeatures2 = nullptr;
+  ctx.deviceProperties = &mVkDeviceProperties;
+  ctx.memoryProperties = &mVkMemoryProperties;
   OnViewInitialized(&ctx);
 #else
   HDC dc = GetDC(mPlugWnd);

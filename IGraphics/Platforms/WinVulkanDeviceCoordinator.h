@@ -17,6 +17,7 @@
 #include "IPlugLogger.h"
 
 #include "VulkanLogging.h"
+#include "include/gpu/vk/VulkanExtensions.h"
 
 BEGIN_IPLUG_NAMESPACE
 BEGIN_IGRAPHICS_NAMESPACE
@@ -44,6 +45,7 @@ struct WinVulkanDeviceSnapshot
   VkSurfaceKHR surface = VK_NULL_HANDLE;
   VkQueue presentQueue = VK_NULL_HANDLE;
   uint32_t queueFamily = 0;
+  VkPhysicalDeviceFeatures enabledFeatures{};
   bool validationLayerEnabled = false;
   uint64_t generation = 0;
 };
@@ -527,6 +529,7 @@ inline VkResult WinVulkanDeviceCoordinator::CreateLogicalDevice()
     return res;
   }
 
+  state.snapshot.enabledFeatures = enabledFeatures;
   vkGetDeviceQueue(state.snapshot.device, state.snapshot.queueFamily, 0, &state.snapshot.presentQueue);
   return VK_SUCCESS;
 }
@@ -540,6 +543,7 @@ inline void WinVulkanDeviceCoordinator::ResetSnapshot()
   snapshot.surface = VK_NULL_HANDLE;
   snapshot.presentQueue = VK_NULL_HANDLE;
   snapshot.queueFamily = 0;
+  snapshot.enabledFeatures = {};
   snapshot.validationLayerEnabled = false;
   snapshot.generation = 0;
 }

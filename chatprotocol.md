@@ -223,3 +223,8 @@ REAUDIT, REPLAN, RE-RESEARCH
 ```
 
 **Assistant:** Re-ran the audit on the extended trace, noting which validation errors originate from iPlug2 versus injected overlay layers. Planned a second remediation pass focused on Vulkan 1.3 promotion rules for synchronization2, queue-family bookkeeping, and Skia backend metadata so that startup/shutdown execute without triggering validation VUIDs.
+
+## Entry 9
+**User:** (awaiting update)
+
+**Assistant:** Negotiated the loader's supported API version via `vkEnumerateInstanceVersion`, promoted the instance to Vulkan 1.3 when available, and persisted the negotiated instance/device API versions in the shared coordinator snapshot. Chained `VkPhysicalDeviceVulkan13Features` alongside `VkPhysicalDeviceSynchronization2Features` during device creation, forwarded the resulting metadata through `VulkanContext`, and taught the Skia backend to honor the runtime API level when selecting synchronization semantics.

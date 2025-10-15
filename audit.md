@@ -10,7 +10,7 @@
    - Root cause: the coordinator only tracked whether the swapchain extension was present. When Vulkan 1.3 drivers promote Synchronization2 to core (omitting the extension string), the snapshot would reset and reuse stale state, leading to inconsistent queue-family bookkeeping.
 2. **`vkCmdPipelineBarrier` & layout transition VUIDs**
    - Skia emits `VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL` transitions whenever Synchronization2 is reported available.
-   - Our device bootstrap failed to enable the feature for core Vulkan 1.3 hardware, so the driver flagged the use of read-only layouts and zero stage masks.
+   - The instance was still requested with `VK_API_VERSION_1_1`, so validation considered the Vulkan 1.3-only layouts and `VK_PIPELINE_STAGE_NONE` usages illegal even though the feature bit was enabled.
 3. **`vkCreateImage` extent.depth = 4**
    - Observed during third-party overlay initialization (GTIII-OSD). The stack trace points into their module; no iPlug2 allocation uses a depth of four for 2D swapchain surfaces.
 4. **`vkFlushMappedMemoryRanges` size alignment**
@@ -19,9 +19,9 @@
    - Also traceable to GTIII-OSD descriptor pool teardown. Our code does not create descriptor pools at present.
 
 ## Research Notes
-- Khronos Vulkan 1.3 specification §38.5 clarifies that promoted extensions may disappear from `vkEnumerateDeviceExtensionProperties`; feature enablement must instead rely on `vkGetPhysicalDeviceFeatures2`.
-- Skia's Ganesh Vulkan backend (docs/ganesh/vk.md) expects `VulkanBackendContext::fMaxAPIVersion` to reflect the device's real API version so it can emit Synchronization2 semantics only when supported.
-- NVIDIA forum threads (ID 1261515) highlight the need to propagate the queue family's API version and feature struct into middleware that manages its own command buffers (e.g., Skia).
+- Khronos Vulkan 1.3 specification (§39.6.2/§39.6.3) requires either core 1.3 support or the `VK_KHR_synchronization2` extension before `VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL` and `VK_PIPELINE_STAGE_NONE` become valid enumerants.
+- `vkEnumerateInstanceVersion` allows applications to negotiate the loader's highest supported API level so promoted core features remain available even when the extension strings disappear.
+- Skia's Ganesh Vulkan backend (docs/ganesh/vk.md) expects `VulkanBackendContext::fMaxAPIVersion` to match the runtime so it can decide whether to issue Synchronization2-style barriers.
 
 ## Remediation Plan Execution
 - [x] Distinguish between "extension string present" and "feature supported" inside `WinVulkanDeviceCoordinator`.

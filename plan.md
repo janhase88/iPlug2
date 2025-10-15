@@ -20,5 +20,10 @@
    - Update the audit log with the refined analysis and mitigation steps.
    - Mirror the latest exchange and conclusions in `chatprotocol.md` for continuity.
 
-6. **Verification Strategy** ☐
+6. **API Version Alignment** ✅
+   - Negotiate the loader-supported API level during instance creation and request Vulkan 1.3 when available.
+   - Persist the negotiated instance/device API versions and reuse them when recreating the Skia context.
+   - Forward the effective API version to Skia so it can choose synchronization semantics that match the runtime.
+
+7. **Verification Strategy** ☐
    - Outline manual validation steps for the user (layers enabled, expected absence of specific VUIDs) once the changes are integrated.

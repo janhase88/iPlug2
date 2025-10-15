@@ -70,6 +70,7 @@ struct VulkanContext
   VkSwapchainKHR swapchain = VK_NULL_HANDLE;
   VkQueue queue = VK_NULL_HANDLE;
   uint32_t queueFamily = 0;
+  uint32_t apiVersion = VK_API_VERSION_1_0;
   VkSemaphore imageAvailableSemaphore = VK_NULL_HANDLE;
   VkSemaphore renderFinishedSemaphore = VK_NULL_HANDLE;
   VkFence inFlightFence = VK_NULL_HANDLE;
@@ -248,12 +249,14 @@ private:
   WinVulkanDeviceCoordinator mVulkanDeviceCoordinator;
   uint64_t mVulkanDeviceGeneration = 0;
   VkInstance mVkInstance = VK_NULL_HANDLE;
+  uint32_t mVkInstanceApiVersion = VK_API_VERSION_1_0;
   VkPhysicalDevice mVkPhysicalDevice = VK_NULL_HANDLE;
   VkDevice mVkDevice = VK_NULL_HANDLE;
   VkSurfaceKHR mVkSurface = VK_NULL_HANDLE;
   VkSwapchainHolder mVkSwapchain;
   VkQueue mPresentQueue = VK_NULL_HANDLE;
   uint32_t mVkQueueFamily = 0;
+  uint32_t mVkDeviceApiVersion = VK_API_VERSION_1_0;
   VkSemaphoreHolder mImageAvailableSemaphore;
   VkSemaphoreHolder mRenderFinishedSemaphore;
   VkFenceHolder mInFlightFence;
@@ -269,6 +272,9 @@ private:
   VkPhysicalDeviceSynchronization2Features mVkSynchronization2Features{
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES
   };
+#if defined(VK_VERSION_1_3)
+  VkPhysicalDeviceVulkan13Features mVkVulkan13Features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
+#endif
   bool mVkSynchronization2Enabled = false;
   std::unique_ptr<skgpu::VulkanExtensions> mVkExtensions;
 #endif

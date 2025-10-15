@@ -3783,21 +3783,27 @@ bool IGraphicsWin::CreateVulkanContext()
   }
 
   mVkInstance = snapshot.instance;
+  mVkInstanceApiVersion = snapshot.instanceApiVersion;
   mVkPhysicalDevice = snapshot.physicalDevice;
   mVkDevice = snapshot.device;
   mVkSurface = snapshot.surface;
   mPresentQueue = snapshot.presentQueue;
   mVkQueueFamily = snapshot.queueFamily;
+  mVkDeviceApiVersion = snapshot.deviceApiVersion;
   mVkEnabledFeatures = snapshot.enabledFeatures;
   mVkEnabledDeviceExtensions = snapshot.enabledDeviceExtensions;
   mVkEnabledDeviceExtensionCount = snapshot.enabledDeviceExtensionCount;
   mVkSynchronization2Enabled = snapshot.synchronization2Enabled;
   mVkSynchronization2Features = snapshot.synchronization2Features;
+#if defined(VK_VERSION_1_3)
+  mVkVulkan13Features = snapshot.vulkan13Features;
+#endif
   if (!mVkSynchronization2Enabled)
   {
     mVkSynchronization2Features.synchronization2 = VK_FALSE;
   }
   vkGetPhysicalDeviceProperties(mVkPhysicalDevice, &mVkDeviceProperties);
+  mVkDeviceApiVersion = mVkDeviceProperties.apiVersion;
   vkGetPhysicalDeviceMemoryProperties(mVkPhysicalDevice, &mVkMemoryProperties);
 
   PFN_vkGetPhysicalDeviceFeatures2 getFeatures2 =
@@ -3808,6 +3814,13 @@ bool IGraphicsWin::CreateVulkanContext()
     getFeatures2(mVkPhysicalDevice, &mVkEnabledFeatures2);
   }
   mVkEnabledFeatures2.features = mVkEnabledFeatures;
+#if defined(VK_VERSION_1_3)
+  if (mVkDeviceApiVersion >= VK_API_VERSION_1_3)
+  {
+    mVkVulkan13Features.pNext = mVkEnabledFeatures2.pNext;
+    mVkEnabledFeatures2.pNext = &mVkVulkan13Features;
+  }
+#endif
 
   auto getProc = [](const char* name, VkInstance instance, VkDevice device) -> PFN_vkVoidFunction {
     if (device)
@@ -3919,11 +3932,13 @@ void IGraphicsWin::DestroyVulkanContext()
   }
 
   mVkInstance = VK_NULL_HANDLE;
+  mVkInstanceApiVersion = VK_API_VERSION_1_0;
   mVkPhysicalDevice = VK_NULL_HANDLE;
   mVkDevice = VK_NULL_HANDLE;
   mVkSurface = VK_NULL_HANDLE;
   mPresentQueue = VK_NULL_HANDLE;
   mVkQueueFamily = 0;
+  mVkDeviceApiVersion = VK_API_VERSION_1_0;
   mVkSwapchain.device = VK_NULL_HANDLE;
   mVkDeviceProperties = {};
   mVkMemoryProperties = {};
@@ -3933,6 +3948,9 @@ void IGraphicsWin::DestroyVulkanContext()
   mVkEnabledDeviceExtensionCount = 0;
   mVkSynchronization2Enabled = false;
   mVkSynchronization2Features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES};
+#if defined(VK_VERSION_1_3)
+  mVkVulkan13Features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
+#endif
   mVkExtensions.reset();
   mVulkanDeviceGeneration = 0;
 }
@@ -3952,6 +3970,7 @@ bool IGraphicsWin::RecreateVulkanContext()
   ctx.swapchain = mVkSwapchain.handle;
   ctx.queue = mPresentQueue;
   ctx.queueFamily = mVkQueueFamily;
+  ctx.apiVersion = mVkDeviceApiVersion;
   ctx.imageAvailableSemaphore = mImageAvailableSemaphore.handle;
   ctx.renderFinishedSemaphore = mRenderFinishedSemaphore.handle;
   ctx.inFlightFence = mInFlightFence.handle;
@@ -4317,6 +4336,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   ctx.swapchain = mVkSwapchain.handle;
   ctx.queue = mPresentQueue;
   ctx.queueFamily = mVkQueueFamily;
+  ctx.apiVersion = mVkDeviceApiVersion;
   ctx.imageAvailableSemaphore = mImageAvailableSemaphore.handle;
   ctx.renderFinishedSemaphore = mRenderFinishedSemaphore.handle;
   ctx.inFlightFence = mInFlightFence.handle;

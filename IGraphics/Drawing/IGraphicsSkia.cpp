@@ -1222,6 +1222,11 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   mVKMemoryPropertiesPtr = ctx->memoryProperties;
   mVKSync2FeaturesPtr = ctx->synchronization2Features;
   mVKSync2Enabled = ctx->synchronization2Enabled;
+  mVKApiVersion = ctx->apiVersion;
+  if (mVKDevicePropertiesPtr)
+    mVKApiVersion = std::max<uint32_t>(mVKApiVersion, mVKDevicePropertiesPtr->apiVersion);
+  if (mVKApiVersion < VK_API_VERSION_1_1)
+    mVKApiVersion = VK_API_VERSION_1_1;
   {
     std::lock_guard<std::mutex> lock(mVKSwapchainMutex);
     mVKSwapchainImages.clear();
@@ -1248,10 +1253,7 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   backendContext.fDevice = mVKDevice;
   backendContext.fQueue = mVKQueue;
   backendContext.fGraphicsQueueIndex = mVKQueueFamily;
-  if (mVKDevicePropertiesPtr)
-    backendContext.fMaxAPIVersion = mVKDevicePropertiesPtr->apiVersion;
-  else
-    backendContext.fMaxAPIVersion = VK_API_VERSION_1_1;
+  backendContext.fMaxAPIVersion = mVKApiVersion;
   if (IGRAPHICS_VK_HAS_VULKAN_EXTENSIONS)
   {
     AssignVulkanExtensions(backendContext, mVulkanExtensions);

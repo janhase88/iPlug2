@@ -279,6 +279,7 @@ private:
   uint64_t mVKFrameVersion = 0;
   std::mutex mVKSwapchainMutex;
   std::unordered_set<VkImage> mVKDebugImages;
+  uint32_t mVKApiVersion = VK_API_VERSION_1_0;
   const skgpu::VulkanExtensions* mVulkanExtensions = nullptr;
   const VkPhysicalDeviceFeatures* mVKDeviceFeaturesPtr = nullptr;
   const VkPhysicalDeviceFeatures2* mVKDeviceFeatures2Ptr = nullptr;

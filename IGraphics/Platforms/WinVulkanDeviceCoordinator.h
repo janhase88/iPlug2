@@ -647,18 +647,26 @@ inline VkResult WinVulkanDeviceCoordinator::CreateLogicalDevice()
 #endif
 
   void* featureChain = nullptr;
-  const bool enableSynchronization2 = false; // Legacy barrier plumbing does not yet support vkCmdPipelineBarrier2.
-  if (enableSynchronization2 && state.supportsSynchronization2)
+  const bool enableSynchronization2 = state.supportsSynchronization2;
+  const bool promoteSync2 = enableSynchronization2 &&
+#if defined(VK_VERSION_1_3)
+                             (state.deviceApiVersion >= VK_API_VERSION_1_3);
+#else
+                             false;
+#endif
+
+#if defined(VK_VERSION_1_3)
+  if (promoteSync2)
+  {
+    vulkan13Features.synchronization2 = VK_TRUE;
+    vulkan13Features.pNext = featureChain;
+    featureChain = &vulkan13Features;
+    synchronization2Features.synchronization2 = VK_TRUE;
+  }
+#endif
+  if (enableSynchronization2 && !promoteSync2)
   {
     synchronization2Features.synchronization2 = VK_TRUE;
-#if defined(VK_VERSION_1_3)
-    if (state.deviceApiVersion >= VK_API_VERSION_1_3)
-    {
-      vulkan13Features.synchronization2 = VK_TRUE;
-      vulkan13Features.pNext = featureChain;
-      featureChain = &vulkan13Features;
-    }
-#endif
     synchronization2Features.pNext = featureChain;
     featureChain = &synchronization2Features;
     if (state.hasSynchronization2Extension && enabledExtensionCount < enabledExtensions.size())
@@ -709,12 +717,12 @@ inline VkResult WinVulkanDeviceCoordinator::CreateLogicalDevice()
   state.snapshot.enabledFeatures = enabledFeatures;
   state.snapshot.enabledDeviceExtensions = enabledExtensions;
   state.snapshot.enabledDeviceExtensionCount = enabledExtensionCount;
-  state.snapshot.synchronization2Enabled = enableSynchronization2 && state.supportsSynchronization2;
+  state.snapshot.synchronization2Enabled = enableSynchronization2;
   if (state.snapshot.synchronization2Enabled)
   {
     state.snapshot.synchronization2Features = synchronization2Features;
 #if defined(VK_VERSION_1_3)
-    if (state.deviceApiVersion >= VK_API_VERSION_1_3)
+    if (promoteSync2)
       state.snapshot.vulkan13Features = vulkan13Features;
 #endif
   }

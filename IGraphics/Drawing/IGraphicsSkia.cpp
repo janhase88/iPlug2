@@ -145,6 +145,43 @@ namespace
   #define IGRAPHICS_VK_HAS_VULKAN_EXTENSIONS 0
 #endif
 
+using VulkanImageBarrierConfig = IGraphicsSkia::VulkanImageBarrierConfig;
+
+inline void DeriveStageAndAccessForLayout(VkImageLayout layout,
+                                          VkAccessFlags& accessMask,
+                                          VkPipelineStageFlags& stageMask)
+{
+  switch (layout)
+  {
+  case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+    accessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    stageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    break;
+  case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
+    accessMask = 0;
+    stageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+    break;
+  case VK_IMAGE_LAYOUT_UNDEFINED:
+    accessMask = 0;
+    stageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    break;
+#if defined(VK_KHR_synchronization2) || defined(VK_VERSION_1_3)
+  case VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR:
+    accessMask = VK_ACCESS_SHADER_READ_BIT;
+    stageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    break;
+  case VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR:
+    accessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    stageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    break;
+#endif
+  default:
+    accessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    stageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    break;
+  }
+}
+
 template <typename...>
 struct MakeVoid
 {
@@ -486,6 +523,101 @@ sk_sp<SkSurface> IGraphicsSkia::EnsureSwapchainSurface(uint32_t imageIndex, int 
   return cachedSurface;
 }
 
+bool IGraphicsSkia::SupportsVulkanSync2() const
+{
+#if defined(VK_KHR_synchronization2) || defined(VK_VERSION_1_3)
+  return mVKSync2Enabled && mVKSync2ProcsLoaded;
+#else
+  return false;
+#endif
+}
+
+void IGraphicsSkia::LoadVulkanSync2Procs()
+{
+#if defined(VK_KHR_synchronization2) || defined(VK_VERSION_1_3)
+  if (!mVKDevice || !mVKSync2Enabled)
+  {
+    mVKCmdPipelineBarrier2 = nullptr;
+    mVKCmdPipelineBarrier2KHR = nullptr;
+    mVKQueueSubmit2 = nullptr;
+    mVKQueueSubmit2KHR = nullptr;
+    mVKSync2ProcsLoaded = false;
+    return;
+  }
+
+  mVKCmdPipelineBarrier2 = reinterpret_cast<PFN_vkCmdPipelineBarrier2>(vkGetDeviceProcAddr(mVKDevice, "vkCmdPipelineBarrier2"));
+  mVKCmdPipelineBarrier2KHR = reinterpret_cast<PFN_vkCmdPipelineBarrier2KHR>(vkGetDeviceProcAddr(mVKDevice, "vkCmdPipelineBarrier2KHR"));
+  mVKQueueSubmit2 = reinterpret_cast<PFN_vkQueueSubmit2>(vkGetDeviceProcAddr(mVKDevice, "vkQueueSubmit2"));
+  mVKQueueSubmit2KHR = reinterpret_cast<PFN_vkQueueSubmit2KHR>(vkGetDeviceProcAddr(mVKDevice, "vkQueueSubmit2KHR"));
+  mVKSync2ProcsLoaded = (mVKCmdPipelineBarrier2 != nullptr) || (mVKCmdPipelineBarrier2KHR != nullptr);
+#else
+  mVKCmdPipelineBarrier2 = nullptr;
+  mVKCmdPipelineBarrier2KHR = nullptr;
+  mVKQueueSubmit2 = nullptr;
+  mVKQueueSubmit2KHR = nullptr;
+  mVKSync2ProcsLoaded = false;
+#endif
+}
+
+void IGraphicsSkia::RecordSwapchainImageBarrier(VkCommandBuffer commandBuffer, const VulkanImageBarrierConfig& config)
+{
+#if defined(VK_KHR_synchronization2) || defined(VK_VERSION_1_3)
+  if (SupportsVulkanSync2())
+  {
+    VkImageMemoryBarrier2 barrier2{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
+    barrier2.srcStageMask = static_cast<VkPipelineStageFlags2>(config.srcStageMask);
+    barrier2.dstStageMask = static_cast<VkPipelineStageFlags2>(config.dstStageMask);
+    barrier2.srcAccessMask = static_cast<VkAccessFlags2>(config.srcAccessMask);
+    barrier2.dstAccessMask = static_cast<VkAccessFlags2>(config.dstAccessMask);
+    barrier2.oldLayout = config.oldLayout;
+    barrier2.newLayout = config.newLayout;
+    barrier2.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier2.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier2.image = config.image;
+    barrier2.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier2.subresourceRange.baseMipLevel = 0;
+    barrier2.subresourceRange.levelCount = 1;
+    barrier2.subresourceRange.baseArrayLayer = 0;
+    barrier2.subresourceRange.layerCount = 1;
+
+    VkDependencyInfo dependencyInfo{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+    dependencyInfo.imageMemoryBarrierCount = 1;
+    dependencyInfo.pImageMemoryBarriers = &barrier2;
+
+    if (mVKCmdPipelineBarrier2)
+      mVKCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
+    else if (mVKCmdPipelineBarrier2KHR)
+      mVKCmdPipelineBarrier2KHR(commandBuffer, &dependencyInfo);
+    return;
+  }
+#endif
+
+  VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+  barrier.srcAccessMask = config.srcAccessMask;
+  barrier.dstAccessMask = config.dstAccessMask;
+  barrier.oldLayout = config.oldLayout;
+  barrier.newLayout = config.newLayout;
+  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.image = config.image;
+  barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  barrier.subresourceRange.baseMipLevel = 0;
+  barrier.subresourceRange.levelCount = 1;
+  barrier.subresourceRange.baseArrayLayer = 0;
+  barrier.subresourceRange.layerCount = 1;
+
+  vkCmdPipelineBarrier(commandBuffer,
+                       config.srcStageMask,
+                       config.dstStageMask,
+                       0,
+                       0,
+                       nullptr,
+                       0,
+                       nullptr,
+                       1,
+                       &barrier);
+}
+
 // Lazily create and reuse a single command pool/primary command buffer for the frame loop.
 // The pool is reset when BeginFrame starts recording, eliminating vkCreate/vkAllocate churn
 // during steady-state rendering.
@@ -541,7 +673,7 @@ bool IGraphicsSkia::PrepareCurrentSwapchainImageForFlush()
   VkImage swapImage = mVKSwapchainImages[mVKCurrentImage];
   VkImageLayout trackedLayout = mVKImageLayouts[mVKCurrentImage];
 
-  if (trackedLayout != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
+  if (trackedLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
   {
     IGRAPHICS_VK_LOG("PrepareCurrentSwapchainImageForFlush",
                         "skip",
@@ -549,7 +681,7 @@ bool IGraphicsSkia::PrepareCurrentSwapchainImageForFlush()
                         vulkanlog::MakeField("imageIndex", static_cast<uint32_t>(mVKCurrentImage)),
                          vulkanlog::MakeHandleField("image", vulkanlog::HandleToUint64(swapImage)),
                          vulkanlog::MakeField("layout", static_cast<int>(trackedLayout)));
-    return trackedLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    return true;
   }
 
   if (mVKInFlightFence == VK_NULL_HANDLE)
@@ -597,20 +729,25 @@ bool IGraphicsSkia::PrepareCurrentSwapchainImageForFlush()
   beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
   vkBeginCommandBuffer(commandBuffer, &beginInfo);
 
-  VkImageMemoryBarrier barrier{};
-  barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-  barrier.srcAccessMask = 0;
-  barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-  barrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-  barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  VulkanImageBarrierConfig barrier{};
   barrier.image = swapImage;
-  barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-  barrier.subresourceRange.baseMipLevel = 0;
-  barrier.subresourceRange.levelCount = 1;
-  barrier.subresourceRange.baseArrayLayer = 0;
-  barrier.subresourceRange.layerCount = 1;
+  barrier.oldLayout = trackedLayout;
+  barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  DeriveStageAndAccessForLayout(barrier.oldLayout, barrier.srcAccessMask, barrier.srcStageMask);
+  if (barrier.oldLayout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
+  {
+    barrier.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    barrier.srcAccessMask = 0;
+  }
+#if defined(VK_KHR_synchronization2) || defined(VK_VERSION_1_3)
+  if (barrier.oldLayout == VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR)
+  {
+    barrier.srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+  }
+#endif
+  barrier.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+  barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
   IGRAPHICS_VK_LOG("PrepareCurrentSwapchainImageForFlush",
                       "imageBarrier",
@@ -620,16 +757,7 @@ bool IGraphicsSkia::PrepareCurrentSwapchainImageForFlush()
                        vulkanlog::MakeField("oldLayout", static_cast<int>(barrier.oldLayout)),
                        vulkanlog::MakeField("newLayout", static_cast<int>(barrier.newLayout)));
 
-  vkCmdPipelineBarrier(commandBuffer,
-                       VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                       VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                       0,
-                       0,
-                       nullptr,
-                       0,
-                       nullptr,
-                       1,
-                       &barrier);
+  RecordSwapchainImageBarrier(commandBuffer, barrier);
 
   vkEndCommandBuffer(commandBuffer);
 
@@ -1222,6 +1350,11 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   mVKMemoryPropertiesPtr = ctx->memoryProperties;
   mVKSync2FeaturesPtr = ctx->synchronization2Features;
   mVKSync2Enabled = ctx->synchronization2Enabled;
+  mVKSync2ProcsLoaded = false;
+  mVKCmdPipelineBarrier2 = nullptr;
+  mVKCmdPipelineBarrier2KHR = nullptr;
+  mVKQueueSubmit2 = nullptr;
+  mVKQueueSubmit2KHR = nullptr;
   mVKApiVersion = ctx->apiVersion;
   if (mVKDevicePropertiesPtr)
     mVKApiVersion = std::max<uint32_t>(mVKApiVersion, mVKDevicePropertiesPtr->apiVersion);
@@ -1277,6 +1410,8 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   AssignPhysicalDeviceProperties(backendContext, mVKDevicePropertiesPtr);
   AssignPhysicalDeviceMemoryProperties(backendContext, mVKMemoryPropertiesPtr);
   mGrContext = GrDirectContexts::MakeVulkan(backendContext);
+  if (mVKSync2Enabled)
+    LoadVulkanSync2Procs();
 #endif
 
   DrawResize();
@@ -2014,37 +2149,30 @@ void IGraphicsSkia::BeginFrame()
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(mVKCommandBuffer, &beginInfo);
 
-    VkImageMemoryBarrier barrier{};
-    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    VulkanImageBarrierConfig barrier{};
+    barrier.image = mVKSwapchainImages[imageIndex];
     barrier.oldLayout = mVKImageLayouts[imageIndex];
     barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image = mVKSwapchainImages[imageIndex];
-    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    barrier.subresourceRange.baseMipLevel = 0;
-    barrier.subresourceRange.levelCount = 1;
-    barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount = 1;
-
-    VkPipelineStageFlags srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-    switch (barrier.oldLayout)
+    DeriveStageAndAccessForLayout(barrier.oldLayout, barrier.srcAccessMask, barrier.srcStageMask);
+    if (barrier.oldLayout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
     {
-    case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
+      barrier.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
       barrier.srcAccessMask = 0;
-      srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-      break;
-    case VK_IMAGE_LAYOUT_UNDEFINED:
-      barrier.srcAccessMask = 0;
-      srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-      break;
-    default:
-      barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-      srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-      break;
     }
-    VkPipelineStageFlags dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    else if (barrier.oldLayout == VK_IMAGE_LAYOUT_UNDEFINED)
+    {
+      barrier.srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+      barrier.srcAccessMask = 0;
+    }
+#if defined(VK_KHR_synchronization2) || defined(VK_VERSION_1_3)
+    else if (barrier.oldLayout == VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR)
+    {
+      barrier.srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+      barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    }
+#endif
+    barrier.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
     IGRAPHICS_VK_LOG("BeginFrame",
                         "imageBarrier",
@@ -2055,7 +2183,7 @@ void IGraphicsSkia::BeginFrame()
                          vulkanlog::MakeField("newLayout", static_cast<int>(barrier.newLayout)),
                          vulkanlog::MakeField("frameVersion", static_cast<uint64_t>(mVKFrameVersion)),
                          vulkanlog::MakeField("swapchainVersion", static_cast<uint64_t>(mVKSwapchainVersion)));
-    vkCmdPipelineBarrier(mVKCommandBuffer, srcStageMask, dstStageMask, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+    RecordSwapchainImageBarrier(mVKCommandBuffer, barrier);
     vkEndCommandBuffer(mVKCommandBuffer);
 
     VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
@@ -2335,22 +2463,31 @@ void IGraphicsSkia::EndFrame()
     return;
   }
 
-  VkImageMemoryBarrier barrier{};
-  barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-  barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-  barrier.dstAccessMask = 0;
-  barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-  barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.image = swapImage;
-  barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-  barrier.subresourceRange.baseMipLevel = 0;
-  barrier.subresourceRange.levelCount = 1;
-  barrier.subresourceRange.baseArrayLayer = 0;
-  barrier.subresourceRange.layerCount = 1;
-
   VkImageLayout trackedLayout = (mVKCurrentImage < mVKImageLayouts.size()) ? mVKImageLayouts[mVKCurrentImage] : VK_IMAGE_LAYOUT_UNDEFINED;
+  VulkanImageBarrierConfig barrier{};
+  barrier.image = swapImage;
+  barrier.oldLayout = trackedLayout;
+  barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+  DeriveStageAndAccessForLayout(barrier.oldLayout, barrier.srcAccessMask, barrier.srcStageMask);
+  if (barrier.oldLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL || barrier.oldLayout == VK_IMAGE_LAYOUT_UNDEFINED)
+  {
+    barrier.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    barrier.srcAccessMask = (barrier.oldLayout == VK_IMAGE_LAYOUT_UNDEFINED) ? 0 : (VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+  }
+#if defined(VK_KHR_synchronization2) || defined(VK_VERSION_1_3)
+  else if (barrier.oldLayout == VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR)
+  {
+    barrier.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+  }
+  else if (barrier.oldLayout == VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR)
+  {
+    barrier.srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+  }
+#endif
+  barrier.dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+  barrier.dstAccessMask = 0;
   IGRAPHICS_VK_LOG("EndFrame",
                       "imageBarrier",
                       vulkanlog::Severity::kDebug,
@@ -2361,7 +2498,10 @@ void IGraphicsSkia::EndFrame()
                        vulkanlog::MakeField("trackedLayout", static_cast<int>(trackedLayout)),
                        vulkanlog::MakeField("frameVersion", static_cast<uint64_t>(mVKFrameVersion)),
                        vulkanlog::MakeField("swapchainVersion", static_cast<uint64_t>(mVKSwapchainVersion)));
-  vkCmdPipelineBarrier(mVKCommandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+  if (barrier.oldLayout != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
+  {
+    RecordSwapchainImageBarrier(mVKCommandBuffer, barrier);
+  }
 
   vkEndCommandBuffer(mVKCommandBuffer);
 

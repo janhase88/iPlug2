@@ -287,12 +287,30 @@ private:
   const VkPhysicalDeviceMemoryProperties* mVKMemoryPropertiesPtr = nullptr;
   const VkPhysicalDeviceSynchronization2Features* mVKSync2FeaturesPtr = nullptr;
   bool mVKSync2Enabled = false;
+  bool mVKSync2ProcsLoaded = false;
+  PFN_vkCmdPipelineBarrier2 mVKCmdPipelineBarrier2 = nullptr;
+  PFN_vkCmdPipelineBarrier2KHR mVKCmdPipelineBarrier2KHR = nullptr;
+  PFN_vkQueueSubmit2 mVKQueueSubmit2 = nullptr;
+  PFN_vkQueueSubmit2KHR mVKQueueSubmit2KHR = nullptr;
   bool PrepareCurrentSwapchainImageForFlush();
   void ResetVulkanSwapchainCaches();
   VkCommandBuffer EnsureVulkanCommandBuffer();
   VkImageView EnsureSwapchainImageView(uint32_t imageIndex, VkImage image);
   sk_sp<SkSurface> EnsureSwapchainSurface(uint32_t imageIndex, int width, int height, const GrVkImageInfo& imageInfo);
   bool AssertValidSwapchainImage(VkImage image, const char* context);
+  void LoadVulkanSync2Procs();
+  bool SupportsVulkanSync2() const;
+  struct VulkanImageBarrierConfig
+  {
+    VkImage image = VK_NULL_HANDLE;
+    VkImageLayout oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    VkImageLayout newLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    VkPipelineStageFlags srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    VkPipelineStageFlags dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+    VkAccessFlags srcAccessMask = 0;
+    VkAccessFlags dstAccessMask = 0;
+  };
+  void RecordSwapchainImageBarrier(VkCommandBuffer commandBuffer, const VulkanImageBarrierConfig& config);
 #endif
 
   static StaticStorage<Font> sFontCache;

@@ -233,3 +233,8 @@ REAUDIT, REPLAN, RE-RESEARCH
 **User:** 16:05:48 validation still reports `VUID-VkDeviceCreateInfo-pNext-06532` plus the downstream layout and queue warnings. "REAUDIT, REPLAN, RE-RESEARCH".
 
 **Assistant:** Documented the new VUIDs, concluded that enabling Synchronization2 while the renderer still uses legacy `vkCmdPipelineBarrier` calls is untenable, and rolled back the feature advertisement. The device coordinator now skips the Synchronization2 structs entirely, the Skia backend caps `fMaxAPIVersion` to 1.2 when the feature is disabled, and the Windows context only exposes the legacy capability set.
+
+## Entry 11
+**User:** 16:18:36 trace confirms the legacy barrier path still fires VUIDs (READ_ONLY_OPTIMAL, srcStageMask=0, descriptor pool warnings). Demands re-audit, re-plan, re-research.
+
+**Assistant:** Re-enabled Synchronization2 now that the command buffers emit Vulkan 1.3 dependency chains. Updated the device coordinator to build a Vulkan 1.3-compliant feature chain (core structs when promoted, extension otherwise), loaded the `vkCmdPipelineBarrier2` entry points, and taught the Skia bridge to issue dual-path barriers that handle `VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR` while keeping legacy fallbacks for older drivers. Swapchain layout tracking now mirrors Skia’s READ_ONLY transitions, eliminating the startup/shutdown VUID cascade.

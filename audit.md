@@ -41,4 +41,6 @@
 - `IGraphicsWin` captures physical-device properties, memory limits, and extension availability during context creation. A persistent `skgpu::VulkanExtensions` instance is initialized with the same extension lists used during instance/device creation.
 - `VulkanContext` transports the extension/feature/property pointers into `IGraphicsSkia`, which now forwards them into `skgpu::VulkanBackendContext` when constructing the Skia direct context.
 - Skia teardown clears cached pointers to avoid dangling references after the Vulkan device is destroyed.
+- Added a guarded forward declaration for `skgpu::VulkanExtensions` within `IGraphicsSkia.h` to ensure projects without the newer
+  Skia public header still compile while sharing the pointer metadata.
 

@@ -23,6 +23,8 @@
   #include <vulkan/vulkan.h>
   #include "include/gpu/vk/GrVkTypes.h"
 
+namespace skgpu { class VulkanExtensions; }
+
 struct VkSwapchainHolder
 {
   VkDevice device = VK_NULL_HANDLE;

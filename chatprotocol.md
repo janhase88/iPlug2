@@ -25,3 +25,8 @@
 
 **Assistant:** Implemented Vulkan context refactor: the Windows coordinator now preserves enabled features, the platform layer gathers device properties and initializes a shared `VulkanExtensions` instance, and the Skia backend forwards this metadata into `GrDirectContexts::MakeVulkan`. These changes ensure Skia honors the runtime’s synchronization capabilities during startup and teardown.
 
+## Entry 4
+**User:** Build failure: `error C2039: 'VulkanExtensions': is not a member of 'skgpu'`.
+
+**Assistant:** Added a forward declaration for `skgpu::VulkanExtensions` inside `IGraphicsSkia.h` so the Windows build compiles even when the Skia distribution does not expose `include/gpu/vk/VulkanExtensions.h`.
+

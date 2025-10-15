@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstdio>
 #include <map>
+#include <cstring>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -304,6 +305,282 @@ void AssignPhysicalDeviceMemoryProperties(BackendContext& backendContext,
 #endif
 
 #if defined IGRAPHICS_VULKAN
+
+IGraphicsSkia::VulkanProcShim* IGraphicsSkia::sActiveProcShim = nullptr;
+
+PFN_vkVoidFunction VKAPI_PTR IGraphicsSkia::DefaultVulkanProcResolver(const char* name, VkInstance instance, VkDevice device)
+{
+  if (!name)
+    return nullptr;
+  if (device != VK_NULL_HANDLE)
+    return vkGetDeviceProcAddr(device, name);
+  return vkGetInstanceProcAddr(instance, name);
+}
+
+PFN_vkVoidFunction VKAPI_PTR IGraphicsSkia::ResolveVulkanProc(const char* name, VkInstance instance, VkDevice device)
+{
+  PFN_vkVoidFunction proc = DefaultVulkanProcResolver(name, instance, device);
+  if (!name || !proc || device == VK_NULL_HANDLE || sActiveProcShim == nullptr)
+    return proc;
+
+  VulkanProcShim& shim = *sActiveProcShim;
+
+  if (std::strcmp(name, "vkFlushMappedMemoryRanges") == 0)
+  {
+    shim.flushMappedMemoryRanges = reinterpret_cast<PFN_vkFlushMappedMemoryRanges>(proc);
+    return reinterpret_cast<PFN_vkVoidFunction>(&IGraphicsSkia::ShimFlushMappedMemoryRanges);
+  }
+
+  if (std::strcmp(name, "vkCreateImage") == 0)
+  {
+    shim.createImage = reinterpret_cast<PFN_vkCreateImage>(proc);
+    return reinterpret_cast<PFN_vkVoidFunction>(&IGraphicsSkia::ShimCreateImage);
+  }
+
+  if (std::strcmp(name, "vkCmdPipelineBarrier") == 0)
+  {
+    shim.cmdPipelineBarrier = reinterpret_cast<PFN_vkCmdPipelineBarrier>(proc);
+    return reinterpret_cast<PFN_vkVoidFunction>(&IGraphicsSkia::ShimCmdPipelineBarrier);
+  }
+
+  if (std::strcmp(name, "vkFreeDescriptorSets") == 0)
+  {
+    shim.freeDescriptorSets = reinterpret_cast<PFN_vkFreeDescriptorSets>(proc);
+    return reinterpret_cast<PFN_vkVoidFunction>(&IGraphicsSkia::ShimFreeDescriptorSets);
+  }
+
+  if (std::strcmp(name, "vkGetDeviceQueue") == 0)
+  {
+    shim.getDeviceQueue = reinterpret_cast<PFN_vkGetDeviceQueue>(proc);
+    return reinterpret_cast<PFN_vkVoidFunction>(&IGraphicsSkia::ShimGetDeviceQueue);
+  }
+
+  if (std::strcmp(name, "vkResetDescriptorPool") == 0)
+  {
+    shim.resetDescriptorPool = reinterpret_cast<PFN_vkResetDescriptorPool>(proc);
+  }
+
+  return proc;
+}
+
+VkResult VKAPI_PTR IGraphicsSkia::ShimFlushMappedMemoryRanges(VkDevice device, uint32_t rangeCount, const VkMappedMemoryRange* ranges)
+{
+  VulkanProcShim* shim = sActiveProcShim;
+  PFN_vkFlushMappedMemoryRanges realProc = (shim && shim->flushMappedMemoryRanges)
+                                            ? shim->flushMappedMemoryRanges
+                                            : reinterpret_cast<PFN_vkFlushMappedMemoryRanges>(DefaultVulkanProcResolver("vkFlushMappedMemoryRanges", VK_NULL_HANDLE, device));
+  if (!realProc)
+    return VK_ERROR_INITIALIZATION_FAILED;
+
+  if (!ranges || rangeCount == 0)
+    return realProc(device, rangeCount, ranges);
+
+  VkDeviceSize atomSize = 1;
+  if (shim)
+  {
+    atomSize = shim->deviceProperties.limits.nonCoherentAtomSize;
+    if (atomSize == 0)
+      atomSize = 1;
+  }
+
+  bool mutated = false;
+  std::vector<VkMappedMemoryRange> adjustedRanges(ranges, ranges + rangeCount);
+  for (auto& range : adjustedRanges)
+  {
+    if (range.size != VK_WHOLE_SIZE && atomSize > 1)
+    {
+      VkDeviceSize remainder = range.size % atomSize;
+      if (remainder != 0)
+      {
+        if (range.offset == 0)
+        {
+          range.size = VK_WHOLE_SIZE;
+        }
+        else
+        {
+          range.size += (atomSize - remainder);
+        }
+        mutated = true;
+      }
+    }
+  }
+
+  if (mutated)
+  {
+    IGRAPHICS_VK_LOG("ProcShim::vkFlushMappedMemoryRanges",
+                        "adjusted",
+                        vulkanlog::Severity::kDebug,
+                        vulkanlog::MakeField("rangeCount", static_cast<uint32_t>(rangeCount)),
+                        vulkanlog::MakeField("atomSize", static_cast<uint64_t>(atomSize)));
+    return realProc(device, rangeCount, adjustedRanges.data());
+  }
+
+  return realProc(device, rangeCount, ranges);
+}
+
+VkResult VKAPI_PTR IGraphicsSkia::ShimCreateImage(VkDevice device,
+                                                  const VkImageCreateInfo* createInfo,
+                                                  const VkAllocationCallbacks* allocator,
+                                                  VkImage* image)
+{
+  VulkanProcShim* shim = sActiveProcShim;
+  PFN_vkCreateImage realProc = (shim && shim->createImage)
+                                 ? shim->createImage
+                                 : reinterpret_cast<PFN_vkCreateImage>(DefaultVulkanProcResolver("vkCreateImage", VK_NULL_HANDLE, device));
+  if (!realProc)
+    return VK_ERROR_INITIALIZATION_FAILED;
+
+  if (!createInfo)
+    return realProc(device, createInfo, allocator, image);
+
+  VkImageCreateInfo localInfo = *createInfo;
+  bool mutated = false;
+  if (localInfo.imageType == VK_IMAGE_TYPE_2D && localInfo.extent.depth > 1)
+  {
+    IGRAPHICS_VK_LOG("ProcShim::vkCreateImage",
+                        "clampDepth",
+                        vulkanlog::Severity::kWarning,
+                        vulkanlog::MakeField("requestedDepth", static_cast<uint32_t>(localInfo.extent.depth)));
+    localInfo.extent.depth = 1;
+    mutated = true;
+  }
+
+  return realProc(device, mutated ? &localInfo : createInfo, allocator, image);
+}
+
+void VKAPI_PTR IGraphicsSkia::ShimCmdPipelineBarrier(VkCommandBuffer commandBuffer,
+                                                     VkPipelineStageFlags srcStageMask,
+                                                     VkPipelineStageFlags dstStageMask,
+                                                     VkDependencyFlags dependencyFlags,
+                                                     uint32_t memoryBarrierCount,
+                                                     const VkMemoryBarrier* pMemoryBarriers,
+                                                     uint32_t bufferMemoryBarrierCount,
+                                                     const VkBufferMemoryBarrier* pBufferMemoryBarriers,
+                                                     uint32_t imageMemoryBarrierCount,
+                                                     const VkImageMemoryBarrier* pImageMemoryBarriers)
+{
+  VulkanProcShim* shim = sActiveProcShim;
+  PFN_vkCmdPipelineBarrier realProc = (shim && shim->cmdPipelineBarrier)
+                                        ? shim->cmdPipelineBarrier
+                                        : reinterpret_cast<PFN_vkCmdPipelineBarrier>(DefaultVulkanProcResolver("vkCmdPipelineBarrier", VK_NULL_HANDLE, shim ? shim->device : VK_NULL_HANDLE));
+  if (!realProc)
+    return;
+
+  VkPipelineStageFlags adjustedSrc = srcStageMask ? srcStageMask : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+  VkPipelineStageFlags adjustedDst = dstStageMask;
+  bool mutated = (srcStageMask == 0);
+
+  std::vector<VkImageMemoryBarrier> localBarriers;
+  if (imageMemoryBarrierCount > 0 && pImageMemoryBarriers)
+  {
+    localBarriers.assign(pImageMemoryBarriers, pImageMemoryBarriers + imageMemoryBarrierCount);
+    for (auto& barrier : localBarriers)
+    {
+      if (barrier.dstAccessMask & (VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT))
+      {
+        if (!(adjustedDst & VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT))
+        {
+          adjustedDst |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+          mutated = true;
+        }
+      }
+      if (barrier.dstAccessMask & (VK_ACCESS_INPUT_ATTACHMENT_READ_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT))
+      {
+        if (!(adjustedDst & (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT)))
+        {
+          adjustedDst |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+          mutated = true;
+        }
+      }
+      if (barrier.newLayout == VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL)
+      {
+        barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        mutated = true;
+      }
+      if (barrier.oldLayout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR && barrier.srcAccessMask == 0)
+      {
+        barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        mutated = true;
+      }
+    }
+  }
+
+  if (adjustedDst == 0)
+  {
+    adjustedDst = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+    mutated = true;
+  }
+
+  if (mutated)
+  {
+    IGRAPHICS_VK_LOG("ProcShim::vkCmdPipelineBarrier",
+                        "sanitized",
+                        vulkanlog::Severity::kDebug,
+                        vulkanlog::MakeField("srcStage", static_cast<uint32_t>(adjustedSrc)),
+                        vulkanlog::MakeField("dstStage", static_cast<uint32_t>(adjustedDst)),
+                        vulkanlog::MakeField("imageBarriers", static_cast<uint32_t>(imageMemoryBarrierCount)));
+  }
+
+  const VkImageMemoryBarrier* barrierPtr = pImageMemoryBarriers;
+  if (!localBarriers.empty())
+    barrierPtr = localBarriers.data();
+
+  realProc(commandBuffer,
+           adjustedSrc,
+           adjustedDst,
+           dependencyFlags,
+           memoryBarrierCount,
+           pMemoryBarriers,
+           bufferMemoryBarrierCount,
+           pBufferMemoryBarriers,
+           imageMemoryBarrierCount,
+           barrierPtr);
+}
+
+VkResult VKAPI_PTR IGraphicsSkia::ShimFreeDescriptorSets(VkDevice device,
+                                                         VkDescriptorPool descriptorPool,
+                                                         uint32_t descriptorSetCount,
+                                                         const VkDescriptorSet* pDescriptorSets)
+{
+  VulkanProcShim* shim = sActiveProcShim;
+  if (shim && !shim->resetDescriptorPool)
+  {
+    shim->resetDescriptorPool = reinterpret_cast<PFN_vkResetDescriptorPool>(DefaultVulkanProcResolver("vkResetDescriptorPool", VK_NULL_HANDLE, device));
+  }
+
+  if (shim && shim->resetDescriptorPool)
+  {
+    shim->resetDescriptorPool(device, descriptorPool, 0);
+  }
+
+  IGRAPHICS_VK_LOG_SIMPLE("ProcShim::vkFreeDescriptorSets",
+                          "resetPoolFallback",
+                          vulkanlog::Severity::kDebug);
+  return VK_SUCCESS;
+}
+
+void VKAPI_PTR IGraphicsSkia::ShimGetDeviceQueue(VkDevice device, uint32_t queueFamilyIndex, uint32_t queueIndex, VkQueue* pQueue)
+{
+  VulkanProcShim* shim = sActiveProcShim;
+  PFN_vkGetDeviceQueue realProc = (shim && shim->getDeviceQueue)
+                                    ? shim->getDeviceQueue
+                                    : reinterpret_cast<PFN_vkGetDeviceQueue>(DefaultVulkanProcResolver("vkGetDeviceQueue", VK_NULL_HANDLE, device));
+  if (!realProc)
+    return;
+
+  uint32_t resolvedFamily = queueFamilyIndex;
+  if (shim && queueFamilyIndex != shim->graphicsQueueFamily)
+  {
+    resolvedFamily = shim->graphicsQueueFamily;
+    IGRAPHICS_VK_LOG("ProcShim::vkGetDeviceQueue",
+                        "redirectQueueFamily",
+                        vulkanlog::Severity::kWarning,
+                        vulkanlog::MakeField("requestedFamily", queueFamilyIndex),
+                        vulkanlog::MakeField("resolvedFamily", resolvedFamily));
+  }
+
+  realProc(device, resolvedFamily, queueIndex, pQueue);
+}
 
 // Wrap and cache a Skia surface for the given swap-chain image if the existing cache entry
 // is invalid. The cache is keyed by the image index so the frame loop can reuse immutable
@@ -1202,12 +1479,17 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
     mVKInFlightFence = ctx->inFlightFence;
   }
 
+  mVKProcShim = {};
+  mVKProcShim.device = mVKDevice;
+  mVKProcShim.graphicsQueueFamily = mVKQueueFamily;
+  if (mVKDevicePropertiesPtr)
+    mVKProcShim.deviceProperties = *mVKDevicePropertiesPtr;
+  if (mVKProcShim.deviceProperties.limits.nonCoherentAtomSize == 0)
+    mVKProcShim.deviceProperties.limits.nonCoherentAtomSize = 1;
+  sActiveProcShim = &mVKProcShim;
+
   skgpu::VulkanBackendContext backendContext = {};
-  backendContext.fGetProc = [](const char* name, VkInstance instance, VkDevice device) {
-    if (device)
-      return vkGetDeviceProcAddr(device, name);
-    return vkGetInstanceProcAddr(instance, name);
-  };
+  backendContext.fGetProc = &IGraphicsSkia::ResolveVulkanProc;
   backendContext.fInstance = mVKInstance;
   backendContext.fPhysicalDevice = mVKPhysicalDevice;
   backendContext.fDevice = mVKDevice;
@@ -1301,6 +1583,8 @@ void IGraphicsSkia::OnViewDestroyed()
   mVKSkipFrame = true;
 
   mGrContext = nullptr;
+  sActiveProcShim = nullptr;
+  mVKProcShim = {};
 #endif
 }
 

@@ -40,3 +40,8 @@
 
 **Assistant:** Added compile-time detection helpers so `IGraphicsSkia` only writes physical-device property pointers into `skgpu::VulkanBackendContext` when the linked Skia SDK exposes those fields, keeping older binary distributions building while still forwarding the data when available.
 
+## Entry 7
+**User:** Still the same validation spam. Are we finally moving forward? Are you focusing on the right issue? Maybe the debug output is not tight enough for you to fix it? Where are you stuck?
+
+**Assistant:** Yes—we now have a concrete path forward. The remaining validation noise originates from Skia issuing spec-incompatible Vulkan calls during startup/teardown, so I’m building a compatibility shim that intercepts those entry points via `VulkanBackendContext::fGetProc`. The shim will redirect queue requests to the graphics family we actually created, pad non-coherent flushes to the hardware atom size, coerce layout transitions/stage masks into spec-compliant values, clamp the bogus image depth, and replace descriptor frees with pool resets. The existing debug trace already pinpoints each violation, so I’m no longer blocked and will implement the shim immediately.
+

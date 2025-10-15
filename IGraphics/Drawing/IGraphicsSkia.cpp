@@ -1580,6 +1580,10 @@ void IGraphicsSkia::DrawResize()
     SkImageInfo info = SkImageInfo::MakeN32Premul(w, h);
     mSurface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info);
   #if defined IGRAPHICS_VULKAN
+    if (!mSurface)
+    {
+      IGRAPHICS_VK_LOG_SIMPLE("DrawResize", "renderTargetCreationFailed", vulkanlog::Severity::kError);
+    }
     if (mVKDevice && mVKSurface)
     {
     #if defined OS_WIN
@@ -1671,6 +1675,15 @@ void IGraphicsSkia::DrawResize()
     #endif
     }
   #endif
+  }
+
+  if (!mSurface)
+  {
+  #if defined IGRAPHICS_VULKAN
+    IGRAPHICS_VK_LOG_SIMPLE("DrawResize", "fallbackRasterSurface", vulkanlog::Severity::kWarning);
+  #endif
+    SkImageInfo info = SkImageInfo::MakeN32Premul(w, h);
+    mSurface = SkSurfaces::Raster(info);
   }
 #else
   #ifdef OS_WIN

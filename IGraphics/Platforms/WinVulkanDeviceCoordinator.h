@@ -500,6 +500,7 @@ inline VkResult WinVulkanDeviceCoordinator::SelectPhysicalDevice(const WinVulkan
   }
 
   state.snapshot.physicalDevice = selectedDevice;
+  state.snapshot.queueFamily = selectedQueueFamily;
   state.selectedQueueFamily = selectedQueueFamily;
   return VK_SUCCESS;
 }
@@ -517,6 +518,8 @@ inline VkResult WinVulkanDeviceCoordinator::CreateLogicalDevice()
   {
     return VK_ERROR_INITIALIZATION_FAILED;
   }
+
+  state.snapshot.queueFamily = state.selectedQueueFamily;
 
   VkPhysicalDeviceFeatures supportedFeatures;
   vkGetPhysicalDeviceFeatures(state.snapshot.physicalDevice, &supportedFeatures);
@@ -542,7 +545,7 @@ inline VkResult WinVulkanDeviceCoordinator::CreateLogicalDevice()
   float queuePriority = 1.f;
   VkDeviceQueueCreateInfo queueInfo{};
   queueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-  queueInfo.queueFamilyIndex = state.selectedQueueFamily;
+  queueInfo.queueFamilyIndex = state.snapshot.queueFamily;
   queueInfo.queueCount = 1;
   queueInfo.pQueuePriorities = &queuePriority;
 
@@ -589,8 +592,8 @@ inline VkResult WinVulkanDeviceCoordinator::CreateLogicalDevice()
   {
     state.snapshot.synchronization2Features = synchronization2Features;
   }
-  vkGetDeviceQueue(state.snapshot.device, state.selectedQueueFamily, 0, &state.snapshot.presentQueue);
-  state.snapshot.queueFamily = state.selectedQueueFamily;
+  vkGetDeviceQueue(state.snapshot.device, state.snapshot.queueFamily, 0, &state.snapshot.presentQueue);
+  state.selectedQueueFamily = state.snapshot.queueFamily;
   return VK_SUCCESS;
 }
 

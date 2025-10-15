@@ -141,6 +141,10 @@ extern std::map<std::string, MTLTexturePtr> gTextureMap;
 #if defined IGRAPHICS_VULKAN
 namespace
 {
+#if !defined(IGRAPHICS_VK_HAS_VULKAN_EXTENSIONS)
+  #define IGRAPHICS_VK_HAS_VULKAN_EXTENSIONS 0
+#endif
+
 template <typename...>
 struct MakeVoid
 {
@@ -260,6 +264,16 @@ struct HasPhysicalDeviceMemoryPropertiesField<T, VoidT<decltype(std::declval<T&>
 {
 };
 
+template <typename T, typename = void>
+struct HasVkExtensionsField : std::false_type
+{
+};
+
+template <typename T>
+struct HasVkExtensionsField<T, VoidT<decltype(std::declval<T&>().fVkExtensions)>> : std::true_type
+{
+};
+
 template <typename BackendContext>
 void AssignPhysicalDevicePropertiesImpl(BackendContext& backendContext,
                                         const VkPhysicalDeviceProperties* properties,
@@ -299,6 +313,25 @@ void AssignPhysicalDeviceMemoryProperties(BackendContext& backendContext,
   AssignPhysicalDeviceMemoryPropertiesImpl(backendContext,
                                            properties,
                                            HasPhysicalDeviceMemoryPropertiesField<BackendContext>());
+}
+
+template <typename BackendContext>
+void AssignVulkanExtensionsImpl(BackendContext& backendContext,
+                                const skgpu::VulkanExtensions* extensions,
+                                std::true_type)
+{
+  backendContext.fVkExtensions = extensions;
+}
+
+template <typename BackendContext>
+void AssignVulkanExtensionsImpl(BackendContext&, const skgpu::VulkanExtensions*, std::false_type)
+{
+}
+
+template <typename BackendContext>
+void AssignVulkanExtensions(BackendContext& backendContext, const skgpu::VulkanExtensions* extensions)
+{
+  AssignVulkanExtensionsImpl(backendContext, extensions, HasVkExtensionsField<BackendContext>());
 }
 } // namespace
 #endif
@@ -1214,7 +1247,14 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   backendContext.fQueue = mVKQueue;
   backendContext.fGraphicsQueueIndex = mVKQueueFamily;
   backendContext.fMaxAPIVersion = VK_API_VERSION_1_1;
-  backendContext.fVkExtensions = mVulkanExtensions;
+  if (IGRAPHICS_VK_HAS_VULKAN_EXTENSIONS)
+  {
+    AssignVulkanExtensions(backendContext, mVulkanExtensions);
+  }
+  else
+  {
+    AssignVulkanExtensions(backendContext, nullptr);
+  }
   backendContext.fDeviceFeatures = mVKDeviceFeaturesPtr;
   backendContext.fDeviceFeatures2 = mVKDeviceFeatures2Ptr;
   AssignPhysicalDeviceProperties(backendContext, mVKDevicePropertiesPtr);

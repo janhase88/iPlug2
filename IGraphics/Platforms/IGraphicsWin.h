@@ -36,8 +36,17 @@
   #include <vulkan/vulkan.h>
   #include <vulkan/vulkan_win32.h>
   #include "WinVulkanDeviceCoordinator.h"
-
-namespace skgpu { class VulkanExtensions; }
+  #if __has_include("include/gpu/vk/VulkanExtensions.h")
+    #include "include/gpu/vk/VulkanExtensions.h"
+    #ifndef IGRAPHICS_VK_HAS_VULKAN_EXTENSIONS
+      #define IGRAPHICS_VK_HAS_VULKAN_EXTENSIONS 1
+    #endif
+  #else
+    #ifndef IGRAPHICS_VK_HAS_VULKAN_EXTENSIONS
+      #define IGRAPHICS_VK_HAS_VULKAN_EXTENSIONS 0
+    #endif
+    namespace skgpu { class VulkanExtensions; }
+  #endif
 #endif
 
 

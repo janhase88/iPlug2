@@ -39,12 +39,10 @@
 
 ## Implementation Notes
 - `WinVulkanDeviceCoordinator` now records the enabled device features in its snapshot so the renderer can advertise accurate capability metadata to Skia.
-- `IGraphicsWin` captures physical-device properties, memory limits, and extension availability during context creation. A persistent `skgpu::VulkanExtensions` instance is initialized with the same extension lists used during instance/device creation.
+- `IGraphicsWin` captures physical-device properties, memory limits, and extension availability during context creation. When the Skia SDK exposes `VulkanExtensions`, a persistent instance is initialized with the same extension lists used during instance/device creation and skipped when the header is absent.
 - `VulkanContext` transports the extension/feature/property pointers into `IGraphicsSkia`, which now forwards them into `skgpu::VulkanBackendContext` when constructing the Skia direct context.
 - Added propagation of `VkPhysicalDeviceFeatures2`, `VkPhysicalDeviceProperties`, and `VkPhysicalDeviceMemoryProperties` so Skia aligns buffer flushes and layout decisions with the actual hardware limits reported by the coordinator.
 - Skia teardown clears cached pointers to avoid dangling references after the Vulkan device is destroyed.
-- Added a guarded forward declaration for `skgpu::VulkanExtensions` within `IGraphicsSkia.h` to ensure projects without the newer
-  Skia public header still compile while sharing the pointer metadata.
-- Introduced compile-time detection helpers so the backend context only writes physical-device property pointers when the linked
-  Skia SDK exposes those fields, preserving compatibility with older toolchains while forwarding the data when available.
+- Added conditional compilation so projects that lack Skia's `VulkanExtensions` header continue to build while still sharing the pointer metadata when available.
+- Introduced compile-time detection helpers so the backend context only writes physical-device property pointers (and the optional extension pointer) when the linked Skia SDK exposes those fields, preserving compatibility with older toolchains while forwarding the data when available.
 

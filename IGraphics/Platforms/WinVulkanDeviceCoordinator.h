@@ -17,7 +17,6 @@
 #include "IPlugLogger.h"
 
 #include "VulkanLogging.h"
-#include "include/gpu/vk/VulkanExtensions.h"
 
 BEGIN_IPLUG_NAMESPACE
 BEGIN_IGRAPHICS_NAMESPACE

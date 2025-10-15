@@ -23,7 +23,16 @@
 #include "SchedulerLogging.h"
 #if defined IGRAPHICS_VULKAN
   #include "VulkanLogging.h"
-  #include "include/gpu/vk/VulkanExtensions.h"
+  #if __has_include("include/gpu/vk/VulkanExtensions.h")
+    #include "include/gpu/vk/VulkanExtensions.h"
+    #ifndef IGRAPHICS_VK_HAS_VULKAN_EXTENSIONS
+      #define IGRAPHICS_VK_HAS_VULKAN_EXTENSIONS 1
+    #endif
+  #else
+    #ifndef IGRAPHICS_VK_HAS_VULKAN_EXTENSIONS
+      #define IGRAPHICS_VK_HAS_VULKAN_EXTENSIONS 0
+    #endif
+  #endif
 #endif
 
 #include <VersionHelpers.h>
@@ -3798,6 +3807,7 @@ bool IGraphicsWin::CreateVulkanContext()
     return vkGetInstanceProcAddr(instance, name);
   };
 
+#if IGRAPHICS_VK_HAS_VULKAN_EXTENSIONS
   mVkExtensions = std::make_unique<skgpu::VulkanExtensions>();
   mVkExtensions->init(getProc,
                       mVkInstance,
@@ -3806,6 +3816,7 @@ bool IGraphicsWin::CreateVulkanContext()
                       winvk::kRequiredInstanceExtensions.data(),
                       static_cast<uint32_t>(winvk::kRequiredDeviceExtensions.size()),
                       winvk::kRequiredDeviceExtensions.data());
+#endif
   mVulkanDeviceGeneration = generation;
 
   VkSurfaceCapabilitiesKHR caps{};
@@ -3935,7 +3946,11 @@ bool IGraphicsWin::RecreateVulkanContext()
   ctx.swapchainImages = &mVkSwapchainImages;
   ctx.format = mVkFormat;
   ctx.usageFlags = mVkSwapchainUsageFlags;
+#if IGRAPHICS_VK_HAS_VULKAN_EXTENSIONS
   ctx.extensions = mVkExtensions.get();
+#else
+  ctx.extensions = nullptr;
+#endif
   ctx.deviceFeatures = &mVkEnabledFeatures;
   ctx.deviceFeatures2 = &mVkEnabledFeatures2;
   ctx.deviceProperties = &mVkDeviceProperties;

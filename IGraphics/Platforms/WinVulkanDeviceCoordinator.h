@@ -86,6 +86,7 @@ private:
     uint64_t snapshotGeneration = 0;
     uint32_t activeClients = 0;
     bool supportsSynchronization2 = false;
+    uint32_t selectedQueueFamily = UINT32_MAX;
   };
 
   static SharedState& Shared();
@@ -180,6 +181,7 @@ inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequ
   outGeneration = 0;
   state.activeClients = 0;
   state.supportsSynchronization2 = false;
+  state.selectedQueueFamily = UINT32_MAX;
   mClientSurface = VK_NULL_HANDLE;
 
   VkResult res = CreateInstance(request);
@@ -498,7 +500,7 @@ inline VkResult WinVulkanDeviceCoordinator::SelectPhysicalDevice(const WinVulkan
   }
 
   state.snapshot.physicalDevice = selectedDevice;
-  state.snapshot.queueFamily = selectedQueueFamily;
+  state.selectedQueueFamily = selectedQueueFamily;
   return VK_SUCCESS;
 }
 
@@ -507,6 +509,11 @@ inline VkResult WinVulkanDeviceCoordinator::CreateLogicalDevice()
   SharedState& state = *mState;
 
   if (state.snapshot.physicalDevice == VK_NULL_HANDLE)
+  {
+    return VK_ERROR_INITIALIZATION_FAILED;
+  }
+
+  if (state.selectedQueueFamily == UINT32_MAX)
   {
     return VK_ERROR_INITIALIZATION_FAILED;
   }
@@ -535,7 +542,7 @@ inline VkResult WinVulkanDeviceCoordinator::CreateLogicalDevice()
   float queuePriority = 1.f;
   VkDeviceQueueCreateInfo queueInfo{};
   queueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-  queueInfo.queueFamilyIndex = state.snapshot.queueFamily;
+  queueInfo.queueFamilyIndex = state.selectedQueueFamily;
   queueInfo.queueCount = 1;
   queueInfo.pQueuePriorities = &queuePriority;
 
@@ -582,7 +589,8 @@ inline VkResult WinVulkanDeviceCoordinator::CreateLogicalDevice()
   {
     state.snapshot.synchronization2Features = synchronization2Features;
   }
-  vkGetDeviceQueue(state.snapshot.device, state.snapshot.queueFamily, 0, &state.snapshot.presentQueue);
+  vkGetDeviceQueue(state.snapshot.device, state.selectedQueueFamily, 0, &state.snapshot.presentQueue);
+  state.snapshot.queueFamily = state.selectedQueueFamily;
   return VK_SUCCESS;
 }
 
@@ -603,6 +611,7 @@ inline void WinVulkanDeviceCoordinator::ResetSnapshot()
   snapshot.synchronization2Enabled = false;
   snapshot.validationLayerEnabled = false;
   snapshot.generation = 0;
+  mState->selectedQueueFamily = UINT32_MAX;
 }
 
 END_IGRAPHICS_NAMESPACE

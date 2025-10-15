@@ -1512,7 +1512,6 @@ void IGraphicsSkia::DrawResize()
       {
         IGRAPHICS_VK_LOG_SIMPLE("DrawResize", "skipFlushNoPreparedSwapchainImage", vulkanlog::Severity::kInfo);
       }
-      ReleaseSkiaGpuResources(mGrContext.get());
     }
     if (mVKCommandBuffer != VK_NULL_HANDLE)
     {
@@ -1792,7 +1791,7 @@ void IGraphicsSkia::BeginFrame()
                               vulkanlog::Severity::kError);
         }
         vkResetFences(mVKDevice, 1, &mVKInFlightFence);
-        VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submitInfo.waitSemaphoreCount = 1;
@@ -1827,7 +1826,7 @@ void IGraphicsSkia::BeginFrame()
                            vulkanlog::MakeField("frameVersion", static_cast<uint64_t>(mVKFrameVersion)),
                            vulkanlog::MakeField("swapchainVersion", static_cast<uint64_t>(mVKSwapchainVersion)));
       mVKCurrentImage = idx;
-      VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+      VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
       VkSubmitInfo submitInfo{};
       submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
       submitInfo.waitSemaphoreCount = present ? 1 : 0;
@@ -2062,7 +2061,7 @@ void IGraphicsSkia::BeginFrame()
     vkCmdPipelineBarrier(mVKCommandBuffer, srcStageMask, dstStageMask, 0, 0, nullptr, 0, nullptr, 1, &barrier);
     vkEndCommandBuffer(mVKCommandBuffer);
 
-    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.waitSemaphoreCount = 1;

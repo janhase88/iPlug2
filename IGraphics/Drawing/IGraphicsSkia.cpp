@@ -2,9 +2,11 @@
 #include <cmath>
 #include <cstdio>
 #include <map>
+#include <mutex>
 #include <type_traits>
 #include <utility>
 #include <vector>
+#include <cstring>
 
 #include "IGraphicsSkia.h"
 
@@ -141,6 +143,58 @@ extern std::map<std::string, MTLTexturePtr> gTextureMap;
 #if defined IGRAPHICS_VULKAN
 namespace
 {
+static std::mutex gDescriptorPoolProcMutex;
+static PFN_vkCreateDescriptorPool gRealCreateDescriptorPool = nullptr;
+
+static VKAPI_ATTR VkResult VKAPI_CALL CreateDescriptorPoolWithFreeFlag(VkDevice device,
+                                                                      const VkDescriptorPoolCreateInfo* pCreateInfo,
+                                                                      const VkAllocationCallbacks* pAllocator,
+                                                                      VkDescriptorPool* pDescriptorPool)
+{
+  PFN_vkCreateDescriptorPool realProc = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(gDescriptorPoolProcMutex);
+    realProc = gRealCreateDescriptorPool;
+  }
+
+  if (!realProc)
+    return VK_ERROR_INITIALIZATION_FAILED;
+
+  VkDescriptorPoolCreateInfo patchedInfo{};
+  const VkDescriptorPoolCreateInfo* infoPtr = pCreateInfo;
+  if (pCreateInfo)
+  {
+    patchedInfo = *pCreateInfo;
+    patchedInfo.flags |= VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+    infoPtr = &patchedInfo;
+  }
+
+  return realProc(device, infoPtr, pAllocator, pDescriptorPool);
+}
+
+static PFN_vkVoidFunction VKAPI_PTR ResolveVulkanProcWithDescriptorPoolFix(const char* name,
+                                                                           VkInstance instance,
+                                                                           VkDevice device)
+{
+  PFN_vkVoidFunction proc = nullptr;
+  if (device)
+    proc = vkGetDeviceProcAddr(device, name);
+  if (!proc && instance)
+    proc = vkGetInstanceProcAddr(instance, name);
+
+  if (!proc || !name)
+    return proc;
+
+  if (std::strcmp(name, "vkCreateDescriptorPool") == 0)
+  {
+    std::lock_guard<std::mutex> lock(gDescriptorPoolProcMutex);
+    gRealCreateDescriptorPool = reinterpret_cast<PFN_vkCreateDescriptorPool>(proc);
+    return reinterpret_cast<PFN_vkVoidFunction>(&CreateDescriptorPoolWithFreeFlag);
+  }
+
+  return proc;
+}
+
 template <typename...>
 struct MakeVoid
 {
@@ -201,198 +255,6 @@ void ReleaseSkiaGpuResources(Context* context)
     return;
 
   ReleaseSkiaGpuResourcesImpl<Context>::Apply(context);
-}
-
-class VulkanDescriptorPoolTracker
-{
-public:
-  static PFN_vkVoidFunction MaybeIntercept(const char* name,
-                                           VkInstance instance,
-                                           PFN_vkVoidFunction proc)
-  {
-    if (!name || !proc)
-      return proc;
-
-    if (instance != VK_NULL_HANDLE)
-    {
-      std::lock_guard<std::mutex> lock(mMutex);
-      mLastInstance = instance;
-    }
-
-    if (std::strcmp(name, "vkCreateDescriptorPool") == 0)
-    {
-      Register(reinterpret_cast<PFN_vkCreateDescriptorPool>(proc), nullptr, nullptr);
-      return reinterpret_cast<PFN_vkVoidFunction>(&VulkanDescriptorPoolTracker::Create); // NOLINT
-    }
-
-    if (std::strcmp(name, "vkFreeDescriptorSets") == 0)
-    {
-      Register(nullptr, reinterpret_cast<PFN_vkFreeDescriptorSets>(proc), nullptr);
-      return reinterpret_cast<PFN_vkVoidFunction>(&VulkanDescriptorPoolTracker::Free); // NOLINT
-    }
-
-    if (std::strcmp(name, "vkDestroyDescriptorPool") == 0)
-    {
-      Register(nullptr, nullptr, reinterpret_cast<PFN_vkDestroyDescriptorPool>(proc));
-      return reinterpret_cast<PFN_vkVoidFunction>(&VulkanDescriptorPoolTracker::Destroy); // NOLINT
-    }
-
-    return proc;
-  }
-
-  static void Reset()
-  {
-    std::lock_guard<std::mutex> lock(mMutex);
-    mDispatch = {};
-    mPools.clear();
-    mLastInstance = VK_NULL_HANDLE;
-  }
-
-private:
-  struct Dispatch
-  {
-    PFN_vkCreateDescriptorPool fCreate = nullptr;
-    PFN_vkFreeDescriptorSets fFree = nullptr;
-    PFN_vkDestroyDescriptorPool fDestroy = nullptr;
-  };
-
-  static void Register(PFN_vkCreateDescriptorPool create,
-                       PFN_vkFreeDescriptorSets free,
-                       PFN_vkDestroyDescriptorPool destroy)
-  {
-    std::lock_guard<std::mutex> lock(mMutex);
-    if (create)
-      mDispatch.fCreate = create;
-    if (free)
-      mDispatch.fFree = free;
-    if (destroy)
-      mDispatch.fDestroy = destroy;
-  }
-
-  static Dispatch CurrentDispatch()
-  {
-    std::lock_guard<std::mutex> lock(mMutex);
-    return mDispatch;
-  }
-
-  static void StorePool(VkDescriptorPool pool, bool allowsFree)
-  {
-    if (pool == VK_NULL_HANDLE)
-      return;
-
-    std::lock_guard<std::mutex> lock(mMutex);
-    mPools[pool] = allowsFree;
-  }
-
-  static bool AllowsIndividualFree(VkDescriptorPool pool)
-  {
-    std::lock_guard<std::mutex> lock(mMutex);
-    auto it = mPools.find(pool);
-    if (it != mPools.end())
-      return it->second;
-    return true;
-  }
-
-  static void ForgetPool(VkDescriptorPool pool)
-  {
-    if (pool == VK_NULL_HANDLE)
-      return;
-
-    std::lock_guard<std::mutex> lock(mMutex);
-    mPools.erase(pool);
-  }
-
-  static VkInstance LastInstance()
-  {
-    std::lock_guard<std::mutex> lock(mMutex);
-    return mLastInstance;
-  }
-
-  static VKAPI_ATTR VkResult VKAPI_CALL Create(VkDevice device,
-                                               const VkDescriptorPoolCreateInfo* pCreateInfo,
-                                               const VkAllocationCallbacks* pAllocator,
-                                               VkDescriptorPool* pDescriptorPool)
-  {
-    Dispatch dispatch = CurrentDispatch();
-    if (!dispatch.fCreate || !pCreateInfo)
-      return VK_ERROR_INITIALIZATION_FAILED;
-
-    VkResult result = dispatch.fCreate(device, pCreateInfo, pAllocator, pDescriptorPool);
-    if (result == VK_SUCCESS && pDescriptorPool)
-    {
-      bool allowsFree = (pCreateInfo->flags & VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT) != 0;
-      StorePool(*pDescriptorPool, allowsFree);
-    }
-    return result;
-  }
-
-  static VKAPI_ATTR VkResult VKAPI_CALL Free(VkDevice device,
-                                             VkDescriptorPool descriptorPool,
-                                             uint32_t descriptorSetCount,
-                                             const VkDescriptorSet* pDescriptorSets)
-  {
-    Dispatch dispatch = CurrentDispatch();
-    if (!dispatch.fFree)
-      return VK_ERROR_INITIALIZATION_FAILED;
-
-    if (AllowsIndividualFree(descriptorPool))
-    {
-      return dispatch.fFree(device, descriptorPool, descriptorSetCount, pDescriptorSets);
-    }
-
-    PFN_vkResetDescriptorPool resetProc = nullptr;
-    if (device != VK_NULL_HANDLE)
-      resetProc = reinterpret_cast<PFN_vkResetDescriptorPool>(vkGetDeviceProcAddr(device, "vkResetDescriptorPool"));
-
-    if (!resetProc)
-    {
-      VkInstance instance = LastInstance();
-      if (instance != VK_NULL_HANDLE)
-        resetProc = reinterpret_cast<PFN_vkResetDescriptorPool>(vkGetInstanceProcAddr(instance, "vkResetDescriptorPool"));
-    }
-
-    if (resetProc)
-    {
-      resetProc(device, descriptorPool, 0);
-    }
-
-    return VK_SUCCESS;
-  }
-
-  static VKAPI_ATTR void VKAPI_CALL Destroy(VkDevice device,
-                                            VkDescriptorPool descriptorPool,
-                                            const VkAllocationCallbacks* pAllocator)
-  {
-    Dispatch dispatch = CurrentDispatch();
-    if (dispatch.fDestroy)
-      dispatch.fDestroy(device, descriptorPool, pAllocator);
-    ForgetPool(descriptorPool);
-  }
-
-  static std::mutex mMutex;
-  static Dispatch mDispatch;
-  static std::unordered_map<VkDescriptorPool, bool> mPools;
-  static VkInstance mLastInstance;
-};
-
-std::mutex VulkanDescriptorPoolTracker::mMutex;
-VulkanDescriptorPoolTracker::Dispatch VulkanDescriptorPoolTracker::mDispatch = {};
-std::unordered_map<VkDescriptorPool, bool> VulkanDescriptorPoolTracker::mPools;
-VkInstance VulkanDescriptorPoolTracker::mLastInstance = VK_NULL_HANDLE;
-
-static VkInstance gVulkanDefaultInstance = VK_NULL_HANDLE;
-
-static PFN_vkVoidFunction VKAPI_PTR ResolveVulkanProc(const char* name, VkInstance instance, VkDevice device)
-{
-  PFN_vkVoidFunction proc = nullptr;
-  if (device != VK_NULL_HANDLE)
-    proc = vkGetDeviceProcAddr(device, name);
-
-  VkInstance effectiveInstance = (instance != VK_NULL_HANDLE) ? instance : gVulkanDefaultInstance;
-  if (!proc && effectiveInstance != VK_NULL_HANDLE)
-    proc = vkGetInstanceProcAddr(effectiveInstance, name);
-
-  return VulkanDescriptorPoolTracker::MaybeIntercept(name, effectiveInstance, proc);
 }
 
 template <typename T, typename = void>
@@ -1328,10 +1190,8 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
     mVKInFlightFence = ctx->inFlightFence;
   }
 
-  gVulkanDefaultInstance = mVKInstance;
-
   skgpu::VulkanBackendContext backendContext = {};
-  backendContext.fGetProc = ResolveVulkanProc;
+  backendContext.fGetProc = ResolveVulkanProcWithDescriptorPoolFix;
   backendContext.fInstance = mVKInstance;
   backendContext.fPhysicalDevice = mVKPhysicalDevice;
   backendContext.fDevice = mVKDevice;
@@ -1396,13 +1256,15 @@ void IGraphicsSkia::OnViewDestroyed()
   mVKCommandBuffer = VK_NULL_HANDLE;
   mVKCommandPool = VK_NULL_HANDLE;
 
+  {
+    std::lock_guard<std::mutex> lock(gDescriptorPoolProcMutex);
+    gRealCreateDescriptorPool = nullptr;
+  }
+
   mVKImageAvailableSemaphore = VK_NULL_HANDLE;
   mVKRenderFinishedSemaphore = VK_NULL_HANDLE;
   mVKInFlightFence = VK_NULL_HANDLE;
   mVKSwapchain = VK_NULL_HANDLE;
-
-  VulkanDescriptorPoolTracker::Reset();
-  gVulkanDefaultInstance = VK_NULL_HANDLE;
 
   mVKInstance = VK_NULL_HANDLE;
   mVKPhysicalDevice = VK_NULL_HANDLE;

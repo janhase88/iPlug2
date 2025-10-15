@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <limits>
 #include <mutex>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -299,6 +300,9 @@ private:
 
   static PFN_vkVoidFunction VKAPI_PTR ResolveVulkanProc(const char* name, VkInstance instance, VkDevice device);
   static PFN_vkVoidFunction VKAPI_PTR DefaultVulkanProcResolver(const char* name, VkInstance instance, VkDevice device);
+  static VulkanProcShim* LookupProcShim(VkDevice device);
+  static void RegisterProcShim(VkDevice device, VulkanProcShim* shim);
+  static void UnregisterProcShim(VkDevice device, const VulkanProcShim* shim);
   static VkResult VKAPI_PTR ShimFlushMappedMemoryRanges(VkDevice device, uint32_t rangeCount, const VkMappedMemoryRange* ranges);
   static VkResult VKAPI_PTR ShimCreateImage(VkDevice device, const VkImageCreateInfo* createInfo, const VkAllocationCallbacks* allocator, VkImage* image);
   static void VKAPI_PTR ShimCmdPipelineBarrier(VkCommandBuffer commandBuffer,
@@ -314,6 +318,8 @@ private:
   static VkResult VKAPI_PTR ShimFreeDescriptorSets(VkDevice device, VkDescriptorPool descriptorPool, uint32_t descriptorSetCount, const VkDescriptorSet* pDescriptorSets);
   static void VKAPI_PTR ShimGetDeviceQueue(VkDevice device, uint32_t queueFamilyIndex, uint32_t queueIndex, VkQueue* pQueue);
 
+  static std::mutex sProcShimMutex;
+  static std::unordered_map<VkDevice, VulkanProcShim*> sProcShimRegistry;
   static VulkanProcShim* sActiveProcShim;
   VulkanProcShim mVKProcShim{};
 #endif

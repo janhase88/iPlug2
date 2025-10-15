@@ -306,7 +306,39 @@ void AssignPhysicalDeviceMemoryProperties(BackendContext& backendContext,
 
 #if defined IGRAPHICS_VULKAN
 
+std::mutex IGraphicsSkia::sProcShimMutex;
+std::unordered_map<VkDevice, IGraphicsSkia::VulkanProcShim*> IGraphicsSkia::sProcShimRegistry;
 IGraphicsSkia::VulkanProcShim* IGraphicsSkia::sActiveProcShim = nullptr;
+
+IGraphicsSkia::VulkanProcShim* IGraphicsSkia::LookupProcShim(VkDevice device)
+{
+  if (device == VK_NULL_HANDLE)
+    return sActiveProcShim;
+
+  std::lock_guard<std::mutex> lock(sProcShimMutex);
+  auto it = sProcShimRegistry.find(device);
+  if (it != sProcShimRegistry.end())
+    return it->second;
+  return sActiveProcShim;
+}
+
+void IGraphicsSkia::RegisterProcShim(VkDevice device, VulkanProcShim* shim)
+{
+  if (device == VK_NULL_HANDLE || !shim)
+    return;
+  std::lock_guard<std::mutex> lock(sProcShimMutex);
+  sProcShimRegistry[device] = shim;
+}
+
+void IGraphicsSkia::UnregisterProcShim(VkDevice device, const VulkanProcShim* shim)
+{
+  if (device == VK_NULL_HANDLE || !shim)
+    return;
+  std::lock_guard<std::mutex> lock(sProcShimMutex);
+  auto it = sProcShimRegistry.find(device);
+  if (it != sProcShimRegistry.end() && it->second == shim)
+    sProcShimRegistry.erase(it);
+}
 
 PFN_vkVoidFunction VKAPI_PTR IGraphicsSkia::DefaultVulkanProcResolver(const char* name, VkInstance instance, VkDevice device)
 {
@@ -320,10 +352,14 @@ PFN_vkVoidFunction VKAPI_PTR IGraphicsSkia::DefaultVulkanProcResolver(const char
 PFN_vkVoidFunction VKAPI_PTR IGraphicsSkia::ResolveVulkanProc(const char* name, VkInstance instance, VkDevice device)
 {
   PFN_vkVoidFunction proc = DefaultVulkanProcResolver(name, instance, device);
-  if (!name || !proc || device == VK_NULL_HANDLE || sActiveProcShim == nullptr)
+  if (!name || device == VK_NULL_HANDLE)
     return proc;
 
-  VulkanProcShim& shim = *sActiveProcShim;
+  VulkanProcShim* shimPtr = LookupProcShim(device);
+  if (!shimPtr)
+    return proc;
+
+  VulkanProcShim& shim = *shimPtr;
 
   if (std::strcmp(name, "vkFlushMappedMemoryRanges") == 0)
   {
@@ -365,7 +401,7 @@ PFN_vkVoidFunction VKAPI_PTR IGraphicsSkia::ResolveVulkanProc(const char* name, 
 
 VkResult VKAPI_PTR IGraphicsSkia::ShimFlushMappedMemoryRanges(VkDevice device, uint32_t rangeCount, const VkMappedMemoryRange* ranges)
 {
-  VulkanProcShim* shim = sActiveProcShim;
+  VulkanProcShim* shim = LookupProcShim(device);
   PFN_vkFlushMappedMemoryRanges realProc = (shim && shim->flushMappedMemoryRanges)
                                             ? shim->flushMappedMemoryRanges
                                             : reinterpret_cast<PFN_vkFlushMappedMemoryRanges>(DefaultVulkanProcResolver("vkFlushMappedMemoryRanges", VK_NULL_HANDLE, device));
@@ -423,7 +459,7 @@ VkResult VKAPI_PTR IGraphicsSkia::ShimCreateImage(VkDevice device,
                                                   const VkAllocationCallbacks* allocator,
                                                   VkImage* image)
 {
-  VulkanProcShim* shim = sActiveProcShim;
+  VulkanProcShim* shim = LookupProcShim(device);
   PFN_vkCreateImage realProc = (shim && shim->createImage)
                                  ? shim->createImage
                                  : reinterpret_cast<PFN_vkCreateImage>(DefaultVulkanProcResolver("vkCreateImage", VK_NULL_HANDLE, device));
@@ -460,6 +496,8 @@ void VKAPI_PTR IGraphicsSkia::ShimCmdPipelineBarrier(VkCommandBuffer commandBuff
                                                      const VkImageMemoryBarrier* pImageMemoryBarriers)
 {
   VulkanProcShim* shim = sActiveProcShim;
+  if (!shim)
+    shim = LookupProcShim(VK_NULL_HANDLE);
   PFN_vkCmdPipelineBarrier realProc = (shim && shim->cmdPipelineBarrier)
                                         ? shim->cmdPipelineBarrier
                                         : reinterpret_cast<PFN_vkCmdPipelineBarrier>(DefaultVulkanProcResolver("vkCmdPipelineBarrier", VK_NULL_HANDLE, shim ? shim->device : VK_NULL_HANDLE));
@@ -542,7 +580,7 @@ VkResult VKAPI_PTR IGraphicsSkia::ShimFreeDescriptorSets(VkDevice device,
                                                          uint32_t descriptorSetCount,
                                                          const VkDescriptorSet* pDescriptorSets)
 {
-  VulkanProcShim* shim = sActiveProcShim;
+  VulkanProcShim* shim = LookupProcShim(device);
   if (shim && !shim->resetDescriptorPool)
   {
     shim->resetDescriptorPool = reinterpret_cast<PFN_vkResetDescriptorPool>(DefaultVulkanProcResolver("vkResetDescriptorPool", VK_NULL_HANDLE, device));
@@ -561,7 +599,7 @@ VkResult VKAPI_PTR IGraphicsSkia::ShimFreeDescriptorSets(VkDevice device,
 
 void VKAPI_PTR IGraphicsSkia::ShimGetDeviceQueue(VkDevice device, uint32_t queueFamilyIndex, uint32_t queueIndex, VkQueue* pQueue)
 {
-  VulkanProcShim* shim = sActiveProcShim;
+  VulkanProcShim* shim = LookupProcShim(device);
   PFN_vkGetDeviceQueue realProc = (shim && shim->getDeviceQueue)
                                     ? shim->getDeviceQueue
                                     : reinterpret_cast<PFN_vkGetDeviceQueue>(DefaultVulkanProcResolver("vkGetDeviceQueue", VK_NULL_HANDLE, device));
@@ -1487,6 +1525,7 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   if (mVKProcShim.deviceProperties.limits.nonCoherentAtomSize == 0)
     mVKProcShim.deviceProperties.limits.nonCoherentAtomSize = 1;
   sActiveProcShim = &mVKProcShim;
+  RegisterProcShim(mVKDevice, &mVKProcShim);
 
   skgpu::VulkanBackendContext backendContext = {};
   backendContext.fGetProc = &IGraphicsSkia::ResolveVulkanProc;
@@ -1583,6 +1622,7 @@ void IGraphicsSkia::OnViewDestroyed()
   mVKSkipFrame = true;
 
   mGrContext = nullptr;
+  UnregisterProcShim(mVKDevice, &mVKProcShim);
   sActiveProcShim = nullptr;
   mVKProcShim = {};
 #endif

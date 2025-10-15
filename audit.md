@@ -48,4 +48,5 @@
 - Introduced compile-time detection helpers so the backend context only writes physical-device property pointers when the linked
   Skia SDK exposes those fields, preserving compatibility with older toolchains while forwarding the data when available.
 - Injected a Vulkan procedure shim through `VulkanBackendContext::fGetProc` so Skia receives sanitized wrappers for problematic API calls. The shim clamps invalid image creation parameters, aligns non-coherent memory flushes, upgrades pipeline barrier stage masks/layouts, redirects queue requests to the configured graphics queue family, and replaces unsupported descriptor-set frees with pool resets, preventing the startup/teardown validation noise.
+- Added a device-to-shim registry so the wrappers remain active even when Skia resolves procedures on worker threads or after the active context pointer changes, ensuring all device-scope calls route through the sanitizing layer for the lifetime of the Vulkan device.
 

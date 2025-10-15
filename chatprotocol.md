@@ -45,3 +45,8 @@
 
 **Assistant:** Yes—we now have a concrete path forward. The remaining validation noise originates from Skia issuing spec-incompatible Vulkan calls during startup/teardown, so I’m building a compatibility shim that intercepts those entry points via `VulkanBackendContext::fGetProc`. The shim will redirect queue requests to the graphics family we actually created, pad non-coherent flushes to the hardware atom size, coerce layout transitions/stage masks into spec-compliant values, clamp the bogus image depth, and replace descriptor frees with pool resets. The existing debug trace already pinpoints each violation, so I’m no longer blocked and will implement the shim immediately.
 
+## Entry 8
+**User:** 16:02 validation trace still shows the startup errors.
+
+**Assistant:** I strengthened the shim integration by registering every live Vulkan device with the wrapper so Skia’s background threads resolve the sanitized entry points as well. This ensures the corrected barriers, image parameters, flush sizes, and descriptor handling apply consistently even after context recreation. I’m ready for another validation pass with this registry in place.
+

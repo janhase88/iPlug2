@@ -23,6 +23,7 @@
      - Resolve wrappers via `VulkanBackendContext::fGetProc` so we can sanitize parameters before they reach the driver.
      - Adjust flush sizes to respect `nonCoherentAtomSize`, clamp invalid image depths, coerce layout transitions to spec-compliant values, and fall back to the configured graphics queue if Skia requests an unsupported queue family.
      - Replace descriptor-set frees with pool resets during teardown to avoid `FREE_DESCRIPTOR_SET_BIT` validation noise.
+     - Maintain a device-level shim registry so wrapper dispatch remains stable even when Skia resolves procedures on background threads or after context recreation.
    - Propagate physical-device features/properties (including `VkPhysicalDeviceFeatures2` and memory limits) to Skia so flush alignment and layout decisions match the hardware capabilities.
      - Guard the propagation logic so it cooperates with older Skia SDKs that may lack the newer backend-context fields.
 

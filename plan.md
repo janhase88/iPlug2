@@ -25,5 +25,9 @@
    - Persist the negotiated instance/device API versions and reuse them when recreating the Skia context.
    - Forward the effective API version to Skia so it can choose synchronization semantics that match the runtime.
 
-7. **Verification Strategy** ☐
+7. **Synchronization2 Rollback** ✅
+   - Stop advertising Synchronization2 until the command-buffer plumbing is upgraded to `vkCmdPipelineBarrier2`.
+   - Gate the device feature chain so only legacy barriers are enabled and the extension list remains minimal.
+
+8. **Verification Strategy** ☐
    - Outline manual validation steps for the user (layers enabled, expected absence of specific VUIDs) once the changes are integrated.

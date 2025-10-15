@@ -645,8 +645,10 @@ inline VkResult WinVulkanDeviceCoordinator::CreateLogicalDevice()
   VkPhysicalDeviceVulkan13Features vulkan13Features = state.queriedVulkan13Features;
   vulkan13Features.pNext = nullptr;
 #endif
+
   void* featureChain = nullptr;
-  if (state.supportsSynchronization2)
+  const bool enableSynchronization2 = false; // Legacy barrier plumbing does not yet support vkCmdPipelineBarrier2.
+  if (enableSynchronization2 && state.supportsSynchronization2)
   {
     synchronization2Features.synchronization2 = VK_TRUE;
 #if defined(VK_VERSION_1_3)
@@ -707,13 +709,20 @@ inline VkResult WinVulkanDeviceCoordinator::CreateLogicalDevice()
   state.snapshot.enabledFeatures = enabledFeatures;
   state.snapshot.enabledDeviceExtensions = enabledExtensions;
   state.snapshot.enabledDeviceExtensionCount = enabledExtensionCount;
-  state.snapshot.synchronization2Enabled = state.supportsSynchronization2;
+  state.snapshot.synchronization2Enabled = enableSynchronization2 && state.supportsSynchronization2;
   if (state.snapshot.synchronization2Enabled)
   {
     state.snapshot.synchronization2Features = synchronization2Features;
 #if defined(VK_VERSION_1_3)
     if (state.deviceApiVersion >= VK_API_VERSION_1_3)
       state.snapshot.vulkan13Features = vulkan13Features;
+#endif
+  }
+  else
+  {
+    state.snapshot.synchronization2Features.synchronization2 = VK_FALSE;
+#if defined(VK_VERSION_1_3)
+    state.snapshot.vulkan13Features.synchronization2 = VK_FALSE;
 #endif
   }
   vkGetDeviceQueue(state.snapshot.device, state.snapshot.queueFamily, 0, &state.snapshot.presentQueue);

@@ -228,3 +228,8 @@ REAUDIT, REPLAN, RE-RESEARCH
 **User:** (awaiting update)
 
 **Assistant:** Negotiated the loader's supported API version via `vkEnumerateInstanceVersion`, promoted the instance to Vulkan 1.3 when available, and persisted the negotiated instance/device API versions in the shared coordinator snapshot. Chained `VkPhysicalDeviceVulkan13Features` alongside `VkPhysicalDeviceSynchronization2Features` during device creation, forwarded the resulting metadata through `VulkanContext`, and taught the Skia backend to honor the runtime API level when selecting synchronization semantics.
+
+## Entry 10
+**User:** 16:05:48 validation still reports `VUID-VkDeviceCreateInfo-pNext-06532` plus the downstream layout and queue warnings. "REAUDIT, REPLAN, RE-RESEARCH".
+
+**Assistant:** Documented the new VUIDs, concluded that enabling Synchronization2 while the renderer still uses legacy `vkCmdPipelineBarrier` calls is untenable, and rolled back the feature advertisement. The device coordinator now skips the Synchronization2 structs entirely, the Skia backend caps `fMaxAPIVersion` to 1.2 when the feature is disabled, and the Windows context only exposes the legacy capability set.

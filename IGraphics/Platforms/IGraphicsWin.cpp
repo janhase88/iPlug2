@@ -3988,7 +3988,7 @@ bool IGraphicsWin::RecreateVulkanContext()
   ctx.deviceFeatures2 = &mVkEnabledFeatures2;
   ctx.deviceProperties = &mVkDeviceProperties;
   ctx.memoryProperties = &mVkMemoryProperties;
-  ctx.synchronization2Features = &mVkSynchronization2Features;
+  ctx.synchronization2Features = mVkSynchronization2Enabled ? &mVkSynchronization2Features : nullptr;
   ctx.synchronization2Enabled = mVkSynchronization2Enabled;
   OnViewInitialized(&ctx);
   return true;

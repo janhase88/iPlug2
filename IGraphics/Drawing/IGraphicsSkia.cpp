@@ -351,11 +351,20 @@ PFN_vkVoidFunction VKAPI_PTR IGraphicsSkia::DefaultVulkanProcResolver(const char
 
 PFN_vkVoidFunction VKAPI_PTR IGraphicsSkia::ResolveVulkanProc(const char* name, VkInstance instance, VkDevice device)
 {
-  PFN_vkVoidFunction proc = DefaultVulkanProcResolver(name, instance, device);
-  if (!name || device == VK_NULL_HANDLE)
-    return proc;
+  if (!name)
+    return nullptr;
 
   VulkanProcShim* shimPtr = LookupProcShim(device);
+  VkDevice lookupDevice = device;
+  if (lookupDevice == VK_NULL_HANDLE && shimPtr)
+    lookupDevice = shimPtr->device;
+
+  PFN_vkVoidFunction proc = DefaultVulkanProcResolver(name, instance, lookupDevice);
+  if (!proc && lookupDevice != device)
+  {
+    proc = DefaultVulkanProcResolver(name, instance, device);
+  }
+
   if (!shimPtr)
     return proc;
 

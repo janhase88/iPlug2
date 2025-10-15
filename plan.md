@@ -21,6 +21,7 @@
    - Ensure command buffer barriers use valid stage/access masks and layouts without requiring synchronization2.
    - Introduce a Vulkan procedure shim so Skia obtains compatibility wrappers for problematic entry points (`vkGetDeviceQueue`, `vkFlushMappedMemoryRanges`, `vkCmdPipelineBarrier`, `vkCreateImage`, `vkFreeDescriptorSets`).
      - Resolve wrappers via `VulkanBackendContext::fGetProc` so we can sanitize parameters before they reach the driver.
+     - Ensure the resolver consults the active shim when Skia requests device-level functions with `VK_NULL_HANDLE` so the wrappers always activate.
      - Adjust flush sizes to respect `nonCoherentAtomSize`, clamp invalid image depths, coerce layout transitions to spec-compliant values, and fall back to the configured graphics queue if Skia requests an unsupported queue family.
      - Replace descriptor-set frees with pool resets during teardown to avoid `FREE_DESCRIPTOR_SET_BIT` validation noise.
      - Maintain a device-level shim registry so wrapper dispatch remains stable even when Skia resolves procedures on background threads or after context recreation.

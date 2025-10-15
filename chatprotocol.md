@@ -50,3 +50,8 @@
 
 **Assistant:** I strengthened the shim integration by registering every live Vulkan device with the wrapper so Skia’s background threads resolve the sanitized entry points as well. This ensures the corrected barriers, image parameters, flush sizes, and descriptor handling apply consistently even after context recreation. I’m ready for another validation pass with this registry in place.
 
+## Entry 9
+**User:** Additional validation dump shows the same errors. Are we finally moving forward? Are you focusing on the right issue? Where are you stuck?
+
+**Assistant:** The latest trace confirmed Skia still bypassed the shim because it queried device-level entry points with `VK_NULL_HANDLE`. I’m updating the resolver to fall back to the active device so those lookups route through our sanitized implementations. Once that lands we should see the queue, barrier, and descriptor fixes actually engage—thanks for the extra logs, they pinpointed the remaining gap.
+

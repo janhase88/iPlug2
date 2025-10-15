@@ -218,6 +218,7 @@ private:
   void DestroyVulkanContext();
   void ActivateVulkanContext();
   void DeactivateVulkanContext();
+  void TeardownVulkanBackend();
   bool mVkBackendActive = false;
   WinVulkanDeviceCoordinator mVulkanDeviceCoordinator;
   uint64_t mVulkanDeviceGeneration = 0;
@@ -234,6 +235,7 @@ private:
   std::vector<VkImage> mVkSwapchainImages;
   VkFormat mVkFormat = VK_FORMAT_B8G8R8A8_UNORM;
   VkImageUsageFlags mVkSwapchainUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  bool mVulkanTeardownStarted = false;
 #endif
 
 #ifdef IGRAPHICS_GL

@@ -3073,6 +3073,9 @@ IGraphicsWin::~IGraphicsWin()
   }
   DestroyEditWindow();
   CloseWindow();
+#if defined IGRAPHICS_VULKAN
+  TeardownVulkanBackend();
+#endif
 }
 
 static void GetWindowSize(HWND pWnd, int* pW, int* pH)
@@ -3883,6 +3886,36 @@ void IGraphicsWin::DestroyVulkanContext()
   mVulkanDeviceGeneration = 0;
 }
 
+#if defined IGRAPHICS_VULKAN
+void IGraphicsWin::TeardownVulkanBackend()
+{
+  if (mVulkanTeardownStarted)
+    return;
+
+  const bool hasContext = mVkBackendActive || mVkInstance != VK_NULL_HANDLE || mVkDevice != VK_NULL_HANDLE
+                           || mVkSwapchain.handle != VK_NULL_HANDLE || mVulkanDeviceCoordinator.IsInitialized();
+
+  if (!hasContext)
+    return;
+
+  mVulkanTeardownStarted = true;
+
+  ActivateVulkanContext();
+
+  mVkBackendActive = false;
+
+#if defined IGRAPHICS_SKIA
+  BeginVulkanTeardown();
+#endif
+
+  OnViewDestroyed();
+
+  DeactivateVulkanContext();
+
+  DestroyVulkanContext();
+}
+#endif
+
 bool IGraphicsWin::RecreateVulkanContext()
 {
 #if defined IGRAPHICS_VULKAN
@@ -3910,6 +3943,7 @@ bool IGraphicsWin::RecreateVulkanContext()
   OnViewInitialized(&ctx);
 #if defined IGRAPHICS_VULKAN
   mVkBackendActive = true;
+  mVulkanTeardownStarted = false;
 #endif
   return true;
 }
@@ -4264,6 +4298,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   ctx.usageFlags = mVkSwapchainUsageFlags;
   OnViewInitialized(&ctx);
   mVkBackendActive = true;
+  mVulkanTeardownStarted = false;
 #else
   HDC dc = GetDC(mPlugWnd);
   #ifdef IGRAPHICS_GL
@@ -4427,19 +4462,8 @@ void IGraphicsWin::CloseWindow()
     {
       ActivateGLContext();
     }
-#elif defined IGRAPHICS_VULKAN
-    ActivateGLContext();
-#endif
 
-#if defined IGRAPHICS_VULKAN
-    mVkBackendActive = false;
-#endif
-#if defined IGRAPHICS_VULKAN && defined IGRAPHICS_SKIA
-    BeginVulkanTeardown();
-#endif
     OnViewDestroyed();
-
-#if defined IGRAPHICS_GL
 
     DeactivateGLContext();
 
@@ -4453,9 +4477,11 @@ void IGraphicsWin::CloseWindow()
 
 #elif defined IGRAPHICS_VULKAN
 
-    DeactivateGLContext();
+    TeardownVulkanBackend();
 
-    DestroyVulkanContext();
+#else
+
+    OnViewDestroyed();
 
 #endif
 

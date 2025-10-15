@@ -1156,6 +1156,8 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   backendContext.fVkExtensions = mVulkanExtensions;
   backendContext.fDeviceFeatures = mVKDeviceFeaturesPtr;
   backendContext.fDeviceFeatures2 = mVKDeviceFeatures2Ptr;
+  backendContext.fPhysicalDeviceProperties = mVKDevicePropertiesPtr;
+  backendContext.fPhysicalDeviceMemoryProperties = mVKMemoryPropertiesPtr;
   mGrContext = GrDirectContexts::MakeVulkan(backendContext);
 #endif
 

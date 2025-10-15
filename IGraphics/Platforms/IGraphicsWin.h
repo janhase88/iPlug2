@@ -243,6 +243,7 @@ private:
   VkPhysicalDeviceProperties mVkDeviceProperties{};
   VkPhysicalDeviceMemoryProperties mVkMemoryProperties{};
   VkPhysicalDeviceFeatures mVkEnabledFeatures{};
+  VkPhysicalDeviceFeatures2 mVkEnabledFeatures2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
   std::unique_ptr<skgpu::VulkanExtensions> mVkExtensions;
 #endif
 

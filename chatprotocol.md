@@ -30,3 +30,8 @@
 
 **Assistant:** Added a forward declaration for `skgpu::VulkanExtensions` inside `IGraphicsSkia.h` so the Windows build compiles even when the Skia distribution does not expose `include/gpu/vk/VulkanExtensions.h`.
 
+## Entry 5
+**User:** Validation output still shows layout, barrier, and memory alignment faults after startup/teardown.
+
+**Assistant:** Propagated the queried `VkPhysicalDeviceFeatures2`, device properties, and memory properties through `VulkanContext` so Skia can honor the hardware’s non-coherent atom size and avoid synchronization2-only layouts during the bootstrap flush. Updated the Windows platform layer to populate these structs via `vkGetPhysicalDeviceFeatures2` (when available) and reset them cleanly during teardown.
+

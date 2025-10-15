@@ -3783,6 +3783,15 @@ bool IGraphicsWin::CreateVulkanContext()
   vkGetPhysicalDeviceProperties(mVkPhysicalDevice, &mVkDeviceProperties);
   vkGetPhysicalDeviceMemoryProperties(mVkPhysicalDevice, &mVkMemoryProperties);
 
+  PFN_vkGetPhysicalDeviceFeatures2 getFeatures2 =
+    reinterpret_cast<PFN_vkGetPhysicalDeviceFeatures2>(vkGetInstanceProcAddr(mVkInstance, "vkGetPhysicalDeviceFeatures2"));
+  mVkEnabledFeatures2 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+  if (getFeatures2)
+  {
+    getFeatures2(mVkPhysicalDevice, &mVkEnabledFeatures2);
+  }
+  mVkEnabledFeatures2.features = mVkEnabledFeatures;
+
   auto getProc = [](const char* name, VkInstance instance, VkDevice device) -> PFN_vkVoidFunction {
     if (device)
       return vkGetDeviceProcAddr(device, name);
@@ -3900,6 +3909,7 @@ void IGraphicsWin::DestroyVulkanContext()
   mVkDeviceProperties = {};
   mVkMemoryProperties = {};
   mVkEnabledFeatures = {};
+  mVkEnabledFeatures2 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
   mVkExtensions.reset();
   mVulkanDeviceGeneration = 0;
 }
@@ -3927,7 +3937,7 @@ bool IGraphicsWin::RecreateVulkanContext()
   ctx.usageFlags = mVkSwapchainUsageFlags;
   ctx.extensions = mVkExtensions.get();
   ctx.deviceFeatures = &mVkEnabledFeatures;
-  ctx.deviceFeatures2 = nullptr;
+  ctx.deviceFeatures2 = &mVkEnabledFeatures2;
   ctx.deviceProperties = &mVkDeviceProperties;
   ctx.memoryProperties = &mVkMemoryProperties;
   OnViewInitialized(&ctx);
@@ -4284,7 +4294,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   ctx.usageFlags = mVkSwapchainUsageFlags;
   ctx.extensions = mVkExtensions.get();
   ctx.deviceFeatures = &mVkEnabledFeatures;
-  ctx.deviceFeatures2 = nullptr;
+  ctx.deviceFeatures2 = &mVkEnabledFeatures2;
   ctx.deviceProperties = &mVkDeviceProperties;
   ctx.memoryProperties = &mVkMemoryProperties;
   OnViewInitialized(&ctx);

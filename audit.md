@@ -26,6 +26,7 @@
 ## Additional Findings
 - `WinVulkanDeviceCoordinator` only exposes minimal device snapshot data; Skia backend lacks visibility into enabled features and extension support.
 - `IGraphicsSkia::OnViewInitialized` builds `VulkanBackendContext` without populating `fVkExtensions` or device feature pointers, so Skia assumes default capabilities. Skia may therefore opt into synchronization2-only layouts (`VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL`) and emit incompatible barriers.
+- `VulkanBackendContext` still lacked physical-device feature/property pointers, preventing Skia from respecting non-coherent atom sizes and layout restrictions during the initial frame flush.
 - Descriptor pool creation inside Skia defaults to pools without `VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT`. The validation error indicates pools are later freed with `vkFreeDescriptorSets`, consistent with Skia expecting the flag when extensions advertise support.
 - `vkFlushMappedMemoryRanges` alignment warnings align with Skia not receiving `VkPhysicalDeviceProperties::nonCoherentAtomSize` via backend context metadata.
 
@@ -40,6 +41,7 @@
 - `WinVulkanDeviceCoordinator` now records the enabled device features in its snapshot so the renderer can advertise accurate capability metadata to Skia.
 - `IGraphicsWin` captures physical-device properties, memory limits, and extension availability during context creation. A persistent `skgpu::VulkanExtensions` instance is initialized with the same extension lists used during instance/device creation.
 - `VulkanContext` transports the extension/feature/property pointers into `IGraphicsSkia`, which now forwards them into `skgpu::VulkanBackendContext` when constructing the Skia direct context.
+- Added propagation of `VkPhysicalDeviceFeatures2`, `VkPhysicalDeviceProperties`, and `VkPhysicalDeviceMemoryProperties` so Skia aligns buffer flushes and layout decisions with the actual hardware limits reported by the coordinator.
 - Skia teardown clears cached pointers to avoid dangling references after the Vulkan device is destroyed.
 - Added a guarded forward declaration for `skgpu::VulkanExtensions` within `IGraphicsSkia.h` to ensure projects without the newer
   Skia public header still compile while sharing the pointer metadata.

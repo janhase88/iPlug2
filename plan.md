@@ -21,6 +21,7 @@
    - Ensure command buffer barriers use valid stage/access masks and layouts without requiring synchronization2.
    - Align descriptor pool creation with intended free operations.
    - Propagate physical-device features/properties (including `VkPhysicalDeviceFeatures2` and memory limits) to Skia so flush alignment and layout decisions match the hardware capabilities.
+     - Guard the propagation logic so it cooperates with older Skia SDKs that may lack the newer backend-context fields.
 
 6. **Validation and Documentation**
    - Update audit log with findings and resolutions.

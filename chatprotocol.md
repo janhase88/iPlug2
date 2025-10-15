@@ -35,3 +35,8 @@
 
 **Assistant:** Propagated the queried `VkPhysicalDeviceFeatures2`, device properties, and memory properties through `VulkanContext` so Skia can honor the hardware’s non-coherent atom size and avoid synchronization2-only layouts during the bootstrap flush. Updated the Windows platform layer to populate these structs via `vkGetPhysicalDeviceFeatures2` (when available) and reset them cleanly during teardown.
 
+## Entry 6
+**User:** Build failure: `error C2039: 'fPhysicalDeviceProperties': is not a member of 'skgpu::VulkanBackendContext'`.
+
+**Assistant:** Added compile-time detection helpers so `IGraphicsSkia` only writes physical-device property pointers into `skgpu::VulkanBackendContext` when the linked Skia SDK exposes those fields, keeping older binary distributions building while still forwarding the data when available.
+

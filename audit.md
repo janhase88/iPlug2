@@ -45,4 +45,6 @@
 - Skia teardown clears cached pointers to avoid dangling references after the Vulkan device is destroyed.
 - Added a guarded forward declaration for `skgpu::VulkanExtensions` within `IGraphicsSkia.h` to ensure projects without the newer
   Skia public header still compile while sharing the pointer metadata.
+- Introduced compile-time detection helpers so the backend context only writes physical-device property pointers when the linked
+  Skia SDK exposes those fields, preserving compatibility with older toolchains while forwarding the data when available.
 

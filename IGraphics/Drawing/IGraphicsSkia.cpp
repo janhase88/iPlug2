@@ -239,6 +239,67 @@ GetImageView(const ImageInfo&)
 {
   return VK_NULL_HANDLE;
 }
+
+template <typename T, typename = void>
+struct HasPhysicalDevicePropertiesField : std::false_type
+{
+};
+
+template <typename T>
+struct HasPhysicalDevicePropertiesField<T, VoidT<decltype(std::declval<T&>().fPhysicalDeviceProperties)>> : std::true_type
+{
+};
+
+template <typename T, typename = void>
+struct HasPhysicalDeviceMemoryPropertiesField : std::false_type
+{
+};
+
+template <typename T>
+struct HasPhysicalDeviceMemoryPropertiesField<T, VoidT<decltype(std::declval<T&>().fPhysicalDeviceMemoryProperties)>> : std::true_type
+{
+};
+
+template <typename BackendContext>
+void AssignPhysicalDevicePropertiesImpl(BackendContext& backendContext,
+                                        const VkPhysicalDeviceProperties* properties,
+                                        std::true_type)
+{
+  backendContext.fPhysicalDeviceProperties = properties;
+}
+
+template <typename BackendContext>
+void AssignPhysicalDevicePropertiesImpl(BackendContext&, const VkPhysicalDeviceProperties*, std::false_type)
+{
+}
+
+template <typename BackendContext>
+void AssignPhysicalDeviceProperties(BackendContext& backendContext, const VkPhysicalDeviceProperties* properties)
+{
+  AssignPhysicalDevicePropertiesImpl(backendContext, properties, HasPhysicalDevicePropertiesField<BackendContext>());
+}
+
+template <typename BackendContext>
+void AssignPhysicalDeviceMemoryPropertiesImpl(BackendContext& backendContext,
+                                              const VkPhysicalDeviceMemoryProperties* properties,
+                                              std::true_type)
+{
+  backendContext.fPhysicalDeviceMemoryProperties = properties;
+}
+
+template <typename BackendContext>
+void AssignPhysicalDeviceMemoryPropertiesImpl(BackendContext&, const VkPhysicalDeviceMemoryProperties*, std::false_type)
+{
+}
+
+template <typename BackendContext>
+void AssignPhysicalDeviceMemoryProperties(BackendContext& backendContext,
+                                          const VkPhysicalDeviceMemoryProperties* properties)
+{
+  AssignPhysicalDeviceMemoryPropertiesImpl(backendContext,
+                                           properties,
+                                           HasPhysicalDeviceMemoryPropertiesField<BackendContext>());
+}
 } // namespace
 #endif
 
@@ -1156,8 +1217,8 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   backendContext.fVkExtensions = mVulkanExtensions;
   backendContext.fDeviceFeatures = mVKDeviceFeaturesPtr;
   backendContext.fDeviceFeatures2 = mVKDeviceFeatures2Ptr;
-  backendContext.fPhysicalDeviceProperties = mVKDevicePropertiesPtr;
-  backendContext.fPhysicalDeviceMemoryProperties = mVKMemoryPropertiesPtr;
+  AssignPhysicalDeviceProperties(backendContext, mVKDevicePropertiesPtr);
+  AssignPhysicalDeviceMemoryProperties(backendContext, mVKMemoryPropertiesPtr);
   mGrContext = GrDirectContexts::MakeVulkan(backendContext);
 #endif
 

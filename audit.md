@@ -22,32 +22,21 @@
 - Audit descriptor pool creation and destruction paths.
 - Research best practices for Skia Vulkan backend integration on Windows.
 
-
 ## Additional Findings
-- `WinVulkanDeviceCoordinator` only exposes minimal device snapshot data; Skia backend lacks visibility into enabled features and extension support.
-- `IGraphicsSkia::OnViewInitialized` builds `VulkanBackendContext` without populating `fVkExtensions` or device feature pointers, so Skia assumes default capabilities. Skia may therefore opt into synchronization2-only layouts (`VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL`) and emit incompatible barriers.
-- `VulkanBackendContext` still lacked physical-device feature/property pointers, preventing Skia from respecting non-coherent atom sizes and layout restrictions during the initial frame flush.
-- Descriptor pool creation inside Skia defaults to pools without `VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT`. The validation error indicates pools are later freed with `vkFreeDescriptorSets`, consistent with Skia expecting the flag when extensions advertise support.
-- `vkFlushMappedMemoryRanges` alignment warnings align with Skia not receiving `VkPhysicalDeviceProperties::nonCoherentAtomSize` via backend context metadata.
+- `WinVulkanDeviceCoordinator` only exposed a minimal snapshot; Skia never saw which device extensions/features were actually enabled.
+- `IGraphicsSkia::OnViewInitialized` populated `VulkanBackendContext` without forwarding extension metadata, device features, or physical-device limits, so Skia assumed default capabilities (non-coherent atom size of 1, availability of synchronization2 layouts, unrestricted queue reuse, etc.).
+- Because Skia lacked the real hardware limits, it issued flushes that violated the non-coherent atom-size requirement and chose image layouts (`VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL`) gated on synchronization2 support.
+- The descriptor pool warning is consistent with Skia freeing descriptor sets on a pool that was created internally without the `FREE_DESCRIPTOR_SET_BIT`; once Skia sees the true extension set it can avoid freeing pools that do not advertise the capability.
 
 ## Proposed Remediation
-1. Extend the Windows Vulkan coordinator to capture and expose enabled features, properties, and extension strings.
-2. Materialize a `skgpu::VulkanExtensions` object during context creation and share it with `IGraphicsSkia` so Skia can gate synchronization features correctly.
-3. Populate `VulkanBackendContext` with feature pointers, extension metadata, and physical-device limits when instantiating the Skia direct context.
-4. Reset shared extension/feature state during teardown to avoid stale pointers.
-
+1. Extend the Windows Vulkan coordinator to capture and expose enabled features, properties, memory limits, and extension strings.
+2. Materialize a shared `skgpu::VulkanExtensions` instance during context creation and hand it (plus the queried device metadata) to `IGraphicsSkia` via `VulkanContext`.
+3. Populate `skgpu::VulkanBackendContext` with the forwarded feature/property pointers when constructing the Skia direct context, using compile-time guards so older Skia SDKs still build.
+4. Reset the cached metadata during teardown to prevent dangling pointers once the Vulkan device is destroyed.
 
 ## Implementation Notes
-- `WinVulkanDeviceCoordinator` now records the enabled device features in its snapshot so the renderer can advertise accurate capability metadata to Skia.
-- `IGraphicsWin` captures physical-device properties, memory limits, and extension availability during context creation. A persistent `skgpu::VulkanExtensions` instance is initialized with the same extension lists used during instance/device creation.
-- `VulkanContext` transports the extension/feature/property pointers into `IGraphicsSkia`, which now forwards them into `skgpu::VulkanBackendContext` when constructing the Skia direct context.
-- Added propagation of `VkPhysicalDeviceFeatures2`, `VkPhysicalDeviceProperties`, and `VkPhysicalDeviceMemoryProperties` so Skia aligns buffer flushes and layout decisions with the actual hardware limits reported by the coordinator.
-- Skia teardown clears cached pointers to avoid dangling references after the Vulkan device is destroyed.
-- Added a guarded forward declaration for `skgpu::VulkanExtensions` within `IGraphicsSkia.h` to ensure projects without the newer
-  Skia public header still compile while sharing the pointer metadata.
-- Introduced compile-time detection helpers so the backend context only writes physical-device property pointers when the linked
-  Skia SDK exposes those fields, preserving compatibility with older toolchains while forwarding the data when available.
-- Injected a Vulkan procedure shim through `VulkanBackendContext::fGetProc` so Skia receives sanitized wrappers for problematic API calls. The shim clamps invalid image creation parameters, aligns non-coherent memory flushes, upgrades pipeline barrier stage masks/layouts, redirects queue requests to the configured graphics queue family, and replaces unsupported descriptor-set frees with pool resets, preventing the startup/teardown validation noise.
-- Added a device-to-shim registry so the wrappers remain active even when Skia resolves procedures on worker threads or after the active context pointer changes, ensuring all device-scope calls route through the sanitizing layer for the lifetime of the Vulkan device.
-- Updated the Vulkan proc resolver to fall back to the active device when Skia queries device-level entry points with `VK_NULL_HANDLE`, guaranteeing the shim intercepts those calls and the sanitized implementations execute during startup.
-
+- `WinVulkanDeviceCoordinator` now stores the enabled device features in its snapshot so downstream consumers can advertise accurate capabilities to Skia.
+- `IGraphicsWin` captures physical-device properties, memory limits, and extension availability during context creation, initialises a persistent `skgpu::VulkanExtensions`, and threads these pointers through `VulkanContext`.
+- `IGraphicsSkia` forwards the extension pointer, device features, optional `VkPhysicalDeviceFeatures2`, properties, and memory limits into `skgpu::VulkanBackendContext`. Compile-time helpers ensure we only write to fields that exist in the linked Skia SDK.
+- The backend now uses the standard `vkGetInstanceProcAddr` / `vkGetDeviceProcAddr` resolver directly; with the additional metadata in place Skia can respect the hardware’s non-coherent atom size, queue family selection, and layout restrictions without an interception layer.
+- Vulkan teardown clears Skia GPU resources, resets swapchain caches, and nulls the forwarded metadata pointers to avoid dangling references.

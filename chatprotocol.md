@@ -55,3 +55,8 @@
 
 **Assistant:** The latest trace confirmed Skia still bypassed the shim because it queried device-level entry points with `VK_NULL_HANDLE`. I’m updating the resolver to fall back to the active device so those lookups route through our sanitized implementations. Once that lands we should see the queue, barrier, and descriptor fixes actually engage—thanks for the extra logs, they pinpointed the remaining gap.
 
+
+## Entry 10
+**User:** 16:28 validation log still shows the startup issues. Are we finally moving forward? Are you focusing on the right issue? Maybe the debug output isn’t tight enough? Where are you stuck?
+
+**Assistant:** Yes—we’ve pivoted from the shim experiment to the underlying problem: Skia was missing the device’s extension/feature/property metadata during bootstrap. I extended the coordinator and Windows platform layer to cache those values, threaded them through `VulkanContext`, and updated `IGraphicsSkia` to feed them into `skgpu::VulkanBackendContext` (with compile-time guards for older SDKs). With accurate limits in place Skia can respect the queue family, non-coherent atom size, and supported layouts without additional interception, and teardown now clears the forwarded pointers to avoid dangling references.

@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <limits>
 #include <mutex>
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -285,43 +284,6 @@ private:
   sk_sp<SkSurface> EnsureSwapchainSurface(uint32_t imageIndex, int width, int height, const GrVkImageInfo& imageInfo);
   bool AssertValidSwapchainImage(VkImage image, const char* context);
 
-  struct VulkanProcShim
-  {
-    VkDevice device = VK_NULL_HANDLE;
-    uint32_t graphicsQueueFamily = 0;
-    VkPhysicalDeviceProperties deviceProperties{};
-    PFN_vkFlushMappedMemoryRanges flushMappedMemoryRanges = nullptr;
-    PFN_vkCreateImage createImage = nullptr;
-    PFN_vkCmdPipelineBarrier cmdPipelineBarrier = nullptr;
-    PFN_vkFreeDescriptorSets freeDescriptorSets = nullptr;
-    PFN_vkResetDescriptorPool resetDescriptorPool = nullptr;
-    PFN_vkGetDeviceQueue getDeviceQueue = nullptr;
-  };
-
-  static PFN_vkVoidFunction VKAPI_PTR ResolveVulkanProc(const char* name, VkInstance instance, VkDevice device);
-  static PFN_vkVoidFunction VKAPI_PTR DefaultVulkanProcResolver(const char* name, VkInstance instance, VkDevice device);
-  static VulkanProcShim* LookupProcShim(VkDevice device);
-  static void RegisterProcShim(VkDevice device, VulkanProcShim* shim);
-  static void UnregisterProcShim(VkDevice device, const VulkanProcShim* shim);
-  static VkResult VKAPI_PTR ShimFlushMappedMemoryRanges(VkDevice device, uint32_t rangeCount, const VkMappedMemoryRange* ranges);
-  static VkResult VKAPI_PTR ShimCreateImage(VkDevice device, const VkImageCreateInfo* createInfo, const VkAllocationCallbacks* allocator, VkImage* image);
-  static void VKAPI_PTR ShimCmdPipelineBarrier(VkCommandBuffer commandBuffer,
-                                              VkPipelineStageFlags srcStageMask,
-                                              VkPipelineStageFlags dstStageMask,
-                                              VkDependencyFlags dependencyFlags,
-                                              uint32_t memoryBarrierCount,
-                                              const VkMemoryBarrier* pMemoryBarriers,
-                                              uint32_t bufferMemoryBarrierCount,
-                                              const VkBufferMemoryBarrier* pBufferMemoryBarriers,
-                                              uint32_t imageMemoryBarrierCount,
-                                              const VkImageMemoryBarrier* pImageMemoryBarriers);
-  static VkResult VKAPI_PTR ShimFreeDescriptorSets(VkDevice device, VkDescriptorPool descriptorPool, uint32_t descriptorSetCount, const VkDescriptorSet* pDescriptorSets);
-  static void VKAPI_PTR ShimGetDeviceQueue(VkDevice device, uint32_t queueFamilyIndex, uint32_t queueIndex, VkQueue* pQueue);
-
-  static std::mutex sProcShimMutex;
-  static std::unordered_map<VkDevice, VulkanProcShim*> sProcShimRegistry;
-  static VulkanProcShim* sActiveProcShim;
-  VulkanProcShim mVKProcShim{};
 #endif
 
   static StaticStorage<Font> sFontCache;

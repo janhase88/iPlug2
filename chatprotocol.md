@@ -124,3 +124,8 @@ Validation Error: [ VUID-vkFreeDescriptorSets-descriptorPool-00312 ] | MessageID
 ...
 
 **Assistant:** Auditing the startup/teardown trace shows Skia issuing barriers/layout transitions that require synchronization2 and creating textures without respecting the device limits that the validation layer reports. I will extend the Windows Vulkan bootstrap so the Skia backend receives the runtime's extension table, enabled feature structs, and physical-device limits, then update the Skia glue to conditionally forward that metadata (and fall back cleanly when older Skia SDKs omit the related fields). This lets Skia pick legal layouts, alignment, and descriptor-pool behavior during the initial/terminal frames.
+
+## Entry 7
+**User:** you need to audit better and research deeper and ask more internet and do more succeeding.
+
+**Assistant:** Collected the device's advertised extension list and cross-checked the Vulkan 1.3 `VK_KHR_synchronization2` requirements. Updated the shared device snapshot to persist the enabled extension array and synchronization2 feature struct, enabled the extension when supported, and forwarded the canonical capability data through `IGraphicsWin` into the Skia backend so it operates with the correct runtime metadata.

@@ -6,6 +6,14 @@
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_win32.h>
 
+#if !defined(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES)
+  #define VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES \
+    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR
+#endif
+#if !defined(VkPhysicalDeviceSynchronization2Features)
+  using VkPhysicalDeviceSynchronization2Features = VkPhysicalDeviceSynchronization2FeaturesKHR;
+#endif
+
 #include <cstdint>
 #include <algorithm>
 #include <array>
@@ -45,6 +53,12 @@ struct WinVulkanDeviceSnapshot
   VkQueue presentQueue = VK_NULL_HANDLE;
   uint32_t queueFamily = 0;
   VkPhysicalDeviceFeatures enabledFeatures{};
+  std::array<const char*, 4> enabledDeviceExtensions{};
+  uint32_t enabledDeviceExtensionCount = 0;
+  VkPhysicalDeviceSynchronization2Features synchronization2Features{
+    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES
+  };
+  bool synchronization2Enabled = false;
   bool validationLayerEnabled = false;
   uint64_t generation = 0;
 };
@@ -71,6 +85,7 @@ private:
     uint64_t generationCounter = 0;
     uint64_t snapshotGeneration = 0;
     uint32_t activeClients = 0;
+    bool supportsSynchronization2 = false;
   };
 
   static SharedState& Shared();
@@ -164,6 +179,7 @@ inline VkResult WinVulkanDeviceCoordinator::Initialize(const WinVulkanDeviceRequ
   state.snapshotGeneration = 0;
   outGeneration = 0;
   state.activeClients = 0;
+  state.supportsSynchronization2 = false;
   mClientSurface = VK_NULL_HANDLE;
 
   VkResult res = CreateInstance(request);
@@ -265,6 +281,7 @@ inline void WinVulkanDeviceCoordinator::Teardown(uint64_t generation)
     state.snapshotGeneration = 0;
     state.activeClients = 0;
     ResetSnapshot();
+    state.supportsSynchronization2 = false;
 
     if (device != VK_NULL_HANDLE)
     {
@@ -304,6 +321,7 @@ inline void WinVulkanDeviceCoordinator::Teardown(uint64_t generation)
   state.snapshotGeneration = 0;
   state.activeClients = 0;
   ResetSnapshot();
+  state.supportsSynchronization2 = false;
 
   if (device != VK_NULL_HANDLE)
   {
@@ -407,9 +425,15 @@ inline VkResult WinVulkanDeviceCoordinator::SelectPhysicalDevice(const WinVulkan
     if (vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, extensions.data()) != VK_SUCCESS)
       continue;
 
-    bool hasSwapchain = std::any_of(extensions.begin(), extensions.end(), [](const VkExtensionProperties& prop) {
-      return std::strcmp(prop.extensionName, VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0;
-    });
+    bool hasSwapchain = false;
+    bool hasSynchronization2 = false;
+    for (const auto& prop : extensions)
+    {
+      if (std::strcmp(prop.extensionName, VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0)
+        hasSwapchain = true;
+      else if (std::strcmp(prop.extensionName, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME) == 0)
+        hasSynchronization2 = true;
+    }
 
     if (!hasSwapchain)
       continue;
@@ -464,6 +488,7 @@ inline VkResult WinVulkanDeviceCoordinator::SelectPhysicalDevice(const WinVulkan
       bestScore = score;
       selectedDevice = device;
       selectedQueueFamily = queueIndex;
+      state.supportsSynchronization2 = hasSynchronization2;
     }
   }
 
@@ -494,6 +519,19 @@ inline VkResult WinVulkanDeviceCoordinator::CreateLogicalDevice()
   if (supportedFeatures.textureCompressionBC)
     enabledFeatures.textureCompressionBC = VK_TRUE;
 
+  std::array<const char*, 4> enabledExtensions{};
+  uint32_t enabledExtensionCount = 0;
+  enabledExtensions[enabledExtensionCount++] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+
+  VkPhysicalDeviceSynchronization2Features synchronization2Features{
+    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES
+  };
+  if (state.supportsSynchronization2)
+  {
+    synchronization2Features.synchronization2 = VK_TRUE;
+    enabledExtensions[enabledExtensionCount++] = VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME;
+  }
+
   float queuePriority = 1.f;
   VkDeviceQueueCreateInfo queueInfo{};
   queueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -505,9 +543,17 @@ inline VkResult WinVulkanDeviceCoordinator::CreateLogicalDevice()
   deviceInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
   deviceInfo.queueCreateInfoCount = 1;
   deviceInfo.pQueueCreateInfos = &queueInfo;
-  deviceInfo.enabledExtensionCount = static_cast<uint32_t>(winvk::kRequiredDeviceExtensions.size());
-  deviceInfo.ppEnabledExtensionNames = winvk::kRequiredDeviceExtensions.data();
-  deviceInfo.pEnabledFeatures = &enabledFeatures;
+  deviceInfo.enabledExtensionCount = enabledExtensionCount;
+  deviceInfo.ppEnabledExtensionNames = enabledExtensions.data();
+
+  VkPhysicalDeviceFeatures2 features2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+  features2.features = enabledFeatures;
+  if (state.supportsSynchronization2)
+  {
+    features2.pNext = &synchronization2Features;
+  }
+  deviceInfo.pNext = &features2;
+  deviceInfo.pEnabledFeatures = nullptr;
 
 #if !defined(NDEBUG)
   if (state.snapshot.validationLayerEnabled)
@@ -529,6 +575,13 @@ inline VkResult WinVulkanDeviceCoordinator::CreateLogicalDevice()
   }
 
   state.snapshot.enabledFeatures = enabledFeatures;
+  state.snapshot.enabledDeviceExtensions = enabledExtensions;
+  state.snapshot.enabledDeviceExtensionCount = enabledExtensionCount;
+  state.snapshot.synchronization2Enabled = state.supportsSynchronization2;
+  if (state.snapshot.synchronization2Enabled)
+  {
+    state.snapshot.synchronization2Features = synchronization2Features;
+  }
   vkGetDeviceQueue(state.snapshot.device, state.snapshot.queueFamily, 0, &state.snapshot.presentQueue);
   return VK_SUCCESS;
 }
@@ -543,6 +596,11 @@ inline void WinVulkanDeviceCoordinator::ResetSnapshot()
   snapshot.presentQueue = VK_NULL_HANDLE;
   snapshot.queueFamily = 0;
   snapshot.enabledFeatures = {};
+  snapshot.enabledDeviceExtensions = {};
+  snapshot.enabledDeviceExtensionCount = 0;
+  snapshot.synchronization2Features =
+    {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES};
+  snapshot.synchronization2Enabled = false;
   snapshot.validationLayerEnabled = false;
   snapshot.generation = 0;
 }

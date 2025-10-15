@@ -21,6 +21,13 @@
     #define VK_USE_PLATFORM_WIN32_KHR
   #endif
   #include <vulkan/vulkan.h>
+  #if !defined(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES)
+    #define VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES \
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR
+  #endif
+  #if !defined(VkPhysicalDeviceSynchronization2Features)
+    using VkPhysicalDeviceSynchronization2Features = VkPhysicalDeviceSynchronization2FeaturesKHR;
+  #endif
   #include "include/gpu/vk/GrVkTypes.h"
 
 namespace skgpu { class VulkanExtensions; }
@@ -277,6 +284,8 @@ private:
   const VkPhysicalDeviceFeatures2* mVKDeviceFeatures2Ptr = nullptr;
   const VkPhysicalDeviceProperties* mVKDevicePropertiesPtr = nullptr;
   const VkPhysicalDeviceMemoryProperties* mVKMemoryPropertiesPtr = nullptr;
+  const VkPhysicalDeviceSynchronization2Features* mVKSync2FeaturesPtr = nullptr;
+  bool mVKSync2Enabled = false;
   bool PrepareCurrentSwapchainImageForFlush();
   void ResetVulkanSwapchainCaches();
   VkCommandBuffer EnsureVulkanCommandBuffer();

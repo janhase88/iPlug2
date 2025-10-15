@@ -36,6 +36,13 @@
   #include <vulkan/vulkan.h>
   #include <vulkan/vulkan_win32.h>
   #include "WinVulkanDeviceCoordinator.h"
+  #if !defined(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES)
+    #define VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES \
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR
+  #endif
+  #if !defined(VkPhysicalDeviceSynchronization2Features)
+    using VkPhysicalDeviceSynchronization2Features = VkPhysicalDeviceSynchronization2FeaturesKHR;
+  #endif
   #if __has_include("include/gpu/vk/VulkanExtensions.h")
     #include "include/gpu/vk/VulkanExtensions.h"
     #ifndef IGRAPHICS_VK_HAS_VULKAN_EXTENSIONS
@@ -69,11 +76,15 @@ struct VulkanContext
   std::vector<VkImage>* swapchainImages = nullptr;
   VkFormat format = VK_FORMAT_B8G8R8A8_UNORM;
   VkImageUsageFlags usageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  const char* const* deviceExtensions = nullptr;
+  uint32_t deviceExtensionCount = 0;
   const skgpu::VulkanExtensions* extensions = nullptr;
   const VkPhysicalDeviceFeatures* deviceFeatures = nullptr;
   const VkPhysicalDeviceFeatures2* deviceFeatures2 = nullptr;
   const VkPhysicalDeviceProperties* deviceProperties = nullptr;
   const VkPhysicalDeviceMemoryProperties* memoryProperties = nullptr;
+  const VkPhysicalDeviceSynchronization2Features* synchronization2Features = nullptr;
+  bool synchronization2Enabled = false;
 };
 #endif
 
@@ -253,6 +264,12 @@ private:
   VkPhysicalDeviceMemoryProperties mVkMemoryProperties{};
   VkPhysicalDeviceFeatures mVkEnabledFeatures{};
   VkPhysicalDeviceFeatures2 mVkEnabledFeatures2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+  std::array<const char*, 4> mVkEnabledDeviceExtensions{};
+  uint32_t mVkEnabledDeviceExtensionCount = 0;
+  VkPhysicalDeviceSynchronization2Features mVkSynchronization2Features{
+    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES
+  };
+  bool mVkSynchronization2Enabled = false;
   std::unique_ptr<skgpu::VulkanExtensions> mVkExtensions;
 #endif
 

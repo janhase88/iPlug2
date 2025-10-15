@@ -1220,6 +1220,8 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
   mVKDeviceFeatures2Ptr = ctx->deviceFeatures2;
   mVKDevicePropertiesPtr = ctx->deviceProperties;
   mVKMemoryPropertiesPtr = ctx->memoryProperties;
+  mVKSync2FeaturesPtr = ctx->synchronization2Features;
+  mVKSync2Enabled = ctx->synchronization2Enabled;
   {
     std::lock_guard<std::mutex> lock(mVKSwapchainMutex);
     mVKSwapchainImages.clear();
@@ -1326,6 +1328,8 @@ void IGraphicsSkia::OnViewDestroyed()
   mVKDeviceFeatures2Ptr = nullptr;
   mVKDevicePropertiesPtr = nullptr;
   mVKMemoryPropertiesPtr = nullptr;
+  mVKSync2FeaturesPtr = nullptr;
+  mVKSync2Enabled = false;
 
   mVKInstance = VK_NULL_HANDLE;
   mVKPhysicalDevice = VK_NULL_HANDLE;

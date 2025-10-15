@@ -3789,6 +3789,17 @@ bool IGraphicsWin::CreateVulkanContext()
   mPresentQueue = snapshot.presentQueue;
   mVkQueueFamily = snapshot.queueFamily;
   mVkEnabledFeatures = snapshot.enabledFeatures;
+  mVkEnabledDeviceExtensions = snapshot.enabledDeviceExtensions;
+  mVkEnabledDeviceExtensionCount = snapshot.enabledDeviceExtensionCount;
+  mVkSynchronization2Enabled = snapshot.synchronization2Enabled;
+  if (mVkSynchronization2Enabled)
+  {
+    mVkSynchronization2Features = snapshot.synchronization2Features;
+  }
+  else
+  {
+    mVkSynchronization2Features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES};
+  }
   vkGetPhysicalDeviceProperties(mVkPhysicalDevice, &mVkDeviceProperties);
   vkGetPhysicalDeviceMemoryProperties(mVkPhysicalDevice, &mVkMemoryProperties);
 
@@ -3814,8 +3825,8 @@ bool IGraphicsWin::CreateVulkanContext()
                       mVkPhysicalDevice,
                       static_cast<uint32_t>(winvk::kRequiredInstanceExtensions.size()),
                       winvk::kRequiredInstanceExtensions.data(),
-                      static_cast<uint32_t>(winvk::kRequiredDeviceExtensions.size()),
-                      winvk::kRequiredDeviceExtensions.data());
+                      mVkEnabledDeviceExtensionCount,
+                      mVkEnabledDeviceExtensions.data());
 #endif
   mVulkanDeviceGeneration = generation;
 
@@ -3921,6 +3932,10 @@ void IGraphicsWin::DestroyVulkanContext()
   mVkMemoryProperties = {};
   mVkEnabledFeatures = {};
   mVkEnabledFeatures2 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+  mVkEnabledDeviceExtensions = {};
+  mVkEnabledDeviceExtensionCount = 0;
+  mVkSynchronization2Enabled = false;
+  mVkSynchronization2Features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES};
   mVkExtensions.reset();
   mVulkanDeviceGeneration = 0;
 }
@@ -3946,6 +3961,8 @@ bool IGraphicsWin::RecreateVulkanContext()
   ctx.swapchainImages = &mVkSwapchainImages;
   ctx.format = mVkFormat;
   ctx.usageFlags = mVkSwapchainUsageFlags;
+  ctx.deviceExtensions = mVkEnabledDeviceExtensions.data();
+  ctx.deviceExtensionCount = mVkEnabledDeviceExtensionCount;
 #if IGRAPHICS_VK_HAS_VULKAN_EXTENSIONS
   ctx.extensions = mVkExtensions.get();
 #else
@@ -3955,6 +3972,8 @@ bool IGraphicsWin::RecreateVulkanContext()
   ctx.deviceFeatures2 = &mVkEnabledFeatures2;
   ctx.deviceProperties = &mVkDeviceProperties;
   ctx.memoryProperties = &mVkMemoryProperties;
+  ctx.synchronization2Features = mVkSynchronization2Enabled ? &mVkSynchronization2Features : nullptr;
+  ctx.synchronization2Enabled = mVkSynchronization2Enabled;
   OnViewInitialized(&ctx);
   return true;
 }
@@ -4307,11 +4326,19 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   ctx.swapchainImages = &mVkSwapchainImages;
   ctx.format = mVkFormat;
   ctx.usageFlags = mVkSwapchainUsageFlags;
+  ctx.deviceExtensions = mVkEnabledDeviceExtensions.data();
+  ctx.deviceExtensionCount = mVkEnabledDeviceExtensionCount;
+#if IGRAPHICS_VK_HAS_VULKAN_EXTENSIONS
   ctx.extensions = mVkExtensions.get();
+#else
+  ctx.extensions = nullptr;
+#endif
   ctx.deviceFeatures = &mVkEnabledFeatures;
   ctx.deviceFeatures2 = &mVkEnabledFeatures2;
   ctx.deviceProperties = &mVkDeviceProperties;
   ctx.memoryProperties = &mVkMemoryProperties;
+  ctx.synchronization2Features = mVkSynchronization2Enabled ? &mVkSynchronization2Features : nullptr;
+  ctx.synchronization2Enabled = mVkSynchronization2Enabled;
   OnViewInitialized(&ctx);
 #else
   HDC dc = GetDC(mPlugWnd);

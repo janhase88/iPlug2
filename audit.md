@@ -24,25 +24,21 @@
 
 
 ## Additional Findings
-- `WinVulkanDeviceCoordinator` only exposes minimal device snapshot data; Skia backend lacks visibility into enabled features and extension support.
-- `IGraphicsSkia::OnViewInitialized` builds `VulkanBackendContext` without populating `fVkExtensions` or device feature pointers, so Skia assumes default capabilities. Skia may therefore opt into synchronization2-only layouts (`VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL`) and emit incompatible barriers.
-- `VulkanBackendContext` still lacked physical-device feature/property pointers, preventing Skia from respecting non-coherent atom sizes and layout restrictions during the initial frame flush.
-- Descriptor pool creation inside Skia defaults to pools without `VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT`. The validation error indicates pools are later freed with `vkFreeDescriptorSets`, consistent with Skia expecting the flag when extensions advertise support.
-- `vkFlushMappedMemoryRanges` alignment warnings align with Skia not receiving `VkPhysicalDeviceProperties::nonCoherentAtomSize` via backend context metadata.
+- Instrumentation of the coordinator confirmed that we always request the graphics/present queue family selected during device enumeration; the reported `vkGetDeviceQueue` violation arises from the validation layer not seeing the cached queue create info when the snapshot is reused, so we must ensure we do not mutate the recorded family index between clients.
+- Enumerating the device extensions showed that modern NVIDIA drivers expose `VK_KHR_synchronization2`; Skia's Vulkan backend will schedule layout transitions such as `VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL` whenever the runtime advertises support, which triggers validation errors unless the application enables the extension and associated feature struct during device creation.
+- Our snapshot only tracked the mandatory swapchain extension, meaning the platform layer could neither enable optional extensions nor hand the actual enablement list to Skia. As a result Skia operated with stale capability data and still attempted synchronization2-only layouts while the driver considered the feature disabled.
+- The coordinator discarded the `VkPhysicalDeviceSynchronization2Features` state after `vkCreateDevice`, so the platform layer could not surface whether synchronization2 had been toggled on when bootstrapping Skia.
 
 ## Proposed Remediation
-1. Extend the Windows Vulkan coordinator to capture and expose enabled features, properties, and extension strings.
-2. Materialize a `skgpu::VulkanExtensions` object during context creation and share it with `IGraphicsSkia` so Skia can gate synchronization features correctly.
-3. Populate `VulkanBackendContext` with feature pointers, extension metadata, and physical-device limits when instantiating the Skia direct context.
-4. Reset shared extension/feature state during teardown to avoid stale pointers.
+1. Persist the list of enabled device extensions (including optional ones such as `VK_KHR_synchronization2`) inside the shared Vulkan snapshot so every client sees the canonical capability set.
+2. Enable `VkPhysicalDeviceSynchronization2Features` at device creation whenever the driver exposes the extension, and surface that decision through the snapshot.
+3. Feed the exact extension list and synchronization2 flag into the Windows platform layer so the `skgpu::VulkanExtensions` helper mirrors the runtime configuration that was actually negotiated with the driver.
+4. Reset the cached capability state during teardown to prevent stale synchronization2 flags or extension arrays from leaking into the next device owner.
 
 
 ## Implementation Notes
-- `WinVulkanDeviceCoordinator` now records the enabled device features in its snapshot so the renderer can advertise accurate capability metadata to Skia.
-- `IGraphicsWin` captures physical-device properties, memory limits, and extension availability during context creation. When the Skia SDK exposes `VulkanExtensions`, a persistent instance is initialized with the same extension lists used during instance/device creation and skipped when the header is absent.
-- `VulkanContext` transports the extension/feature/property pointers into `IGraphicsSkia`, which now forwards them into `skgpu::VulkanBackendContext` when constructing the Skia direct context.
-- Added propagation of `VkPhysicalDeviceFeatures2`, `VkPhysicalDeviceProperties`, and `VkPhysicalDeviceMemoryProperties` so Skia aligns buffer flushes and layout decisions with the actual hardware limits reported by the coordinator.
-- Skia teardown clears cached pointers to avoid dangling references after the Vulkan device is destroyed.
-- Added conditional compilation so projects that lack Skia's `VulkanExtensions` header continue to build while still sharing the pointer metadata when available.
-- Introduced compile-time detection helpers so the backend context only writes physical-device property pointers (and the optional extension pointer) when the linked Skia SDK exposes those fields, preserving compatibility with older toolchains while forwarding the data when available.
+- `WinVulkanDeviceCoordinator` now derives the canonical extension enablement list, toggles `VkPhysicalDeviceSynchronization2Features` when the driver offers the capability, and preserves both the list and feature struct in the shared snapshot.
+- `IGraphicsWin` copies the enabled extension array and synchronization2 flag into its platform state, builds `skgpu::VulkanExtensions` with those exact names, and exports the information through the `VulkanContext` handed to `IGraphicsSkia`.
+- `VulkanContext` includes the enabled-extension array and synchronization2 metadata so the Skia renderer can log and adapt to the runtime capabilities without guessing.
+- Vulkan teardown on Windows now clears the cached extension list and synchronization2 feature struct to avoid leaking stale capability data into the next context.
 

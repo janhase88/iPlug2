@@ -2925,6 +2925,10 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
     return 0;
   }
+  case WM_DESTROY: {
+    pGraphics->ShutdownWindow(false);
+    return 0;
+  }
   case WM_CLOSE: {
     pGraphics->CloseWindow();
     return 0;
@@ -4444,99 +4448,92 @@ IRECT IGraphicsWin::GetWindowRECT()
 
 void IGraphicsWin::CloseWindow()
 {
-  if (mPlugWnd)
-  {
-    if (ControlIsCaptured() || GetCapture() == mPlugWnd)
-      ReleaseMouseCapture();
+  ShutdownWindow(true);
+}
 
-    if (mVSYNCEnabled)
-      StopVBlankThread();
-    else
-      KillTimer(mPlugWnd, IPLUG_TIMER_ID);
+void IGraphicsWin::ShutdownWindow(bool destroyWindowHandle)
+{
+  HWND plugWnd = mPlugWnd;
+  if (!plugWnd)
+    return;
+
+  if (ControlIsCaptured() || GetCapture() == plugWnd)
+    ReleaseMouseCapture();
+
+  if (mVSYNCEnabled)
+    StopVBlankThread();
+  else
+    KillTimer(plugWnd, IPLUG_TIMER_ID);
 
 #if defined IGRAPHICS_GL
-    HDC currentDC = wglGetCurrentDC();
-    HGLRC currentContext = wglGetCurrentContext();
+  HDC currentDC = wglGetCurrentDC();
+  HGLRC currentContext = wglGetCurrentContext();
 
-    if (currentContext != mHGLRC)
-    {
-      ActivateGLContext();
-    }
+  if (currentContext != mHGLRC)
+  {
+    ActivateGLContext();
+  }
 
-    OnViewDestroyed();
+  OnViewDestroyed();
 
-    DeactivateGLContext();
+  DeactivateGLContext();
 
-    DestroyGLContext();
+  DestroyGLContext();
 
-    if (mWindowDC)
-    {
-      ReleaseDC(mPlugWnd, mWindowDC);
-      mWindowDC = nullptr;
-    }
+  if (mWindowDC)
+  {
+    ReleaseDC(plugWnd, mWindowDC);
+    mWindowDC = nullptr;
+  }
 
 #elif defined IGRAPHICS_VULKAN
 
-    TeardownVulkanBackend();
+  TeardownVulkanBackend();
 
 #else
 
-    OnViewDestroyed();
+  OnViewDestroyed();
 
 #endif
 
-    SetPlatformContext(nullptr);
+  SetPlatformContext(nullptr);
 
-    if (mTooltipWnd)
-    {
-      DestroyWindow(mTooltipWnd);
-      mTooltipWnd = 0;
-      mShowingTooltip = false;
-      mTooltipIdx = -1;
-    }
+  if (mTooltipWnd)
+  {
+    DestroyWindow(mTooltipWnd);
+    mTooltipWnd = 0;
+    mShowingTooltip = false;
+    mTooltipIdx = -1;
+  }
 
+  // Unregister OLE drop target and uninitialize OLE if needed
 
-    // Unregister OLE drop target and uninitialize OLE if needed
+  if (mDropTarget)
+  {
+    RevokeDragDrop(plugWnd);
+    mDropTarget->Release();
+    mDropTarget = nullptr;
+  }
 
+  if (mOLEInited)
+  {
+    OleUninitialize();
+    mOLEInited = false;
+  }
 
-    if (mDropTarget)
+  if (destroyWindowHandle)
+  {
+    mPlugWnd = nullptr;
+    DestroyWindow(plugWnd);
+  }
+  else
+  {
+    mPlugWnd = nullptr;
+  }
 
-
-    {
-
-
-      RevokeDragDrop(mPlugWnd);
-
-
-      mDropTarget->Release();
-
-
-      mDropTarget = nullptr;
-    }
-
-
-    if (mOLEInited)
-
-
-    {
-
-
-      OleUninitialize();
-
-
-      mOLEInited = false;
-    }
-
-
-    DestroyWindow(mPlugWnd);
-
-
-    mPlugWnd = 0;
-
-    if (--nWndClassReg == 0)
-    {
-      UnregisterClassW(wndClassName, mHInstance);
-    }
+  if (--nWndClassReg == 0)
+  {
+    UnregisterClassW(wndClassName, mHInstance);
   }
 }
 

@@ -184,6 +184,8 @@ protected:
   IRECT GetWindowRECT();
 
 private:
+  void ShutdownWindow(bool destroyWindowHandle);
+
   // OLE drag & drop
   DragAndDropHelpers::DropTarget* mDropTarget = nullptr;
   bool mOLEInited = false;

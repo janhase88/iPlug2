@@ -2876,6 +2876,11 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
       pGraphics->FlushDeferredInvalidations();
     }
 
+    if (pGraphics->GetIdlePacingMode() == EIdlePacingMode::Legacy)
+    {
+      pGraphics->ForceProcessIdleTasks();
+    }
+
     DeleteObject(region);
 
     return 0;

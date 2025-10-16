@@ -843,20 +843,6 @@ const char* DecisionKindLabel(IGraphicsWin::InstancePaintBudget::DecisionKind ki
   }
 }
 
-#if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
-const char* IdleStateLabel(IGraphicsWin::SchedulerState::ThrottleState state)
-{
-  using ThrottleState = IGraphicsWin::SchedulerState::ThrottleState;
-  switch (state)
-  {
-    case ThrottleState::kBurstCooling: return "BurstCooling";
-    case ThrottleState::kIdleCatchUp:  return "IdleCatchUp";
-    case ThrottleState::kNormal:
-    default:
-      return "Normal";
-  }
-}
-#endif
 
 schedulerlog::Severity SeverityForSnapshot(const IGraphicsWin::InstancePaintBudget::Snapshot& snapshot)
 {
@@ -954,6 +940,19 @@ void IGraphicsWin::ResetIdleSchedulerState(EIdlePacingMode mode, ULONGLONG nowTi
       schedulerlog::MakeField("targetMs", mSchedulerState.idleCadenceTargetMs),
       schedulerlog::MakeField("baseMs", mSchedulerState.baseCadenceMs)
     });
+}
+
+const char* IGraphicsWin::IdleStateLabel(SchedulerState::ThrottleState state) const
+{
+  using ThrottleState = SchedulerState::ThrottleState;
+  switch (state)
+  {
+    case ThrottleState::kBurstCooling: return "BurstCooling";
+    case ThrottleState::kIdleCatchUp:  return "IdleCatchUp";
+    case ThrottleState::kNormal:
+    default:
+      return "Normal";
+  }
 }
 
 int IGraphicsWin::ComputeIdleCadenceMs(double stretchFactor) const

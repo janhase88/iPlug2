@@ -2617,7 +2617,7 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
   case WM_MOUSEWHEEL: {
     if (pGraphics->mParamEditWnd)
     {
-      pGraphics->mParamEditMsg = kCancel;
+      SendMessageW(pGraphics->mParamEditWnd, WM_MOUSEWHEEL, wParam, lParam);
       return 0;
     }
     else

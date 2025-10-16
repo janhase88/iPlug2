@@ -80,6 +80,17 @@ public:
   /** Get a const pointer to the IGraphics context */
   const IGraphics* GetUI() const { return mGraphics.get(); };
 
+  /** Set the idle pacing mode used when servicing OnIdle() on the UI thread.
+   *  Can be called before the editor window is created. The mode will be applied
+   *  the next time the UI opens.
+   *  @param mode The desired idle pacing mode. */
+  void SetIdlePacingMode(EIdlePacingMode mode);
+
+  /** Query the idle pacing mode that will be used for the next OnIdle() cycle.
+   *  If the UI has not been created yet this returns the last requested mode or
+   *  EIdlePacingMode::Legacy if none was requested. */
+  EIdlePacingMode GetIdlePacingMode() const;
+
   /** Called when the idle pacing mode changes via configuration or console command */
   virtual void OnIdlePacingChanged(EIdlePacingMode) {}
 
@@ -103,6 +114,8 @@ private:
   int mLastHeight = 0;
   float mLastScale = 0.f;
   bool mClosing = false; // used to prevent re-entrancy on closing
+  bool mHasPendingIdlePacingMode = false;
+  EIdlePacingMode mPendingIdlePacingMode = EIdlePacingMode::Legacy;
 };
 
 END_IGRAPHICS_NAMESPACE

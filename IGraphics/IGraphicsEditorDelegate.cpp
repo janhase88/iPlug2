@@ -32,10 +32,14 @@ void* IGEditorDelegate::OpenWindow(void* pParent)
   if(!mGraphics)
   {
     mGraphics = std::unique_ptr<IGraphics>(CreateGraphics());
+    if (mGraphics && mHasPendingIdlePacingMode)
+    {
+      mGraphics->SetIdlePacingMode(mPendingIdlePacingMode);
+    }
     if (mLastWidth && mLastHeight && mLastScale)
       GetUI()->Resize(mLastWidth, mLastHeight, mLastScale);
   }
-  
+
   if(mGraphics)
     return mGraphics->OpenWindow(pParent);
   else
@@ -54,10 +58,12 @@ void IGEditorDelegate::CloseWindow()
       mLastWidth = mGraphics->Width();
       mLastHeight = mGraphics->Height();
       mLastScale = mGraphics->GetDrawScale();
+      mPendingIdlePacingMode = mGraphics->GetIdlePacingMode();
+      mHasPendingIdlePacingMode = true;
       mGraphics->CloseWindow();
       mGraphics = nullptr;
     }
-    
+
     mClosing = false;
   }
 }
@@ -113,6 +119,32 @@ void IGEditorDelegate::SetScreenScale(float scale)
 {
   if (GetUI())
     mGraphics->SetScreenScale(scale);
+}
+
+void IGEditorDelegate::SetIdlePacingMode(EIdlePacingMode mode)
+{
+  mPendingIdlePacingMode = mode;
+  mHasPendingIdlePacingMode = true;
+
+  if (mGraphics)
+  {
+    mGraphics->SetIdlePacingMode(mode);
+  }
+}
+
+EIdlePacingMode IGEditorDelegate::GetIdlePacingMode() const
+{
+  if (mGraphics)
+  {
+    return mGraphics->GetIdlePacingMode();
+  }
+
+  if (mHasPendingIdlePacingMode)
+  {
+    return mPendingIdlePacingMode;
+  }
+
+  return EIdlePacingMode::Legacy;
 }
 
 void IGEditorDelegate::SendControlValueFromDelegate(int ctrlTag, double normalizedValue)

@@ -114,8 +114,13 @@ private:
   int mLastHeight = 0;
   float mLastScale = 0.f;
   bool mClosing = false; // used to prevent re-entrancy on closing
+#if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+  bool mHasPendingIdlePacingMode = true;
+  EIdlePacingMode mPendingIdlePacingMode = EIdlePacingMode::Adaptive;
+#else
   bool mHasPendingIdlePacingMode = false;
   EIdlePacingMode mPendingIdlePacingMode = EIdlePacingMode::Legacy;
+#endif
 };
 
 END_IGRAPHICS_NAMESPACE

@@ -16,21 +16,20 @@ See [Skia Vulkan on Windows](SkiaVulkanWindows.md) for instructions on enabling 
 
 ## Configuring idle pacing
 
-`IGraphics` ships with an experimental adaptive idle scheduler that can be
-enabled at compile time by defining `IGRAPHICS_SCHED_IDLE_EXPERIMENTAL=1`. Once
-enabled, plug-ins can choose the pacing strategy that services `OnIdle()` by
+`IGraphics` ships with an experimental adaptive idle scheduler that is enabled
+by default. Plug-ins can choose the pacing strategy that services `OnIdle()` by
 calling `SetIdlePacingMode()` on the editor delegate. The requested mode is
 remembered even if the UI is not currently open, so it can be configured from a
 constructor or `OnUIOpen()`:
 
 ```cpp
-#if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
   SetIdlePacingMode(EIdlePacingMode::Adaptive);
-#endif
 ```
 
 Valid modes are `Legacy`, `Adaptive`, and `Locked60Hz`. When the experimental
-scheduler is disabled, the request is ignored and `Legacy` behaviour is used.
+scheduler is disabled at compile time (by defining
+`IGRAPHICS_SCHED_IDLE_EXPERIMENTAL=0`), the request is ignored and `Legacy`
+behaviour is used. Otherwise, adaptive pacing is the default.
 
 ## Windows and Skia header interoperability
 

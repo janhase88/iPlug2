@@ -1883,7 +1883,11 @@ private:
   float mDrawScale = 1.f; // scale deviation from  default width and height i.e stretching the UI by dragging bottom right hand corner
 
   int mIdleTicks = 0;
+#if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
+  EIdlePacingMode mIdlePacingMode = EIdlePacingMode::Adaptive;
+#else
   EIdlePacingMode mIdlePacingMode = EIdlePacingMode::Legacy;
+#endif
   
   std::vector<EGestureType> mRegisteredGestures; // All the types of gesture registered with the graphics context
   IRECTList mGestureRegions; // Rectangular regions linked to gestures (excluding IControls)

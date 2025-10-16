@@ -82,6 +82,14 @@ namespace
 {
 constexpr uint32_t kVBlankQueueDepthWarningMultiplier = 2;
 
+struct SchedulerTelemetryState
+{
+  int pendingParamFlush = 0;
+  double idleStretchFactor = 1.0;
+  int lastIdleOutstanding = 0;
+  bool lastIdleTimerBehind = false;
+};
+
 void RecordVBlankQueueDepthSample(uint32_t depth);
 void IncrementVBlankQueueWarnCount();
 void RecordVBlankDispatchSuccess();
@@ -94,7 +102,7 @@ void AtomicMax(std::atomic<T>& target, T value);
 #if IGRAPHICS_SCHED_IDLE_EXPERIMENTAL
 void RecordParamQueueTelemetry(int outstanding, schedulerlog::Severity severity);
 void RecordSchedulerSample(const IGraphicsWin::InstancePaintBudget::Snapshot& snapshot,
-                           const IGraphicsWin::SchedulerState* scheduler,
+                           const SchedulerTelemetryState* scheduler,
                            uint32_t droppedVBlank,
                            bool forgivenessActive);
 #endif
@@ -701,7 +709,7 @@ void RecordParamQueueTelemetry(int outstanding, schedulerlog::Severity severity)
 }
 
 void RecordSchedulerSample(const IGraphicsWin::InstancePaintBudget::Snapshot& snapshot,
-                           const IGraphicsWin::SchedulerState* scheduler,
+                           const SchedulerTelemetryState* scheduler,
                            uint32_t droppedVBlank,
                            bool forgivenessActive)
 {
@@ -747,7 +755,7 @@ void RecordParamQueueTelemetry(int, schedulerlog::Severity)
 }
 
 void RecordSchedulerSample(const IGraphicsWin::InstancePaintBudget::Snapshot& snapshot,
-                           const void*,
+                           const SchedulerTelemetryState*,
                            uint32_t droppedVBlank,
                            bool forgivenessActive)
 {
@@ -1603,7 +1611,12 @@ void IGraphicsWin::RefreshPaintBudgetHUD()
   const bool forgivenessActive =
     (mSchedulerState.forgivenessDeadlineTick != 0 && nowTick < mSchedulerState.forgivenessDeadlineTick);
   const uint32_t dropped = mDroppedVBlank.load(std::memory_order_acquire);
-  RecordSchedulerSample(snapshot, &mSchedulerState, dropped, forgivenessActive);
+  SchedulerTelemetryState telemetryState;
+  telemetryState.pendingParamFlush = mSchedulerState.pendingParamFlush;
+  telemetryState.idleStretchFactor = mSchedulerState.idleStretchFactor;
+  telemetryState.lastIdleOutstanding = mSchedulerState.lastIdleOutstanding;
+  telemetryState.lastIdleTimerBehind = mSchedulerState.lastIdleTimerBehind;
+  RecordSchedulerSample(snapshot, &telemetryState, dropped, forgivenessActive);
 #else
   const uint32_t dropped = mDroppedVBlank.load(std::memory_order_acquire);
   RecordSchedulerSample(snapshot, nullptr, dropped, false);

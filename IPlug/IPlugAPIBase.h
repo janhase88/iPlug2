@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <memory>
 #include <chrono>
+#include <atomic>
 
 #include "ptrlist.h"
 #include "mutex.h"
@@ -211,6 +212,7 @@ private:
   virtual void TransmitSysExDataFromProcessor(const SysExData& data) {}
 
   void OnTimer(Timer& t);
+  void ForceProcessIdleTasks() override;
 
   friend class IPlugAPP;
   friend class IPlugAAX;
@@ -225,9 +227,12 @@ private:
   friend class IPlugWEB;
 
 private:
+  void ProcessIdleTasks();
+
   WDL_String mParamDisplayStr;
   std::unique_ptr<Timer> mTimer;
   std::chrono::steady_clock::time_point mLastUIIdleTick;
+  std::atomic<bool> mProcessingIdleTasks{false};
 
   IPlugQueue<ParamTuple> mParamChangeFromProcessor {PARAM_TRANSFER_SIZE};
   IPlugQueue<IMidiMsg> mMidiMsgsFromEditor {MIDI_TRANSFER_SIZE}; // a queue of midi messages generated in the editor by clicking keyboard UI etc

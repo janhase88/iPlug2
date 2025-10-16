@@ -158,6 +158,35 @@ void IPlugAPIBase::SendParameterValueFromAPI(int paramIdx, double value, bool no
 
 void IPlugAPIBase::OnTimer(Timer& t)
 {
+  (void) t;
+  ProcessIdleTasks();
+}
+
+void IPlugAPIBase::ForceProcessIdleTasks()
+{
+  ProcessIdleTasks();
+}
+
+void IPlugAPIBase::ProcessIdleTasks()
+{
+  bool expected = false;
+  if (!mProcessingIdleTasks.compare_exchange_strong(expected, true, std::memory_order_acq_rel))
+    return;
+
+  struct ProcessingGuard
+  {
+    std::atomic<bool>& flag;
+    ProcessingGuard(std::atomic<bool>& f)
+      : flag(f)
+    {
+    }
+
+    ~ProcessingGuard()
+    {
+      flag.store(false, std::memory_order_release);
+    }
+  } guard(mProcessingIdleTasks);
+
 #if !defined(NO_IGRAPHICS)
   iplug::igraphics::IGraphics* pGraphics = nullptr;
   iplug::igraphics::IGraphics::HostIdleTickInfo idleInfo{};

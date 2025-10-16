@@ -188,10 +188,14 @@ private:
   DragAndDropHelpers::DropTarget* mDropTarget = nullptr;
   bool mOLEInited = false;
 
+  static constexpr UINT kForceIdleMessage = WM_APP + 0x642;
+
   /** Called either in response to WM_TIMER tick or user message WM_VBLANK, triggered by VSYNC thread
    * @param vBlankCount will allow redraws to get paced by the vblank message. Passing 0 is a WM_TIMER fallback.
    * @param fromVBlankMessage distinguishes real WM_VBLANK deliveries from the WM_TIMER fallback. */
   void OnDisplayTimer(DWORD vBlankCount = 0, bool fromVBlankMessage = false);
+
+  void RequestIdleFlush();
 
   enum EParamEditMsg
   {
@@ -438,6 +442,7 @@ private:
   std::array<std::atomic<uint64_t>, kVBlankLatencySampleCount> mVBlankLatencyMicros{};
   bool mVSYNCEnabled = false;
   bool mDeferInvalidation = false;
+  bool mIdleFlushPosted = false;
   static SchedulerTelemetrySnapshot GetSchedulerTelemetrySnapshot();
   static void ResetSchedulerTelemetrySnapshot();
 

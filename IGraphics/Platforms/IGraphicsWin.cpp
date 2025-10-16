@@ -2387,6 +2387,18 @@ void IGraphicsWin::OnDisplayTimer(DWORD vBlankCount, bool fromVBlankMessage)
   return;
 }
 
+void IGraphicsWin::RequestIdleFlush()
+{
+  if (!mPlugWnd)
+    return;
+
+  if (!mIdleFlushPosted)
+  {
+    mIdleFlushPosted = true;
+    PostMessageW(mPlugWnd, kForceIdleMessage, 0, 0);
+  }
+}
+
 // static
 LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -2442,6 +2454,12 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
   switch (msg)
   {
+  case IGraphicsWin::kForceIdleMessage:
+    pGraphics->mIdleFlushPosted = false;
+    if (pGraphics->GetIdlePacingMode() == EIdlePacingMode::Legacy)
+      pGraphics->ForceProcessIdleTasks();
+    return 0;
+
   case WM_VBLANK:
     pGraphics->OnDisplayTimer(static_cast<DWORD>(wParam), true);
     return 0;
@@ -2874,6 +2892,11 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
       pGraphics->OnIdleDrainComplete(nowTick, drainedRegionCount);
 #endif
       pGraphics->FlushDeferredInvalidations();
+    }
+
+    if (pGraphics->GetIdlePacingMode() == EIdlePacingMode::Legacy)
+    {
+      pGraphics->RequestIdleFlush();
     }
 
     DeleteObject(region);
@@ -4402,6 +4425,8 @@ void IGraphicsWin::CloseWindow()
 {
   if (mPlugWnd)
   {
+    mIdleFlushPosted = false;
+
     if (ControlIsCaptured() || GetCapture() == mPlugWnd)
       ReleaseMouseCapture();
 

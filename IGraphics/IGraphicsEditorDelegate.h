@@ -83,6 +83,9 @@ public:
   /** Called when the idle pacing mode changes via configuration or console command */
   virtual void OnIdlePacingChanged(EIdlePacingMode) {}
 
+  /** Force the delegate to process any pending idle tasks immediately. */
+  virtual void ForceProcessIdleTasks() {}
+
   /** Serializes the size and scale of the IGraphics.
    * @param chunk The output chunk to serialize to. Will append data if the chunk has already been started.
    * @return \c true if the serialization was successful */

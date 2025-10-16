@@ -1139,6 +1139,13 @@ public:
   /** @return Current idle pacing configuration requested by the host */
   EIdlePacingMode GetIdlePacingMode() const { return mIdlePacingMode; }
 
+  /** Force processing of any pending idle tasks in the connected delegate. */
+  void ForceProcessIdleTasks()
+  {
+    if (mDelegate)
+      mDelegate->ForceProcessIdleTasks();
+  }
+
   /** @return Human-readable string for an idle pacing mode */
   static const char* IdlePacingModeToString(EIdlePacingMode mode);
 

@@ -3836,6 +3836,19 @@ bool IGraphicsWin::CreateVulkanContext()
     return false;
   }
 
+  mLayoutCompleteSemaphore.device = mVkDevice;
+  res = vkCreateSemaphore(mVkDevice, &semInfo, nullptr, &mLayoutCompleteSemaphore.handle);
+  if (res != VK_SUCCESS)
+  {
+    IGRAPHICS_VK_LOG("CreateVulkanContext",
+                        "vkCreateSemaphore",
+                        vulkanlog::Severity::kError,
+                        vulkanlog::MakeField("vkResult", static_cast<int>(res)),
+                         vulkanlog::MakeField("semaphore", "layoutComplete"));
+    DestroyVulkanContext();
+    return false;
+  }
+
   VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
   fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
   mInFlightFence.device = mVkDevice;
@@ -3860,6 +3873,7 @@ void IGraphicsWin::DestroyVulkanContext()
 
   mImageAvailableSemaphore.Reset();
   mRenderFinishedSemaphore.Reset();
+  mLayoutCompleteSemaphore.Reset();
   mInFlightFence.Reset();
   mVkSwapchain.Reset();
   mVkSwapchain.device = mVkDevice;
@@ -3903,6 +3917,7 @@ bool IGraphicsWin::RecreateVulkanContext()
   ctx.queueFamily = mVkQueueFamily;
   ctx.imageAvailableSemaphore = mImageAvailableSemaphore.handle;
   ctx.renderFinishedSemaphore = mRenderFinishedSemaphore.handle;
+  ctx.layoutCompleteSemaphore = mLayoutCompleteSemaphore.handle;
   ctx.inFlightFence = mInFlightFence.handle;
   ctx.swapchainImages = &mVkSwapchainImages;
   ctx.format = mVkFormat;
@@ -4255,6 +4270,7 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   ctx.queueFamily = mVkQueueFamily;
   ctx.imageAvailableSemaphore = mImageAvailableSemaphore.handle;
   ctx.renderFinishedSemaphore = mRenderFinishedSemaphore.handle;
+  ctx.layoutCompleteSemaphore = mLayoutCompleteSemaphore.handle;
   ctx.inFlightFence = mInFlightFence.handle;
   ctx.swapchainImages = &mVkSwapchainImages;
   ctx.format = mVkFormat;

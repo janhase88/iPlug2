@@ -1133,6 +1133,7 @@ void IGraphicsSkia::OnViewInitialized(void* pContext)
     mVKCurrentImage = kInvalidImageIndex;
     mVKImageAvailableSemaphore = ctx->imageAvailableSemaphore;
     mVKRenderFinishedSemaphore = ctx->renderFinishedSemaphore;
+    mVKLayoutCompleteSemaphore = ctx->layoutCompleteSemaphore;
     mVKInFlightFence = ctx->inFlightFence;
   }
 
@@ -1208,6 +1209,7 @@ void IGraphicsSkia::OnViewDestroyed()
 
   mVKImageAvailableSemaphore = VK_NULL_HANDLE;
   mVKRenderFinishedSemaphore = VK_NULL_HANDLE;
+  mVKLayoutCompleteSemaphore = VK_NULL_HANDLE;
   mVKInFlightFence = VK_NULL_HANDLE;
   mVKSwapchain = VK_NULL_HANDLE;
 
@@ -2238,7 +2240,17 @@ void IGraphicsSkia::EndFrame()
   submitInfo.pWaitDstStageMask = &waitStage;
   submitInfo.commandBufferCount = 1;
   submitInfo.pCommandBuffers = &mVKCommandBuffer;
-  submitInfo.signalSemaphoreCount = 0;
+  VkSemaphore layoutSignalSemaphores[] = { mVKLayoutCompleteSemaphore };
+  if (mVKLayoutCompleteSemaphore != VK_NULL_HANDLE)
+  {
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = layoutSignalSemaphores;
+  }
+  else
+  {
+    submitInfo.signalSemaphoreCount = 0;
+    submitInfo.pSignalSemaphores = nullptr;
+  }
 
   VkResult submitRes = vkQueueSubmit(mVKQueue, 1, &submitInfo, mVKInFlightFence);
   bool previousPending = mVKSubmissionPending;
@@ -2267,8 +2279,17 @@ void IGraphicsSkia::EndFrame()
 
   VkPresentInfoKHR presentInfo{};
   presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-  presentInfo.waitSemaphoreCount = 0;
-  presentInfo.pWaitSemaphores = nullptr;
+  VkSemaphore presentWaitSemaphores[] = { mVKLayoutCompleteSemaphore };
+  if (mVKLayoutCompleteSemaphore != VK_NULL_HANDLE)
+  {
+    presentInfo.waitSemaphoreCount = 1;
+    presentInfo.pWaitSemaphores = presentWaitSemaphores;
+  }
+  else
+  {
+    presentInfo.waitSemaphoreCount = 0;
+    presentInfo.pWaitSemaphores = nullptr;
+  }
   presentInfo.swapchainCount = 1;
   presentInfo.pSwapchains = &mVKSwapchain;
   presentInfo.pImageIndices = &mVKCurrentImage;

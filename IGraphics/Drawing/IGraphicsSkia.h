@@ -261,6 +261,7 @@ private:
   uint32_t mVKCurrentImage = kInvalidImageIndex;
   VkSemaphore mVKImageAvailableSemaphore = VK_NULL_HANDLE;
   VkSemaphore mVKRenderFinishedSemaphore = VK_NULL_HANDLE;
+  VkSemaphore mVKLayoutCompleteSemaphore = VK_NULL_HANDLE;
   VkFence mVKInFlightFence = VK_NULL_HANDLE;
   VkFormat mVKSwapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
   VkImageUsageFlags mVKSwapchainUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;

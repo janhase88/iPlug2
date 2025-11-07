@@ -54,6 +54,7 @@ struct VulkanContext
   uint32_t queueFamily = 0;
   VkSemaphore imageAvailableSemaphore = VK_NULL_HANDLE;
   VkSemaphore renderFinishedSemaphore = VK_NULL_HANDLE;
+  VkSemaphore layoutCompleteSemaphore = VK_NULL_HANDLE;
   VkFence inFlightFence = VK_NULL_HANDLE;
   std::vector<VkImage>* swapchainImages = nullptr;
   VkFormat format = VK_FORMAT_B8G8R8A8_UNORM;
@@ -229,6 +230,7 @@ private:
   uint32_t mVkQueueFamily = 0;
   VkSemaphoreHolder mImageAvailableSemaphore;
   VkSemaphoreHolder mRenderFinishedSemaphore;
+  VkSemaphoreHolder mLayoutCompleteSemaphore;
   VkFenceHolder mInFlightFence;
   std::vector<VkImage> mVkSwapchainImages;
   VkFormat mVkFormat = VK_FORMAT_B8G8R8A8_UNORM;

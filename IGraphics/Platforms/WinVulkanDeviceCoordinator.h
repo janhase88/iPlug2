@@ -321,7 +321,7 @@ inline VkResult WinVulkanDeviceCoordinator::CreateInstance(const WinVulkanDevice
   VkApplicationInfo appInfo{};
   appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
   appInfo.pApplicationName = "iPlug2";
-  appInfo.apiVersion = VK_API_VERSION_1_1;
+  appInfo.apiVersion = VK_API_VERSION_1_0;
 
   VkInstanceCreateInfo instanceInfo{};
   instanceInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -438,10 +438,10 @@ inline VkResult WinVulkanDeviceCoordinator::SelectPhysicalDevice(const WinVulkan
 
     VkPhysicalDeviceFeatures features;
     vkGetPhysicalDeviceFeatures(device, &features);
-    if (!features.samplerAnisotropy)
-      continue;
 
     uint32_t score = props.limits.maxImageDimension2D;
+    if (features.samplerAnisotropy)
+      score += 10;
     if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
       score += 1000;
     else if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)

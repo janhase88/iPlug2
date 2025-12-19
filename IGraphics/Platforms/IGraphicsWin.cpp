@@ -4230,6 +4230,9 @@ void* IGraphicsWin::OpenWindow(void* pParent)
     h = cR.bottom - cR.top;
   }
 
+  if (!mHInstance)
+    mHInstance = GetModuleHandle(nullptr);
+
   if (nWndClassReg++ == 0)
   {
     WNDCLASSW wndClass = {CS_DBLCLKS | CS_OWNDC, WndProc, 0, 0, mHInstance, 0, 0, 0, 0, wndClassName};
@@ -4237,6 +4240,13 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   }
 
   mPlugWnd = CreateWindowW(wndClassName, L"IPlug", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, mParentWnd, 0, mHInstance, this);
+  if (!mPlugWnd)
+  {
+    if (--nWndClassReg == 0)
+      UnregisterClassW(wndClassName, mHInstance);
+
+    return nullptr;
+  }
 #if defined IGRAPHICS_VULKAN
   SetPlatformContext(mPlugWnd);
   if (!CreateVulkanContext())

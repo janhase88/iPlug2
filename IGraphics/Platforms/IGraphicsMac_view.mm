@@ -14,6 +14,8 @@
 #import <Metal/Metal.h>
 #endif
 
+#include <string>
+
 #include "wdlutf8.h"
 
 #import "IGraphicsMac_view.h"
@@ -1251,6 +1253,8 @@ static void MakeCursorFromName(NSCursor*& cursor, const char *name)
 
   if ([[pPasteBoard types] containsObject:NSFilenamesPboardType])
     return NSDragOperationGeneric;
+  else if ([[pPasteBoard types] containsObject:NSPasteboardTypeString] || [[pPasteBoard types] containsObject:NSStringPboardType])
+    return NSDragOperationCopy;
   else
     return NSDragOperationNone;
 }
@@ -1282,6 +1286,26 @@ static void MakeCursorFromName(NSCursor*& cursor, const char *name)
         paths[i] = [pFile UTF8String];
       }
       mGraphics->OnDropMultiple(paths, x, y);
+    }
+  }
+  else if ([[pPasteBoard types] containsObject:NSPasteboardTypeString] || [[pPasteBoard types] containsObject:NSStringPboardType])
+  {
+    NSString* pString = [pPasteBoard stringForType:NSPasteboardTypeString];
+
+    if (!pString)
+      pString = [pPasteBoard stringForType:NSStringPboardType];
+
+    if (pString)
+    {
+      NSPoint point = [sender draggingLocation];
+      NSPoint relativePoint = [self convertPoint: point fromView:nil];
+
+      const float scale = mGraphics->GetDrawScale();
+      const float x = relativePoint.x / scale;
+      const float y = relativePoint.y / scale;
+
+      std::string utf8([pString UTF8String]);
+      mGraphics->OnDrop(utf8.c_str(), x, y);
     }
   }
   return YES;

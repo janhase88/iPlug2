@@ -4540,6 +4540,16 @@ void IGraphicsWin::OnOLEDropFiles(const std::vector<std::wstring>& filesW, LONG 
     OnDropMultiple(pathPtrs, p.x / scale, p.y / scale);
 }
 
+void IGraphicsWin::OnOLEDropText(const std::string& text, LONG xScreen, LONG yScreen)
+{
+  // Convert screen -> client coords and scale to IGraphics space
+  POINT p{(LONG)xScreen, (LONG)yScreen};
+  ScreenToClient(mPlugWnd, &p);
+  const float scale = GetTotalScale();
+
+  OnDrop(text.c_str(), p.x / scale, p.y / scale);
+}
+
 bool IGraphicsWin::PlatformSupportsMultiTouch() const { return GetSystemMetrics(SM_DIGITIZER) & NID_MULTI_INPUT; }
 
 IPopupMenu* IGraphicsWin::GetItemMenu(long idx, long& idxInMenu, long& offsetIdx, IPopupMenu& baseMenu)

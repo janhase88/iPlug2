@@ -12,6 +12,9 @@
 
 #include "IPlugLogger.h"
 #include <Ole2.h>
+#include <atomic>
+#include <string>
+#include <vector>
 
 BEGIN_IPLUG_NAMESPACE
 BEGIN_IGRAPHICS_NAMESPACE
@@ -342,15 +345,16 @@ public:
   // IDropTarget
   HRESULT STDMETHODCALLTYPE DragEnter(IDataObject* pDataObj, DWORD /*grfKeyState*/, POINTL pt, DWORD* pdwEffect) override
   {
-    mHasFiles = CanAccept(pDataObj);
-    if (pdwEffect) *pdwEffect = mHasFiles ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+    mHasFiles = CanAcceptFiles(pDataObj);
+    mHasText = CanAcceptText(pDataObj);
+    if (pdwEffect) *pdwEffect = (mHasFiles || mHasText) ? DROPEFFECT_COPY : DROPEFFECT_NONE;
     mLastPt = pt;
     return S_OK;
   }
 
   HRESULT STDMETHODCALLTYPE DragOver(DWORD /*grfKeyState*/, POINTL pt, DWORD* pdwEffect) override
   {
-    if (pdwEffect) *pdwEffect = mHasFiles ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+    if (pdwEffect) *pdwEffect = (mHasFiles || mHasText) ? DROPEFFECT_COPY : DROPEFFECT_NONE;
     mLastPt = pt;
     return S_OK;
   }
@@ -358,56 +362,126 @@ public:
   HRESULT STDMETHODCALLTYPE DragLeave() override
   {
     mHasFiles = false;
+    mHasText = false;
     return S_OK;
   }
 
   HRESULT STDMETHODCALLTYPE Drop(IDataObject* pDataObj, DWORD /*grfKeyState*/, POINTL pt, DWORD* pdwEffect) override
   {
     if (pdwEffect) *pdwEffect = DROPEFFECT_NONE;
-    if (!mHasFiles || !pDataObj || !mOwner) return DRAGDROP_S_CANCEL;
+    if ((!mHasFiles && !mHasText) || !pDataObj || !mOwner) return DRAGDROP_S_CANCEL;
 
-    FORMATETC fmt = { CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
-    STGMEDIUM stg = {};
-    if (FAILED(pDataObj->GetData(&fmt, &stg)))
-      return DRAGDROP_S_CANCEL;
-
-    std::vector<std::wstring> filesW;
-    if (stg.tymed == TYMED_HGLOBAL && stg.hGlobal)
+    if (mHasFiles)
     {
-      HDROP hdrop = (HDROP) stg.hGlobal;
-      UINT count = DragQueryFileW(hdrop, 0xFFFFFFFF, nullptr, 0);
-      filesW.reserve(count ? count : 1);
-      wchar_t buf[2048];
-      for (UINT i = 0; i < count; ++i)
+      FORMATETC fmt = { CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
+      STGMEDIUM stg = {};
+      if (FAILED(pDataObj->GetData(&fmt, &stg)))
+        return DRAGDROP_S_CANCEL;
+
+      std::vector<std::wstring> filesW;
+      if (stg.tymed == TYMED_HGLOBAL && stg.hGlobal)
       {
-        UINT n = DragQueryFileW(hdrop, i, buf, (UINT)(sizeof(buf)/sizeof(buf[0])));
-        if (n > 0) filesW.emplace_back(buf, buf + n);
+        HDROP hdrop = (HDROP) stg.hGlobal;
+        UINT count = DragQueryFileW(hdrop, 0xFFFFFFFF, nullptr, 0);
+        filesW.reserve(count ? count : 1);
+        wchar_t buf[2048];
+        for (UINT i = 0; i < count; ++i)
+        {
+          UINT n = DragQueryFileW(hdrop, i, buf, (UINT)(sizeof(buf)/sizeof(buf[0])));
+          if (n > 0) filesW.emplace_back(buf, buf + n);
+        }
+      }
+
+      ReleaseStgMedium(&stg);
+
+      if (!filesW.empty())
+      {
+        mOwner->OnOLEDropFiles(filesW, pt.x, pt.y);
+        if (pdwEffect) *pdwEffect = DROPEFFECT_COPY;
+        return S_OK;
       }
     }
 
-    ReleaseStgMedium(&stg);
-
-    if (!filesW.empty())
+    if (mHasText)
     {
-      mOwner->OnOLEDropFiles(filesW, pt.x, pt.y);
-      if (pdwEffect) *pdwEffect = DROPEFFECT_COPY;
-      return S_OK;
+      std::string text;
+      if (ReadText(pDataObj, text))
+      {
+        mOwner->OnOLEDropText(text, pt.x, pt.y);
+        if (pdwEffect) *pdwEffect = DROPEFFECT_COPY;
+        return S_OK;
+      }
     }
     return DRAGDROP_S_CANCEL;
   }
 
 private:
-  bool CanAccept(IDataObject* pDataObj)
+  bool CanAcceptFiles(IDataObject* pDataObj)
   {
     if (!pDataObj) return false;
     FORMATETC fmt = { CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
     return pDataObj->QueryGetData(&fmt) == S_OK;
   }
 
+  bool CanAcceptText(IDataObject* pDataObj)
+  {
+    if (!pDataObj) return false;
+
+    FORMATETC fmtUnicode = { CF_UNICODETEXT, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
+    if (pDataObj->QueryGetData(&fmtUnicode) == S_OK)
+      return true;
+
+    FORMATETC fmtAnsi = { CF_TEXT, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
+    return pDataObj->QueryGetData(&fmtAnsi) == S_OK;
+  }
+
+  bool ReadText(IDataObject* pDataObj, std::string& text)
+  {
+    FORMATETC fmtUnicode = { CF_UNICODETEXT, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
+    STGMEDIUM stg = {};
+
+    HRESULT hr = pDataObj->GetData(&fmtUnicode, &stg);
+    bool isUnicode = SUCCEEDED(hr);
+    if (FAILED(hr))
+    {
+      FORMATETC fmtAnsi = { CF_TEXT, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
+      hr = pDataObj->GetData(&fmtAnsi, &stg);
+      if (FAILED(hr))
+        return false;
+      isUnicode = false;
+    }
+    if (stg.tymed == TYMED_HGLOBAL && stg.hGlobal)
+    {
+      if (isUnicode)
+      {
+        const wchar_t* pText = static_cast<const wchar_t*>(GlobalLock(stg.hGlobal));
+        if (pText)
+        {
+          UTF16AsUTF8 utf8(pText);
+          text.assign(utf8.Get(), utf8.GetLength());
+          GlobalUnlock(stg.hGlobal);
+        }
+      }
+      else
+      {
+        const char* pText = static_cast<const char*>(GlobalLock(stg.hGlobal));
+        if (pText)
+        {
+          text.assign(pText);
+          GlobalUnlock(stg.hGlobal);
+        }
+      }
+    }
+
+    ReleaseStgMedium(&stg);
+    return !text.empty();
+  }
+
   std::atomic<long> mRefCount{1};
   HWND mHwnd = nullptr;
   IGraphicsWin* mOwner = nullptr;
   bool mHasFiles = false;
+  bool mHasText = false;
   POINTL mLastPt{};
 };
 

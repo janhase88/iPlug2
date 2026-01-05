@@ -157,6 +157,7 @@ public:
 
   // Modern inbound drag & drop via OLE (IDropTarget)
   void OnOLEDropFiles(const std::vector<std::wstring>& filesW, LONG xScreen, LONG yScreen);
+  void OnOLEDropText(const std::string& text, LONG xScreen, LONG yScreen);
 
 
   bool PlatformSupportsMultiTouch() const override;

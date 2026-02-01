@@ -486,6 +486,14 @@ public:
   
   /** Get the control's tag. @see Control Tags */
   int GetTag() const { return GetUI()->GetControlTag(this); }
+
+  /** Get the control's Z index in the control stack */
+  int GetZIndex() const { return GetUI()->GetControlIdx(this); }
+
+  /** Request a new Z index in the control stack
+   * @param zIndex The position in the control stack to move the control to. Use a negative value to move to the top of the stack.
+   * @param defer Set \c true to defer the change until the graphics context processes pending Z order updates. */
+  void SetZIndex(int zIndex, bool defer = true) { GetUI()->SetControlZIndex(this, zIndex, defer); }
   
   /** Specify whether this control wants to know about MIDI messages sent to the UI. See OnMIDIMsg() */
   void SetWantsMidi(bool enable = true) { mWantsMidi = enable; }

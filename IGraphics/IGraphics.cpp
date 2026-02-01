@@ -389,6 +389,61 @@ IControl* IGraphics::AttachControl(IControl* pControl, int ctrlTag, const char* 
   return pControl;
 }
 
+void IGraphics::SetControlZIndex(IControl* pControl, int zIndex, bool defer)
+{
+  if (!pControl)
+    return;
+
+  if (defer)
+  {
+    for (auto& change : mPendingZIndexChanges)
+    {
+      if (change.pControl == pControl)
+      {
+        change.zIndex = zIndex;
+        return;
+      }
+    }
+
+    mPendingZIndexChanges.push_back({pControl, zIndex});
+    return;
+  }
+
+  ApplyControlZIndex(pControl, zIndex);
+}
+
+void IGraphics::ProcessControlZIndexChanges()
+{
+  if (mPendingZIndexChanges.empty())
+    return;
+
+  for (const auto& change : mPendingZIndexChanges)
+    ApplyControlZIndex(change.pControl, change.zIndex);
+
+  mPendingZIndexChanges.clear();
+}
+
+void IGraphics::ApplyControlZIndex(IControl* pControl, int zIndex)
+{
+  if (!pControl)
+    return;
+
+  const int currentIdx = mControls.Find(pControl);
+  if (currentIdx < 0)
+    return;
+
+  const int newSize = mControls.GetSize() - 1;
+  if (newSize < 0)
+    return;
+
+  const int targetIdx = (zIndex < 0) ? newSize : std::clamp(zIndex, 0, newSize);
+  if (targetIdx == currentIdx)
+    return;
+
+  mControls.Delete(currentIdx, false);
+  mControls.Insert(targetIdx, pControl);
+}
+
 void IGraphics::AttachCornerResizer(EUIResizerMode sizeMode, bool layoutOnResize, const IColor& color, const IColor& mouseOverColor, const IColor& dragColor, float size)
 {
   AttachCornerResizer(new ICornerResizerControl(GetBounds(), size, color, mouseOverColor, dragColor), sizeMode, layoutOnResize);
@@ -909,6 +964,8 @@ void IGraphics::PathRadialLine(float cx, float cy, float angle, float rMin, floa
 
 bool IGraphics::IsDirty(IRECTList& rects)
 {
+  ProcessControlZIndexChanges();
+
   if (mDisplayTickFunc)
     mDisplayTickFunc();
 

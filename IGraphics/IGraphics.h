@@ -1427,6 +1427,17 @@ public:
    * @param pControl Pointer to the control to get
    * @return integer index of the control in mControls array or -1 if not found */
   int GetControlIdx(IControl* pControl) const { return mControls.Find(pControl); }
+
+  /** Get the index of a particular IControl in the control stack (const overload)
+   * @param pControl Pointer to the control to get
+   * @return integer index of the control in mControls array or -1 if not found */
+  int GetControlIdx(const IControl* pControl) const { return mControls.Find(pControl); }
+
+  /** Set the Z index of a control in the control stack
+   * @param pControl Pointer to the control to move
+   * @param zIndex The position in the control stack to move the control to. Use a negative value to move to the top of the stack.
+   * @param defer Set \c true to defer the change until the graphics context processes pending Z order updates. */
+  void SetControlZIndex(IControl* pControl, int zIndex, bool defer = true);
   
   /** Gets the index of a tagged control
    * @param ctrlTag The tag to look for
@@ -1859,14 +1870,24 @@ protected:
 #pragma mark -
 
 private:
+  struct ControlZIndexChange
+  {
+    IControl* pControl = nullptr;
+    int zIndex = -1;
+  };
+
   void ClearMouseOver()
   {
     mMouseOver = nullptr;
     mMouseOverIdx = -1;
   }
+
+  void ProcessControlZIndexChanges();
+  void ApplyControlZIndex(IControl* pControl, int zIndex);
   
   WDL_PtrList<IControl> mControls;
   std::unordered_map<int, IControl*> mCtrlTags;
+  std::vector<ControlZIndexChange> mPendingZIndexChanges;
 
   // Order (front-to-back) ToolTip / PopUp / TextEntry / LiveEdit / Corner / PerfDisplay
   std::unique_ptr<ICornerResizerControl> mCornerResizer;

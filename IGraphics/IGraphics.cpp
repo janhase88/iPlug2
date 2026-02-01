@@ -1071,7 +1071,7 @@ void IGraphics::OnMouseDown(const std::vector<IMouseInfo>& points)
     float y = point.y;
     const IMouseMod& mod = point.ms;
     
-    IControl* pCapturedControl = GetMouseControl(x, y, true, false, mod.touchID);
+    IControl* pCapturedControl = GetMouseControl(x, y, true, false, mod.touchID, &mod);
     auto captureItr = mCapturedMap.find(mod.touchID);
     CapturedControl* pCaptureInfo = captureItr != mCapturedMap.end() ? &captureItr->second : nullptr;
 
@@ -1333,7 +1333,7 @@ bool IGraphics::OnMouseDblClick(float x, float y, const IMouseMod& mod)
   Trace("IGraphics::OnMouseDblClick", __LINE__, "x:%0.2f, y:%0.2f, mod:LRSCA: %i%i%i%i%i",
         x, y, mod.L, mod.R, mod.S, mod.C, mod.A);
   
-  IControl* pControl = GetMouseControl(x, y, true);
+  IControl* pControl = GetMouseControl(x, y, true, false, 0, &mod);
     
   if (pControl)
   {
@@ -1358,7 +1358,7 @@ bool IGraphics::OnMouseDblClick(float x, float y, const IMouseMod& mod)
 
 bool IGraphics::OnMouseWheel(float x, float y, const IMouseMod& mod, float d)
 {
-  IControl* pControl = GetMouseControl(x, y, false);
+  IControl* pControl = GetMouseControl(x, y, false, false, 0, &mod, true);
   
   if (pControl)
     pControl->OnMouseWheel(x, y, mod, d);
@@ -1441,7 +1441,7 @@ void IGraphics::ReleaseMouseCapture()
 #endif
 }
 
-int IGraphics::GetMouseControlIdx(float x, float y, bool mouseOver)
+int IGraphics::GetMouseControlIdx(float x, float y, bool mouseOver, const IMouseMod* pMod, bool isWheel)
 {
   if (!mouseOver || mEnableMouseOver)
   {
@@ -1454,7 +1454,7 @@ int IGraphics::GetMouseControlIdx(float x, float y, bool mouseOver)
       if(!mLiveEdit)
       {
 #endif
-        if (!pControl->IsHidden() && !pControl->GetIgnoreMouse())
+        if (!pControl->IsHidden() && !pControl->ShouldIgnoreMouse(pMod, isWheel))
         {
           if ((!pControl->IsDisabled() || (mouseOver ? pControl->GetMouseOverWhenDisabled() : pControl->GetMouseEventsWhenDisabled())))
           {
@@ -1477,7 +1477,7 @@ int IGraphics::GetMouseControlIdx(float x, float y, bool mouseOver)
   return -1;
 }
 
-IControl* IGraphics::GetMouseControl(float x, float y, bool capture, bool mouseOver, ITouchID touchID)
+IControl* IGraphics::GetMouseControl(float x, float y, bool capture, bool mouseOver, ITouchID touchID, const IMouseMod* pMod, bool isWheel)
 {
   IControl* pControl = nullptr;
 
@@ -1513,7 +1513,7 @@ IControl* IGraphics::GetMouseControl(float x, float y, bool capture, bool mouseO
   
   if (!pControl)
   {
-    controlIdx = GetMouseControlIdx(x, y, mouseOver);
+    controlIdx = GetMouseControlIdx(x, y, mouseOver, pMod, isWheel);
     pControl = (controlIdx >= 0) ? GetControl(controlIdx) : nullptr;
   }
   

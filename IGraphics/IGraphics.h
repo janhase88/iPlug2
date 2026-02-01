@@ -1563,7 +1563,7 @@ private:
    * @param y The Y coordinate to test
    * @param mouseOver Is this initiated from mouse over event
    * @return int the index of the hit control in the control stack */
-  int GetMouseControlIdx(float x, float y, bool mouseOver = false);
+  int GetMouseControlIdx(float x, float y, bool mouseOver = false, const IMouseMod* pMod = nullptr, bool isWheel = false);
   
   /** Get the control at x and y coordinates on mouse event
    * @param x The X coordinate to test
@@ -1572,7 +1572,7 @@ private:
    * @param mouseOver Is this initiated from mouse over event
    * @param touchID The ITouchID relating to the event (multi-touch only)
    * @return IControl* The hit control in the control stack */
-  IControl* GetMouseControl(float x, float y, bool capture, bool mouseOver = false, ITouchID touchID = 0);
+  IControl* GetMouseControl(float x, float y, bool capture, bool mouseOver = false, ITouchID touchID = 0, const IMouseMod* pMod = nullptr, bool isWheel = false);
   
 #pragma mark - Event handling
 public:

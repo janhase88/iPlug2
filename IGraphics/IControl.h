@@ -400,6 +400,48 @@ public:
   /** Specify whether the control should respond to mouse events
    * @param ignore \c true if it should ignore mouse events */
   virtual void SetIgnoreMouse(bool ignore) { mIgnoreMouse = ignore; }
+
+  /** @return \c true if the control ignores left mouse clicks */
+  bool GetIgnoreMouseLeftClick() const { return mIgnoreMouseLeftClick; }
+
+  /** @return \c true if the control ignores right mouse clicks */
+  bool GetIgnoreMouseRightClick() const { return mIgnoreMouseRightClick; }
+
+  /** @return \c true if the control ignores mouse scroll wheel events */
+  bool GetIgnoreMouseScroll() const { return mIgnoreMouseScroll; }
+
+  /** Specify whether the control should ignore left mouse clicks
+   * @param ignore \c true if it should ignore left mouse clicks */
+  virtual void SetIgnoreMouseLeftClick(bool ignore) { mIgnoreMouseLeftClick = ignore; }
+
+  /** Specify whether the control should ignore right mouse clicks
+   * @param ignore \c true if it should ignore right mouse clicks */
+  virtual void SetIgnoreMouseRightClick(bool ignore) { mIgnoreMouseRightClick = ignore; }
+
+  /** Specify whether the control should ignore mouse scroll wheel events
+   * @param ignore \c true if it should ignore mouse scroll wheel events */
+  virtual void SetIgnoreMouseScroll(bool ignore) { mIgnoreMouseScroll = ignore; }
+
+  /** @return \c true if the control should ignore a specific mouse event */
+  bool ShouldIgnoreMouse(const IMouseMod* pMod = nullptr, bool isWheel = false) const
+  {
+    if (mIgnoreMouse)
+      return true;
+
+    if (!pMod)
+      return false;
+
+    if (isWheel)
+      return mIgnoreMouseScroll;
+
+    if (pMod->L && mIgnoreMouseLeftClick)
+      return true;
+
+    if (pMod->R && mIgnoreMouseRightClick)
+      return true;
+
+    return false;
+  }
   
   /** @return \c true if the control should show parameter labels/units e.g. "Hz" in text entry prompts */
   bool GetPromptShowsParamLabel() const { return mPromptShowsParamLabel; }
@@ -578,6 +620,9 @@ protected:
   bool mMouseOverWhenDisabled = false;
   bool mMouseEventsWhenDisabled = false;
   bool mIgnoreMouse = false;
+  bool mIgnoreMouseLeftClick = false;
+  bool mIgnoreMouseRightClick = false;
+  bool mIgnoreMouseScroll = false;
   bool mWantsMidi = false;
   bool mWantsMultiTouch = false;
   bool mPromptShowsParamLabel = false;

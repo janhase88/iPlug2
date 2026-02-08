@@ -1134,6 +1134,9 @@ void IGraphics::OnMouseDown(const std::vector<IMouseInfo>& points)
 
     if (pCapturedControl)
     {
+      if (pCapturedControl->ShouldIgnoreMouse(&mod))
+        continue;
+
       int nVals = pCapturedControl->NVals();
 #if defined AAX_API || !defined IGRAPHICS_NO_CONTEXT_MENU
       int valIdx = pCapturedControl->GetValIdxForPos(x, y);
@@ -1330,7 +1333,10 @@ bool IGraphics::OnMouseOver(float x, float y, const IMouseMod& mod)
   }
 
   if (mMouseOver)
-    mMouseOver->OnMouseOver(x, y, mod);
+  {
+    if (!mMouseOver->GetIgnoreMouseOver())
+      mMouseOver->OnMouseOver(x, y, mod);
+  }
 
   return pControl;
 }
@@ -1394,6 +1400,9 @@ bool IGraphics::OnMouseDblClick(float x, float y, const IMouseMod& mod)
     
   if (pControl)
   {
+    if (pControl->ShouldIgnoreMouse(&mod))
+      return pControl;
+
     if (pControl->GetMouseDblAsSingleClick())
     {
       IMouseInfo info;
@@ -1418,7 +1427,12 @@ bool IGraphics::OnMouseWheel(float x, float y, const IMouseMod& mod, float d)
   IControl* pControl = GetMouseControl(x, y, false, false, 0, &mod, true);
   
   if (pControl)
+  {
+    if (pControl->ShouldIgnoreMouse(&mod, true))
+      return pControl;
+
     pControl->OnMouseWheel(x, y, mod, d);
+  }
   
   return pControl;
 }
@@ -1576,7 +1590,7 @@ IControl* IGraphics::GetMouseControl(float x, float y, bool capture, bool mouseO
     pControl = (controlIdx >= 0) ? GetControl(controlIdx) : nullptr;
   }
   
-  if (capture && pControl)
+  if (capture && pControl && !(pMod && pControl->ShouldIgnoreMouse(pMod, isWheel)))
   {
     if(MultiTouchEnabled())
     {

@@ -394,6 +394,41 @@ public:
   /** @return \c true if the control responds to other mouse events when disabled */
   bool GetMouseEventsWhenDisabled() const { return mMouseEventsWhenDisabled; }
   
+  /** @return \c true if the control ignores mouse events without passing them down */
+  bool GetIgnoreMouse() const { return mIgnoreMouse; }
+  
+  /** Specify whether the control should ignore mouse events without passing them down
+   * @param ignore \c true if it should ignore mouse events without passing them down */
+  virtual void SetIgnoreMouse(bool ignore) { mIgnoreMouse = ignore; }
+
+  /** @return \c true if the control ignores mouse over events without passing them down */
+  bool GetIgnoreMouseOver() const { return mIgnoreMouseOver; }
+
+  /** Specify whether the control should ignore mouse over events without passing them down
+   * @param ignore \c true if it should ignore mouse over events without passing them down */
+  virtual void SetIgnoreMouseOver(bool ignore) { mIgnoreMouseOver = ignore; }
+
+  /** @return \c true if the control ignores left mouse clicks without passing them down */
+  bool GetIgnoreMouseLeftClick() const { return mIgnoreMouseLeftClick; }
+
+  /** @return \c true if the control ignores right mouse clicks without passing them down */
+  bool GetIgnoreMouseRightClick() const { return mIgnoreMouseRightClick; }
+
+  /** @return \c true if the control ignores mouse scroll wheel events without passing them down */
+  bool GetIgnoreMouseScroll() const { return mIgnoreMouseScroll; }
+
+  /** Specify whether the control should ignore left mouse clicks without passing them down
+   * @param ignore \c true if it should ignore left mouse clicks without passing them down */
+  virtual void SetIgnoreMouseLeftClick(bool ignore) { mIgnoreMouseLeftClick = ignore; }
+
+  /** Specify whether the control should ignore right mouse clicks without passing them down
+   * @param ignore \c true if it should ignore right mouse clicks without passing them down */
+  virtual void SetIgnoreMouseRightClick(bool ignore) { mIgnoreMouseRightClick = ignore; }
+
+  /** Specify whether the control should ignore mouse scroll wheel events without passing them down
+   * @param ignore \c true if it should ignore mouse scroll wheel events without passing them down */
+  virtual void SetIgnoreMouseScroll(bool ignore) { mIgnoreMouseScroll = ignore; }
+
   /** @return \c true if the control passes mouse events down to controls underneath */
   bool GetPassDownMouse() const { return mPassDownMouse; }
   
@@ -431,6 +466,27 @@ public:
 
   /** @return \c true if the control should pass down a specific mouse event */
   bool ShouldPassDownMouse(const IMouseMod* pMod = nullptr, bool isWheel = false) const
+  {
+    if (mPassDownMouse)
+      return true;
+
+    if (!pMod)
+      return false;
+
+    if (isWheel)
+      return mPassDownMouseScroll;
+
+    if (pMod->L && mPassDownMouseLeftClick)
+      return true;
+
+    if (pMod->R && mPassDownMouseRightClick)
+      return true;
+
+    return false;
+  }
+
+  /** @return \c true if the control should ignore a specific mouse event without passing it down */
+  bool ShouldIgnoreMouse(const IMouseMod* pMod = nullptr, bool isWheel = false) const
   {
     if (mPassDownMouse)
       return true;
@@ -634,6 +690,11 @@ protected:
   bool mDblAsSingleClick = false;
   bool mMouseOverWhenDisabled = false;
   bool mMouseEventsWhenDisabled = false;
+  bool mIgnoreMouse = false;
+  bool mIgnoreMouseOver = false;
+  bool mIgnoreMouseLeftClick = false;
+  bool mIgnoreMouseRightClick = false;
+  bool mIgnoreMouseScroll = false;
   bool mPassDownMouse = false;
   bool mPassDownMouseOver = false;
   bool mPassDownMouseLeftClick = false;

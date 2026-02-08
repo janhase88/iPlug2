@@ -25,7 +25,7 @@ public:
   TestGesturesControl(IRECT bounds)
    : ITextControl(bounds, "Do a gesture...")
   {
-    mIgnoreMouse = false;
+    mPassDownMouse = false;
     #ifdef OS_IOS
     mText = IText(60.f);
     #endif

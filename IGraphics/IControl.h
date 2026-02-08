@@ -488,19 +488,19 @@ public:
   /** @return \c true if the control should ignore a specific mouse event without passing it down */
   bool ShouldIgnoreMouse(const IMouseMod* pMod = nullptr, bool isWheel = false) const
   {
-    if (mIgnoreMouse)
+    if (mPassDownMouse)
       return true;
 
     if (!pMod)
       return false;
 
     if (isWheel)
-      return mIgnoreMouseScroll;
+      return mPassDownMouseScroll;
 
-    if (pMod->L && mIgnoreMouseLeftClick)
+    if (pMod->L && mPassDownMouseLeftClick)
       return true;
 
-    if (pMod->R && mIgnoreMouseRightClick)
+    if (pMod->R && mPassDownMouseRightClick)
       return true;
 
     return false;

@@ -25,7 +25,7 @@ public:
   TestSizeControl(const IRECT& bounds)
   : IControl(bounds)
   {
-    mIgnoreMouse = true;
+    mPassDownMouse = true;
     mText = IText(15, COLOR_BLACK, nullptr, EAlign::Near);
   }
 

@@ -43,7 +43,7 @@ public:
   , IVectorBase(style)
   {
     AttachIControl(this, label);
-    mIgnoreMouse = true;
+    mPassDownMouse = true;
   }
   
   void Draw(IGraphics& g) override 
@@ -190,7 +190,7 @@ public:
   , mOnLoadFunc(onLoadFunc)
   {
     AttachIControl(this, label);
-    mIgnoreMouse = true;
+    mPassDownMouse = true;
     AddPath(presetPath, "");
     SetupMenu();
   }

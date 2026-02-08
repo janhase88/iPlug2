@@ -1511,7 +1511,9 @@ int IGraphics::GetMouseControlIdx(float x, float y, bool mouseOver, const IMouse
       if(!mLiveEdit)
       {
 #endif
-        if (!pControl->IsHidden() && !pControl->ShouldIgnoreMouse(pMod, isWheel))
+        if (!pControl->IsHidden()
+            && !pControl->ShouldPassDownMouse(pMod, isWheel)
+            && !(mouseOver && pControl->GetPassDownMouseOver()))
         {
           if ((!pControl->IsDisabled() || (mouseOver ? pControl->GetMouseOverWhenDisabled() : pControl->GetMouseEventsWhenDisabled())))
           {

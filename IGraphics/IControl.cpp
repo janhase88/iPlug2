@@ -461,7 +461,7 @@ ITextControl::ITextControl(const IRECT& bounds, const char* str, const IText& te
 , mBGColor(BGColor)
 , mSetBoundsBasedOnStr(setBoundsBasedOnStr)
 {
-  mIgnoreMouse = true;
+  mPassDownMouse = true;
   mText = text;
 }
 
@@ -516,7 +516,7 @@ IURLControl::IURLControl(const IRECT& bounds, const char* str, const char* urlSt
 , mMOColor(MOColor)
 , mCLColor(CLColor)
 {
-  mIgnoreMouse = false;
+  mPassDownMouse = false;
 }
 
 void IURLControl::Draw(IGraphics& g)
@@ -585,7 +585,7 @@ ITextToggleControl::ITextToggleControl(const IRECT& bounds, int paramIdx, const 
 {
   SetParamIdx(paramIdx);
   //TODO: assert boolean?
-  mIgnoreMouse = false;
+  mPassDownMouse = false;
   mDblAsSingleClick = true;
 }
 
@@ -596,7 +596,7 @@ ITextToggleControl::ITextToggleControl(const IRECT& bounds, IActionFunction aF, 
 {
   SetActionFunction(aF);
   mDblAsSingleClick = true;
-  mIgnoreMouse = false;
+  mPassDownMouse = false;
 }
 
 void ITextToggleControl::OnMouseDown(float x, float y, const IMouseMod& mod)
@@ -627,7 +627,7 @@ ICaptionControl::ICaptionControl(const IRECT& bounds, int paramIdx, const IText&
   SetParamIdx(paramIdx);
   mDblAsSingleClick = true;
   mDisablePrompt = false;
-  mIgnoreMouse = false;
+  mPassDownMouse = false;
 }
 
 void ICaptionControl::OnMouseDown(float x, float y, const IMouseMod& mod)
@@ -687,7 +687,7 @@ PlaceHolder::PlaceHolder(const IRECT& bounds, const char* str)
   mBGColor = COLOR_WHITE;
   mDisablePrompt = false;
   mDblAsSingleClick = false;
-  mIgnoreMouse = false;
+  mPassDownMouse = false;
 }
 
 void PlaceHolder::Draw(IGraphics& g)

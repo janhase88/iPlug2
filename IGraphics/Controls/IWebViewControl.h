@@ -51,7 +51,7 @@ public:
   {
     // The IControl itself should never receive mouse messages
     // they need to go to the webview
-    mIgnoreMouse = true;
+    mPassDownMouse = true;
   }
   
   ~IWebViewControl()
@@ -100,11 +100,11 @@ public:
     UpdateWebViewBounds();
   }
   
-  void SetIgnoreMouse(bool ignore) override
+  void SetPassDownMouse(bool passDown) override
   {
     // The IControl itself should never receive mouse messages
     // they need to go to the webview
-    mEnableInteraction = !ignore;
+    mEnableInteraction = !passDown;
     EnableInteraction(mEnableInteraction);
   }
   
@@ -134,4 +134,3 @@ private:
 
 END_IGRAPHICS_NAMESPACE
 END_IPLUG_NAMESPACE
-

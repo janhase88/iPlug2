@@ -56,7 +56,7 @@ public:
   {
     mText = text;
     mHide = true;
-    mIgnoreMouse = true;
+    mPassDownMouse = true;
     
     auto animationFunc = [&](IControl* pCaller) {
       auto progress = pCaller->GetAnimationProgress();

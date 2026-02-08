@@ -501,7 +501,7 @@ public:
   : IContainerBase(bounds)
   , IVectorBase(style)
   {
-    mIgnoreMouse = true;
+    mPassDownMouse = true;
     AttachIControl(this, label);
   }
   

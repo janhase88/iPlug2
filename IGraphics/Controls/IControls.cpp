@@ -1221,7 +1221,7 @@ IVGroupControl::IVGroupControl(const IRECT& bounds, const char* label, float lab
 , mLabelOffset(labelOffset)
 {
   AttachIControl(this, label);
-  mIgnoreMouse = true;
+  mPassDownMouse = true;
 }
 
 IVGroupControl::IVGroupControl(const char* label, const char* groupName, float padL, float padT, float padR, float padB, const IVStyle& style)
@@ -1234,7 +1234,7 @@ IVGroupControl::IVGroupControl(const char* label, const char* groupName, float p
 , mPadB(padB)
 {
   AttachIControl(this, label);
-  mIgnoreMouse = true;
+  mPassDownMouse = true;
 }
 
 void IVGroupControl::OnInit()

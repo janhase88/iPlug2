@@ -25,7 +25,7 @@ public:
   GFXLabelControl(const IRECT& rect)
   : IControl(rect)
   {
-    mIgnoreMouse = true;
+    mPassDownMouse = true;
   }
   
   void Draw(IGraphics& g) override

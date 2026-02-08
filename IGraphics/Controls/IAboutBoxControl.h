@@ -69,7 +69,7 @@ public:
   : IPanelControl(bounds, color, false, attachFunc, resizeFunc)
   , mAnimationTime(animationTime)
   {
-    mIgnoreMouse = false;
+    mPassDownMouse = false;
   }
   
   bool OnKeyDown(float x, float y, const IKeyPress& key) override

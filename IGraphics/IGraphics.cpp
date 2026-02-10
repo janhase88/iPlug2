@@ -1526,8 +1526,9 @@ int IGraphics::GetMouseControlIdx(float x, float y, bool mouseOver, const IMouse
       {
 #endif
         if (!pControl->IsHidden()
+            && !pControl->GetIgnoreMouse()
             && !pControl->ShouldPassDownMouse(pMod, isWheel)
-            && !(mouseOver && pControl->GetPassDownMouseOver()))
+            && !(mouseOver && (pControl->GetPassDownMouseOver() || pControl->GetIgnoreMouseOver())))
         {
           if ((!pControl->IsDisabled() || (mouseOver ? pControl->GetMouseOverWhenDisabled() : pControl->GetMouseEventsWhenDisabled())))
           {
